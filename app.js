@@ -16,22 +16,22 @@
   const ancoras = [12, 32, 2, 13, 23, 33, 22];
 
   const coresAncora = {
-    12: "#e53935", // vermelho
-    32: "#8e24aa", // roxo
-    2:  "#3949ab", // azul
-    13: "#fb8c00", // laranja
-    23: "#00897b", // verde azulado
-    33: "#6d4c41", // marrom
-    22: "#fdd835"  // amarelo
+    12: "#e53935",
+    32: "#8e24aa",
+    2:  "#3949ab",
+    13: "#fb8c00",
+    23: "#00897b",
+    33: "#6d4c41",
+    22: "#fdd835"
   };
 
   // ===== ESTADO =====
-  let hist = []; // máximo 14 números
+  let hist = []; // máximo 14
 
   // ===== FUNÇÕES =====
   function corNumero(n){
     if(n === 0) return "#2ecc71";
-    return reds.has(n) ? "#e74c3c" : "#222";
+    return reds.has(n) ? "#c0392b" : "#111";
   }
 
   function ehDoisVizinhos(n, a){
@@ -41,7 +41,6 @@
     let dist = Math.abs(ia - inx);
     dist = Math.min(dist, track.length - dist);
 
-    // exceções manuais
     if(a === 22 && n === 14) return true;
     if(a === 13 && n === 34) return true;
 
@@ -58,27 +57,34 @@
   // ===== UI =====
   document.body.innerHTML = `
     <div style="
-      background:#111;
-      color:#fff;
+      background:#0f0f0f;
+      color:#f1f1f1;
       padding:12px;
       font-family:Arial;
       overflow:hidden;
     ">
 
       <h3 style="text-align:center;margin:6px 0 10px">
-        Linha do Tempo (14 | mais recente à esquerda)
+        Linha do Tempo
       </h3>
 
-      <!-- LINHA DO TEMPO -->
-      <div id="linha" style="
-        display:flex;
-        flex-wrap:wrap;
-        gap:6px;
-        justify-content:center;
-        margin-bottom:14px;
-      "></div>
+      <!-- QUADRO DA LINHA DO TEMPO -->
+      <div style="
+        border:1px solid #444;
+        border-radius:8px;
+        padding:12px 8px;
+        margin-bottom:20px;
+        background:#141414;
+      ">
+        <div id="linha" style="
+          display:flex;
+          flex-wrap:wrap;
+          gap:6px;
+          justify-content:center;
+        "></div>
+      </div>
 
-      <!-- BOTÕES DE ENTRADA -->
+      <!-- BOTÕES DE INSERIR -->
       <div id="nums" style="
         display:grid;
         grid-template-columns:repeat(9, 1fr);
@@ -91,24 +97,23 @@
   const linha = document.getElementById("linha");
   const nums  = document.getElementById("nums");
 
-  // ===== BOTÕES DE ENTRADA =====
+  // ===== BOTÕES DE INSERIR (0–36) =====
   for(let n=0;n<=36;n++){
     let b = document.createElement("button");
     b.textContent = n;
     b.style = `
       padding:10px;
-      font-size:14px;
-      border-radius:6px;
       height:44px;
+      font-size:15px;
+      font-weight:bold;
+      border-radius:6px;
+      background:#1a1a1a;
+      border:1px solid #333;
+      color:#00e5ff; /* COR DO NÚMERO (igual à imagem) */
     `;
     b.onclick = () => {
       hist.push(n);
-
-      // mantém só os 14 mais recentes
-      if(hist.length > 14){
-        hist.shift(); // remove o mais antigo
-      }
-
+      if(hist.length > 14) hist.shift();
       render();
     };
     nums.appendChild(b);
@@ -118,7 +123,7 @@
   function render(){
     linha.innerHTML = "";
 
-    // MAIS RECENTE À ESQUERDA
+    // mais recente à esquerda
     [...hist].reverse().forEach(n => {
       const a = ancoraDoNumero(n);
 
@@ -128,7 +133,7 @@
         display:flex;
         flex-direction:column;
         align-items:center;
-        gap:2px;
+        gap:4px;
       `;
 
       const num = document.createElement("div");
@@ -140,20 +145,21 @@
         display:flex;
         align-items:center;
         justify-content:center;
-        font-size:14px;
+        font-size:18px;
         font-weight:bold;
+        color:#f1f1f1;
       `;
       num.textContent = n;
 
       box.appendChild(num);
 
-      // rótulo da âncora (igual à regra do T)
+      // ÂNCORA MAIOR (legível)
       if(a !== null){
         const lbl = document.createElement("div");
         lbl.style = `
-          font-size:9px;
+          font-size:15px;   /* AUMENTADO */
           font-weight:bold;
-          line-height:10px;
+          line-height:15px;
           color:${coresAncora[a]};
         `;
         lbl.textContent = a;
