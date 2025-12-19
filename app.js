@@ -19,7 +19,7 @@
     VOISINS:new Set([2,4,7,18,19,21,22,25,28,29])
   };
 
-  // >>> ALVO +
+  // ================= ÂNCORAS =================
   const ancoras = [12,32,2,22,13,23,33];
 
   const coresT = {
@@ -30,8 +30,6 @@
 
   const coresCavalo = { A:"#9c27b0", B:"#1e88e5", C:"#43a047" };
   const coresSetor = { TIER:"#e53935", ORPHANS:"#1e88e5", ZERO:"#43a047", VOISINS:"#8e24aa" };
-  const coresColuna = {1:"#42a5f5",2:"#66bb6a",3:"#ffa726"};
-  const coresDuzia  = {1:"#66bb6a",2:"#42a5f5",3:"#ef5350"};
 
   // ================= ESTADO =================
   let hist = [];
@@ -57,7 +55,7 @@
       for(let s in setores) if(setores[s].has(n)) return coresSetor[s];
     }
     if(n===0) return "#0f0";
-    return reds.has(n) ? "#e74c3c" : "#222";
+    return reds.has(n) ? "#e74c3c" : "#333";
   }
 
   function coverTerminal(t){
@@ -129,7 +127,7 @@
     return secos;
   }
 
-  // >>> ALVO +
+  // ================= ÂNCORAS =================
   function coberturaAncora(a){
     let i = track.indexOf(a);
     return new Set([
@@ -150,8 +148,11 @@
   }
 
   // ================= UI =================
+  document.body.style.background="#111";
+  document.body.style.color="#fff";
+
   document.body.innerHTML = `
-    <div style="padding:10px;color:#fff;max-width:100vw">
+    <div style="padding:10px;max-width:100vw">
       <h3 style="text-align:center">App Caballerro</h3>
 
       <div id="linhas"></div>
@@ -160,7 +161,6 @@
         🎯 ALVO: <span id="centros"></span>
       </div>
 
-      <!-- >>> ALVO + -->
       <div style="border:1px solid #666;padding:6px;text-align:center;margin:6px 0">
         🎯 ALVO +: <span id="alvoMais"></span>
       </div>
@@ -205,14 +205,13 @@
   for(let n=0;n<=36;n++){
     let b=document.createElement("button");
     b.textContent=n;
-    b.style="font-size:16px;padding:8px";
+    b.style="font-size:16px;padding:8px;background:#333;color:#fff;border:1px solid #555";
     b.onclick=()=>{hist.push(n);render();};
     nums.appendChild(b);
   }
 
   function render(){
     let ult=hist.slice(-14).reverse();
-    let pares=melhoresPares();
 
     for(let i=0;i<5;i++){
       let h=document.getElementById("h"+i);
@@ -221,9 +220,9 @@
       ult.forEach(n=>{
         let d=document.createElement("div");
         d.textContent=n;
-        d.style=\`width:24px;height:24px;line-height:24px;font-size:12px;
-                 background:\${corNumero(n)};color:#fff;border-radius:4px;
-                 text-align:center\`;
+        d.style=`width:24px;height:24px;line-height:24px;font-size:12px;
+                 background:${corNumero(n)};color:#fff;border-radius:4px;
+                 text-align:center`;
         h.appendChild(d);
       });
     }
