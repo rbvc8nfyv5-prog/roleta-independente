@@ -19,6 +19,9 @@
     VOISINS:new Set([2,4,7,18,19,21,22,25,28,29])
   };
 
+  // ➕ ÂNCORAS (central + 2 vizinhos)
+  const ancoras = [12,32,2,22,13,23,33];
+
   const coresT = {
     0:"#00e5ff",1:"#ff1744",2:"#00e676",3:"#ff9100",
     4:"#d500f9",5:"#ffee58",6:"#2979ff",
@@ -97,7 +100,7 @@
     return usados;
   }
 
-  // 🎯 ALVO SECO (6 números secos dentro do alvo)
+  // 🎯 ALVO SECO (inalterado)
   function alvoSeco(){
     let centros = analisarCentros();
     if(centros.length < 3) return [];
@@ -127,6 +130,22 @@
     return secos;
   }
 
+  // ➕ FUNÇÕES ÂNCORA
+  function coberturaAncora(a){
+    let i = track.indexOf(a);
+    return new Set([
+      track[(i+36)%37],
+      a,
+      track[(i+1)%37]
+    ]);
+  }
+
+  function ancoraDoNumero(n){
+    for(let a of ancoras){
+      if(coberturaAncora(a).has(n)) return a;
+    }
+  }
+
   // ================= UI =================
   document.body.innerHTML = `
     <div style="padding:10px;color:#fff;max-width:100vw">
@@ -136,6 +155,10 @@
 
       <div style="border:1px solid #666;padding:6px;text-align:center;margin:6px 0">
         🎯 ALVO: <span id="centros"></span>
+      </div>
+
+      <div style="border:1px solid #666;padding:6px;text-align:center;margin:6px 0">
+        🎯 ALVO +: <span id="alvoMais"></span>
       </div>
 
       <div style="border:1px dashed #aaa;padding:6px;text-align:center;margin:6px 0">
@@ -154,11 +177,6 @@
     </div>
   `;
 
-  const bTerm = document.getElementById("bTerm");
-  const bCav  = document.getElementById("bCav");
-  const bCol  = document.getElementById("bCol");
-  const bDuz  = document.getElementById("bDuz");
-  const bSet  = document.getElementById("bSet");
   const nums  = document.getElementById("nums");
   const linhas=document.getElementById("linhas");
 
@@ -168,12 +186,6 @@
     d.style="display:flex;gap:4px;justify-content:center;margin-bottom:4px";
     linhas.appendChild(d);
   }
-
-  bTerm.onclick=()=>{mostrar5=!mostrar5;render();};
-  bCav.onclick=()=>{modoCavalos=!modoCavalos;render();};
-  bCol.onclick=()=>{modoRotulo=modoRotulo==="C"?"T":"C";render();};
-  bDuz.onclick=()=>{modoRotulo=modoRotulo==="D"?"T":"D";render();};
-  bSet.onclick=()=>{modoSetores=!modoSetores;render();};
 
   for(let n=0;n<=36;n++){
     let b=document.createElement("button");
@@ -191,21 +203,26 @@
       let h=document.getElementById("h"+i);
       h.style.display=(mostrar5||i===0)?"flex":"none";
       h.innerHTML="";
-      let p=pares[i];
-      ult.forEach((n,idx)=>{
-        let w=document.createElement("div");
+      ult.forEach(n=>{
         let d=document.createElement("div");
         d.textContent=n;
         d.style=`width:24px;height:24px;line-height:24px;font-size:12px;
                  background:${corNumero(n)};color:#fff;border-radius:4px;
                  text-align:center`;
-        w.appendChild(d);
-        h.appendChild(w);
+        h.appendChild(d);
       });
     }
 
-    document.getElementById("centros").textContent = analisarCentros().join(" · ");
-    document.getElementById("alvoSeco").textContent = alvoSeco().join(" · ");
+    let centros = analisarCentros();
+
+    document.getElementById("centros").textContent =
+      centros.join(" · ");
+
+    document.getElementById("alvoMais").textContent =
+      centros.map(n => ancoraDoNumero(n)).join(" · ");
+
+    document.getElementById("alvoSeco").textContent =
+      alvoSeco().join(" · ");
   }
 
   render();
