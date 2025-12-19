@@ -1,6 +1,6 @@
 (function () {
 
-  // ===== TRACK FÍSICO =====
+  // ================= TRACK FÍSICO =================
   const track = [
     32,15,19,4,21,2,25,17,34,6,27,13,36,11,
     30,8,23,10,5,24,16,33,1,20,14,31,9,
@@ -12,49 +12,75 @@
     21,23,25,27,30,32,34,36
   ]);
 
-  // ===== ÂNCORAS =====
-  const ancoras = [12, 32, 2, 13, 23, 33, 22];
+  // ================= ESTADO =================
+  let hist = []; // linha do tempo (máx 14)
 
-  const coresAncora = {
-    12: "#e53935",
-    32: "#8e24aa",
-    2:  "#3949ab",
-    13: "#fb8c00",
-    23: "#00897b",
-    33: "#6d4c41",
-    22: "#fdd835"
-  };
-
-  // ===== ESTADO =====
-  let hist = []; // máximo 14
-
-  // ===== FUNÇÕES =====
+  // ================= FUNÇÕES BASE =================
   function corNumero(n){
     if(n === 0) return "#2ecc71";
     return reds.has(n) ? "#c0392b" : "#111";
   }
 
-  function ehDoisVizinhos(n, a){
-    const ia = track.indexOf(a);
-    const inx = track.indexOf(n);
+  // ================= REGRA T CLÁSSICA =================
 
-    let dist = Math.abs(ia - inx);
-    dist = Math.min(dist, track.length - dist);
+  // 3 centros estruturais
+  function centrosT(){
+    let centros = [];
+    let ult = hist.slice(-14).reverse();
 
-    if(a === 22 && n === 14) return true;
-    if(a === 13 && n === 34) return true;
-
-    return dist <= 2;
-  }
-
-  function ancoraDoNumero(n){
-    for(let a of ancoras){
-      if(ehDoisVizinhos(n, a)) return a;
+    for(let n of ult){
+      if(centros.every(x=>{
+        let d = Math.abs(track.indexOf(x) - track.indexOf(n));
+        return Math.min(d, track.length - d) >= 9;
+      })){
+        centros.push(n);
+        if(centros.length === 3) break;
+      }
     }
-    return null;
+    return centros;
   }
 
-  // ===== UI =====
+  // bloco T: 4 vizinhos para cada lado
+  function blocosT(){
+    return centrosT().map(c=>{
+      let i = track.indexOf(c);
+      let nums = [];
+      for(let d=-4; d<=4; d++){
+        nums.push(track[(i + d + track.length) % track.length]);
+      }
+      return { centro:c, nums };
+    });
+  }
+
+  // SECO: 6 números fora do miolo
+  function seco6(){
+    let pool = new Set();
+
+    centrosT().forEach(c=>{
+      let i = track.indexOf(c);
+      for(let d=-6; d<=6; d++){
+        pool.add(track[(i + d + track.length) % track.length]);
+      }
+    });
+
+    let ordenado = [...pool].sort(
+      (a,b)=>track.indexOf(a)-track.indexOf(b)
+    );
+
+    let secos = [];
+    for(let n of ordenado){
+      if(secos.every(x=>{
+        let d=Math.abs(track.indexOf(x)-track.indexOf(n));
+        return Math.min(d,track.length-d)>=6;
+      })){
+        secos.push(n);
+        if(secos.length===6) break;
+      }
+    }
+    return secos;
+  }
+
+  // ================= UI =================
   document.body.innerHTML = `
     <div style="
       background:#0f0f0f;
@@ -65,15 +91,15 @@
     ">
 
       <h3 style="text-align:center;margin:6px 0 10px">
-        Linha do Tempo
+        Painel – Regra T Clássica
       </h3>
 
-      <!-- QUADRO DA LINHA DO TEMPO -->
+      <!-- LINHA DO TEMPO -->
       <div style="
         border:1px solid #444;
         border-radius:8px;
-        padding:12px 8px;
-        margin-bottom:20px;
+        padding:10px;
+        margin-bottom:14px;
         background:#141414;
       ">
         <div id="linha" style="
@@ -84,32 +110,65 @@
         "></div>
       </div>
 
+      <!-- T CLÁSSICO -->
+      <div style="
+        border:1px solid #555;
+        border-radius:8px;
+        padding:10px;
+        margin-bottom:14px;
+        background:#121212;
+      ">
+        <div style="text-align:center;font-size:13px;margin-bottom:6px;color:#bbb">
+          🎯 T CLÁSSICO — 3 centros · 4 vizinhos por lado
+        </div>
+        <div id="blocosT"
+          style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+        </div>
+      </div>
+
+      <!-- SECO -->
+      <div style="
+        border:1px dashed #666;
+        border-radius:8px;
+        padding:10px;
+        margin-bottom:18px;
+        background:#101010;
+      ">
+        <div style="text-align:center;font-size:13px;margin-bottom:6px;color:#bbb">
+          🎯 SECO — 6 números
+        </div>
+        <div id="seco"
+          style="display:flex;gap:10px;justify-content:center">
+        </div>
+      </div>
+
       <!-- BOTÕES DE INSERIR -->
       <div id="nums" style="
         display:grid;
-        grid-template-columns:repeat(9, 1fr);
+        grid-template-columns:repeat(9,1fr);
         gap:6px;
       "></div>
 
     </div>
   `;
 
-  const linha = document.getElementById("linha");
-  const nums  = document.getElementById("nums");
+  const linha   = document.getElementById("linha");
+  const blocos = document.getElementById("blocosT");
+  const seco   = document.getElementById("seco");
+  const nums   = document.getElementById("nums");
 
-  // ===== BOTÕES DE INSERIR (0–36) =====
+  // ================= BOTÕES 0–36 =================
   for(let n=0;n<=36;n++){
     let b = document.createElement("button");
     b.textContent = n;
     b.style = `
-      padding:10px;
       height:44px;
       font-size:15px;
       font-weight:bold;
       border-radius:6px;
       background:#1a1a1a;
       border:1px solid #333;
-      color:#00e5ff; /* COR DO NÚMERO (igual à imagem) */
+      color:#00e5ff;
     `;
     b.onclick = () => {
       hist.push(n);
@@ -119,54 +178,62 @@
     nums.appendChild(b);
   }
 
-  // ===== RENDER =====
+  // ================= RENDER =================
   function render(){
+
+    // Linha do tempo
     linha.innerHTML = "";
-
-    // mais recente à esquerda
-    [...hist].reverse().forEach(n => {
-      const a = ancoraDoNumero(n);
-
-      const box = document.createElement("div");
-      box.style = `
-        width:44px;
-        display:flex;
-        flex-direction:column;
-        align-items:center;
-        gap:4px;
-      `;
-
-      const num = document.createElement("div");
-      num.style = `
-        width:44px;
-        height:44px;
+    [...hist].reverse().forEach(n=>{
+      let d=document.createElement("div");
+      d.style=`
+        width:44px;height:44px;
         background:${corNumero(n)};
         border-radius:6px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        font-size:18px;
-        font-weight:bold;
-        color:#f1f1f1;
+        display:flex;align-items:center;justify-content:center;
+        font-size:18px;font-weight:bold;color:#f1f1f1
       `;
-      num.textContent = n;
+      d.textContent=n;
+      linha.appendChild(d);
+    });
 
-      box.appendChild(num);
+    // T clássico
+    blocos.innerHTML = "";
+    blocosT().forEach(b=>{
+      let col=document.createElement("div");
+      col.style="display:flex;flex-direction:column;gap:4px;align-items:center";
 
-      // ÂNCORA MAIOR (legível)
-      if(a !== null){
-        const lbl = document.createElement("div");
-        lbl.style = `
-          font-size:15px;   /* AUMENTADO */
-          font-weight:bold;
-          line-height:15px;
-          color:${coresAncora[a]};
+      b.nums.forEach(n=>{
+        let d=document.createElement("div");
+        d.style=`
+          width:34px;height:34px;
+          background:${corNumero(n)};
+          border-radius:6px;
+          display:flex;align-items:center;justify-content:center;
+          font-size:13px;
+          font-weight:${n===b.centro?"bold":"normal"};
+          border:${n===b.centro?"2px solid #fff":"none"};
+          color:#f1f1f1
         `;
-        lbl.textContent = a;
-        box.appendChild(lbl);
-      }
+        d.textContent=n;
+        col.appendChild(d);
+      });
 
-      linha.appendChild(box);
+      blocos.appendChild(col);
+    });
+
+    // Seco
+    seco.innerHTML = "";
+    seco6().forEach(n=>{
+      let d=document.createElement("div");
+      d.style=`
+        width:36px;height:36px;
+        background:${corNumero(n)};
+        border-radius:6px;
+        display:flex;align-items:center;justify-content:center;
+        font-size:14px;font-weight:bold;color:#f1f1f1
+      `;
+      d.textContent=n;
+      seco.appendChild(d);
     });
   }
 
