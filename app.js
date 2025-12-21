@@ -21,56 +21,54 @@
 
   function vizinhos(n){
     let i = track.indexOf(n);
-    return [track[(i+36)%37], track[(i+1)%37]];
+    return [
+      track[(i+36)%37],
+      track[(i+1)%37]
+    ];
   }
 
-  // ================= MAPA COMPLETO DE TERMINAIS =================
-  function mapaTerminais(){
+  // ================= MAPA DE FORÇA DOS TERMINAIS =================
+  function mapaForca(){
     let mapa = {};
     for(let t=0;t<=9;t++) mapa[t]=0;
 
     hist.slice(-14).forEach(n=>{
-      mapa[terminal(n)] += 2; // peso direto
-
+      mapa[terminal(n)] += 2;
       vizinhos(n).forEach(v=>{
-        mapa[terminal(v)] += 1; // peso vizinho
+        mapa[terminal(v)] += 1;
       });
     });
 
     return mapa;
   }
 
-  // ================= TENDÊNCIA DA MESA =================
-  function tendenciaMesa(){
-    let mapa = mapaTerminais();
-
-    return Object.entries(mapa)
-      .map(([t,v])=>({ t:Number(t), v }))
-      .sort((a,b)=>b.v - a.v);
-  }
-
-  // ================= ALVOS (8 NÚMEROS) =================
+  // ================= ALVOS (15 ESPALHADOS) =================
   function alvosPorMesa(){
-    let tendencia = tendenciaMesa();
+    let forca = mapaForca();
 
-    // pega quentes + transição
-    let terminaisEscolhidos = tendencia
-      .filter(o=>o.v>0)
-      .slice(0,5) // cobre a mesa, não só 1
-      .map(o=>o.t);
+    // ordena terminais por força (quente → frio)
+    let ordem = Object.entries(forca)
+      .filter(([_,v])=>v>0)
+      .sort((a,b)=>b[1]-a[1])
+      .map(e=>Number(e[0]));
 
     let nums = [];
 
-    terminaisEscolhidos.forEach(t=>{
+    // espalha por TODOS os terminais relevantes
+    ordem.forEach(t=>{
       terminais[t].forEach(n=>{
-        if(!nums.includes(n)) nums.push(n);
+        if(nums.length < 15 && !nums.includes(n)){
+          nums.push(n);
+        }
         vizinhos(n).forEach(v=>{
-          if(!nums.includes(v)) nums.push(v);
+          if(nums.length < 15 && !nums.includes(v)){
+            nums.push(v);
+          }
         });
       });
     });
 
-    return nums.slice(0,8);
+    return nums;
   }
 
   // ================= UI =================
@@ -86,11 +84,11 @@
       </div>
 
       <div style="border:1px solid #666;padding:6px;text-align:center;margin:6px 0">
-        🎯 ALVOS (8): <span id="alvos"></span>
+        🎯 ALVOS (15): <span id="alvos"></span>
       </div>
 
       <div style="border:1px solid #444;padding:6px;text-align:center;margin:6px 0">
-        📊 MAPA DE TERMINAIS<br>
+        📊 FORÇA DOS TERMINAIS<br>
         <span id="trend"></span>
       </div>
 
@@ -119,8 +117,8 @@
       alvosPorMesa().join(" · ");
 
     document.getElementById("trend").textContent =
-      tendenciaMesa()
-        .map(o=>`T${o.t}:${o.v}`)
+      Object.entries(mapaForca())
+        .map(([t,v])=>`T${t}:${v}`)
         .join(" | ");
   }
 
