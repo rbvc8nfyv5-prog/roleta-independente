@@ -1,7 +1,11 @@
 (function () {
 
   // ================= CONFIG BASE =================
-  const track = [32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26,0];
+  const track = [
+    32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,
+    23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,
+    12,35,3,26,0
+  ];
 
   const terminais = {
     0:[0,10,20,30],1:[1,11,21,31],2:[2,12,22,32],3:[3,13,23,33],
@@ -17,44 +21,47 @@
 
   function vizinhos(n){
     let i = track.indexOf(n);
-    return [
-      track[(i+36)%37],
-      track[(i+1)%37]
-    ];
+    return [track[(i+36)%37], track[(i+1)%37]];
   }
 
-  // ================= LEITURA DE TENDÊNCIA =================
-  function tendenciaPorTerminal(){
+  // ================= MAPA COMPLETO DE TERMINAIS =================
+  function mapaTerminais(){
     let mapa = {};
-    let ult = hist.slice(-14);
+    for(let t=0;t<=9;t++) mapa[t]=0;
 
-    ult.forEach(n=>{
-      let tBase = terminal(n);
-      let bloco = terminais[tBase];
+    hist.slice(-14).forEach(n=>{
+      mapa[terminal(n)] += 2; // peso direto
 
-      bloco.forEach(x=>{
-        vizinhos(x).forEach(v=>{
-          let tv = terminal(v);
-          mapa[tv] = (mapa[tv] || 0) + 1;
-        });
+      vizinhos(n).forEach(v=>{
+        mapa[terminal(v)] += 1; // peso vizinho
       });
     });
 
-    return Object.entries(mapa)
-      .sort((a,b)=>b[1]-a[1]);
+    return mapa;
   }
 
-  // ================= ALVOS (8 NÚMEROS DIRECIONAIS) =================
-  function alvosPorTendencia(){
-    let tendencia = tendenciaPorTerminal();
-    if(tendencia.length === 0) return [];
+  // ================= TENDÊNCIA DA MESA =================
+  function tendenciaMesa(){
+    let mapa = mapaTerminais();
 
-    // pega os 3 terminais mais fortes
-    let terminaisFortes = tendencia.slice(0,3).map(x => Number(x[0]));
+    return Object.entries(mapa)
+      .map(([t,v])=>({ t:Number(t), v }))
+      .sort((a,b)=>b.v - a.v);
+  }
+
+  // ================= ALVOS (8 NÚMEROS) =================
+  function alvosPorMesa(){
+    let tendencia = tendenciaMesa();
+
+    // pega quentes + transição
+    let terminaisEscolhidos = tendencia
+      .filter(o=>o.v>0)
+      .slice(0,5) // cobre a mesa, não só 1
+      .map(o=>o.t);
 
     let nums = [];
 
-    terminaisFortes.forEach(t=>{
+    terminaisEscolhidos.forEach(t=>{
       terminais[t].forEach(n=>{
         if(!nums.includes(n)) nums.push(n);
         vizinhos(n).forEach(v=>{
@@ -71,7 +78,7 @@
   document.body.style.color="#fff";
 
   document.body.innerHTML = `
-    <div style="padding:10px">
+    <div style="padding:10px;font-family:sans-serif">
       <h3 style="text-align:center">App Caballerro</h3>
 
       <div style="margin-bottom:6px">
@@ -83,7 +90,7 @@
       </div>
 
       <div style="border:1px solid #444;padding:6px;text-align:center;margin:6px 0">
-        📊 TENDÊNCIA DE TERMINAIS<br>
+        📊 MAPA DE TERMINAIS<br>
         <span id="trend"></span>
       </div>
 
@@ -109,12 +116,11 @@
       hist.slice(-14).join(" · ");
 
     document.getElementById("alvos").textContent =
-      alvosPorTendencia().join(" · ");
+      alvosPorMesa().join(" · ");
 
     document.getElementById("trend").textContent =
-      tendenciaPorTerminal()
-        .slice(0,6)
-        .map(([t,v])=>`T${t} (${v})`)
+      tendenciaMesa()
+        .map(o=>`T${o.t}:${o.v}`)
         .join(" | ");
   }
 
