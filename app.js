@@ -41,25 +41,29 @@
     });
 
     return Object.entries(mapa)
-      .sort((a,b)=>b[1]-a[1])
-      .map(([t,v])=>`T${t} (${v})`);
+      .sort((a,b)=>b[1]-a[1]);
   }
 
-  // ================= ALVO (MANTIDO) =================
-  function analisarCentros(){
-    if(hist.length<6) return [];
-    let ult=hist.slice(-14).reverse();
-    let usados=[];
-    for(let n of ult){
-      if(usados.every(x=>{
-        let d=Math.abs(track.indexOf(x)-track.indexOf(n));
-        return Math.min(d,37-d)>=6;
-      })){
-        usados.push(n);
-        if(usados.length===3) break;
-      }
-    }
-    return usados;
+  // ================= ALVOS (8 NÚMEROS DIRECIONAIS) =================
+  function alvosPorTendencia(){
+    let tendencia = tendenciaPorTerminal();
+    if(tendencia.length === 0) return [];
+
+    // pega os 3 terminais mais fortes
+    let terminaisFortes = tendencia.slice(0,3).map(x => Number(x[0]));
+
+    let nums = [];
+
+    terminaisFortes.forEach(t=>{
+      terminais[t].forEach(n=>{
+        if(!nums.includes(n)) nums.push(n);
+        vizinhos(n).forEach(v=>{
+          if(!nums.includes(v)) nums.push(v);
+        });
+      });
+    });
+
+    return nums.slice(0,8);
   }
 
   // ================= UI =================
@@ -70,8 +74,12 @@
     <div style="padding:10px">
       <h3 style="text-align:center">App Caballerro</h3>
 
+      <div style="margin-bottom:6px">
+        🕒 Linha do tempo: <span id="timeline"></span>
+      </div>
+
       <div style="border:1px solid #666;padding:6px;text-align:center;margin:6px 0">
-        🎯 ALVO: <span id="centros"></span>
+        🎯 ALVOS (8): <span id="alvos"></span>
       </div>
 
       <div style="border:1px solid #444;padding:6px;text-align:center;margin:6px 0">
@@ -79,7 +87,10 @@
         <span id="trend"></span>
       </div>
 
-      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
+      <div id="nums"
+           style="display:grid;grid-template-columns:repeat(9,1fr);
+                  gap:6px;margin-top:10px">
+      </div>
     </div>
   `;
 
@@ -94,11 +105,17 @@
   }
 
   function render(){
-    document.getElementById("centros").textContent =
-      analisarCentros().join(" · ");
+    document.getElementById("timeline").textContent =
+      hist.slice(-14).join(" · ");
+
+    document.getElementById("alvos").textContent =
+      alvosPorTendencia().join(" · ");
 
     document.getElementById("trend").textContent =
-      tendenciaPorTerminal().join(" | ");
+      tendenciaPorTerminal()
+        .slice(0,6)
+        .map(([t,v])=>`T${t} (${v})`)
+        .join(" | ");
   }
 
   render();
