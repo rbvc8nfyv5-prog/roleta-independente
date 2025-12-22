@@ -1,20 +1,11 @@
 (function () {
 
-  // ================= CONFIG BASE =================
-  const terminais = {
-    0:[0,10,20,30],
-    1:[1,11,21,31],
-    2:[2,12,22,32],
-    3:[3,13,23,33],
-    4:[4,14,24,34],
-    5:[5,15,25,35],
-    6:[6,16,26,36],
-    7:[7,17,27],
-    8:[8,18,28],
-    9:[9,19,29]
-  };
-
+  // ================= CONFIG =================
   const terminal = n => n % 10;
+
+  // ================= ESTADO =================
+  let hist = [];          // histórico oculto completo
+  let timeline = [];      // últimos 14 (visual)
 
   // ================= UI =================
   document.body.style.background = "#111";
@@ -22,96 +13,106 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Leitura de Trinca</h3>
+      <h3 style="text-align:center">CSM – Leitura de Trinca (Histórico Oculto)</h3>
 
-      <div style="margin-bottom:8px">
-        📋 Cole o histórico (números separados por espaço ou vírgula):
+      <div style="margin-bottom:6px">
+        🕒 Linha do tempo (14 – espelhada):
+        <div id="timeline"
+          style="margin-top:4px;padding:6px;border:1px solid #555;min-height:22px">
+        </div>
       </div>
 
-      <textarea id="histInput"
-        style="width:100%;height:120px;background:#222;color:#fff;border:1px solid #555;padding:6px">
-      </textarea>
-
-      <div style="margin:10px 0;text-align:center">
-        <button id="analisar"
-          style="padding:8px 16px;background:#333;color:#fff;border:1px solid #777">
-          Analisar Histórico
-        </button>
+      <div style="border:1px solid #666;padding:6px;margin:6px 0;text-align:center">
+        🔢 Trinca Atual (terminais): <span id="trinca">-</span>
       </div>
 
-      <div style="border:1px solid #666;padding:8px;margin-top:10px">
-        🔎 Resultado da Análise:
-        <div id="resultado" style="margin-top:8px;font-size:14px"></div>
+      <div style="border:1px solid #999;padding:6px;margin:6px 0">
+        🔎 Resultado da Trinca:
+        <div id="resultado" style="margin-top:6px"></div>
+      </div>
+
+      <div id="nums"
+        style="display:grid;grid-template-columns:repeat(9,1fr);
+               gap:6px;margin-top:12px">
       </div>
     </div>
   `;
 
-  document.getElementById("analisar").onclick = analisar;
+  const numsDiv = document.getElementById("nums");
 
-  // ================= LÓGICA =================
-  function analisar(){
-    let txt = document.getElementById("histInput").value;
-    if(!txt.trim()) return;
+  // ================= BOTÕES =================
+  for (let n = 0; n <= 36; n++) {
+    let b = document.createElement("button");
+    b.textContent = n;
+    b.style = "padding:8px;background:#333;color:#fff;border:1px solid #555";
+    b.onclick = () => inserirNumero(n);
+    numsDiv.appendChild(b);
+  }
 
-    // converte texto em array de números
-    let hist = txt
-      .replace(/\n/g," ")
-      .split(/[\s,]+/)
-      .map(n=>parseInt(n,10))
-      .filter(n=>!isNaN(n) && n>=0 && n<=36);
+  // ================= INSERÇÃO =================
+  function inserirNumero(n){
+    hist.push(n);
 
-    if(hist.length < 6){
-      document.getElementById("resultado").textContent =
-        "Histórico muito curto.";
+    timeline.unshift(n);
+    if (timeline.length > 14) timeline.pop();
+
+    render();
+  }
+
+  // ================= ANÁLISE DA TRINCA =================
+  function analisarTrinca(){
+    if (hist.length < 6) return null;
+
+    let t1 = terminal(hist[hist.length - 3]);
+    let t2 = terminal(hist[hist.length - 2]);
+    let t3 = terminal(hist[hist.length - 1]);
+
+    let chave = `${t1}-${t2}-${t3}`;
+    let resultados = [];
+
+    for (let i = 0; i <= hist.length - 6; i++) {
+      if (
+        terminal(hist[i])   === t1 &&
+        terminal(hist[i+1]) === t2 &&
+        terminal(hist[i+2]) === t3
+      ) {
+        resultados.push(hist.slice(i+3, i+6));
+      }
+    }
+
+    return { chave, resultados };
+  }
+
+  // ================= RENDER =================
+  function render(){
+    // linha do tempo
+    document.getElementById("timeline").textContent =
+      timeline.join(" · ");
+
+    let analise = analisarTrinca();
+    let trincaSpan = document.getElementById("trinca");
+    let resDiv = document.getElementById("resultado");
+
+    if (!analise) {
+      trincaSpan.textContent = "-";
+      resDiv.textContent = "Insira pelo menos 6 números.";
       return;
     }
 
-    let resultados = {};
+    trincaSpan.textContent = analise.chave;
 
-    for(let i=0;i<hist.length-5;i++){
-      // trinca (em terminais)
-      let t1 = terminal(hist[i]);
-      let t2 = terminal(hist[i+1]);
-      let t3 = terminal(hist[i+2]);
-
-      let chave = `${t1}-${t2}-${t3}`;
-
-      // próximos 3 números reais
-      let prox = hist.slice(i+3, i+6);
-
-      if(prox.length < 3) continue;
-
-      if(!resultados[chave]) resultados[chave] = [];
-      resultados[chave].push(prox);
-    }
-
-    renderResultado(resultados);
-  }
-
-  function renderResultado(resultados){
-    let div = document.getElementById("resultado");
-    div.innerHTML = "";
-
-    Object.keys(resultados).forEach(chave=>{
-      let bloco = document.createElement("div");
-      bloco.style = "margin-bottom:10px;padding:6px;border-bottom:1px dashed #555";
-
-      let titulo = document.createElement("div");
-      titulo.innerHTML = `🔸 <b>Trinca ${chave}</b>`;
-      bloco.appendChild(titulo);
-
-      resultados[chave].forEach(seq=>{
-        let linha = document.createElement("div");
-        linha.textContent = "→ " + seq.join(" · ");
-        bloco.appendChild(linha);
+    if (analise.resultados.length === 0) {
+      resDiv.textContent = "Sem resultado no histórico.";
+    } else {
+      resDiv.innerHTML = "";
+      analise.resultados.forEach(seq => {
+        let d = document.createElement("div");
+        d.textContent = "→ " + seq.join(" · ");
+        resDiv.appendChild(d);
       });
-
-      div.appendChild(bloco);
-    });
-
-    if(!div.innerHTML){
-      div.textContent = "Nenhuma trinca encontrada.";
     }
   }
+
+  render();
 
 })();
