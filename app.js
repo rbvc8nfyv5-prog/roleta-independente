@@ -13,7 +13,18 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Leitura de Trinca (Histórico Oculto)</h3>
+      <h3 style="text-align:center">CSM – Leitura de Trinca</h3>
+
+      <div style="margin-bottom:8px">
+        📋 Cole o histórico (espaço ou vírgula):
+        <input id="pasteInput"
+          style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555"
+          placeholder="Ex: 32 15 19 4 21 2 25 17 34" />
+        <button id="btnColar"
+          style="margin-top:6px;padding:6px 12px;background:#333;color:#fff;border:1px solid #777">
+          Colar histórico
+        </button>
+      </div>
 
       <div style="margin-bottom:6px">
         🕒 Linha do tempo (14 – espelhada):
@@ -49,7 +60,7 @@
     numsDiv.appendChild(b);
   }
 
-  // ================= INSERÇÃO =================
+  // ================= INSERÇÃO MANUAL =================
   function inserirNumero(n){
     hist.push(n);
 
@@ -58,6 +69,28 @@
 
     render();
   }
+
+  // ================= COLAR HISTÓRICO =================
+  document.getElementById("btnColar").onclick = () => {
+    let txt = document.getElementById("pasteInput").value;
+    if(!txt.trim()) return;
+
+    let nums = txt
+      .replace(/\n/g," ")
+      .split(/[\s,]+/)
+      .map(n=>parseInt(n,10))
+      .filter(n=>!isNaN(n) && n>=0 && n<=36);
+
+    if(nums.length === 0) return;
+
+    // injeta como se tivesse sido digitado
+    nums.forEach(n => hist.push(n));
+
+    timeline = hist.slice(-14).reverse();
+
+    document.getElementById("pasteInput").value = "";
+    render();
+  };
 
   // ================= ANÁLISE DA TRINCA =================
   function analisarTrinca(){
@@ -85,7 +118,6 @@
 
   // ================= RENDER =================
   function render(){
-    // linha do tempo
     document.getElementById("timeline").textContent =
       timeline.join(" · ");
 
