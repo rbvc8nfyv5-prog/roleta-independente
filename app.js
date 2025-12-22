@@ -38,7 +38,7 @@
       </div>
 
       <div style="border:1px solid #999;padding:6px;margin:6px 0">
-        🔎 Resultado da Trinca:
+        🔎 Resultado da Trinca (6 números após):
         <div id="resultado" style="margin-top:6px"></div>
       </div>
 
@@ -83,9 +83,7 @@
 
     if(nums.length === 0) return;
 
-    // injeta como se tivesse sido digitado
     nums.forEach(n => hist.push(n));
-
     timeline = hist.slice(-14).reverse();
 
     document.getElementById("pasteInput").value = "";
@@ -94,7 +92,7 @@
 
   // ================= ANÁLISE DA TRINCA =================
   function analisarTrinca(){
-    if (hist.length < 6) return null;
+    if (hist.length < 9) return null;
 
     let t1 = terminal(hist[hist.length - 3]);
     let t2 = terminal(hist[hist.length - 2]);
@@ -103,13 +101,13 @@
     let chave = `${t1}-${t2}-${t3}`;
     let resultados = [];
 
-    for (let i = 0; i <= hist.length - 6; i++) {
+    for (let i = 0; i <= hist.length - 9; i++) {
       if (
         terminal(hist[i])   === t1 &&
         terminal(hist[i+1]) === t2 &&
         terminal(hist[i+2]) === t3
       ) {
-        resultados.push(hist.slice(i+3, i+6));
+        resultados.push(hist.slice(i+3, i+9)); // 🔥 6 números
       }
     }
 
@@ -127,7 +125,7 @@
 
     if (!analise) {
       trincaSpan.textContent = "-";
-      resDiv.textContent = "Insira pelo menos 6 números.";
+      resDiv.textContent = "Insira pelo menos 9 números.";
       return;
     }
 
