@@ -13,7 +13,7 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Leitura de Trinca</h3>
+      <h3 style="text-align:center">CSM – Leitura de DUPLA (Terminais)</h3>
 
       <div style="margin-bottom:8px">
         📋 Cole o histórico (espaço ou vírgula):
@@ -34,11 +34,11 @@
       </div>
 
       <div style="border:1px solid #666;padding:6px;margin:6px 0;text-align:center">
-        🔢 Trinca Atual (terminais): <span id="trinca">-</span>
+        🔢 DUPLA ATUAL (terminais): <span id="dupla">-</span>
       </div>
 
       <div style="border:1px solid #999;padding:6px;margin:6px 0">
-        🔎 Resultado da Trinca (6 números após):
+        🔎 Resultado da DUPLA (6 números após):
         <div id="resultado" style="margin-top:6px"></div>
       </div>
 
@@ -90,24 +90,22 @@
     render();
   };
 
-  // ================= ANÁLISE DA TRINCA =================
-  function analisarTrinca(){
-    if (hist.length < 9) return null;
+  // ================= ANÁLISE DA DUPLA =================
+  function analisarDupla(){
+    if (hist.length < 8) return null;
 
-    let t1 = terminal(hist[hist.length - 3]);
-    let t2 = terminal(hist[hist.length - 2]);
-    let t3 = terminal(hist[hist.length - 1]);
+    let t1 = terminal(hist[hist.length - 2]);
+    let t2 = terminal(hist[hist.length - 1]);
 
-    let chave = `${t1}-${t2}-${t3}`;
+    let chave = `${t1}-${t2}`;
     let resultados = [];
 
-    for (let i = 0; i <= hist.length - 9; i++) {
+    for (let i = 0; i <= hist.length - 8; i++) {
       if (
         terminal(hist[i])   === t1 &&
-        terminal(hist[i+1]) === t2 &&
-        terminal(hist[i+2]) === t3
+        terminal(hist[i+1]) === t2
       ) {
-        resultados.push(hist.slice(i+3, i+9)); // 🔥 6 números
+        resultados.push(hist.slice(i+2, i+8)); // 6 números depois
       }
     }
 
@@ -119,17 +117,17 @@
     document.getElementById("timeline").textContent =
       timeline.join(" · ");
 
-    let analise = analisarTrinca();
-    let trincaSpan = document.getElementById("trinca");
+    let analise = analisarDupla();
+    let duplaSpan = document.getElementById("dupla");
     let resDiv = document.getElementById("resultado");
 
     if (!analise) {
-      trincaSpan.textContent = "-";
-      resDiv.textContent = "Insira pelo menos 9 números.";
+      duplaSpan.textContent = "-";
+      resDiv.textContent = "Insira pelo menos 8 números.";
       return;
     }
 
-    trincaSpan.textContent = analise.chave;
+    duplaSpan.textContent = analise.chave;
 
     if (analise.resultados.length === 0) {
       resDiv.textContent = "Sem resultado no histórico.";
