@@ -59,16 +59,10 @@
   // ================= AVALIA COBERTURA DE UMA DUPLA =================
   function coberturaDaDupla(nums, tA, tB){
     let win = 0;
-
     nums.forEach(n=>{
-      let ts = new Set([
-        terminal(n),
-        ...vizinhos(n).map(v=>terminal(v))
-      ]);
-
+      let ts = new Set([ terminal(n), ...vizinhos(n).map(v=>terminal(v)) ]);
       if(ts.has(tA) || ts.has(tB)) win++;
     });
-
     return win;
   }
 
@@ -76,38 +70,38 @@
   function melhorJogadaOtimizada(nums){
     if (!nums || nums.length === 0) return null;
 
+    // ✅ AGORA: usar só os 6 últimos chamados
+    let base = nums.slice(-6);
+    if(base.length === 0) return null;
+
     let melhor = { a:null, b:null, win:-1 };
 
     for(let a=0;a<=9;a++){
       for(let b=a+1;b<=9;b++){
-        let w = coberturaDaDupla(nums, a, b);
+        let w = coberturaDaDupla(base, a, b);
         if(w > melhor.win){
           melhor = { a, b, win:w };
         }
       }
     }
 
-    // escolher quebra = melhor terminal fora da dupla
+    // quebra = melhor 3º terminal fora da dupla, também olhando só os 6 últimos
     let freq = {};
-    nums.forEach(n=>{
-      let ts = new Set([
-        terminal(n),
-        ...vizinhos(n).map(v=>terminal(v))
-      ]);
-      ts.forEach(t=>{
-        freq[t] = (freq[t]||0)+1;
-      });
+    base.forEach(n=>{
+      let ts = new Set([ terminal(n), ...vizinhos(n).map(v=>terminal(v)) ]);
+      ts.forEach(t => freq[t] = (freq[t]||0) + 1);
     });
 
     let quebra = Object.entries(freq)
       .filter(([t]) => Number(t)!==melhor.a && Number(t)!==melhor.b)
-      .sort((a,b)=>b[1]-a[1])[0];
+      .sort((x,y)=>y[1]-x[1])[0];
 
     return {
       principais: [melhor.a, melhor.b],
       quebra: quebra ? Number(quebra[0]) : null,
       cobertura: melhor.win,
-      total: nums.length
+      total: base.length,
+      ultimos6: base
     };
   }
 
@@ -160,8 +154,9 @@
       </div>
 
       <div style="border:1px solid #bbb;padding:6px;margin:6px 0;text-align:center">
-        🎯 Melhor jogada (OTIMIZADA):
+        🎯 Melhor dupla (base: últimos 6 chamados):
         <div id="jogada" style="margin-top:6px"></div>
+        <div id="base6" style="margin-top:4px;font-size:12px;color:#bbb"></div>
       </div>
 
       <div id="nums"
@@ -229,6 +224,7 @@
       document.getElementById("grupoAtual").textContent="-";
       document.getElementById("chamados").textContent="-";
       document.getElementById("jogada").textContent="-";
+      document.getElementById("base6").textContent="";
       return;
     }
 
@@ -241,6 +237,7 @@
     if(!grupo){
       document.getElementById("chamados").textContent="—";
       document.getElementById("jogada").textContent="—";
+      document.getElementById("base6").textContent="";
       return;
     }
 
@@ -251,7 +248,11 @@
     let mj = melhorJogadaOtimizada(chamados);
     if(!mj){
       document.getElementById("jogada").textContent = "Aguardando dados...";
+      document.getElementById("base6").textContent = "";
     }else{
+      document.getElementById("base6").textContent =
+        `Base usada: ${mj.ultimos6.join(" · ")}`;
+
       let txt =
         `Principais: ${mj.principais.join(" · ")} | ` +
         `Quebra: ${mj.quebra !== null ? mj.quebra : "-"} ` +
