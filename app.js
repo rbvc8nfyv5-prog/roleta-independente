@@ -27,7 +27,7 @@
   };
 
   // ================= ESTADO =================
-  let hist = [];       // histórico oculto completo
+  let hist = [];       // histórico oculto completo (colado + botões)
   let timeline = [];   // últimos 14 (visual)
 
   // ================= UTIL =================
@@ -48,7 +48,6 @@
     let chamados = [];
     const setG = new Set(grupos[grupoKey]);
 
-    // percorre TODO o histórico
     for (let i = 0; i < hist.length - 1; i++){
       if (setG.has(hist[i])) {
         chamados.push(hist[i+1]); // só o primeiro após
@@ -63,9 +62,7 @@
 
     let mapa = {};
     nums.forEach(n=>{
-      // conta o próprio
       mapa[terminal(n)] = (mapa[terminal(n)]||0) + 1;
-      // conta vizinhos
       vizinhos(n).forEach(v=>{
         mapa[terminal(v)] = (mapa[terminal(v)]||0) + 1;
       });
@@ -77,8 +74,7 @@
 
     return {
       principais: ordenado.slice(0,2),
-      quebra: ordenado[2] ?? null,
-      ranking: ordenado
+      quebra: ordenado[2] ?? null
     };
   }
 
@@ -89,6 +85,24 @@
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
       <h3 style="text-align:center">CSM – Melhor Jogada por GRUPO (1º após)</h3>
+
+      <div style="border:1px solid #444;padding:8px;margin-bottom:10px">
+        📋 Cole até <b>500</b> números (espaço/virgula/linha):
+        <input id="pasteInput"
+          style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555;margin-top:6px"
+          placeholder="Ex: 32 15 19 4 21 2 25 17 ..." />
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button id="btnColar"
+            style="padding:6px 12px;background:#333;color:#fff;border:1px solid #777">
+            Colar no histórico
+          </button>
+          <button id="btnLimpar"
+            style="padding:6px 12px;background:#222;color:#fff;border:1px solid #777">
+            Limpar histórico
+          </button>
+          <div id="infoHist" style="align-self:center;font-size:12px;color:#bbb"></div>
+        </div>
+      </div>
 
       <div style="margin-bottom:6px">
         🕒 Linha do tempo (14 – espelhada):
@@ -137,10 +151,44 @@
     render();
   }
 
+  // ================= COLAR HISTÓRICO =================
+  function parseNums(txt){
+    return txt
+      .replace(/\n/g," ")
+      .split(/[\s,;]+/)
+      .map(x=>parseInt(x,10))
+      .filter(n=>!isNaN(n) && n>=0 && n<=36);
+  }
+
+  document.getElementById("btnColar").onclick = () => {
+    let txt = document.getElementById("pasteInput").value || "";
+    let nums = parseNums(txt).slice(0,500);
+
+    if(nums.length === 0) return;
+
+    // adiciona no histórico oculto
+    nums.forEach(n => hist.push(n));
+
+    // atualiza timeline com os 14 últimos (espelhada)
+    timeline = hist.slice(-14).reverse();
+
+    document.getElementById("pasteInput").value = "";
+    render();
+  };
+
+  document.getElementById("btnLimpar").onclick = () => {
+    hist = [];
+    timeline = [];
+    render();
+  };
+
   // ================= RENDER =================
   function render(){
     document.getElementById("timeline").textContent =
-      timeline.join(" · ");
+      timeline.length ? timeline.join(" · ") : "-";
+
+    document.getElementById("infoHist").textContent =
+      `Histórico oculto: ${hist.length} números`;
 
     if(hist.length===0){
       document.getElementById("grupoAtual").textContent="-";
