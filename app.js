@@ -27,7 +27,7 @@
   };
 
   // ================= ESTADO =================
-  let hist = [];       // histórico oculto completo (colado + botões)
+  let hist = [];       // histórico oculto completo
   let timeline = [];   // últimos 14 (visual)
 
   // ================= UTIL =================
@@ -56,25 +56,58 @@
     return chamados;
   }
 
-  // ================= MELHOR JOGADA (TERMINAIS + VIZINHOS) =================
-  function melhorJogadaPorNumeros(nums){
+  // ================= AVALIA COBERTURA DE UMA DUPLA =================
+  function coberturaDaDupla(nums, tA, tB){
+    let win = 0;
+
+    nums.forEach(n=>{
+      let ts = new Set([
+        terminal(n),
+        ...vizinhos(n).map(v=>terminal(v))
+      ]);
+
+      if(ts.has(tA) || ts.has(tB)) win++;
+    });
+
+    return win;
+  }
+
+  // ================= MELHOR JOGADA (OTIMIZADA) =================
+  function melhorJogadaOtimizada(nums){
     if (!nums || nums.length === 0) return null;
 
-    let mapa = {};
+    let melhor = { a:null, b:null, win:-1 };
+
+    for(let a=0;a<=9;a++){
+      for(let b=a+1;b<=9;b++){
+        let w = coberturaDaDupla(nums, a, b);
+        if(w > melhor.win){
+          melhor = { a, b, win:w };
+        }
+      }
+    }
+
+    // escolher quebra = melhor terminal fora da dupla
+    let freq = {};
     nums.forEach(n=>{
-      mapa[terminal(n)] = (mapa[terminal(n)]||0) + 1;
-      vizinhos(n).forEach(v=>{
-        mapa[terminal(v)] = (mapa[terminal(v)]||0) + 1;
+      let ts = new Set([
+        terminal(n),
+        ...vizinhos(n).map(v=>terminal(v))
+      ]);
+      ts.forEach(t=>{
+        freq[t] = (freq[t]||0)+1;
       });
     });
 
-    let ordenado = Object.entries(mapa)
-      .sort((a,b)=>b[1]-a[1])
-      .map(e=>Number(e[0]));
+    let quebra = Object.entries(freq)
+      .filter(([t]) => Number(t)!==melhor.a && Number(t)!==melhor.b)
+      .sort((a,b)=>b[1]-a[1])[0];
 
     return {
-      principais: ordenado.slice(0,2),
-      quebra: ordenado[2] ?? null
+      principais: [melhor.a, melhor.b],
+      quebra: quebra ? Number(quebra[0]) : null,
+      cobertura: melhor.win,
+      total: nums.length
     };
   }
 
@@ -82,12 +115,18 @@
   document.body.style.background="#111";
   document.body.style.color="#fff";
 
+  const agora = new Date();
+  const stamp = agora.toLocaleDateString() + " " + agora.toLocaleTimeString();
+
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
       <h3 style="text-align:center">CSM – Melhor Jogada por GRUPO (1º após)</h3>
+      <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">
+        🔄 Atualizado em: <b>${stamp}</b>
+      </div>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:10px">
-        📋 Cole até <b>500</b> números (espaço/virgula/linha):
+        📋 Cole até <b>500</b> números:
         <input id="pasteInput"
           style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555;margin-top:6px"
           placeholder="Ex: 32 15 19 4 21 2 25 17 ..." />
@@ -121,7 +160,7 @@
       </div>
 
       <div style="border:1px solid #bbb;padding:6px;margin:6px 0;text-align:center">
-        🎯 Melhor jogada (terminais):
+        🎯 Melhor jogada (OTIMIZADA):
         <div id="jogada" style="margin-top:6px"></div>
       </div>
 
@@ -163,13 +202,9 @@
   document.getElementById("btnColar").onclick = () => {
     let txt = document.getElementById("pasteInput").value || "";
     let nums = parseNums(txt).slice(0,500);
-
     if(nums.length === 0) return;
 
-    // adiciona no histórico oculto
     nums.forEach(n => hist.push(n));
-
-    // atualiza timeline com os 14 últimos (espelhada)
     timeline = hist.slice(-14).reverse();
 
     document.getElementById("pasteInput").value = "";
@@ -213,12 +248,14 @@
     document.getElementById("chamados").textContent =
       chamados.length ? chamados.join(" · ") : "Nenhum registro ainda.";
 
-    let mj = melhorJogadaPorNumeros(chamados);
+    let mj = melhorJogadaOtimizada(chamados);
     if(!mj){
       document.getElementById("jogada").textContent = "Aguardando dados...";
     }else{
-      let txt = `Principais: ${mj.principais.join(" · ")}`;
-      if(mj.quebra!==null) txt += ` | Quebra: ${mj.quebra}`;
+      let txt =
+        `Principais: ${mj.principais.join(" · ")} | ` +
+        `Quebra: ${mj.quebra !== null ? mj.quebra : "-"} ` +
+        `(Cobertura: ${mj.cobertura}/${mj.total})`;
       document.getElementById("jogada").textContent = txt;
     }
   }
