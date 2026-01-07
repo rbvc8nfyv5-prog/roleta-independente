@@ -70,8 +70,8 @@
   function melhorJogadaOtimizada(nums){
     if (!nums || nums.length === 0) return null;
 
-    // ✅ AGORA: usar só os 6 últimos chamados
-    let base = nums.slice(-6);
+    // ✅ AGORA: usar só os 7 últimos chamados
+    let base = nums.slice(-7);
     if(base.length === 0) return null;
 
     let melhor = { a:null, b:null, win:-1 };
@@ -85,7 +85,7 @@
       }
     }
 
-    // quebra = melhor 3º terminal fora da dupla, também olhando só os 6 últimos
+    // quebra = melhor 3º terminal fora da dupla, olhando só os 7 últimos
     let freq = {};
     base.forEach(n=>{
       let ts = new Set([ terminal(n), ...vizinhos(n).map(v=>terminal(v)) ]);
@@ -101,7 +101,7 @@
       quebra: quebra ? Number(quebra[0]) : null,
       cobertura: melhor.win,
       total: base.length,
-      ultimos6: base
+      ultimos7: base
     };
   }
 
@@ -154,9 +154,9 @@
       </div>
 
       <div style="border:1px solid #bbb;padding:6px;margin:6px 0;text-align:center">
-        🎯 Melhor dupla (base: últimos 6 chamados):
+        🎯 Melhor dupla (base: últimos 7 chamados):
         <div id="jogada" style="margin-top:6px"></div>
-        <div id="base6" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+        <div id="base7" style="margin-top:4px;font-size:12px;color:#bbb"></div>
       </div>
 
       <div id="nums"
@@ -224,7 +224,7 @@
       document.getElementById("grupoAtual").textContent="-";
       document.getElementById("chamados").textContent="-";
       document.getElementById("jogada").textContent="-";
-      document.getElementById("base6").textContent="";
+      document.getElementById("base7").textContent="";
       return;
     }
 
@@ -237,7 +237,7 @@
     if(!grupo){
       document.getElementById("chamados").textContent="—";
       document.getElementById("jogada").textContent="—";
-      document.getElementById("base6").textContent="";
+      document.getElementById("base7").textContent="";
       return;
     }
 
@@ -248,10 +248,10 @@
     let mj = melhorJogadaOtimizada(chamados);
     if(!mj){
       document.getElementById("jogada").textContent = "Aguardando dados...";
-      document.getElementById("base6").textContent = "";
+      document.getElementById("base7").textContent = "";
     }else{
-      document.getElementById("base6").textContent =
-        `Base usada: ${mj.ultimos6.join(" · ")}`;
+      document.getElementById("base7").textContent =
+        `Base usada: ${mj.ultimos7.join(" · ")}`;
 
       let txt =
         `Principais: ${mj.principais.join(" · ")} | ` +
