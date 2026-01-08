@@ -47,61 +47,48 @@
   function chamadosPorGrupo(grupoKey){
     let chamados = [];
     const setG = new Set(grupos[grupoKey]);
-
     for (let i = 0; i < hist.length - 1; i++){
-      if (setG.has(hist[i])) {
-        chamados.push(hist[i+1]); // só o primeiro após
-      }
+      if (setG.has(hist[i])) chamados.push(hist[i+1]); // só o primeiro após
     }
     return chamados;
   }
 
-  // ================= AVALIA COBERTURA DE UMA DUPLA =================
-  function coberturaDaDupla(nums, tA, tB){
-    let win = 0;
+  // ================= MÉTRICA: MELHOR T DE UM CONJUNTO =================
+  function melhorTdosNumeros(nums){
+    if(!nums || nums.length===0) return null;
+
+    let score = {};
     nums.forEach(n=>{
-      let ts = new Set([ terminal(n), ...vizinhos(n).map(v=>terminal(v)) ]);
-      if(ts.has(tA) || ts.has(tB)) win++;
+      const ts = new Set([ terminal(n), ...vizinhos(n).map(v=>terminal(v)) ]);
+      ts.forEach(t => score[t] = (score[t]||0) + 1);
     });
-    return win;
+
+    const ordenado = Object.entries(score)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([t,v])=>({t:Number(t), v}));
+
+    return { score, ordenado };
   }
 
-  // ================= MELHOR JOGADA (OTIMIZADA) =================
-  function melhorJogadaOtimizada(nums){
-    if (!nums || nums.length === 0) return null;
+  // ================= CONFLUÊNCIA =================
+  function confluenciaT(baseTimeline6, baseChamados6){
+    const A = melhorTdosNumeros(baseTimeline6);
+    const B = melhorTdosNumeros(baseChamados6);
+    if(!A && !B) return null;
 
-    // ✅ AGORA: usar só os 7 últimos chamados
-    let base = nums.slice(-7);
-    if(base.length === 0) return null;
+    let comb = {};
+    if(A) Object.entries(A.score).forEach(([t,v])=> comb[t]=(comb[t]||0)+v);
+    if(B) Object.entries(B.score).forEach(([t,v])=> comb[t]=(comb[t]||0)+v);
 
-    let melhor = { a:null, b:null, win:-1 };
-
-    for(let a=0;a<=9;a++){
-      for(let b=a+1;b<=9;b++){
-        let w = coberturaDaDupla(base, a, b);
-        if(w > melhor.win){
-          melhor = { a, b, win:w };
-        }
-      }
-    }
-
-    // quebra = melhor 3º terminal fora da dupla, olhando só os 7 últimos
-    let freq = {};
-    base.forEach(n=>{
-      let ts = new Set([ terminal(n), ...vizinhos(n).map(v=>terminal(v)) ]);
-      ts.forEach(t => freq[t] = (freq[t]||0) + 1);
-    });
-
-    let quebra = Object.entries(freq)
-      .filter(([t]) => Number(t)!==melhor.a && Number(t)!==melhor.b)
-      .sort((x,y)=>y[1]-x[1])[0];
+    const rank = Object.entries(comb)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([t,v])=>({t:Number(t), v}));
 
     return {
-      principais: [melhor.a, melhor.b],
-      quebra: quebra ? Number(quebra[0]) : null,
-      cobertura: melhor.win,
-      total: base.length,
-      ultimos7: base
+      rank,
+      melhor: rank[0] || null,
+      top3: rank.slice(0,3),
+      A, B
     };
   }
 
@@ -114,7 +101,7 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Melhor Jogada por GRUPO (1º após)</h3>
+      <h3 style="text-align:center">CSM – Confluência de Terminais</h3>
       <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">
         🔄 Atualizado em: <b>${stamp}</b>
       </div>
@@ -153,10 +140,12 @@
         <div id="chamados" style="margin-top:6px;font-size:13px"></div>
       </div>
 
-      <div style="border:1px solid #bbb;padding:6px;margin:6px 0;text-align:center">
-        🎯 Melhor dupla (base: últimos 7 chamados):
-        <div id="jogada" style="margin-top:6px"></div>
-        <div id="base7" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+      <div style="border:1px solid #bbb;padding:8px;margin:8px 0">
+        🔗 <b>CONFLUÊNCIA DE T</b>
+        <div style="font-size:12px;color:#bbb;margin-top:4px">
+          Base A: 6 últimos da linha do tempo • Base B: 6 últimos chamados
+        </div>
+        <div id="conf" style="margin-top:8px"></div>
       </div>
 
       <div id="nums"
@@ -223,42 +212,52 @@
     if(hist.length===0){
       document.getElementById("grupoAtual").textContent="-";
       document.getElementById("chamados").textContent="-";
-      document.getElementById("jogada").textContent="-";
-      document.getElementById("base7").textContent="";
+      document.getElementById("conf").textContent="-";
       return;
     }
 
-    let ultimo = hist[hist.length-1];
-    let grupo = grupoDoNumero(ultimo);
+    const ultimo = hist[hist.length-1];
+    const grupo = grupoDoNumero(ultimo);
 
     document.getElementById("grupoAtual").textContent =
       grupo ? `${grupo} (${grupos[grupo].join(" · ")})` : "Sem grupo";
 
     if(!grupo){
       document.getElementById("chamados").textContent="—";
-      document.getElementById("jogada").textContent="—";
-      document.getElementById("base7").textContent="";
+      document.getElementById("conf").textContent="—";
       return;
     }
 
-    let chamados = chamadosPorGrupo(grupo);
+    const chamados = chamadosPorGrupo(grupo);
     document.getElementById("chamados").textContent =
       chamados.length ? chamados.join(" · ") : "Nenhum registro ainda.";
 
-    let mj = melhorJogadaOtimizada(chamados);
-    if(!mj){
-      document.getElementById("jogada").textContent = "Aguardando dados...";
-      document.getElementById("base7").textContent = "";
-    }else{
-      document.getElementById("base7").textContent =
-        `Base usada: ${mj.ultimos7.join(" · ")}`;
+    // Bases para confluência
+    const baseTimeline6 = timeline.slice(0,6);
+    const baseChamados6 = chamados.slice(-6);
 
-      let txt =
-        `Principais: ${mj.principais.join(" · ")} | ` +
-        `Quebra: ${mj.quebra !== null ? mj.quebra : "-"} ` +
-        `(Cobertura: ${mj.cobertura}/${mj.total})`;
-      document.getElementById("jogada").textContent = txt;
+    const conf = confluenciaT(baseTimeline6, baseChamados6);
+    if(!conf || !conf.melhor){
+      document.getElementById("conf").textContent = "Aguardando dados...";
+      return;
     }
+
+    const aTxt = conf.A
+      ? conf.A.ordenado.slice(0,3).map(x=>`T${x.t}(${x.v})`).join(" · ")
+      : "-";
+    const bTxt = conf.B
+      ? conf.B.ordenado.slice(0,3).map(x=>`T${x.t}(${x.v})`).join(" · ")
+      : "-";
+
+    const bestTxt = conf.top3.map(x=>`T${x.t}`).join(" · ");
+
+    document.getElementById("conf").innerHTML = `
+      <div><b>Melhor jogada (confluência):</b> ${bestTxt}</div>
+      <div style="font-size:12px;color:#bbb;margin-top:6px">
+        A (linha do tempo): ${aTxt}<br/>
+        B (chamados): ${bTxt}
+      </div>
+    `;
   }
 
   render();
