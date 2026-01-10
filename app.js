@@ -64,14 +64,6 @@
   }
 
   // ================= HELPERS =================
-  function rank(arr){
-    let m={};
-    arr.forEach(x=>m[x]=(m[x]||0)+1);
-    return Object.entries(m)
-      .sort((a,b)=>b[1]-a[1])
-      .map(([k,v])=>({k:Number(k), v}));
-  }
-
   function coberturaSet(setNums, base){
     let hits = 0;
     base.forEach(n=>{ if(setNums.has(n)) hits++; });
@@ -132,11 +124,11 @@
     return best.t;
   }
 
-  // ================= NOVA FUNÇÃO =================
-  // Para UM número: quando aparece DENTRO da tendência atual (Par 1),
-  // quais números costuma chamar depois?
+  // ================= 🔥 FUNÇÃO CORRIGIDA =================
+  // Retorna os 6 NÚMEROS REAIS que saíram depois de um número
+  // quando ele apareceu DENTRO da tendência atual (Par 1)
   function numerosQueNChamaNaTendencia(numAlvo, tA, tB){
-    let hits = [];
+    let seq = [];
 
     for(let i=2;i<hist.length-1;i++){
       let t1 = terminal(hist[i-2]);
@@ -147,16 +139,12 @@
         (t1===tB && t2===tA);
 
       if(ok && hist[i] === numAlvo){
-        hits.push(hist[i+1]);
+        seq.push(hist[i+1]);   // número REAL que veio depois
       }
     }
 
-    let m = {};
-    hits.forEach(n=>m[n]=(m[n]||0)+1);
-
-    return Object.entries(m)
-      .sort((a,b)=>b[1]-a[1])
-      .map(([k,v])=>({n:Number(k), v}));
+    // devolve os ÚLTIMOS 6
+    return seq.slice(-6);
   }
 
   // ================= UI =================
@@ -325,15 +313,12 @@
         out.textContent =
           `Sem histórico: ${ultimoNumero} ainda não apareceu dentro da tendência T${tA}·T${tB}.`;
       }else{
-        const top6 = lista.slice(0,6);
-        const numsTxt = top6.map(x=>`${x.n}(${x.v})`).join(" · ");
-
         out.innerHTML = `
           <div><b>Número analisado:</b> ${ultimoNumero}</div>
           <div><b>Tendência atual:</b> T${tA} · T${tB}</div>
           <div style="margin-top:6px">
-            <b>Dentro dessa tendência, ${ultimoNumero} costuma chamar:</b><br/>
-            ${numsTxt}
+            <b>Últimos números que saíram depois dele nessa tendência:</b><br/>
+            ${lista.join(" · ")}
           </div>
         `;
       }
