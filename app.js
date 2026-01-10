@@ -23,8 +23,8 @@
   };
 
   // ================= ESTADO =================
-  let hist = [];       // histórico completo
-  let timeline = [];   // últimos 14 (espelhado)
+  let hist = [];       // histórico oculto completo
+  let timeline = [];   // últimos 14 (visual)
 
   // ================= UTIL =================
   function vizinhos(n){
@@ -39,7 +39,7 @@
     return null;
   }
 
-  // ---------- cobertura real por terminal (terminal + vizinhos)
+  // ---------- cobertura real por terminal (terminal + vizinhos na pista)
   function coverTerminal(t){
     let s = new Set();
     (terminais[t]||[]).forEach(n=>{
@@ -53,64 +53,72 @@
   }
   const covers = Array.from({length:10},(_,t)=>coverTerminal(t));
 
-  // ================= CHAMADOS =================
+  // ================= COLETA: 1º NÚMERO APÓS CADA OCORRÊNCIA =================
   function chamadosPorGrupo(grupoKey){
     let chamados = [];
     const setG = new Set(grupos[grupoKey]);
     for (let i = 0; i < hist.length - 1; i++){
-      if (setG.has(hist[i])) chamados.push(hist[i+1]);
+      if (setG.has(hist[i])) chamados.push(hist[i+1]); // só o primeiro após
     }
     return chamados;
   }
 
-  // ================= HELPERS =================
+  // ================= MÉTRICAS =================
   function coberturaSet(setNums, base){
     let hits = 0;
     base.forEach(n=>{ if(setNums.has(n)) hits++; });
     return hits;
   }
 
+  // medida simples de “zonas”: quantos quadrantes da pista a dupla cobre
   function scoreZonas(setNums){
-    const zones = [0,0,0,0];
+    const zones = [[],[],[],[]];
     setNums.forEach(n=>{
       const i = track.indexOf(n);
       if(i<0) return;
-      zones[Math.floor(i/10)]++;
+      const z = Math.floor(i / 10); // 0..3
+      zones[z].push(n);
     });
-    return zones.filter(z=>z>0).length;
+    return zones.filter(z=>z.length>0).length; // 1..4
   }
 
   // ================= CONFLUÊNCIA DOS 45 PARES =================
   function confluencia45Pares(baseTimeline6, baseChamados6){
     let pares = [];
+
     for(let a=0;a<10;a++){
       for(let b=a+1;b<10;b++){
+        // união da cobertura real
         let set = new Set(covers[a]);
         covers[b].forEach(x=>set.add(x));
 
         const scoreA = coberturaSet(set, baseTimeline6);
         const scoreB = coberturaSet(set, baseChamados6);
         const scoreZ = scoreZonas(set);
+
         const score = scoreA*2 + scoreB*2 + scoreZ*1;
 
         pares.push({a,b,score,scoreA,scoreB,scoreZ,set});
       }
     }
+
     pares.sort((x,y)=>y.score-x.score);
     return pares;
   }
 
+  // escolher quebra: melhor 3º terminal que mais aumenta cobertura nas duas bases
   function escolherQuebra(par, baseTimeline6, baseChamados6){
     let best = { t:null, gain:-1 };
     const baseSet = new Set(par.set);
-    const before =
-      coberturaSet(baseSet, baseTimeline6) +
-      coberturaSet(baseSet, baseChamados6);
 
     for(let t=0;t<10;t++){
       if(t===par.a || t===par.b) continue;
       let set3 = new Set(baseSet);
       covers[t].forEach(x=>set3.add(x));
+
+      const before =
+        coberturaSet(baseSet, baseTimeline6) +
+        coberturaSet(baseSet, baseChamados6);
 
       const after =
         coberturaSet(set3, baseTimeline6) +
@@ -124,37 +132,15 @@
     return best.t;
   }
 
-  // ================= 🔥 FUNÇÃO CORRIGIDA =================
-  // Retorna os 6 NÚMEROS REAIS que saíram depois de um número
-  // quando ele apareceu DENTRO da tendência atual (Par 1)
-  function numerosQueNChamaNaTendencia(numAlvo, tA, tB){
-    let seq = [];
-
-    for(let i=2;i<hist.length-1;i++){
-      let t1 = terminal(hist[i-2]);
-      let t2 = terminal(hist[i-1]);
-
-      let ok =
-        (t1===tA && t2===tB) ||
-        (t1===tB && t2===tA);
-
-      if(ok && hist[i] === numAlvo){
-        seq.push(hist[i+1]);   // número REAL que veio depois
-      }
-    }
-
-    // devolve os ÚLTIMOS 6
-    return seq.slice(-6);
-  }
-
   // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
+
   const stamp = new Date().toLocaleDateString()+" "+new Date().toLocaleTimeString();
 
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Confluências & Leitura Viva</h3>
+      <h3 style="text-align:center">CSM – Confluência dos 45 Pares</h3>
       <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">
         🔄 Atualizado em: <b>${stamp}</b>
       </div>
@@ -165,15 +151,23 @@
           style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555;margin-top:6px"
           placeholder="Ex: 32 15 19 4 21 2 25 17 ..." />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button id="btnColar" style="padding:6px 12px;background:#333;color:#fff;border:1px solid #777">Colar</button>
-          <button id="btnLimpar" style="padding:6px 12px;background:#222;color:#fff;border:1px solid #777">Limpar</button>
+          <button id="btnColar"
+            style="padding:6px 12px;background:#333;color:#fff;border:1px solid #777">
+            Colar no histórico
+          </button>
+          <button id="btnLimpar"
+            style="padding:6px 12px;background:#222;color:#fff;border:1px solid #777">
+            Limpar histórico
+          </button>
           <div id="infoHist" style="align-self:center;font-size:12px;color:#bbb"></div>
         </div>
       </div>
 
       <div style="margin-bottom:6px">
         🕒 Linha do tempo (14 – espelhada):
-        <div id="timeline" style="margin-top:4px;padding:6px;border:1px solid #555;min-height:22px"></div>
+        <div id="timeline"
+          style="margin-top:4px;padding:6px;border:1px solid #555;min-height:22px">
+        </div>
       </div>
 
       <div style="border:1px solid #666;padding:6px;margin:6px 0;text-align:center">
@@ -193,14 +187,10 @@
         <div id="paresOut" style="margin-top:8px"></div>
       </div>
 
-      <div style="border:1px solid #bbb;padding:8px;margin:8px 0">
-        🔎 <b>Último número dentro da tendência atual</b>
-        <div id="numTrendOut" style="margin-top:6px;font-size:13px"></div>
-      </div>
-
       <div id="nums"
         style="display:grid;grid-template-columns:repeat(9,1fr);
-               gap:6px;margin-top:12px"></div>
+               gap:6px;margin-top:12px">
+      </div>
     </div>
   `;
 
@@ -235,6 +225,7 @@
     let txt = document.getElementById("pasteInput").value || "";
     let nums = parseNums(txt).slice(0,500);
     if(nums.length === 0) return;
+
     nums.forEach(n => hist.push(n));
     timeline = hist.slice(-14).reverse();
     document.getElementById("pasteInput").value = "";
@@ -259,12 +250,12 @@
       document.getElementById("grupoAtual").textContent="-";
       document.getElementById("chamados").textContent="-";
       document.getElementById("paresOut").textContent="-";
-      document.getElementById("numTrendOut").textContent="-";
       return;
     }
 
     const ultimo = hist[hist.length-1];
     const grupo = grupoDoNumero(ultimo);
+
     document.getElementById("grupoAtual").textContent =
       grupo ? `${grupo} (${grupos[grupo].join(" · ")})` : "Sem grupo";
 
@@ -272,19 +263,20 @@
     document.getElementById("chamados").textContent =
       chamados.length ? chamados.join(" · ") : "Nenhum registro ainda.";
 
-    // bases p/ confluência
+    // bases
     const baseTimeline6 = timeline.slice(0,6);
     const baseChamados6 = chamados.slice(-6);
 
     if(baseTimeline6.length===0 && baseChamados6.length===0){
       document.getElementById("paresOut").textContent = "Aguardando dados...";
-      document.getElementById("numTrendOut").textContent = "Aguardando dados...";
       return;
     }
 
     const ranking = confluencia45Pares(baseTimeline6, baseChamados6);
+
     const p1 = ranking[0];
     const p2 = ranking[1];
+
     const q1 = escolherQuebra(p1, baseTimeline6, baseChamados6);
 
     document.getElementById("paresOut").innerHTML = `
@@ -296,33 +288,6 @@
       </div>
       <div style="margin-top:6px"><b>Quebra:</b> T${q1}</div>
     `;
-
-    // ===== LEITURA DO ÚLTIMO NÚMERO NA TENDÊNCIA ATUAL =====
-    const out = document.getElementById("numTrendOut");
-
-    if(!p1){
-      out.textContent = "Sem tendência definida.";
-    }else{
-      const ultimoNumero = ultimo;
-      const tA = p1.a;
-      const tB = p1.b;
-
-      const lista = numerosQueNChamaNaTendencia(ultimoNumero, tA, tB);
-
-      if(lista.length === 0){
-        out.textContent =
-          `Sem histórico: ${ultimoNumero} ainda não apareceu dentro da tendência T${tA}·T${tB}.`;
-      }else{
-        out.innerHTML = `
-          <div><b>Número analisado:</b> ${ultimoNumero}</div>
-          <div><b>Tendência atual:</b> T${tA} · T${tB}</div>
-          <div style="margin-top:6px">
-            <b>Últimos números que saíram depois dele nessa tendência:</b><br/>
-            ${lista.join(" · ")}
-          </div>
-        `;
-      }
-    }
   }
 
   render();
