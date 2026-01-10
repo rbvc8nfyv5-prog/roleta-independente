@@ -31,6 +31,7 @@
     let i = track.indexOf(n);
     return [ track[(i+36)%37], track[(i+1)%37] ];
   }
+
   function grupoDoNumero(n){
     for (let k in grupos){
       if (grupos[k].includes(n)) return k;
@@ -131,11 +132,11 @@
     return best.t;
   }
 
-  // ================= 🔥 NOVA CAMADA (PEDIDA) =================
-  // Para TODOS os números: quando aparecem DENTRO de uma tendência (Par 1 / Par 2),
-  // quais números costumam chamar depois?
-  function numerosQueChamamNaTendencia(tA, tB){
-    let mapa = {}; // { numero: { proxNum: cont } }
+  // ================= NOVA FUNÇÃO =================
+  // Para UM número: quando aparece DENTRO da tendência atual (Par 1),
+  // quais números costuma chamar depois?
+  function numerosQueNChamaNaTendencia(numAlvo, tA, tB){
+    let hits = [];
 
     for(let i=2;i<hist.length-1;i++){
       let t1 = terminal(hist[i-2]);
@@ -145,37 +146,17 @@
         (t1===tA && t2===tB) ||
         (t1===tB && t2===tA);
 
-      if(!ok) continue;
-
-      let nAtual = hist[i];
-      let prox   = hist[i+1];
-
-      if(!mapa[nAtual]) mapa[nAtual] = {};
-      mapa[nAtual][prox] = (mapa[nAtual][prox] || 0) + 1;
+      if(ok && hist[i] === numAlvo){
+        hits.push(hist[i+1]);
+      }
     }
 
-    let saida = [];
-    Object.keys(mapa).forEach(n=>{
-      let r = Object.entries(mapa[n])
-        .sort((a,b)=>b[1]-a[1])
-        .map(([k,v])=>({n:Number(k), v}));
+    let m = {};
+    hits.forEach(n=>m[n]=(m[n]||0)+1);
 
-      if(r.length){
-        saida.push({
-          numero: Number(n),
-          top: r.slice(0,6)   // até 6 números mais fortes
-        });
-      }
-    });
-
-    // ordenar pela força do primeiro chamado
-    saida.sort((a,b)=>{
-      let av = a.top[0] ? a.top[0].v : 0;
-      let bv = b.top[0] ? b.top[0].v : 0;
-      return bv - av;
-    });
-
-    return saida;
+    return Object.entries(m)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([k,v])=>({n:Number(k), v}));
   }
 
   // ================= UI =================
@@ -225,7 +206,7 @@
       </div>
 
       <div style="border:1px solid #bbb;padding:8px;margin:8px 0">
-        🔎 <b>Números dentro da tendência atual</b>
+        🔎 <b>Último número dentro da tendência atual</b>
         <div id="numTrendOut" style="margin-top:6px;font-size:13px"></div>
       </div>
 
@@ -328,36 +309,34 @@
       <div style="margin-top:6px"><b>Quebra:</b> T${q1}</div>
     `;
 
-    // ===== NOVA LEITURA: TODOS OS NÚMEROS NA TENDÊNCIA ATUAL =====
+    // ===== LEITURA DO ÚLTIMO NÚMERO NA TENDÊNCIA ATUAL =====
     const out = document.getElementById("numTrendOut");
-    let analise = [];
 
-    if(p1) analise = analise.concat(numerosQueChamamNaTendencia(p1.a, p1.b));
-    if(p2) analise = analise.concat(numerosQueChamamNaTendencia(p2.a, p2.b));
-
-    if(analise.length === 0){
-      out.textContent = "Sem dados suficientes para essas tendências.";
+    if(!p1){
+      out.textContent = "Sem tendência definida.";
     }else{
-      // mostrar só os mais fortes (top 6)
-      let top = analise.slice(0,6);
+      const ultimoNumero = ultimo;
+      const tA = p1.a;
+      const tB = p1.b;
 
-      let html = `
-        <div><b>Tendências analisadas:</b>
-          T${p1.a}·T${p1.b} ${p2 ? " | T"+p2.a+"·T"+p2.b : ""}
-        </div>
-      `;
+      const lista = numerosQueNChamaNaTendencia(ultimoNumero, tA, tB);
 
-      top.forEach(x=>{
-        let numsTxt = x.top.map(y=>`${y.n}(${y.v})`).join(" · ");
-        html += `
-          <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #555">
-            <b>${x.numero}</b> → costuma chamar:<br/>
+      if(lista.length === 0){
+        out.textContent =
+          `Sem histórico: ${ultimoNumero} ainda não apareceu dentro da tendência T${tA}·T${tB}.`;
+      }else{
+        const top6 = lista.slice(0,6);
+        const numsTxt = top6.map(x=>`${x.n}(${x.v})`).join(" · ");
+
+        out.innerHTML = `
+          <div><b>Número analisado:</b> ${ultimoNumero}</div>
+          <div><b>Tendência atual:</b> T${tA} · T${tB}</div>
+          <div style="margin-top:6px">
+            <b>Dentro dessa tendência, ${ultimoNumero} costuma chamar:</b><br/>
             ${numsTxt}
           </div>
         `;
-      });
-
-      out.innerHTML = html;
+      }
     }
   }
 
