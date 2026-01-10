@@ -23,8 +23,8 @@
   };
 
   // ================= ESTADO =================
-  let hist = [];       // histórico oculto completo
-  let timeline = [];   // últimos 14 (visual)
+  let hist = [];       // histórico completo
+  let timeline = [];   // últimos 14 (espelhado)
 
   // ================= UTIL =================
   function vizinhos(n){
@@ -38,7 +38,7 @@
     return null;
   }
 
-  // ---------- cobertura real por terminal (terminal + vizinhos na pista)
+  // ---------- cobertura real por terminal (terminal + vizinhos)
   function coverTerminal(t){
     let s = new Set();
     (terminais[t]||[]).forEach(n=>{
@@ -52,7 +52,7 @@
   }
   const covers = Array.from({length:10},(_,t)=>coverTerminal(t));
 
-  // ================= COLETA: 1º NÚMERO APÓS CADA OCORRÊNCIA =================
+  // ================= CHAMADOS =================
   function chamadosPorGrupo(grupoKey){
     let chamados = [];
     const setG = new Set(grupos[grupoKey]);
@@ -84,7 +84,7 @@
       if(i<0) return;
       zones[Math.floor(i/10)]++;
     });
-    return zones.filter(z=>z>0).length; // 1..4
+    return zones.filter(z=>z>0).length;
   }
 
   // ================= CONFLUÊNCIA DOS 45 PARES =================
@@ -131,53 +131,51 @@
     return best.t;
   }
 
-  // ================= ANÁLISE CONDICIONADA AO NÚMERO =================
-  // (par anterior + número atual) -> próximo número
-  function mapaNumeroPorPar(){
-    let mapa = {};
+  // ================= 🔥 NOVA CAMADA (PEDIDA) =================
+  // Para TODOS os números: quando aparecem DENTRO de uma tendência (Par 1 / Par 2),
+  // quais números costumam chamar depois?
+  function numerosQueChamamNaTendencia(tA, tB){
+    let mapa = {}; // { numero: { proxNum: cont } }
+
     for(let i=2;i<hist.length-1;i++){
-      let tA = terminal(hist[i-2]);
-      let tB = terminal(hist[i-1]);
-      let numero = hist[i];
-      let prox = hist[i+1];
-      let key = `${tA}-${tB}|${numero}`;
-      if(!mapa[key]) mapa[key] = { nextNums:[], nextTerms:[] };
-      mapa[key].nextNums.push(prox);
-      mapa[key].nextTerms.push(terminal(prox));
+      let t1 = terminal(hist[i-2]);
+      let t2 = terminal(hist[i-1]);
+
+      let ok =
+        (t1===tA && t2===tB) ||
+        (t1===tB && t2===tA);
+
+      if(!ok) continue;
+
+      let nAtual = hist[i];
+      let prox   = hist[i+1];
+
+      if(!mapa[nAtual]) mapa[nAtual] = {};
+      mapa[nAtual][prox] = (mapa[nAtual][prox] || 0) + 1;
     }
-    return mapa;
-  }
 
-  // Retorna SOMENTE os MAIS FORTES para um número
-  function analiseDoNumeroTop(numero){
-    let mapa = mapaNumeroPorPar();
     let saida = [];
+    Object.keys(mapa).forEach(n=>{
+      let r = Object.entries(mapa[n])
+        .sort((a,b)=>b[1]-a[1])
+        .map(([k,v])=>({n:Number(k), v}));
 
-    Object.keys(mapa).forEach(key=>{
-      let [par, num] = key.split("|");
-      if(Number(num) !== numero) return;
-
-      let [tA, tB] = par.split("-").map(Number);
-
-      let numsRank = rank(mapa[key].nextNums);
-      let tRank = rank(mapa[key].nextTerms);
-
-      // só os MAIS FORTES
-      saida.push({
-        tA, tB,
-        topNum: numsRank[0] || null,
-        topT: tRank[0] || null
-      });
+      if(r.length){
+        saida.push({
+          numero: Number(n),
+          top: r.slice(0,6)   // até 6 números mais fortes
+        });
+      }
     });
 
-    // ordenar por força (ocorrência do topNum)
-    saida.sort((x,y)=>{
-      const ax = x.topNum ? x.topNum.v : 0;
-      const ay = y.topNum ? y.topNum.v : 0;
-      return ay - ax;
+    // ordenar pela força do primeiro chamado
+    saida.sort((a,b)=>{
+      let av = a.top[0] ? a.top[0].v : 0;
+      let bv = b.top[0] ? b.top[0].v : 0;
+      return bv - av;
     });
 
-    return saida.slice(0,2); // mostrar só as 2 tendências mais fortes
+    return saida;
   }
 
   // ================= UI =================
@@ -187,7 +185,7 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Confluências & Análises</h3>
+      <h3 style="text-align:center">CSM – Confluências & Leitura Viva</h3>
       <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">
         🔄 Atualizado em: <b>${stamp}</b>
       </div>
@@ -227,11 +225,13 @@
       </div>
 
       <div style="border:1px solid #bbb;padding:8px;margin:8px 0">
-        🔎 <b>Análise por Número (mais fortes)</b>
+        🔎 <b>Números dentro da tendência atual</b>
         <div id="numTrendOut" style="margin-top:6px;font-size:13px"></div>
       </div>
 
-      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
+      <div id="nums"
+        style="display:grid;grid-template-columns:repeat(9,1fr);
+               gap:6px;margin-top:12px"></div>
     </div>
   `;
 
@@ -328,23 +328,35 @@
       <div style="margin-top:6px"><b>Quebra:</b> T${q1}</div>
     `;
 
-    // ===== ANÁLISE POR NÚMERO (MAIS FORTES) =====
-    const tops = analiseDoNumeroTop(ultimo);
+    // ===== NOVA LEITURA: TODOS OS NÚMEROS NA TENDÊNCIA ATUAL =====
     const out = document.getElementById("numTrendOut");
+    let analise = [];
 
-    if(!tops || tops.length===0){
-      out.textContent = `Sem dados históricos suficientes para o número ${ultimo}.`;
+    if(p1) analise = analise.concat(numerosQueChamamNaTendencia(p1.a, p1.b));
+    if(p2) analise = analise.concat(numerosQueChamamNaTendencia(p2.a, p2.b));
+
+    if(analise.length === 0){
+      out.textContent = "Sem dados suficientes para essas tendências.";
     }else{
-      let html = `<div><b>Número analisado:</b> ${ultimo}</div>`;
-      tops.forEach(a=>{
+      // mostrar só os mais fortes (top 6)
+      let top = analise.slice(0,6);
+
+      let html = `
+        <div><b>Tendências analisadas:</b>
+          T${p1.a}·T${p1.b} ${p2 ? " | T"+p2.a+"·T"+p2.b : ""}
+        </div>
+      `;
+
+      top.forEach(x=>{
+        let numsTxt = x.top.map(y=>`${y.n}(${y.v})`).join(" · ");
         html += `
-          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #555">
-            <b>Tendência anterior:</b> T${a.tA} · T${a.tB}<br/>
-            <b>Número mais forte depois:</b> ${a.topNum ? `${a.topNum.k} (${a.topNum.v})` : "-"}<br/>
-            <b>T mais forte depois:</b> ${a.topT ? `T${a.topT.k} (${a.topT.v})` : "-"}
+          <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #555">
+            <b>${x.numero}</b> → costuma chamar:<br/>
+            ${numsTxt}
           </div>
         `;
       });
+
       out.innerHTML = html;
     }
   }
