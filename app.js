@@ -23,15 +23,10 @@
   };
 
   // ================= ESTADO =================
-  let hist = [];       // histórico oculto completo
-  let timeline = [];   // últimos 14 (visual)
+  let hist = [];
+  let timeline = []; // últimos 14 (espelhado)
 
   // ================= UTIL =================
-  function vizinhos(n){
-    let i = track.indexOf(n);
-    return [ track[(i+36)%37], track[(i+1)%37] ];
-  }
-
   function grupoDoNumero(n){
     for (let k in grupos){
       if (grupos[k].includes(n)) return k;
@@ -39,7 +34,7 @@
     return null;
   }
 
-  // ---------- cobertura real por terminal (terminal + vizinhos na pista)
+  // ---------- cobertura real por terminal (terminal + vizinhos)
   function coverTerminal(t){
     let s = new Set();
     (terminais[t]||[]).forEach(n=>{
@@ -53,72 +48,64 @@
   }
   const covers = Array.from({length:10},(_,t)=>coverTerminal(t));
 
-  // ================= COLETA: 1º NÚMERO APÓS CADA OCORRÊNCIA =================
+  // ================= CHAMADOS =================
   function chamadosPorGrupo(grupoKey){
     let chamados = [];
     const setG = new Set(grupos[grupoKey]);
     for (let i = 0; i < hist.length - 1; i++){
-      if (setG.has(hist[i])) chamados.push(hist[i+1]); // só o primeiro após
+      if (setG.has(hist[i])) chamados.push(hist[i+1]);
     }
     return chamados;
   }
 
-  // ================= MÉTRICAS =================
+  // ================= HELPERS =================
   function coberturaSet(setNums, base){
     let hits = 0;
     base.forEach(n=>{ if(setNums.has(n)) hits++; });
     return hits;
   }
 
-  // medida simples de “zonas”: quantos quadrantes da pista a dupla cobre
   function scoreZonas(setNums){
-    const zones = [[],[],[],[]];
+    const zones = [0,0,0,0];
     setNums.forEach(n=>{
       const i = track.indexOf(n);
       if(i<0) return;
-      const z = Math.floor(i / 10); // 0..3
-      zones[z].push(n);
+      zones[Math.floor(i/10)]++;
     });
-    return zones.filter(z=>z.length>0).length; // 1..4
+    return zones.filter(z=>z>0).length; // 1..4
   }
 
   // ================= CONFLUÊNCIA DOS 45 PARES =================
   function confluencia45Pares(baseTimeline6, baseChamados6){
     let pares = [];
-
     for(let a=0;a<10;a++){
       for(let b=a+1;b<10;b++){
-        // união da cobertura real
         let set = new Set(covers[a]);
         covers[b].forEach(x=>set.add(x));
 
         const scoreA = coberturaSet(set, baseTimeline6);
         const scoreB = coberturaSet(set, baseChamados6);
         const scoreZ = scoreZonas(set);
-
         const score = scoreA*2 + scoreB*2 + scoreZ*1;
 
         pares.push({a,b,score,scoreA,scoreB,scoreZ,set});
       }
     }
-
     pares.sort((x,y)=>y.score-x.score);
     return pares;
   }
 
-  // escolher quebra: melhor 3º terminal que mais aumenta cobertura nas duas bases
   function escolherQuebra(par, baseTimeline6, baseChamados6){
     let best = { t:null, gain:-1 };
     const baseSet = new Set(par.set);
+    const before =
+      coberturaSet(baseSet, baseTimeline6) +
+      coberturaSet(baseSet, baseChamados6);
 
     for(let t=0;t<10;t++){
       if(t===par.a || t===par.b) continue;
       let set3 = new Set(baseSet);
       covers[t].forEach(x=>set3.add(x));
-
-      const before =
-        coberturaSet(baseSet, baseTimeline6) +
-        coberturaSet(baseSet, baseChamados6);
 
       const after =
         coberturaSet(set3, baseTimeline6) +
@@ -132,15 +119,38 @@
     return best.t;
   }
 
+  // ================= CONFLUÊNCIA DE TRINCAS (COM 14 DA TIMELINE) =================
+  function confluenciaTrincasTimeline14(baseTimeline14){
+    let trincas = [];
+    for(let a=0;a<10;a++){
+      for(let b=a+1;b<10;b++){
+        for(let c=b+1;c<10;c++){
+          let set = new Set(covers[a]);
+          covers[b].forEach(x=>set.add(x));
+          covers[c].forEach(x=>set.add(x));
+
+          const scoreA = coberturaSet(set, baseTimeline14); // usa os 14
+          const scoreZ = scoreZonas(set);
+
+          // "mesma confluência" adaptada: sem chamados, só timeline + zonas
+          const score = scoreA*3 + scoreZ*1;
+
+          trincas.push({a,b,c,score,scoreA,scoreZ,set});
+        }
+      }
+    }
+    trincas.sort((x,y)=>y.score-x.score);
+    return trincas;
+  }
+
   // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
-
   const stamp = new Date().toLocaleDateString()+" "+new Date().toLocaleTimeString();
 
   document.body.innerHTML = `
     <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Confluência dos 45 Pares</h3>
+      <h3 style="text-align:center">CSM – Confluências & Leitura Viva</h3>
       <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">
         🔄 Atualizado em: <b>${stamp}</b>
       </div>
@@ -151,23 +161,15 @@
           style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555;margin-top:6px"
           placeholder="Ex: 32 15 19 4 21 2 25 17 ..." />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button id="btnColar"
-            style="padding:6px 12px;background:#333;color:#fff;border:1px solid #777">
-            Colar no histórico
-          </button>
-          <button id="btnLimpar"
-            style="padding:6px 12px;background:#222;color:#fff;border:1px solid #777">
-            Limpar histórico
-          </button>
+          <button id="btnColar" style="padding:6px 12px;background:#333;color:#fff;border:1px solid #777">Colar</button>
+          <button id="btnLimpar" style="padding:6px 12px;background:#222;color:#fff;border:1px solid #777">Limpar</button>
           <div id="infoHist" style="align-self:center;font-size:12px;color:#bbb"></div>
         </div>
       </div>
 
       <div style="margin-bottom:6px">
         🕒 Linha do tempo (14 – espelhada):
-        <div id="timeline"
-          style="margin-top:4px;padding:6px;border:1px solid #555;min-height:22px">
-        </div>
+        <div id="timeline" style="margin-top:4px;padding:6px;border:1px solid #555;min-height:22px"></div>
       </div>
 
       <div style="border:1px solid #666;padding:6px;margin:6px 0;text-align:center">
@@ -187,10 +189,17 @@
         <div id="paresOut" style="margin-top:8px"></div>
       </div>
 
+      <div style="border:1px solid #bbb;padding:8px;margin:8px 0">
+        🔥 <b>CONFLUÊNCIA DE TRINCAS (14 da timeline)</b>
+        <div style="font-size:12px;color:#bbb;margin-top:4px">
+          Base: 14 números da timeline • Zonas: cobertura na pista
+        </div>
+        <div id="trincaOut" style="margin-top:8px"></div>
+      </div>
+
       <div id="nums"
         style="display:grid;grid-template-columns:repeat(9,1fr);
-               gap:6px;margin-top:12px">
-      </div>
+               gap:6px;margin-top:12px"></div>
     </div>
   `;
 
@@ -225,9 +234,8 @@
     let txt = document.getElementById("pasteInput").value || "";
     let nums = parseNums(txt).slice(0,500);
     if(nums.length === 0) return;
-
     nums.forEach(n => hist.push(n));
-    timeline = hist.slice(-14).reverse();
+    timeline = hist.slice(-14).reverse(); // espelhado: último à esquerda
     document.getElementById("pasteInput").value = "";
     render();
   };
@@ -250,12 +258,12 @@
       document.getElementById("grupoAtual").textContent="-";
       document.getElementById("chamados").textContent="-";
       document.getElementById("paresOut").textContent="-";
+      document.getElementById("trincaOut").textContent="-";
       return;
     }
 
     const ultimo = hist[hist.length-1];
     const grupo = grupoDoNumero(ultimo);
-
     document.getElementById("grupoAtual").textContent =
       grupo ? `${grupo} (${grupos[grupo].join(" · ")})` : "Sem grupo";
 
@@ -263,20 +271,19 @@
     document.getElementById("chamados").textContent =
       chamados.length ? chamados.join(" · ") : "Nenhum registro ainda.";
 
-    // bases
+    // ===== 45 PARES (mantido) =====
     const baseTimeline6 = timeline.slice(0,6);
     const baseChamados6 = chamados.slice(-6);
 
     if(baseTimeline6.length===0 && baseChamados6.length===0){
       document.getElementById("paresOut").textContent = "Aguardando dados...";
+      document.getElementById("trincaOut").textContent = "Aguardando dados...";
       return;
     }
 
     const ranking = confluencia45Pares(baseTimeline6, baseChamados6);
-
     const p1 = ranking[0];
     const p2 = ranking[1];
-
     const q1 = escolherQuebra(p1, baseTimeline6, baseChamados6);
 
     document.getElementById("paresOut").innerHTML = `
@@ -287,6 +294,30 @@
         <span style="color:#bbb"> (A:${p2.scoreA} B:${p2.scoreB} Z:${p2.scoreZ} | SCORE:${p2.score})</span>
       </div>
       <div style="margin-top:6px"><b>Quebra:</b> T${q1}</div>
+    `;
+
+    // ===== TRINCAS (NOVO) =====
+    const baseTimeline14 = timeline.slice(0,14);
+    if(baseTimeline14.length < 6){
+      document.getElementById("trincaOut").textContent =
+        "Aguardando mais números na timeline (precisa mais dados).";
+      return;
+    }
+
+    const trincas = confluenciaTrincasTimeline14(baseTimeline14);
+    const t1 = trincas[0];
+    const t2 = trincas[1];
+
+    document.getElementById("trincaOut").innerHTML = `
+      <div><b>Trinca 1:</b> T${t1.a} · T${t1.b} · T${t1.c}
+        <span style="color:#bbb"> (Hits14:${t1.scoreA} Z:${t1.scoreZ} | SCORE:${t1.score})</span>
+      </div>
+      <div style="margin-top:6px"><b>Trinca 2:</b> T${t2.a} · T${t2.b} · T${t2.c}
+        <span style="color:#bbb"> (Hits14:${t2.scoreA} Z:${t2.scoreZ} | SCORE:${t2.score})</span>
+      </div>
+      <div style="margin-top:6px;color:#bbb;font-size:12px">
+        (Trinca calculada só pela timeline 14 + cobertura por zonas)
+      </div>
     `;
   }
 
