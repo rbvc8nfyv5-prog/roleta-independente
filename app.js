@@ -27,119 +27,98 @@
   // ================= UTIL =================
   const terminal = n => n % 10;
 
-  function vizinhosCentral(c){
+  function vizinhos(c, dist){
     let i = track.indexOf(c);
-    let arr = [];
-    for(let d=-4; d<=4; d++){
+    let arr=[];
+    for(let d=-dist; d<=dist; d++){
       arr.push(track[(i+37+d)%37]);
     }
     return arr;
   }
 
   function zona(n){
-    let i = track.indexOf(n);
-    return Math.floor(i / 10);
+    return Math.floor(track.indexOf(n)/10);
   }
 
-  // ===== mapa das trincas =====
+  // ================= MAPAS =================
   const mapaTrincas = trincasCentrais.map(trinca=>{
-    let set = new Set();
+    let amplo=new Set();
+    let curto=new Set();
     trinca.forEach(c=>{
-      vizinhosCentral(c).forEach(n=>set.add(n));
+      vizinhos(c,4).forEach(n=>amplo.add(n)); // histórico
+      vizinhos(c,2).forEach(n=>curto.add(n)); // timeline
     });
-    return { trinca, set };
+    return { trinca, amplo, curto };
   });
 
-  // ================= COBERTURAS =================
-  function cobertura(set, base){
-    let h = 0;
-    base.forEach(n=>{
-      if(set.has(n)) h++;
-    });
-    return h;
-  }
-
-  function zonasCobertas(set){
-    let z = new Set();
-    set.forEach(n=>z.add(zona(n)));
-    return z.size;
-  }
-
   // ================= HISTÓRICO =================
-  function numerosChamadosPor(n){
-    let r = [];
+  function chamadosPor(n){
+    let r=[];
     for(let i=0;i<hist.length-1;i++){
-      if(hist[i] === n){
-        r.push(hist[i+1]);
-      }
+      if(hist[i]===n) r.push(hist[i+1]);
     }
     return r;
   }
 
-  // ================= CONFLUÊNCIA DOS 45 PARES =================
-  function confluencia45Pares(baseTimeline6){
-    let pares = [];
+  function cobertura(set, base){
+    let c=0;
+    base.forEach(n=>{ if(set.has(n)) c++; });
+    return c;
+  }
+
+  // ================= CONFLUÊNCIA 45 PARES =================
+  function confluenciaPares(base){
+    let pares=[];
     for(let a=0;a<10;a++){
       for(let b=a+1;b<10;b++){
-        let set = new Set();
+        let set=new Set();
         track.forEach(n=>{
-          if(terminal(n)===a || terminal(n)===b) set.add(n);
+          if(terminal(n)===a||terminal(n)===b) set.add(n);
         });
-        const score = cobertura(set, baseTimeline6);
-        pares.push({a,b,score,set});
+        pares.push({a,b,score:cobertura(set,base)});
       }
     }
     pares.sort((x,y)=>y.score-x.score);
     return pares;
   }
 
-  function escolherQuebra(par, baseTimeline6){
-    let best={t:null,score:-1};
+  function quebraPar(p, base){
+    let best={t:null,s:-1};
     for(let t=0;t<10;t++){
-      if(t===par.a || t===par.b) continue;
+      if(t===p.a||t===p.b) continue;
       let set=new Set();
       track.forEach(n=>{
-        if(terminal(n)===par.a || terminal(n)===par.b || terminal(n)===t){
-          set.add(n);
-        }
+        if([p.a,p.b,t].includes(terminal(n))) set.add(n);
       });
-      const s=cobertura(set,baseTimeline6);
-      if(s>best.score) best={t,score:s};
+      let s=cobertura(set,base);
+      if(s>best.s) best={t,s};
     }
     return best.t;
   }
 
   // ================= MELHOR TRINCA =================
-  function melhorTrinca(numero, par1){
-    const chamados = numerosChamadosPor(numero);
-    let melhor=null;
+  function melhorTrinca(num, par1){
+    let chamados=chamadosPor(num);
+    let best=null;
 
     mapaTrincas.forEach(t=>{
-      const histHits = cobertura(t.set, chamados);
-      const timeHits = cobertura(t.set, timeline);
-      const zonasHit = zonasCobertas(t.set);
-      const par1Hit  = cobertura(t.set, track.filter(n=>terminal(n)===par1.a||terminal(n)===par1.b));
+      let histHit = cobertura(t.amplo, chamados);
+      let timeHit = cobertura(t.curto, timeline);
+      let zonaHit = new Set([...t.curto].map(zona)).size;
+      let par1Hit = [...t.amplo].some(n=>terminal(n)===par1.a||terminal(n)===par1.b)?1:0;
 
-      // score ponderado (Par 1 pesa mais)
-      const score =
-        histHits * 4 +
-        timeHits * 3 +
-        zonasHit * 2 +
-        par1Hit  * 5;
+      let score =
+        histHit*4 +
+        timeHit*5 +
+        zonaHit*2 +
+        par1Hit*6;
 
-      if(!melhor || score > melhor.score){
-        melhor = {
-          trinca: t.trinca,
-          histHits,
-          timeHits,
-          zonasHit,
-          par1Hit,
-          score
-        };
+      if(!best||score>best.score){
+        best={trinca:t.trinca,histHit,timeHit,zonaHit,par1Hit,score};
       }
     });
 
-    return melhor;
+    return best;
   }
 
   // ================= UI =================
@@ -147,97 +126,87 @@
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
-  document.body.innerHTML = `
+  document.body.innerHTML=`
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Confluência Final</h3>
+      <h3 style="text-align:center">CSM – Confluência Refinada</h3>
 
-      <div style="border:1px solid #444;padding:8px;margin-bottom:10px">
-        📋 Cole até <b>500</b> números:
-        <input id="pasteInput" style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555"/>
-        <div style="margin-top:6px">
-          <button id="btnColar">Colar</button>
-          <button id="btnLimpar">Limpar</button>
-        </div>
+      <div style="border:1px solid #444;padding:8px">
+        Cole histórico:
+        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555"/>
+        <button id="col">Colar</button>
+        <button id="lim">Limpar</button>
       </div>
 
-      <div>
-        🕒 Linha do tempo (14):
-        <div id="timeline" style="border:1px solid #555;padding:6px;margin-top:4px"></div>
+      <div style="margin-top:8px">
+        🕒 Timeline (14): <div id="tl"></div>
       </div>
 
-      <div style="border:1px solid #bbb;padding:8px;margin-top:10px">
-        🔗 <b>Confluência dos Pares</b>
-        <div id="paresOut"></div>
+      <div style="border:1px solid #666;padding:8px;margin-top:8px">
+        🔗 <b>Pares</b>
+        <div id="pares"></div>
       </div>
 
-      <div style="border:1px solid #bbb;padding:8px;margin-top:10px">
-        🎯 <b>Melhor Trinca para Jogar</b>
-        <div id="trincaOut"></div>
+      <div style="border:1px solid #aaa;padding:8px;margin-top:8px">
+        🎯 <b>Melhor Trinca</b>
+        <div id="out"></div>
       </div>
 
-      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:14px"></div>
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
     </div>
   `;
 
-  const numsDiv=document.getElementById("nums");
-
+  const nums=document.getElementById("nums");
   for(let n=0;n<=36;n++){
     let b=document.createElement("button");
     b.textContent=n;
-    b.style="padding:8px;background:#333;color:#fff;border:1px solid #555";
-    b.onclick=()=>inserir(n);
-    numsDiv.appendChild(b);
+    b.onclick=()=>add(n);
+    b.style="padding:8px;background:#333;color:#fff";
+    nums.appendChild(b);
   }
 
-  function inserir(n){
+  function add(n){
     hist.push(n);
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
     render();
   }
 
-  document.getElementById("btnColar").onclick=()=>{
-    let nums=document.getElementById("pasteInput").value.split(/\s+/).map(Number).filter(n=>n>=0&&n<=36);
-    nums.forEach(n=>hist.push(n));
-    timeline=hist.slice(-14).reverse();
-    document.getElementById("pasteInput").value="";
-    render();
+  document.getElementById("col").onclick=()=>{
+    document.getElementById("inp").value
+      .split(/[\s,]+/)
+      .map(Number)
+      .filter(n=>n>=0&&n<=36)
+      .forEach(add);
+    document.getElementById("inp").value="";
   };
 
-  document.getElementById("btnLimpar").onclick=()=>{
+  document.getElementById("lim").onclick=()=>{
     hist=[]; timeline=[]; render();
   };
 
   function render(){
-    document.getElementById("timeline").textContent =
-      timeline.length ? timeline.join(" · ") : "-";
+    document.getElementById("tl").textContent=timeline.join(" · ");
+    if(!hist.length) return;
 
-    if(hist.length===0) return;
+    let ult=hist[hist.length-1];
+    let pares=confluenciaPares(timeline.slice(0,6));
+    let p1=pares[0], p2=pares[1];
+    let q=quebraPar(p1,timeline.slice(0,6));
 
-    const ultimo=hist[hist.length-1];
-    const pares=confluencia45Pares(timeline.slice(0,6));
-    const p1=pares[0];
-    const p2=pares[1];
-    const quebra=escolherQuebra(p1,timeline.slice(0,6));
+    document.getElementById("pares").innerHTML=
+      `Par 1: T${p1.a}·T${p1.b}<br>
+       Par 2: T${p2.a}·T${p2.b}<br>
+       Quebra: T${q}`;
 
-    document.getElementById("paresOut").innerHTML=`
-      Par 1: T${p1.a} · T${p1.b}<br/>
-      Par 2: T${p2.a} · T${p2.b}<br/>
-      Quebra: T${quebra}
-    `;
+    let m=melhorTrinca(ult,p1);
 
-    const trinca=melhorTrinca(ultimo,p1);
-
-    document.getElementById("trincaOut").innerHTML=`
-      Número analisado: <b>${ultimo}</b><br/>
-      Trinca indicada: <b>${trinca.trinca.join("-")}</b><br/>
-      Histórico: ${trinca.histHits}<br/>
-      Timeline: ${trinca.timeHits}<br/>
-      Zonas: ${trinca.zonasHit}<br/>
-      Compatível Par 1: ${trinca.par1Hit>0?"SIM":"NÃO"}
-    `;
+    document.getElementById("out").innerHTML=
+      `Número: <b>${ult}</b><br>
+       Trinca: <b>${m.trinca.join("-")}</b><br>
+       Histórico: ${m.histHit}<br>
+       Timeline (±2): ${m.timeHit}<br>
+       Zonas: ${m.zonaHit}<br>
+       Compatível Par 1: ${m.par1Hit?"SIM":"NÃO"}`;
   }
-
-  render();
 
 })();
