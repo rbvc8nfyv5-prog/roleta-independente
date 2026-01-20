@@ -23,6 +23,7 @@
   // ================= ESTADO =================
   let hist = [];
   let timeline = [];
+  let janelaAnalise = 6; // 3,4,5,6
 
   // ================= UTIL =================
   const terminal = n => n % 10;
@@ -46,7 +47,7 @@
     let curto=new Set();
     trinca.forEach(c=>{
       vizinhos(c,4).forEach(n=>amplo.add(n)); // histórico
-      vizinhos(c,2).forEach(n=>curto.add(n)); // timeline
+      vizinhos(c,2).forEach(n=>curto.add(n)); // alvos / timeline
     });
     return { trinca, amplo, curto };
   });
@@ -103,7 +104,7 @@
 
     mapaTrincas.forEach(t=>{
       let histHit = cobertura(t.amplo, chamados);
-      let timeHit = cobertura(t.curto, timeline);
+      let timeHit = cobertura(t.curto, timeline.slice(0,janelaAnalise));
       let zonaHit = new Set([...t.curto].map(zona)).size;
       let par1Hit = [...t.amplo].some(n=>terminal(n)===par1.a||terminal(n)===par1.b)?1:0;
 
@@ -114,7 +115,7 @@
         par1Hit*6;
 
       if(!best||score>best.score){
-        best={trinca:t.trinca,histHit,timeHit,zonaHit,par1Hit,score};
+        best={trinca:t.trinca,alvos:[...t.curto],histHit,timeHit,par1Hit,score};
       }
     });
 
@@ -127,8 +128,8 @@
   document.body.style.fontFamily="sans-serif";
 
   document.body.innerHTML=`
-    <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Confluência Refinada</h3>
+    <div style="padding:10px;max-width:950px;margin:auto">
+      <h3 style="text-align:center">CSM – Confluência Ajustável</h3>
 
       <div style="border:1px solid #444;padding:8px">
         Cole histórico:
@@ -141,19 +142,35 @@
         🕒 Timeline (14): <div id="tl"></div>
       </div>
 
+      <div style="margin-top:8px">
+        🔍 Analisar últimos:
+        <select id="janela">
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6" selected>6</option>
+        </select>
+        números
+      </div>
+
       <div style="border:1px solid #666;padding:8px;margin-top:8px">
         🔗 <b>Pares</b>
         <div id="pares"></div>
       </div>
 
       <div style="border:1px solid #aaa;padding:8px;margin-top:8px">
-        🎯 <b>Melhor Trinca</b>
+        🎯 <b>Jogada Indicada</b>
         <div id="out"></div>
       </div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
     </div>
   `;
+
+  document.getElementById("janela").onchange=e=>{
+    janelaAnalise=parseInt(e.target.value,10);
+    render();
+  };
 
   const nums=document.getElementById("nums");
   for(let n=0;n<=36;n++){
@@ -189,9 +206,11 @@
     if(!hist.length) return;
 
     let ult=hist[hist.length-1];
-    let pares=confluenciaPares(timeline.slice(0,6));
+    let base=timeline.slice(0,janelaAnalise);
+
+    let pares=confluenciaPares(base);
     let p1=pares[0], p2=pares[1];
-    let q=quebraPar(p1,timeline.slice(0,6));
+    let q=quebraPar(p1,base);
 
     document.getElementById("pares").innerHTML=
       `Par 1: T${p1.a}·T${p1.b}<br>
@@ -201,11 +220,11 @@
     let m=melhorTrinca(ult,p1);
 
     document.getElementById("out").innerHTML=
-      `Número: <b>${ult}</b><br>
+      `Número analisado: <b>${ult}</b><br>
        Trinca: <b>${m.trinca.join("-")}</b><br>
+       Alvos: ${m.alvos.join(" · ")}<br>
        Histórico: ${m.histHit}<br>
-       Timeline (±2): ${m.timeHit}<br>
-       Zonas: ${m.zonaHit}<br>
+       Timeline curta: ${m.timeHit}<br>
        Compatível Par 1: ${m.par1Hit?"SIM":"NÃO"}`;
   }
 
