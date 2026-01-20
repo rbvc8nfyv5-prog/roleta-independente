@@ -7,222 +7,130 @@
     12,35,3,26,0
   ];
 
-  const terminais = {
-    0:[0,10,20,30], 1:[1,11,21,31], 2:[2,12,22,32], 3:[3,13,23,33],
-    4:[4,14,24,34], 5:[5,15,25,35], 6:[6,16,26,36],
-    7:[7,17,27], 8:[8,18,28], 9:[9,19,29]
-  };
-
-  const terminal = n => n % 10;
-
-  // ================= GRUPOS =================
-  const grupos = {
-    G1: [2,5,8], G2: [12,15,18], G3: [22,25,28], G4: [32,35],
-    G5: [3,6,9], G6: [10,13,16,19], G7: [20,23,26,29], G8: [30,33,36],
-    G9: [1,4,7], G10:[11,14,17], G11:[21,24,27], G12:[31,34]
-  };
+  // ================= TRINCAS DE CENTRAIS =================
+  const trincasCentrais = [
+    [5,25,35],
+    [26,33,36],
+    [13,14,15],
+    [19,27,29],
+    [16,17,18],
+    [5,6,7],
+    [11,21,31],
+    [30,31,32],
+    [1,2,3],
+    [33,34,35]
+  ];
 
   // ================= ESTADO =================
   let hist = [];
-  let timeline = []; // últimos 14 (espelhado)
+  let timeline = [];
 
   // ================= UTIL =================
-  function grupoDoNumero(n){
-    for (let k in grupos){
-      if (grupos[k].includes(n)) return k;
+  function vizinhosCentral(c){
+    let i = track.indexOf(c);
+    let arr = [];
+    for(let d=-4; d<=4; d++){
+      arr.push(track[(i+37+d)%37]);
     }
-    return null;
+    return arr;
   }
 
-  // ---------- cobertura real por terminal (terminal + vizinhos)
-  function coverTerminal(t){
-    let s = new Set();
-    (terminais[t]||[]).forEach(n=>{
-      let i = track.indexOf(n);
-      if(i<0) return;
-      s.add(n);
-      s.add(track[(i+36)%37]);
-      s.add(track[(i+1)%37]);
+  // mapa: trinca -> Set de cobertura
+  const mapaTrincas = trincasCentrais.map(trinca=>{
+    let set = new Set();
+    trinca.forEach(c=>{
+      vizinhosCentral(c).forEach(n=>set.add(n));
     });
-    return s;
-  }
-  const covers = Array.from({length:10},(_,t)=>coverTerminal(t));
+    return { trinca, set };
+  });
 
-  // ================= CHAMADOS =================
-  function chamadosPorGrupo(grupoKey){
-    let chamados = [];
-    const setG = new Set(grupos[grupoKey]);
-    for (let i = 0; i < hist.length - 1; i++){
-      if (setG.has(hist[i])) chamados.push(hist[i+1]);
+  // ================= HISTÓRICO =================
+  function numerosChamadosPor(n){
+    let r = [];
+    for(let i=0;i<hist.length-1;i++){
+      if(hist[i] === n){
+        r.push(hist[i+1]);
+      }
     }
-    return chamados;
+    return r;
   }
 
-  // ================= HELPERS =================
-  function coberturaSet(setNums, base){
-    let hits = 0;
-    base.forEach(n=>{ if(setNums.has(n)) hits++; });
-    return hits;
-  }
-
-  function scoreZonas(setNums){
-    const zones = [0,0,0,0];
-    setNums.forEach(n=>{
-      const i = track.indexOf(n);
-      if(i<0) return;
-      zones[Math.floor(i/10)]++;
+  function cobertura(set, base){
+    let h = 0;
+    base.forEach(n=>{
+      if(set.has(n)) h++;
     });
-    return zones.filter(z=>z>0).length; // 1..4
+    return h;
   }
 
-  // ================= CONFLUÊNCIA DOS 45 PARES =================
-  function confluencia45Pares(baseTimeline6, baseChamados6){
-    let pares = [];
-    for(let a=0;a<10;a++){
-      for(let b=a+1;b<10;b++){
-        let set = new Set(covers[a]);
-        covers[b].forEach(x=>set.add(x));
+  // ================= LEITURA POR TRINCA =================
+  function leituraPorTrincas(numero){
+    const chamados = numerosChamadosPor(numero);
 
-        const scoreA = coberturaSet(set, baseTimeline6);
-        const scoreB = coberturaSet(set, baseChamados6);
-        const scoreZ = scoreZonas(set);
-        const score = scoreA*2 + scoreB*2 + scoreZ*1;
-
-        pares.push({a,b,score,scoreA,scoreB,scoreZ,set});
-      }
-    }
-    pares.sort((x,y)=>y.score-x.score);
-    return pares;
-  }
-
-  function escolherQuebra(par, baseTimeline6, baseChamados6){
-    let best = { t:null, gain:-1 };
-    const baseSet = new Set(par.set);
-    const before =
-      coberturaSet(baseSet, baseTimeline6) +
-      coberturaSet(baseSet, baseChamados6);
-
-    for(let t=0;t<10;t++){
-      if(t===par.a || t===par.b) continue;
-      let set3 = new Set(baseSet);
-      covers[t].forEach(x=>set3.add(x));
-
-      const after =
-        coberturaSet(set3, baseTimeline6) +
-        coberturaSet(set3, baseChamados6);
-
-      const gain = after - before;
-      if(gain > best.gain){
-        best = { t, gain };
-      }
-    }
-    return best.t;
-  }
-
-  // ================= CONFLUÊNCIA DE TRINCAS (COM 14 DA TIMELINE) =================
-  function confluenciaTrincasTimeline14(baseTimeline14){
-    let trincas = [];
-    for(let a=0;a<10;a++){
-      for(let b=a+1;b<10;b++){
-        for(let c=b+1;c<10;c++){
-          let set = new Set(covers[a]);
-          covers[b].forEach(x=>set.add(x));
-          covers[c].forEach(x=>set.add(x));
-
-          const scoreA = coberturaSet(set, baseTimeline14); // usa os 14
-          const scoreZ = scoreZonas(set);
-
-          // "mesma confluência" adaptada: sem chamados, só timeline + zonas
-          const score = scoreA*3 + scoreZ*1;
-
-          trincas.push({a,b,c,score,scoreA,scoreZ,set});
-        }
-      }
-    }
-    trincas.sort((x,y)=>y.score-x.score);
-    return trincas;
+    return mapaTrincas.map(t=>{
+      return {
+        trinca: t.trinca,
+        chamados: cobertura(t.set, chamados),
+        timeline: cobertura(t.set, timeline)
+      };
+    }).sort((a,b)=>{
+      if(b.chamados !== a.chamados) return b.chamados - a.chamados;
+      return b.timeline - a.timeline;
+    });
   }
 
   // ================= UI =================
-  document.body.style.background="#111";
-  document.body.style.color="#fff";
-  const stamp = new Date().toLocaleDateString()+" "+new Date().toLocaleTimeString();
+  document.body.style.background = "#111";
+  document.body.style.color = "#fff";
+  document.body.style.fontFamily = "sans-serif";
 
   document.body.innerHTML = `
-    <div style="padding:10px;font-family:sans-serif;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Confluências & Leitura Viva</h3>
-      <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">
-        🔄 Atualizado em: <b>${stamp}</b>
-      </div>
+    <div style="padding:10px;max-width:900px;margin:auto">
+      <h3 style="text-align:center">CSM – Leitura por Trincas de Centrais</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:10px">
         📋 Cole até <b>500</b> números:
         <input id="pasteInput"
-          style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555;margin-top:6px"
-          placeholder="Ex: 32 15 19 4 21 2 25 17 ..." />
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button id="btnColar" style="padding:6px 12px;background:#333;color:#fff;border:1px solid #777">Colar</button>
-          <button id="btnLimpar" style="padding:6px 12px;background:#222;color:#fff;border:1px solid #777">Limpar</button>
-          <div id="infoHist" style="align-self:center;font-size:12px;color:#bbb"></div>
+          style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555;margin-top:6px" />
+        <div style="margin-top:6px">
+          <button id="btnColar">Colar</button>
+          <button id="btnLimpar">Limpar</button>
         </div>
       </div>
 
-      <div style="margin-bottom:6px">
+      <div>
         🕒 Linha do tempo (14 – espelhada):
-        <div id="timeline" style="margin-top:4px;padding:6px;border:1px solid #555;min-height:22px"></div>
+        <div id="timeline" style="border:1px solid #555;padding:6px;margin-top:4px"></div>
       </div>
 
-      <div style="border:1px solid #666;padding:6px;margin:6px 0;text-align:center">
-        🔹 Grupo ativo: <span id="grupoAtual">-</span>
-      </div>
-
-      <div style="border:1px solid #999;padding:6px;margin:6px 0">
-        📊 Números chamados (1º após cada ocorrência):
-        <div id="chamados" style="margin-top:6px;font-size:13px"></div>
-      </div>
-
-      <div style="border:1px solid #bbb;padding:8px;margin:8px 0">
-        🔗 <b>CONFLUÊNCIA DOS 45 PARES</b>
-        <div style="font-size:12px;color:#bbb;margin-top:4px">
-          Base A: 6 últimos da timeline • Base B: 6 últimos chamados • Zonas: cobertura na pista
-        </div>
-        <div id="paresOut" style="margin-top:8px"></div>
-      </div>
-
-      <div style="border:1px solid #bbb;padding:8px;margin:8px 0">
-        🔥 <b>CONFLUÊNCIA DE TRINCAS (14 da timeline)</b>
-        <div style="font-size:12px;color:#bbb;margin-top:4px">
-          Base: 14 números da timeline • Zonas: cobertura na pista
-        </div>
-        <div id="trincaOut" style="margin-top:8px"></div>
+      <div style="border:1px solid #bbb;padding:8px;margin-top:10px">
+        🎯 <b>Leitura por Trincas</b>
+        <div id="trincaOut" style="margin-top:6px"></div>
       </div>
 
       <div id="nums"
         style="display:grid;grid-template-columns:repeat(9,1fr);
-               gap:6px;margin-top:12px"></div>
+               gap:6px;margin-top:14px"></div>
     </div>
   `;
 
   const numsDiv = document.getElementById("nums");
 
-  // ================= BOTÕES =================
   for(let n=0;n<=36;n++){
     let b=document.createElement("button");
     b.textContent=n;
     b.style="padding:8px;background:#333;color:#fff;border:1px solid #555";
-    b.onclick=()=>inserirNumero(n);
+    b.onclick=()=>inserir(n);
     numsDiv.appendChild(b);
   }
 
-  // ================= INSERÇÃO =================
-  function inserirNumero(n){
+  function inserir(n){
     hist.push(n);
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
     render();
   }
 
-  // ================= COLAR HISTÓRICO =================
   function parseNums(txt){
     return txt.replace(/\n/g," ")
       .split(/[\s,;]+/)
@@ -230,95 +138,51 @@
       .filter(n=>!isNaN(n) && n>=0 && n<=36);
   }
 
-  document.getElementById("btnColar").onclick = () => {
-    let txt = document.getElementById("pasteInput").value || "";
-    let nums = parseNums(txt).slice(0,500);
-    if(nums.length === 0) return;
-    nums.forEach(n => hist.push(n));
-    timeline = hist.slice(-14).reverse(); // espelhado: último à esquerda
-    document.getElementById("pasteInput").value = "";
+  document.getElementById("btnColar").onclick=()=>{
+    let nums=parseNums(document.getElementById("pasteInput").value).slice(0,500);
+    nums.forEach(n=>hist.push(n));
+    timeline=hist.slice(-14).reverse();
+    document.getElementById("pasteInput").value="";
     render();
   };
 
-  document.getElementById("btnLimpar").onclick = () => {
-    hist = [];
-    timeline = [];
-    render();
+  document.getElementById("btnLimpar").onclick=()=>{
+    hist=[]; timeline=[]; render();
   };
 
-  // ================= RENDER =================
   function render(){
     document.getElementById("timeline").textContent =
       timeline.length ? timeline.join(" · ") : "-";
 
-    document.getElementById("infoHist").textContent =
-      `Histórico oculto: ${hist.length} números`;
-
     if(hist.length===0){
-      document.getElementById("grupoAtual").textContent="-";
-      document.getElementById("chamados").textContent="-";
-      document.getElementById("paresOut").textContent="-";
       document.getElementById("trincaOut").textContent="-";
       return;
     }
 
     const ultimo = hist[hist.length-1];
-    const grupo = grupoDoNumero(ultimo);
-    document.getElementById("grupoAtual").textContent =
-      grupo ? `${grupo} (${grupos[grupo].join(" · ")})` : "Sem grupo";
+    const ranking = leituraPorTrincas(ultimo);
 
-    const chamados = grupo ? chamadosPorGrupo(grupo) : [];
-    document.getElementById("chamados").textContent =
-      chamados.length ? chamados.join(" · ") : "Nenhum registro ainda.";
+    let html = `<div><b>Número analisado:</b> ${ultimo}</div>`;
+    html += `<div style="margin-top:6px"><b>Ranking de Trincas:</b></div>`;
 
-    // ===== 45 PARES (mantido) =====
-    const baseTimeline6 = timeline.slice(0,6);
-    const baseChamados6 = chamados.slice(-6);
+    ranking.forEach(r=>{
+      html += `
+        <div>
+          ${r.trinca.join("-")}
+          → chamados: ${r.chamados}
+          | timeline: ${r.timeline}
+        </div>
+      `;
+    });
 
-    if(baseTimeline6.length===0 && baseChamados6.length===0){
-      document.getElementById("paresOut").textContent = "Aguardando dados...";
-      document.getElementById("trincaOut").textContent = "Aguardando dados...";
-      return;
-    }
-
-    const ranking = confluencia45Pares(baseTimeline6, baseChamados6);
-    const p1 = ranking[0];
-    const p2 = ranking[1];
-    const q1 = escolherQuebra(p1, baseTimeline6, baseChamados6);
-
-    document.getElementById("paresOut").innerHTML = `
-      <div><b>Par 1:</b> T${p1.a} · T${p1.b}
-        <span style="color:#bbb"> (A:${p1.scoreA} B:${p1.scoreB} Z:${p1.scoreZ} | SCORE:${p1.score})</span>
-      </div>
-      <div><b>Par 2:</b> T${p2.a} · T${p2.b}
-        <span style="color:#bbb"> (A:${p2.scoreA} B:${p2.scoreB} Z:${p2.scoreZ} | SCORE:${p2.score})</span>
-      </div>
-      <div style="margin-top:6px"><b>Quebra:</b> T${q1}</div>
-    `;
-
-    // ===== TRINCAS (NOVO) =====
-    const baseTimeline14 = timeline.slice(0,14);
-    if(baseTimeline14.length < 6){
-      document.getElementById("trincaOut").textContent =
-        "Aguardando mais números na timeline (precisa mais dados).";
-      return;
-    }
-
-    const trincas = confluenciaTrincasTimeline14(baseTimeline14);
-    const t1 = trincas[0];
-    const t2 = trincas[1];
-
-    document.getElementById("trincaOut").innerHTML = `
-      <div><b>Trinca 1:</b> T${t1.a} · T${t1.b} · T${t1.c}
-        <span style="color:#bbb"> (Hits14:${t1.scoreA} Z:${t1.scoreZ} | SCORE:${t1.score})</span>
-      </div>
-      <div style="margin-top:6px"><b>Trinca 2:</b> T${t2.a} · T${t2.b} · T${t2.c}
-        <span style="color:#bbb"> (Hits14:${t2.scoreA} Z:${t2.scoreZ} | SCORE:${t2.score})</span>
-      </div>
-      <div style="margin-top:6px;color:#bbb;font-size:12px">
-        (Trinca calculada só pela timeline 14 + cobertura por zonas)
+    html += `
+      <div style="margin-top:8px">
+        🎯 <b>Melhor jogada agora:</b>
+        ${ranking[0].trinca.join("-")}
       </div>
     `;
+
+    document.getElementById("trincaOut").innerHTML = html;
   }
 
   render();
