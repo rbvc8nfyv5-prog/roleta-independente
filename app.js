@@ -7,25 +7,10 @@
     12,35,3,26,0
   ];
 
-  // ================= TRINCAS =================
   const trincasCentrais = [
-    [5,25,35],
-    [26,33,36],
-    [13,14,15],
-    [19,27,29],
-    [16,17,18],
-    [5,6,7],
-    [11,21,31],
-    [30,31,32],
-    [1,2,3],
-    [33,34,35],
-
-    // novas
-    [14,4,30],
-    [2,22,26],
-    [9,17,33],
-    [3,20,21],
-    [8,18,0]
+    [5,25,35],[26,33,36],[13,14,15],[19,27,29],[16,17,18],
+    [5,6,7],[11,21,31],[30,31,32],[1,2,3],[33,34,35],
+    [14,4,30],[2,22,26],[9,17,33],[3,20,21],[8,18,0]
   ];
 
   // ================= ESTADO =================
@@ -35,13 +20,12 @@
 
   // ================= UTIL =================
   const terminal = n => n % 10;
+  const coluna   = n => n===0?null:((n-1)%3)+1;
 
   function vizinhos(c, d){
     const i = track.indexOf(c);
     let a=[];
-    for(let x=-d;x<=d;x++){
-      a.push(track[(i+37+x)%37]);
-    }
+    for(let x=-d;x<=d;x++) a.push(track[(i+37+x)%37]);
     return a;
   }
 
@@ -61,7 +45,7 @@
     return { trinca, amplo, curto };
   });
 
-  // ================= HISTÓRICO =================
+  // ================= HISTÓRICO DO NÚMERO =================
   function chamadosPor(n){
     let r=[];
     for(let i=0;i<hist.length-1;i++){
@@ -100,33 +84,42 @@
     return best.t;
   }
 
-  // ================= MELHOR TRINCA =================
+  // ================= MELHOR TRINCA (COM CONFLUÊNCIA EXTRA) =================
   function melhorTrinca(num, par1){
     const chamados = chamadosPor(num);
+    const cols = timeline.slice(0,janela).map(coluna).filter(Boolean);
+
     let best=null;
 
     mapaTrincas.forEach(t=>{
+      const histHit   = cobertura(t.amplo, chamados);
+      const timeHit   = cobertura(t.curto, timeline.slice(0,janela));
+      const parHit    = [...t.amplo].filter(n=>terminal(n)===par1.a||terminal(n)===par1.b).length;
+      const colHit    = [...t.curto].filter(n=>cols.includes(coluna(n))).length;
+
       const score =
-        cobertura(t.amplo, chamados)*4 +
-        cobertura(t.curto, timeline.slice(0,janela))*5 +
-        ([...t.amplo].some(n=>terminal(n)===par1.a||terminal(n)===par1.b)?6:0);
+        histHit*4 +        // o que o número chamou
+        timeHit*5 +        // trinca dominante na mesa
+        parHit*3 +         // compatibilidade com pares
+        colHit*2;          // confluência de colunas
 
       if(!best || score>best.score){
-        best={trinca:t.trinca,alvos:[...t.curto],score};
+        best={trinca:t.trinca,alvos:[...t.curto],score,
+              histHit,timeHit,parHit,colHit};
       }
     });
 
     return best;
   }
 
-  // ================= UI =================
+  // ================= UI (IGUAL AO ANTERIOR) =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Análise de Confluência</h3>
+      <h3 style="text-align:center">CSM – Confluência Completa</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
@@ -136,19 +129,14 @@
           <button id="lim">Limpar</button>
           Analisar últimos:
           <select id="jan">
-            <option>3</option>
-            <option>4</option>
-            <option>5</option>
-            <option selected>6</option>
+            <option>3</option><option>4</option><option>5</option><option selected>6</option>
           </select>
         </div>
       </div>
 
-      <div style="margin-bottom:6px">
-        🕒 Linha do tempo (14): <span id="tl"></span>
-      </div>
+      <div>🕒 Linha do tempo (14): <span id="tl"></span></div>
 
-      <div style="border:1px solid #666;padding:8px;margin-bottom:6px">
+      <div style="border:1px solid #666;padding:8px;margin:6px 0">
         🔗 <b>Confluência dos Pares</b><br>
         <span id="pares"></span>
       </div>
@@ -184,11 +172,8 @@
   }
 
   document.getElementById("col").onclick=()=>{
-    document.getElementById("inp").value
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n=>n>=0&&n<=36)
-      .forEach(add);
+    document.getElementById("inp").value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
     document.getElementById("inp").value="";
   };
 
@@ -203,19 +188,18 @@
     const base=timeline.slice(0,janela);
     const pares=confluenciaPares(base);
     const p1=pares[0];
-    const p2=pares[1];
     const q=quebraPar(p1,base);
 
     document.getElementById("pares").innerHTML=
-      `Par 1: T${p1.a}·T${p1.b}<br>
-       Par 2: T${p2.a}·T${p2.b}<br>
-       Quebra: T${q}`;
+      `Par 1: T${p1.a}·T${p1.b}<br>Quebra: T${q}`;
 
     const m=melhorTrinca(hist[hist.length-1],p1);
 
     document.getElementById("out").innerHTML=
-      `Trinca: <b>${m.trinca.join("-")}</b><br>
-       Alvos: ${m.alvos.join(" · ")}`;
+      `Número analisado: <b>${hist[hist.length-1]}</b><br>
+       Trinca: <b>${m.trinca.join("-")}</b><br>
+       Alvos: ${m.alvos.join(" · ")}<br>
+       Confluências → Hist:${m.histHit} | Mesa:${m.timeHit} | Pares:${m.parHit} | Colunas:${m.colHit}`;
   }
 
 })();
