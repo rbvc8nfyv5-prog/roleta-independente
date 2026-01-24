@@ -18,15 +18,15 @@
   let timeline = [];
   let janela = 6;
 
+  let scoreOps = { soma:0, sub:0, mult:0, div:0 };
+
   // ================= UTIL =================
   const terminal = n => n % 10;
 
   function vizinhos(n, d){
     const i = track.indexOf(n);
     let a=[];
-    for(let x=-d;x<=d;x++){
-      a.push(track[(i+37+x)%37]);
-    }
+    for(let x=-d;x<=d;x++) a.push(track[(i+37+x)%37]);
     return a;
   }
 
@@ -36,16 +36,15 @@
     return c;
   }
 
-  // ================= MAPA DAS TRINCAS =================
+  // ================= TRINCA (TIMELINE) =================
   const mapaTrincas = trincasCentrais.map(trinca=>{
     let curto = new Set();
     trinca.forEach(c=>{
-      vizinhos(c,2).forEach(n=>curto.add(n)); // TIMING manda
+      vizinhos(c,2).forEach(n=>curto.add(n));
     });
     return { trinca, curto };
   });
 
-  // ================= MELHOR TRINCA (TIMELINE) =================
   function melhorTrincaTimeline(){
     const base = timeline.slice(0,janela);
     let best=null;
@@ -56,24 +55,46 @@
         best = { trinca:t.trinca, curto:t.curto, score };
       }
     });
-
     return best;
   }
 
-  // ================= CONFLUÊNCIA DE PARES (EM CIMA DA TRINCA) =================
-  function confluenciaParesTrinca(trincaSet){
-    let pares=[];
-    for(let a=0;a<10;a++){
-      for(let b=a+1;b<10;b++){
-        let hits=0;
-        trincaSet.forEach(n=>{
-          if(terminal(n)===a || terminal(n)===b) hits++;
-        });
-        pares.push({a,b,hits});
-      }
+  // ================= TERMINAL MATEMÁTICO =================
+  function avaliarTerminalMatematico(){
+    if(timeline.length < 2) return null;
+
+    let mapTerm = {};
+    let a = terminal(timeline[0]);
+    let b = terminal(timeline[1]);
+
+    let calc = {
+      soma: (a+b)%10,
+      sub: Math.abs(a-b)%10,
+      mult: (a*b)%10,
+      div: (b!==0?Math.floor(a/b):0)%10
+    };
+
+    let prox = hist[hist.length-1];
+    if(prox !== undefined){
+      let t = terminal(prox);
+      if(t === calc.soma) scoreOps.soma++;
+      if(t === calc.sub) scoreOps.sub++;
+      if(t === calc.mult) scoreOps.mult++;
+      if(t === calc.div) scoreOps.div++;
     }
-    pares.sort((x,y)=>y.hits-x.hits);
-    return pares[0];
+
+    Object.values(calc).forEach(t=>{
+      mapTerm[t] = (mapTerm[t]||0)+1;
+    });
+
+    let tops = Object.entries(mapTerm)
+      .sort((a,b)=>b[1]-a[1])
+      .map(x=>"T"+x[0]);
+
+    let ops = Object.entries(scoreOps)
+      .sort((a,b)=>b[1]-a[1])
+      .map(x=>x[0].toUpperCase());
+
+    return { tops, ops };
   }
 
   // ================= UI =================
@@ -83,7 +104,7 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Trinca por Linha do Tempo</h3>
+      <h3 style="text-align:center">CSM – Confluência Completa</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
@@ -93,26 +114,21 @@
           <button id="lim">Limpar</button>
           Analisar últimos:
           <select id="jan">
-            <option>3</option>
-            <option>4</option>
-            <option>5</option>
-            <option selected>6</option>
+            <option>3</option><option>4</option><option>5</option><option selected>6</option>
           </select>
         </div>
       </div>
 
-      <div style="margin-bottom:6px">
-        🕒 Linha do tempo (14): <span id="tl"></span>
-      </div>
+      <div>🕒 Linha do tempo (14): <span id="tl"></span></div>
 
-      <div style="border:1px solid #666;padding:8px;margin-bottom:6px">
+      <div style="border:1px solid #666;padding:8px;margin:6px 0">
         🎯 <b>Trinca da Linha do Tempo</b><br>
         <span id="trinca"></span>
       </div>
 
-      <div style="border:1px solid #aaa;padding:8px">
-        🔗 <b>Confluência dos Pares (da Trinca)</b><br>
-        <span id="pares"></span>
+      <div style="border:1px solid #aaa;padding:8px;margin:6px 0">
+        🧮 <b>Terminal Matemático</b><br>
+        <span id="termMat"></span>
       </div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
@@ -141,16 +157,13 @@
   }
 
   document.getElementById("col").onclick=()=>{
-    document.getElementById("inp").value
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n=>n>=0&&n<=36)
-      .forEach(add);
+    document.getElementById("inp").value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
     document.getElementById("inp").value="";
   };
 
   document.getElementById("lim").onclick=()=>{
-    hist=[]; timeline=[]; render();
+    hist=[]; timeline=[]; scoreOps={soma:0,sub:0,mult:0,div:0}; render();
   };
 
   function render(){
@@ -159,11 +172,11 @@
 
     const m = melhorTrincaTimeline();
     document.getElementById("trinca").textContent =
-      `${m.trinca.join("-")}  | impactos: ${m.score}`;
+      `${m.trinca.join("-")} | impactos: ${m.score}`;
 
-    const p = confluenciaParesTrinca(m.curto);
-    document.getElementById("pares").textContent =
-      `Par dominante na trinca: T${p.a}·T${p.b} (${p.hits} acertos)`;
+    const tm = avaliarTerminalMatematico();
+    document.getElementById("termMat").textContent =
+      tm ? `Operações fortes: ${tm.ops.join(", ")} | Terminais: ${tm.tops.join(" · ")}` : "-";
   }
 
 })();
