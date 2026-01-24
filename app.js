@@ -36,7 +36,7 @@
     return c;
   }
 
-  // ================= TRINCA (TIMELINE) =================
+  // ================= TRINCAS (TIMELINE) =================
   const mapaTrincas = trincasCentrais.map(trinca=>{
     let curto = new Set();
     trinca.forEach(c=>{
@@ -58,11 +58,30 @@
     return best;
   }
 
+  // ================= PAR 1 (VISUAL) =================
+  function melhorParTimeline(){
+    const base = timeline.slice(0,janela);
+    let best=null;
+
+    for(let a=0;a<10;a++){
+      for(let b=a+1;b<10;b++){
+        let s=new Set();
+        track.forEach(n=>{
+          if(terminal(n)===a || terminal(n)===b) s.add(n);
+        });
+        let sc=cobertura(s,base);
+        if(!best || sc>best.score){
+          best={a,b,score:sc};
+        }
+      }
+    }
+    return best;
+  }
+
   // ================= TERMINAL MATEMÁTICO =================
   function avaliarTerminalMatematico(){
     if(timeline.length < 2) return null;
 
-    let mapTerm = {};
     let a = terminal(timeline[0]);
     let b = terminal(timeline[1]);
 
@@ -82,14 +101,7 @@
       if(t === calc.div) scoreOps.div++;
     }
 
-    Object.values(calc).forEach(t=>{
-      mapTerm[t] = (mapTerm[t]||0)+1;
-    });
-
-    let tops = Object.entries(mapTerm)
-      .sort((a,b)=>b[1]-a[1])
-      .map(x=>"T"+x[0]);
-
+    let tops = Object.values(calc).map(t=>"T"+t);
     let ops = Object.entries(scoreOps)
       .sort((a,b)=>b[1]-a[1])
       .map(x=>x[0].toUpperCase());
@@ -126,6 +138,11 @@
         <span id="trinca"></span>
       </div>
 
+      <div style="border:1px solid #666;padding:8px;margin:6px 0">
+        🔗 <b>Par 1 (leitura estrutural)</b><br>
+        <span id="par1"></span>
+      </div>
+
       <div style="border:1px solid #aaa;padding:8px;margin:6px 0">
         🧮 <b>Terminal Matemático</b><br>
         <span id="termMat"></span>
@@ -157,13 +174,18 @@
   }
 
   document.getElementById("col").onclick=()=>{
-    document.getElementById("inp").value.split(/[\s,]+/)
-      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    document.getElementById("inp").value
+      .split(/[\s,]+/)
+      .map(Number)
+      .filter(n=>n>=0&&n<=36)
+      .forEach(add);
     document.getElementById("inp").value="";
   };
 
   document.getElementById("lim").onclick=()=>{
-    hist=[]; timeline=[]; scoreOps={soma:0,sub:0,mult:0,div:0}; render();
+    hist=[]; timeline=[];
+    scoreOps={soma:0,sub:0,mult:0,div:0};
+    render();
   };
 
   function render(){
@@ -173,6 +195,10 @@
     const m = melhorTrincaTimeline();
     document.getElementById("trinca").textContent =
       `${m.trinca.join("-")} | impactos: ${m.score}`;
+
+    const p = melhorParTimeline();
+    document.getElementById("par1").textContent =
+      `Par 1: T${p.a}·T${p.b} (${p.score})`;
 
     const tm = avaliarTerminalMatematico();
     document.getElementById("termMat").textContent =
