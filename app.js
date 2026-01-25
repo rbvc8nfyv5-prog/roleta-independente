@@ -7,16 +7,19 @@
     12,35,3,26,0
   ];
 
+  // ================= TRINCAS (ATUALIZADAS) =================
   const trincasCentrais = [
-    [5,25,35],[26,33,36],[13,14,15],[19,27,29],[16,17,18],
-    [5,6,7],[11,21,31],[30,31,32],[1,2,3],[33,34,35],
-    [14,4,30],[2,22,26],[9,17,33],[3,20,21],[8,18,0]
+    [4,7,16],
+    [2,20,30],
+    [6,9,26],
+    [17,23,31],
+    [18,19,24],
+    [9,17,26]
   ];
 
   // ================= ESTADO =================
   let hist = [];
   let timeline = [];
-  let janela = 6;
 
   let scoreOps = { soma:0, sub:0, mult:0, div:0 };
 
@@ -26,7 +29,9 @@
   function vizinhos(n, d){
     const i = track.indexOf(n);
     let a=[];
-    for(let x=-d;x<=d;x++) a.push(track[(i+37+x)%37]);
+    for(let x=-d;x<=d;x++){
+      a.push(track[(i+37+x)%37]);
+    }
     return a;
   }
 
@@ -43,7 +48,7 @@
     const ultimo = hist[hist.length-1];
     const tBase = terminal(ultimo);
 
-    // pegar os números que vieram depois das 3 últimas ocorrências do terminal
+    // coletar números que vieram depois das 3 últimas ocorrências do terminal
     let chamados = [];
     let count = 0;
 
@@ -74,9 +79,9 @@
     return best;
   }
 
-  // ================= PAR 1 (INALTERADO) =================
+  // ================= PAR 1 (INALTERADO – LEITURA GERAL) =================
   function melhorParTimeline(){
-    const base = timeline.slice(0,janela);
+    let base = hist.slice(-6);
     let best=null;
 
     for(let a=0;a<10;a++){
@@ -96,10 +101,10 @@
 
   // ================= TERMINAL MATEMÁTICO =================
   function avaliarTerminalMatematico(){
-    if(timeline.length < 2) return null;
+    if(hist.length < 2) return null;
 
-    let a = terminal(timeline[0]);
-    let b = terminal(timeline[1]);
+    let a = terminal(hist[hist.length-1]);
+    let b = terminal(hist[hist.length-2]);
 
     let calc = {
       soma: (a+b)%10,
@@ -143,8 +148,6 @@
         </div>
       </div>
 
-      <div>🕒 Linha do tempo (14): <span id="tl"></span></div>
-
       <div style="border:1px solid #666;padding:8px;margin:6px 0">
         🎯 <b>Melhor Trinca (histórico do terminal)</b><br>
         <span id="trinca"></span>
@@ -175,8 +178,6 @@
 
   function add(n){
     hist.push(n);
-    timeline.unshift(n);
-    if(timeline.length>14) timeline.pop();
     render();
   }
 
@@ -190,13 +191,12 @@
   };
 
   document.getElementById("lim").onclick=()=>{
-    hist=[]; timeline=[];
+    hist=[];
     scoreOps={soma:0,sub:0,mult:0,div:0};
     render();
   };
 
   function render(){
-    document.getElementById("tl").textContent = timeline.join(" · ");
     if(!hist.length) return;
 
     const m = melhorTrincaPorTerminal();
