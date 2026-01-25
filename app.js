@@ -65,7 +65,7 @@
     return best;
   }
 
-  // ================= PAR 1 (LEITURA GERAL) =================
+  // ================= PAR 1 =================
   function melhorParTimeline(){
     const base = timeline.slice(0,janela);
     let best=null;
@@ -82,6 +82,29 @@
         }
       }
     }
+    return best;
+  }
+
+  // ================= TRINCA VINCULADA AO PAR =================
+  function trincaVinculadaAoPar(par){
+    if(!par) return null;
+
+    let numsPar = new Set();
+    track.forEach(n=>{
+      if(terminal(n)===par.a || terminal(n)===par.b){
+        numsPar.add(n);
+      }
+    });
+
+    let best=null;
+
+    mapaTrincas.forEach(t=>{
+      let score = cobertura(t.curto, [...numsPar]);
+      if(!best || score > best.score){
+        best = { trinca:t.trinca, score };
+      }
+    });
+
     return best;
   }
 
@@ -123,7 +146,7 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Trinca pelo Timing</h3>
+      <h3 style="text-align:center">CSM – Trinca + Par Vinculado</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
@@ -133,10 +156,7 @@
           <button id="lim">Limpar</button>
           Analisar últimos:
           <select id="jan">
-            <option>3</option>
-            <option>4</option>
-            <option>5</option>
-            <option selected>6</option>
+            <option>3</option><option>4</option><option>5</option><option selected>6</option>
           </select>
         </div>
       </div>
@@ -149,8 +169,9 @@
       </div>
 
       <div style="border:1px solid #666;padding:8px;margin:6px 0">
-        🔗 <b>Par 1 (leitura estrutural)</b><br>
-        <span id="par1"></span>
+        🔗 <b>Par 1</b><br>
+        <span id="par1"></span><br>
+        <small id="trincaPar"></small>
       </div>
 
       <div style="border:1px solid #aaa;padding:8px;margin:6px 0">
@@ -209,6 +230,10 @@
     const p = melhorParTimeline();
     document.getElementById("par1").textContent =
       p ? `Par 1: T${p.a}·T${p.b} (${p.score})` : "-";
+
+    const tv = trincaVinculadaAoPar(p);
+    document.getElementById("trincaPar").textContent =
+      tv ? `Trinca vinculada ao par: ${tv.trinca.join("-")}` : "";
 
     const tm = avaliarTerminalMatematico();
     document.getElementById("termMat").textContent =
