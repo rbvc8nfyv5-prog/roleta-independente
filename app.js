@@ -7,7 +7,7 @@
     12,35,3,26,0
   ];
 
-  // ================= TRINCAS (ATUALIZADAS) =================
+  // ================= TRINCAS (TIMING) =================
   const trincasCentrais = [
     [4,7,16],
     [2,20,30],
@@ -20,6 +20,7 @@
   // ================= ESTADO =================
   let hist = [];
   let timeline = [];
+  let janela = 6;
 
   let scoreOps = { soma:0, sub:0, mult:0, div:0 };
 
@@ -41,47 +42,32 @@
     return c;
   }
 
-  // ================= MELHOR TRINCA PELO HISTÓRICO DO TERMINAL =================
-  function melhorTrincaPorTerminal(){
-    if(hist.length < 2) return null;
+  // ================= TRINCA PELO TIMING =================
+  const mapaTrincas = trincasCentrais.map(trinca=>{
+    let curto = new Set();
+    trinca.forEach(c=>{
+      vizinhos(c,2).forEach(n=>curto.add(n));
+    });
+    return { trinca, curto };
+  });
 
-    const ultimo = hist[hist.length-1];
-    const tBase = terminal(ultimo);
-
-    // coletar números que vieram depois das 3 últimas ocorrências do terminal
-    let chamados = [];
-    let count = 0;
-
-    for(let i=hist.length-2; i>=0 && count<3; i--){
-      if(terminal(hist[i]) === tBase && hist[i+1] !== undefined){
-        chamados.push(hist[i+1]);
-        count++;
-      }
-    }
-
-    if(!chamados.length) return null;
-
+  function melhorTrincaTimeline(){
+    const base = timeline.slice(0,janela);
     let best=null;
 
-    trincasCentrais.forEach(trinca=>{
-      let area = new Set();
-      trinca.forEach(c=>{
-        vizinhos(c,4).forEach(n=>area.add(n));
-      });
-
-      const score = cobertura(area, chamados);
-
+    mapaTrincas.forEach(t=>{
+      const score = cobertura(t.curto, base);
       if(!best || score > best.score){
-        best = { trinca, score, chamados };
+        best = { trinca:t.trinca, score };
       }
     });
 
     return best;
   }
 
-  // ================= PAR 1 (INALTERADO – LEITURA GERAL) =================
+  // ================= PAR 1 (LEITURA GERAL) =================
   function melhorParTimeline(){
-    let base = hist.slice(-6);
+    const base = timeline.slice(0,janela);
     let best=null;
 
     for(let a=0;a<10;a++){
@@ -101,10 +87,10 @@
 
   // ================= TERMINAL MATEMÁTICO =================
   function avaliarTerminalMatematico(){
-    if(hist.length < 2) return null;
+    if(timeline.length < 2) return null;
 
-    let a = terminal(hist[hist.length-1]);
-    let b = terminal(hist[hist.length-2]);
+    let a = terminal(timeline[0]);
+    let b = terminal(timeline[1]);
 
     let calc = {
       soma: (a+b)%10,
@@ -137,7 +123,7 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Trinca pelo Histórico do Terminal</h3>
+      <h3 style="text-align:center">CSM – Trinca pelo Timing</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
@@ -145,11 +131,20 @@
         <div style="margin-top:6px">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
+          Analisar últimos:
+          <select id="jan">
+            <option>3</option>
+            <option>4</option>
+            <option>5</option>
+            <option selected>6</option>
+          </select>
         </div>
       </div>
 
+      <div>🕒 Linha do tempo (14): <span id="tl"></span></div>
+
       <div style="border:1px solid #666;padding:8px;margin:6px 0">
-        🎯 <b>Melhor Trinca (histórico do terminal)</b><br>
+        🎯 <b>Trinca do Timing</b><br>
         <span id="trinca"></span>
       </div>
 
@@ -167,6 +162,11 @@
     </div>
   `;
 
+  document.getElementById("jan").onchange=e=>{
+    janela=parseInt(e.target.value,10);
+    render();
+  };
+
   const nums=document.getElementById("nums");
   for(let n=0;n<=36;n++){
     let b=document.createElement("button");
@@ -178,6 +178,8 @@
 
   function add(n){
     hist.push(n);
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
     render();
   }
 
@@ -191,21 +193,22 @@
   };
 
   document.getElementById("lim").onclick=()=>{
-    hist=[];
+    hist=[]; timeline=[];
     scoreOps={soma:0,sub:0,mult:0,div:0};
     render();
   };
 
   function render(){
-    if(!hist.length) return;
+    document.getElementById("tl").textContent = timeline.join(" · ");
+    if(!timeline.length) return;
 
-    const m = melhorTrincaPorTerminal();
+    const m = melhorTrincaTimeline();
     document.getElementById("trinca").textContent =
-      m ? `Trinca: ${m.trinca.join("-")} | base: ${m.chamados.join(" · ")}` : "-";
+      m ? `${m.trinca.join("-")} | impactos: ${m.score}` : "-";
 
     const p = melhorParTimeline();
     document.getElementById("par1").textContent =
-      p ? `Par 1: T${p.a}·T${p.b}` : "-";
+      p ? `Par 1: T${p.a}·T${p.b} (${p.score})` : "-";
 
     const tm = avaliarTerminalMatematico();
     document.getElementById("termMat").textContent =
