@@ -7,8 +7,8 @@
     12,35,3,26,0
   ];
 
-  // ================= TRINCAS (TIMING) =================
-  const trincasCentrais = [
+  // ================= TRINCAS =================
+  const trincas = [
     [4,7,16],
     [2,20,30],
     [6,9,26],
@@ -22,11 +22,19 @@
   let timeline = [];
   let janela = 6;
 
-  let scoreOps = { soma:0, sub:0, mult:0, div:0 };
+  // estado por trinca
+  let estadoTrincas = {};
+
+  trincas.forEach(t=>{
+    estadoTrincas[t.join("-")] = {
+      wins: 0,
+      quebras: 0,
+      retornos: 0,
+      ultimo: null
+    };
+  });
 
   // ================= UTIL =================
-  const terminal = n => n % 10;
-
   function vizinhos(n, d){
     const i = track.indexOf(n);
     let a=[];
@@ -36,29 +44,69 @@
     return a;
   }
 
-  function cobertura(set, base){
-    let c=0;
-    base.forEach(n=>{ if(set.has(n)) c++; });
-    return c;
+  function areaTrinca(trinca){
+    let s = new Set();
+    trinca.forEach(c=>{
+      vizinhos(c,2).forEach(n=>s.add(n));
+    });
+    return s;
   }
 
-  // ================= TRINCA PELO TIMING =================
-  const mapaTrincas = trincasCentrais.map(trinca=>{
-    let curto = new Set();
-    trinca.forEach(c=>{
-      vizinhos(c,2).forEach(n=>curto.add(n));
-    });
-    return { trinca, curto };
-  });
+  function cobertura(area, base){
+    return base.filter(n=>area.has(n)).length;
+  }
 
+  // ================= ATUALIZA ESQUADRA =================
+  function atualizarEsquadra(n){
+    trincas.forEach(trinca=>{
+      const key = trinca.join("-");
+      const area = areaTrinca(trinca);
+      const st = estadoTrincas[key];
+
+      if(area.has(n)){
+        if(st.quebras > 0){
+          st.retornos = st.quebras;
+        }
+        st.wins++;
+        st.quebras = 0;
+        st.ultimo = "win";
+      } else {
+        st.quebras++;
+        st.ultimo = "break";
+      }
+    });
+  }
+
+  // ================= TEXTO ESQUADRA =================
+  function textoEsquadra(){
+    let linhas = [];
+
+    for(let k in estadoTrincas){
+      const st = estadoTrincas[k];
+      if(st.retornos > 0){
+        let nivel =
+          st.retornos === 1 ? "retorno de 1ª" :
+          st.retornos === 2 ? "retorno de 2ª" :
+          "retorno de 3ª+";
+        linhas.push(`${k} → ${nivel}`);
+      }
+    }
+
+    return linhas.length
+      ? linhas.join("<br>")
+      : "Nenhuma trinca em retorno no momento";
+  }
+
+  // ================= TRINCA DO TIMING =================
   function melhorTrincaTimeline(){
     const base = timeline.slice(0,janela);
     let best=null;
 
-    mapaTrincas.forEach(t=>{
-      const score = cobertura(t.curto, base);
+    trincas.forEach(trinca=>{
+      const area = areaTrinca(trinca);
+      const score = cobertura(area, base);
       if(!best || score > best.score){
-        best = { trinca:t.trinca, score };
+        best = { trinca, score };
       }
     });
 
@@ -72,11 +120,11 @@
 
     for(let a=0;a<10;a++){
       for(let b=a+1;b<10;b++){
-        let s=new Set();
+        let area=new Set();
         track.forEach(n=>{
-          if(terminal(n)===a || terminal(n)===b) s.add(n);
+          if(n%10===a || n%10===b) area.add(n);
         });
-        let sc=cobertura(s,base);
+        let sc=cobertura(area, base);
         if(!best || sc>best.score){
           best={a,b,score:sc};
         }
@@ -89,54 +137,20 @@
   function trincaVinculadaAoPar(par){
     if(!par) return null;
 
-    let numsPar = new Set();
+    let numsPar=new Set();
     track.forEach(n=>{
-      if(terminal(n)===par.a || terminal(n)===par.b){
-        numsPar.add(n);
-      }
+      if(n%10===par.a || n%10===par.b) numsPar.add(n);
     });
 
     let best=null;
-
-    mapaTrincas.forEach(t=>{
-      let score = cobertura(t.curto, [...numsPar]);
-      if(!best || score > best.score){
-        best = { trinca:t.trinca, score };
+    trincas.forEach(trinca=>{
+      const area=areaTrinca(trinca);
+      const sc=[...numsPar].filter(n=>area.has(n)).length;
+      if(!best || sc>best.score){
+        best={trinca,score:sc};
       }
     });
-
     return best;
-  }
-
-  // ================= TERMINAL MATEMÁTICO =================
-  function avaliarTerminalMatematico(){
-    if(timeline.length < 2) return null;
-
-    let a = terminal(timeline[0]);
-    let b = terminal(timeline[1]);
-
-    let calc = {
-      soma: (a+b)%10,
-      sub: Math.abs(a-b)%10,
-      mult: (a*b)%10,
-      div: (b!==0?Math.floor(a/b):0)%10
-    };
-
-    let prox = hist[hist.length-1];
-    if(prox !== undefined){
-      let t = terminal(prox);
-      if(t === calc.soma) scoreOps.soma++;
-      if(t === calc.sub) scoreOps.sub++;
-      if(t === calc.mult) scoreOps.mult++;
-      if(t === calc.div) scoreOps.div++;
-    }
-
-    let tops = Object.values(calc).map(t=>"T"+t);
-    let ops = Object.entries(scoreOps)
-      .sort((a,b)=>b[1]-a[1])
-      .map(x=>x[0].toUpperCase());
-
-    return { tops, ops };
   }
 
   // ================= UI =================
@@ -144,9 +158,9 @@
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
-  document.body.innerHTML=`
+  document.body.innerHTML = `
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Trinca + Par Vinculado</h3>
+      <h3 style="text-align:center">CSM – Esquadra das Trincas</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
@@ -154,10 +168,6 @@
         <div style="margin-top:6px">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
-          Analisar últimos:
-          <select id="jan">
-            <option>3</option><option>4</option><option>5</option><option selected>6</option>
-          </select>
         </div>
       </div>
 
@@ -174,19 +184,14 @@
         <small id="trincaPar"></small>
       </div>
 
-      <div style="border:1px solid #aaa;padding:8px;margin:6px 0">
-        🧮 <b>Terminal Matemático</b><br>
-        <span id="termMat"></span>
+      <div style="border:2px solid #0f0;padding:10px;margin:8px 0">
+        🟢 <b>Esquadra (retorno das trincas)</b><br>
+        <span id="esquadra"></span>
       </div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
     </div>
   `;
-
-  document.getElementById("jan").onchange=e=>{
-    janela=parseInt(e.target.value,10);
-    render();
-  };
 
   const nums=document.getElementById("nums");
   for(let n=0;n<=36;n++){
@@ -201,6 +206,7 @@
     hist.push(n);
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
+    atualizarEsquadra(n);
     render();
   }
 
@@ -215,29 +221,28 @@
 
   document.getElementById("lim").onclick=()=>{
     hist=[]; timeline=[];
-    scoreOps={soma:0,sub:0,mult:0,div:0};
+    for(let k in estadoTrincas){
+      estadoTrincas[k]={wins:0,quebras:0,retornos:0,ultimo:null};
+    }
     render();
   };
 
   function render(){
     document.getElementById("tl").textContent = timeline.join(" · ");
-    if(!timeline.length) return;
 
-    const m = melhorTrincaTimeline();
+    const t = melhorTrincaTimeline();
     document.getElementById("trinca").textContent =
-      m ? `${m.trinca.join("-")} | impactos: ${m.score}` : "-";
+      t ? `${t.trinca.join("-")} | impactos: ${t.score}` : "-";
 
     const p = melhorParTimeline();
     document.getElementById("par1").textContent =
-      p ? `Par 1: T${p.a}·T${p.b} (${p.score})` : "-";
+      p ? `Par 1: T${p.a}·T${p.b}` : "-";
 
     const tv = trincaVinculadaAoPar(p);
     document.getElementById("trincaPar").textContent =
       tv ? `Trinca vinculada ao par: ${tv.trinca.join("-")}` : "";
 
-    const tm = avaliarTerminalMatematico();
-    document.getElementById("termMat").textContent =
-      tm ? `Operações fortes: ${tm.ops.join(", ")} | Terminais: ${tm.tops.join(" · ")}` : "-";
+    document.getElementById("esquadra").innerHTML = textoEsquadra();
   }
 
 })();
