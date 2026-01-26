@@ -145,9 +145,10 @@
     return best;
   }
 
-  // ================= TRIO DE CENTRAIS =================
+  // ================= TRIO DE CENTRAIS (+ ZONA) =================
   function melhorTrioTimeline(){
     const base = timeline.slice(0,janela);
+    const zona = usarZonas ? zonaMaisForte() : null;
     let best=null;
 
     triosCentrais.forEach(trio=>{
@@ -155,9 +156,13 @@
       trio.forEach(c=>{
         vizinhos(c).forEach(n=>curto.add(n));
       });
-      let score=cobertura(curto,base);
-      if(!best || score>best.score){
-        best={trio,score};
+
+      let scoreTiming = cobertura(curto, base);
+      let scoreZona = zona ? cobertura(curto, [...zona.set]) : 0;
+      let scoreFinal = scoreTiming + (zona ? scoreZona : 0);
+
+      if(!best || scoreFinal > best.score){
+        best = { trio, score: scoreFinal };
       }
     });
 
@@ -171,7 +176,7 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Trinca + Par + Zonas</h3>
+      <h3 style="text-align:center">CSM – Trinca + Par + Trio + Zonas</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
@@ -268,7 +273,7 @@
 
     const trio = melhorTrioTimeline();
     document.getElementById("trio").textContent =
-      trio ? `${trio.trio.join("-")} | impactos: ${trio.score}` : "-";
+      trio ? `${trio.trio.join("-")} | score: ${trio.score}` : "-";
   }
 
 })();
