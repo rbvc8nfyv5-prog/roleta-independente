@@ -17,12 +17,23 @@
     [9,17,26]
   ];
 
+  // ================= TRIOS DE CENTRAIS (NOVO QUADRO) =================
+  const triosCentrais = [
+    [0,22,13],
+    [7,24,19],
+    [12,21,30],
+    [9,4,36],
+    [23,31,32],
+    [15,16,27],
+    [7,16,17],
+    [3,8,25],
+    [20,28,34]
+  ];
+
   // ================= ESTADO =================
   let hist = [];
   let timeline = [];
   let janela = 6;
-
-  let scoreOps = { soma:0, sub:0, mult:0, div:0 };
 
   // ================= UTIL =================
   const terminal = n => n % 10;
@@ -108,35 +119,27 @@
     return best;
   }
 
-  // ================= TERMINAL MATEMÁTICO =================
-  function avaliarTerminalMatematico(){
-    if(timeline.length < 2) return null;
+  // ================= TRIO DE CENTRAIS PELO TIMING (NOVO) =================
+  const mapaTrios = triosCentrais.map(trio=>{
+    let curto = new Set();
+    trio.forEach(c=>{
+      vizinhos(c,2).forEach(n=>curto.add(n));
+    });
+    return { trio, curto };
+  });
 
-    let a = terminal(timeline[0]);
-    let b = terminal(timeline[1]);
+  function melhorTrioTimeline(){
+    const base = timeline.slice(0,janela);
+    let best=null;
 
-    let calc = {
-      soma: (a+b)%10,
-      sub: Math.abs(a-b)%10,
-      mult: (a*b)%10,
-      div: (b!==0?Math.floor(a/b):0)%10
-    };
+    mapaTrios.forEach(t=>{
+      const score = cobertura(t.curto, base);
+      if(!best || score > best.score){
+        best = { trio:t.trio, score };
+      }
+    });
 
-    let prox = hist[hist.length-1];
-    if(prox !== undefined){
-      let t = terminal(prox);
-      if(t === calc.soma) scoreOps.soma++;
-      if(t === calc.sub) scoreOps.sub++;
-      if(t === calc.mult) scoreOps.mult++;
-      if(t === calc.div) scoreOps.div++;
-    }
-
-    let tops = Object.values(calc).map(t=>"T"+t);
-    let ops = Object.entries(scoreOps)
-      .sort((a,b)=>b[1]-a[1])
-      .map(x=>x[0].toUpperCase());
-
-    return { tops, ops };
+    return best;
   }
 
   // ================= UI =================
@@ -175,8 +178,8 @@
       </div>
 
       <div style="border:1px solid #aaa;padding:8px;margin:6px 0">
-        🧮 <b>Terminal Matemático</b><br>
-        <span id="termMat"></span>
+        🧩 <b>Trio de Centrais (Timing)</b><br>
+        <span id="trio"></span>
       </div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
@@ -215,13 +218,11 @@
 
   document.getElementById("lim").onclick=()=>{
     hist=[]; timeline=[];
-    scoreOps={soma:0,sub:0,mult:0,div:0};
     render();
   };
 
   function render(){
     document.getElementById("tl").textContent = timeline.join(" · ");
-    if(!timeline.length) return;
 
     const m = melhorTrincaTimeline();
     document.getElementById("trinca").textContent =
@@ -235,9 +236,9 @@
     document.getElementById("trincaPar").textContent =
       tv ? `Trinca vinculada ao par: ${tv.trinca.join("-")}` : "";
 
-    const tm = avaliarTerminalMatematico();
-    document.getElementById("termMat").textContent =
-      tm ? `Operações fortes: ${tm.ops.join(", ")} | Terminais: ${tm.tops.join(" · ")}` : "-";
+    const trio = melhorTrioTimeline();
+    document.getElementById("trio").textContent =
+      trio ? `${trio.trio.join("-")} | impactos: ${trio.score}` : "-";
   }
 
 })();
