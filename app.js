@@ -17,7 +17,7 @@
     [9,17,26]
   ];
 
-  // ================= TRIOS DE CENTRAIS (NOVO QUADRO) =================
+  // ================= TRIOS DE CENTRAIS =================
   const triosCentrais = [
     [0,22,13],
     [7,24,19],
@@ -34,14 +34,15 @@
   let hist = [];
   let timeline = [];
   let janela = 6;
+  let coberturaNivel = 2; // <<< NOVO (default = 2 vizinhos)
 
   // ================= UTIL =================
   const terminal = n => n % 10;
 
-  function vizinhos(n, d){
+  function vizinhos(n){
     const i = track.indexOf(n);
     let a=[];
-    for(let x=-d;x<=d;x++){
+    for(let x=-coberturaNivel; x<=coberturaNivel; x++){
       a.push(track[(i+37+x)%37]);
     }
     return a;
@@ -54,19 +55,22 @@
   }
 
   // ================= TRINCA PELO TIMING =================
-  const mapaTrincas = trincasCentrais.map(trinca=>{
-    let curto = new Set();
-    trinca.forEach(c=>{
-      vizinhos(c,2).forEach(n=>curto.add(n));
+  function montarMapaTrincas(){
+    return trincasCentrais.map(trinca=>{
+      let curto = new Set();
+      trinca.forEach(c=>{
+        vizinhos(c).forEach(n=>curto.add(n));
+      });
+      return { trinca, curto };
     });
-    return { trinca, curto };
-  });
+  }
 
   function melhorTrincaTimeline(){
     const base = timeline.slice(0,janela);
+    const mapa = montarMapaTrincas();
     let best=null;
 
-    mapaTrincas.forEach(t=>{
+    mapa.forEach(t=>{
       const score = cobertura(t.curto, base);
       if(!best || score > best.score){
         best = { trinca:t.trinca, score };
@@ -107,9 +111,10 @@
       }
     });
 
+    const mapa = montarMapaTrincas();
     let best=null;
 
-    mapaTrincas.forEach(t=>{
+    mapa.forEach(t=>{
       let score = cobertura(t.curto, [...numsPar]);
       if(!best || score > best.score){
         best = { trinca:t.trinca, score };
@@ -119,23 +124,19 @@
     return best;
   }
 
-  // ================= TRIO DE CENTRAIS PELO TIMING (NOVO) =================
-  const mapaTrios = triosCentrais.map(trio=>{
-    let curto = new Set();
-    trio.forEach(c=>{
-      vizinhos(c,2).forEach(n=>curto.add(n));
-    });
-    return { trio, curto };
-  });
-
+  // ================= TRIO DE CENTRAIS =================
   function melhorTrioTimeline(){
     const base = timeline.slice(0,janela);
     let best=null;
 
-    mapaTrios.forEach(t=>{
-      const score = cobertura(t.curto, base);
-      if(!best || score > best.score){
-        best = { trio:t.trio, score };
+    triosCentrais.forEach(trio=>{
+      let curto=new Set();
+      trio.forEach(c=>{
+        vizinhos(c).forEach(n=>curto.add(n));
+      });
+      let score=cobertura(curto,base);
+      if(!best || score>best.score){
+        best={trio,score};
       }
     });
 
@@ -154,12 +155,21 @@
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555"/>
-        <div style="margin-top:6px">
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
-          Analisar últimos:
+
+          Timing:
           <select id="jan">
             <option>3</option><option>4</option><option>5</option><option selected>6</option>
+          </select>
+
+          Cobertura:
+          <select id="cov">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
           </select>
         </div>
       </div>
@@ -188,6 +198,11 @@
 
   document.getElementById("jan").onchange=e=>{
     janela=parseInt(e.target.value,10);
+    render();
+  };
+
+  document.getElementById("cov").onchange=e=>{
+    coberturaNivel=parseInt(e.target.value,10);
     render();
   };
 
