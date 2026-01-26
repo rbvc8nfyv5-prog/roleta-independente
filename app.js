@@ -21,22 +21,22 @@
   let timeline = [];
   let janela = 6;
 
-  // histórico oculto da trinca atual
-  let estadoAtual = {
-    trinca: null,
-    area: null,
-    wins: 0,
-    quebras: 0,
-    ultimoRetorno: null
-  };
+  // estado oculto por trinca
+  let estadoTrincas = {};
+  trincas.forEach(t=>{
+    estadoTrincas[t.join("-")] = {
+      wins: 0,
+      quebras: 0,
+      ultimo: null,
+      ultimoRetorno: null
+    };
+  });
 
   // ================= UTIL =================
   function vizinhos(n, d){
     const i = track.indexOf(n);
     let a=[];
-    for(let x=-d;x<=d;x++){
-      a.push(track[(i+37+x)%37]);
-    }
+    for(let x=-d;x<=d;x++) a.push(track[(i+37+x)%37]);
     return a;
   }
 
@@ -48,7 +48,42 @@
     return s;
   }
 
-  // ================= TRINCA PELO TIMING =================
+  // ================= ATUALIZA HISTÓRICO OCULTO =================
+  function atualizarEstados(n){
+    trincas.forEach(trinca=>{
+      const key = trinca.join("-");
+      const area = areaTrinca(trinca);
+      const st = estadoTrincas[key];
+
+      if(area.has(n)){
+        if(st.quebras > 0){
+          st.ultimoRetorno = st.quebras;
+        }
+        st.wins++;
+        st.quebras = 0;
+        st.ultimo = "win";
+      } else {
+        st.quebras++;
+        st.ultimo = "break";
+      }
+    });
+  }
+
+  // ================= ESQUADRA (DECISÃO) =================
+  function esquadraJogada(){
+    for(let k in estadoTrincas){
+      const st = estadoTrincas[k];
+      if(st.ultimoRetorno === 1){
+        return `RETORNO DE PRIMEIRA → JOGAR ${k}`;
+      }
+      if(st.ultimoRetorno === 2){
+        return `RETORNO DE SEGUNDA → JOGAR ${k}`;
+      }
+    }
+    return "Sem retorno claro no momento";
+  }
+
+  // ================= TRINCA DO TIMING =================
   function melhorTrincaTimeline(){
     const base = timeline.slice(0,janela);
     let best=null;
@@ -57,50 +92,31 @@
       const area = areaTrinca(trinca);
       let score = base.filter(n=>area.has(n)).length;
       if(!best || score > best.score){
-        best = { trinca, area, score };
+        best = { trinca, score };
       }
     });
 
     return best;
   }
 
-  // ================= ATUALIZA HISTÓRICO OCULTO =================
-  function atualizarEstado(n, novaTrinca){
-    if(
-      !estadoAtual.trinca ||
-      novaTrinca.join("-") !== estadoAtual.trinca.join("-")
-    ){
-      estadoAtual = {
-        trinca: novaTrinca,
-        area: areaTrinca(novaTrinca),
-        wins: 0,
-        quebras: 0,
-        ultimoRetorno: null
-      };
-    }
+  // ================= PAR 1 =================
+  function melhorParTimeline(){
+    const base = timeline.slice(0,janela);
+    let best=null;
 
-    if(estadoAtual.area.has(n)){
-      if(estadoAtual.quebras > 0){
-        estadoAtual.ultimoRetorno = estadoAtual.quebras;
+    for(let a=0;a<10;a++){
+      for(let b=a+1;b<10;b++){
+        let area=new Set();
+        track.forEach(n=>{
+          if(n%10===a || n%10===b) area.add(n);
+        });
+        let sc = base.filter(n=>area.has(n)).length;
+        if(!best || sc>best.score){
+          best={a,b,score:sc};
+        }
       }
-      estadoAtual.wins++;
-      estadoAtual.quebras = 0;
-    } else {
-      estadoAtual.quebras++;
     }
-  }
-
-  function textoEsquadra(){
-    if(estadoAtual.ultimoRetorno === 1){
-      return "Trinca quebrou → jogar em RETORNO DE PRIMEIRA";
-    }
-    if(estadoAtual.ultimoRetorno === 2){
-      return "Trinca quebrou → jogar em RETORNO DE SEGUNDA";
-    }
-    if(estadoAtual.quebras > 0){
-      return "Trinca em quebra (aguardar retorno)";
-    }
-    return "Trinca em sequência de vitórias";
+    return best;
   }
 
   // ================= UI =================
@@ -110,7 +126,7 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Esquadra da Trinca</h3>
+      <h3 style="text-align:center">CSM – Esquadra Operacional</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
@@ -135,8 +151,13 @@
         <span id="trinca"></span>
       </div>
 
-      <div style="border:2px solid #0f0;padding:10px;margin:8px 0;font-size:16px">
-        📐 <b>Esquadra</b><br>
+      <div style="border:1px solid #666;padding:8px;margin:6px 0">
+        🔗 <b>Par 1</b><br>
+        <span id="par1"></span>
+      </div>
+
+      <div style="border:3px solid #0f0;padding:12px;margin:10px 0;font-size:18px">
+        📐 <b>ESQUADRA</b><br>
         <span id="esquadra"></span>
       </div>
 
@@ -162,11 +183,7 @@
     hist.push(n);
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
-
-    const melhor = melhorTrincaTimeline();
-    if(melhor){
-      atualizarEstado(n, melhor.trinca);
-    }
+    atualizarEstados(n);
     render();
   }
 
@@ -181,18 +198,24 @@
 
   document.getElementById("lim").onclick=()=>{
     hist=[]; timeline=[];
-    estadoAtual = { trinca:null, area:null, wins:0, quebras:0, ultimoRetorno:null };
+    trincas.forEach(t=>{
+      estadoTrincas[t.join("-")]={wins:0,quebras:0,ultimo:null,ultimoRetorno:null};
+    });
     render();
   };
 
   function render(){
     document.getElementById("tl").textContent = timeline.join(" · ");
 
-    const melhor = melhorTrincaTimeline();
+    const t = melhorTrincaTimeline();
     document.getElementById("trinca").textContent =
-      melhor ? `${melhor.trinca.join("-")} | impactos: ${melhor.score}` : "-";
+      t ? `${t.trinca.join("-")} | impactos: ${t.score}` : "-";
 
-    document.getElementById("esquadra").textContent = textoEsquadra();
+    const p = melhorParTimeline();
+    document.getElementById("par1").textContent =
+      p ? `Par 1: T${p.a}·T${p.b}` : "-";
+
+    document.getElementById("esquadra").textContent = esquadraJogada();
   }
 
 })();
