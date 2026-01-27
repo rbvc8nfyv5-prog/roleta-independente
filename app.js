@@ -38,6 +38,17 @@
     [20,28,34]
   ];
 
+  // ================= TRINCAS FIXAS DO PAR =================
+  const trincasParFixas = [
+    [11,20,21],
+    [2,18,26],
+    [3,33,36],
+    [4,11,20],
+    [2,5,35],
+    [7,19,27],
+    [8,26,14]
+  ];
+
   // ================= ESTADO =================
   let hist = [];
   let timeline = [];
@@ -75,7 +86,7 @@
     return best;
   }
 
-  // ================= TRINCA PELO TIMING (+ ZONA) =================
+  // ================= TRINCA DO TIMING =================
   function melhorTrincaTimeline(){
     const base = timeline.slice(0,janela);
     const zona = usarZonas ? zonaMaisForte() : null;
@@ -119,9 +130,11 @@
     return best;
   }
 
-  // ================= TRINCA VINCULADA AO PAR =================
+  // ================= TRINCA FIXA VINCULADA AO PAR =================
   function trincaVinculadaAoPar(par){
     if(!par) return null;
+
+    const base = timeline.slice(0,janela);
 
     let numsPar = new Set();
     track.forEach(n=>{
@@ -131,12 +144,16 @@
     });
 
     let best=null;
-    trincasCentrais.forEach(trinca=>{
+
+    trincasParFixas.forEach(trinca=>{
       let curto=new Set();
       trinca.forEach(c=>{
-        vizinhos(c).forEach(n=>curto.add(n));
+        vizinhos(c).forEach(n=>{
+          if(numsPar.has(n)) curto.add(n);
+        });
       });
-      let score = cobertura(curto, [...numsPar]);
+
+      let score = cobertura(curto, base);
       if(!best || score > best.score){
         best = { trinca, score };
       }
@@ -145,7 +162,7 @@
     return best;
   }
 
-  // ================= TRIO DE CENTRAIS (+ ZONA) =================
+  // ================= TRIO DE CENTRAIS =================
   function melhorTrioTimeline(){
     const base = timeline.slice(0,janela);
     const zona = usarZonas ? zonaMaisForte() : null;
@@ -269,7 +286,7 @@
 
     const tv = trincaVinculadaAoPar(p);
     document.getElementById("trincaPar").textContent =
-      tv ? `Trinca vinculada ao par: ${tv.trinca.join("-")}` : "";
+      tv ? `Trinca vinculada ao par: ${tv.trinca.join("-")} (${tv.score})` : "-";
 
     const trio = melhorTrioTimeline();
     document.getElementById("trio").textContent =
