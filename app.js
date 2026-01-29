@@ -8,7 +8,6 @@
   ];
 
   // ================= TRINCAS =================
-  // Trinca de TIMING
   const trincasTiming = [
     [4,7,16],
     [2,20,30],
@@ -18,7 +17,6 @@
     [9,17,26]
   ];
 
-  // Trinca de CENTRAIS (fixas, como antes)
   const trincasCentrais = [
     [0,22,13],
     [7,24,19],
@@ -31,7 +29,6 @@
     [20,28,34]
   ];
 
-  // Trincas fixas vinculadas ao PAR
   const trincasParFixas = [
     [11,20,21],
     [2,18,26],
@@ -48,6 +45,8 @@
   let janela = 6;
   let coberturaNivel = 2;
 
+  const decayPesos = [1, 0.75, 0.55, 0.4, 0.25, 0.15];
+
   // ================= UTIL =================
   const terminal = n => n % 10;
   const idx = n => track.indexOf(n);
@@ -61,20 +60,30 @@
     return a;
   }
 
-  function cobertura(set, base){
-    let c=0;
-    base.forEach(n=>{ if(set.has(n)) c++; });
-    return c;
-  }
-
+  // ================= SCORE COM MUDANÇA =================
   function scoreTrinca(trinca){
-    const base = timeline.slice(0,janela);
-    let s = new Set();
-    trinca.forEach(c=>vizinhos(c).forEach(n=>s.add(n)));
-    return cobertura(s, base);
+    let zona = new Set();
+    trinca.forEach(c=>vizinhos(c).forEach(n=>zona.add(n)));
+
+    let score6 = 0;
+    let score3 = 0;
+
+    timeline.slice(0,janela).forEach((n,i)=>{
+      if(zona.has(n)){
+        score6 += decayPesos[i] || 0;
+        if(i < 3) score3 += decayPesos[i] || 0;
+      }
+    });
+
+    // detector de enfraquecimento
+    let penalidade = 0;
+    if(score6 > 0 && score3 < score6 * 0.6){
+      penalidade = score6 * 0.35;
+    }
+
+    return score6 - penalidade;
   }
 
-  // ================= MELHORES LEITURAS =================
   function melhorTrinca(lista){
     let best=null;
     lista.forEach(trinca=>{
@@ -86,6 +95,7 @@
     return best;
   }
 
+  // ================= PAR =================
   function melhorParTimeline(){
     const base = timeline.slice(0,janela);
     let best=null;
@@ -96,7 +106,12 @@
         track.forEach(n=>{
           if(terminal(n)===a || terminal(n)===b) s.add(n);
         });
-        let sc=cobertura(s,base);
+
+        let sc = 0;
+        base.forEach((n,i)=>{
+          if(s.has(n)) sc += decayPesos[i] || 0;
+        });
+
         if(!best || sc>best.score){
           best={a,b,score:sc};
         }
@@ -108,28 +123,30 @@
   function trincaVinculadaAoPar(par){
     if(!par) return null;
 
-    const base = timeline.slice(0,janela);
-    let numsPar = new Set();
-
+    let universo = new Set();
     track.forEach(n=>{
       if(terminal(n)===par.a || terminal(n)===par.b){
-        numsPar.add(n);
+        universo.add(n);
       }
     });
 
     let best=null;
 
     trincasParFixas.forEach(trinca=>{
-      let s=new Set();
+      let zona=new Set();
       trinca.forEach(c=>{
         vizinhos(c).forEach(n=>{
-          if(numsPar.has(n)) s.add(n);
+          if(universo.has(n)) zona.add(n);
         });
       });
 
-      let sc=cobertura(s,base);
-      if(!best || sc > best.score){
-        best = { trinca, score: sc };
+      let sc=0;
+      timeline.slice(0,janela).forEach((n,i)=>{
+        if(zona.has(n)) sc += decayPesos[i] || 0;
+      });
+
+      if(!best || sc>best.score){
+        best={trinca,score:sc};
       }
     });
 
@@ -143,44 +160,34 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM – Leitura Pura</h3>
+      <h3 style="text-align:center">CSM – Leitura Dinâmica</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
+        <div style="margin-top:6px">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
-
-          Timing:
+          Janela:
           <select id="jan">
             <option>3</option><option>4</option><option>5</option>
             <option selected>6</option>
           </select>
-
-          Cobertura:
-          <select id="cov">
-            <option>1</option><option selected>2</option>
-            <option>3</option><option>4</option>
-          </select>
         </div>
       </div>
 
-      <div>🕒 Linha do tempo (14): <span id="tl"></span></div>
+      <div>🕒 Timeline (14): <span id="tl"></span></div>
 
       <div style="border:1px solid #666;padding:8px;margin:6px 0">
-        🎯 <b>Trinca do Timing</b><br>
-        <span id="timingBox"></span>
+        🎯 Trinca Timing: <span id="timingBox"></span>
       </div>
 
       <div style="border:1px solid #666;padding:8px;margin:6px 0">
-        🧩 <b>Trinca de Centrais</b><br>
-        <span id="centraisBox"></span>
+        🧩 Trinca Centrais: <span id="centraisBox"></span>
       </div>
 
       <div style="border:1px solid #666;padding:8px;margin:6px 0">
-        🔗 <b>Par 1</b><br>
-        <span id="par1"></span><br>
+        🔗 Par 1: <span id="par1"></span><br>
         <small id="trincaPar"></small>
       </div>
 
@@ -193,18 +200,12 @@
     render();
   };
 
-  document.getElementById("cov").onchange=e=>{
-    coberturaNivel=parseInt(e.target.value,10);
-    render();
-  };
-
-  const nums=document.getElementById("nums");
   for(let n=0;n<=36;n++){
     let b=document.createElement("button");
     b.textContent=n;
     b.style="padding:8px;background:#333;color:#fff";
     b.onclick=()=>add(n);
-    nums.appendChild(b);
+    document.getElementById("nums").appendChild(b);
   }
 
   function add(n){
@@ -233,19 +234,19 @@
 
     const t = melhorTrinca(trincasTiming);
     document.getElementById("timingBox").textContent =
-      t ? `${t.trinca.join("-")} | score ${t.score}` : "-";
+      t ? `${t.trinca.join("-")} | ${t.score.toFixed(2)}` : "-";
 
     const c = melhorTrinca(trincasCentrais);
     document.getElementById("centraisBox").textContent =
-      c ? `${c.trinca.join("-")} | score ${c.score}` : "-";
+      c ? `${c.trinca.join("-")} | ${c.score.toFixed(2)}` : "-";
 
     const p = melhorParTimeline();
     document.getElementById("par1").textContent =
-      p ? `Par 1: T${p.a}·T${p.b} (${p.score})` : "-";
+      p ? `T${p.a}·T${p.b} (${p.score.toFixed(2)})` : "-";
 
     const tv = trincaVinculadaAoPar(p);
     document.getElementById("trincaPar").textContent =
-      tv ? `Trinca vinculada ao par: ${tv.trinca.join("-")} (${tv.score})` : "-";
+      tv ? `Trinca vinculada: ${tv.trinca.join("-")} | ${tv.score.toFixed(2)}` : "-";
   }
 
   render();
