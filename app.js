@@ -20,7 +20,8 @@
     [9,17,26]
   ];
 
-  // ================= EIXOS (CORRIGIDOS: CENTRAL NO MEIO + SEM DUPLICAR) =================
+  // ================= EIXOS (CORRIGIDOS + FECHO INTERNO) =================
+  // FECHO é interno (não exibido), só para cobrir T0..T9 sem buraco.
   const eixos = [
     {
       nome: "ZERO",
@@ -44,14 +45,21 @@
       nome: "ORPHELINS",
       trios: [
         [20,14,31],
-        [9,22,18],   // 22 central (corrigido)
+        [9,22,18],   // 22 central
         [7,29,28],
-        [12,35,3]    // voltou o trio do 35
+        [12,35,3]    // 35 central
+      ]
+    },
+    {
+      // eixo interno para não deixar números sem eixo (ex.: 26)
+      nome: "FECHO",
+      trios: [
+        [3,26,0]
       ]
     }
   ];
 
-  // número -> eixo
+  // número -> eixo (cobre TODOS os números)
   const eixoPorNumero = (() => {
     const m = new Map();
     eixos.forEach(e => e.trios.flat().forEach(n => m.set(n, e.nome)));
@@ -78,18 +86,19 @@
     return best;
   }
 
-  // ================= T POR EIXO =================
+  // ================= T POR EIXO (T0..T9) =================
   function statsTerminaisPorEixo(){
     const base = timeline.slice(0, janela);
     const cont = {
       ZERO: Array(10).fill(0),
       TIERS: Array(10).fill(0),
-      ORPHELINS: Array(10).fill(0)
+      ORPHELINS: Array(10).fill(0),
+      FECHO: Array(10).fill(0)
     };
 
     base.forEach(n=>{
-      const e = eixoPorNumero.get(n);
-      if(e) cont[e][terminal(n)]++;
+      const e = eixoPorNumero.get(n) || "FECHO";
+      cont[e][terminal(n)]++;
     });
 
     return cont;
@@ -101,6 +110,7 @@
     let candidatos = [];
 
     eixos.forEach(e=>{
+      // FECHO participa do score, mas NÃO é exibido
       e.trios.forEach(trio=>{
         const score =
           cont[e.nome][terminal(trio[0])] +
@@ -122,6 +132,7 @@
       }
     };
 
+    // garante cobertura dos 3 eixos visuais
     ["ZERO","TIERS","ORPHELINS"].forEach(nome=>{
       candidatos.filter(x=>x.eixo===nome).slice(0,2).forEach(add);
     });
@@ -131,7 +142,8 @@
       add(c);
     }
 
-    return pick.slice(0,9);
+    // não exibir FECHO
+    return pick.filter(x=>x.eixo!=="FECHO").slice(0,9);
   }
 
   // ================= UI =================
@@ -141,7 +153,7 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM — Timing + Trios por Eixo</h3>
+      <h3 style="text-align:center">CSM — Timing + Trios por Eixo (T0–T9)</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Histórico:
