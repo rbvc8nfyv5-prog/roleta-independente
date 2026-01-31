@@ -20,11 +20,35 @@
     [9,17,26]
   ];
 
-  // ================= EIXOS (FIXOS) =================
+  // ================= EIXOS (CORRIGIDOS: CENTRAL NO MEIO + SEM DUPLICAR) =================
   const eixos = [
-    { nome: "ZERO", trios: [[0,32,15],[15,19,4],[21,2,25],[17,34,6]] },
-    { nome: "TIERS", trios: [[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
-    { nome: "ORPHELINS", trios: [[20,14,31],[31,9,22],[29,7,28],[12,35,3]] }
+    {
+      nome: "ZERO",
+      trios: [
+        [0,32,15],
+        [19,4,21],   // 4 central
+        [2,25,17],   // 25 central
+        [34,6,27]    // 6 central
+      ]
+    },
+    {
+      nome: "TIERS",
+      trios: [
+        [13,36,11],
+        [30,8,23],
+        [10,5,24],
+        [16,33,1]
+      ]
+    },
+    {
+      nome: "ORPHELINS",
+      trios: [
+        [20,14,31],
+        [9,22,18],   // 22 central (corrigido)
+        [7,29,28],
+        [12,35,3]    // voltou o trio do 35
+      ]
+    }
   ];
 
   // número -> eixo
@@ -98,7 +122,6 @@
       }
     };
 
-    // garante cobertura dos 3 eixos
     ["ZERO","TIERS","ORPHELINS"].forEach(nome=>{
       candidatos.filter(x=>x.eixo===nome).slice(0,2).forEach(add);
     });
