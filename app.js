@@ -48,6 +48,15 @@
     return best;
   }
 
+  // ================= T ATIVOS DA MESA =================
+  function terminaisAtivos(){
+    const set = new Set();
+    timeline.slice(0,janela).forEach(n=>{
+      set.add(terminal(n));
+    });
+    return [...set];
+  }
+
   // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
@@ -55,18 +64,17 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:800px;margin:auto">
-      <h3 style="text-align:center">CSM — Trinca Timing + Trios de Eixo</h3>
+      <h3 style="text-align:center">CSM — Trinca Timing + Trios da Mesa</h3>
 
       <div>🕒 Timeline: <span id="tl"></span></div>
 
       <div style="border:2px solid #00e676;padding:10px;margin:10px 0">
         🎯 <b>TRINCA TIMING (TEAM)</b><br>
-        <span id="trincaBox"></span><br>
-        <small id="centralBox"></small>
+        <span id="trincaBox"></span>
       </div>
 
       <div style="border:2px solid #e53935;padding:10px;margin:10px 0">
-        🧭 <b>TRIOS DO EIXO (MAPA)</b>
+        🧭 <b>TRIOS (MAPA DA MESA)</b>
         <div id="triosBox"></div>
       </div>
 
@@ -93,23 +101,23 @@
     if(!timeline.length) return;
 
     const t = trincaTimingAtiva();
-    if(!t) return;
-
-    const trinca = t.trinca;
-    const central = trinca[1]; // CENTRAL DO TIME
-    const term = terminal(central);
-
     document.getElementById("trincaBox").textContent =
-      `${trinca.join(" - ")} | hits ${t.score}`;
+      t ? `${t.trinca.join(" - ")} | hits ${t.score}` : "-";
 
-    document.getElementById("centralBox").textContent =
-      `Central do time: ${central} (T${term})`;
+    const ativos = terminaisAtivos();
+    let html = "";
 
-    const trios = mapaTriosPorT[term] || [];
+    ativos.forEach(T=>{
+      if(mapaTriosPorT[T]){
+        html += `<div style="margin-top:6px"><b>T${T}</b></div>`;
+        mapaTriosPorT[T].forEach(tr=>{
+          html += `<div style="margin-left:10px">${tr.join(" - ")}</div>`;
+        });
+      }
+    });
+
     document.getElementById("triosBox").innerHTML =
-      trios.length
-        ? trios.map(tr=>`<div>${tr.join(" - ")}</div>`).join("")
-        : `<div>Sem trios mapeados para T${term}</div>`;
+      html || "<div>Nenhum trio mapeado</div>";
   }
 
   render();
