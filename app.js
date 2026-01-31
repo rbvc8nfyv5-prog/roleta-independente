@@ -45,18 +45,35 @@
     }
   ];
 
-  const eixoPorNumero = (() => {
-    const m = new Map();
-    eixos.forEach(e => e.trios.flat().forEach(n => m.set(n, e.nome)));
-    return m;
-  })();
-
   // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
-  let filtrosT = new Set(); // Ts selecionados
 
-  // ================= TRIOS SELECIONADOS (ADERÊNCIA AO CONJUNTO DE T) =================
+  let filtrosT = new Set();   // Ts ativos
+  let autoTCount = 0;        // 0 = manual | 2–7 = automático
+
+  // ================= AUTO TERMINAIS =================
+  function calcularAutoTerminais(){
+    if (autoTCount < 2) return;
+
+    const set = new Set();
+    for (const n of timeline) {
+      set.add(terminal(n));
+      if (set.size >= autoTCount) break;
+    }
+
+    filtrosT = set;
+    atualizarBotoesT();
+  }
+
+  function atualizarBotoesT(){
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t = parseInt(b.dataset.t,10);
+      b.style.background = filtrosT.has(t) ? "#00e676" : "#333";
+    });
+  }
+
+  // ================= TRIOS POR ADERÊNCIA =================
   function triosSelecionados9(){
     let candidatos = [];
 
@@ -64,14 +81,12 @@
       e.trios.forEach(trio=>{
         const trioTs = trio.map(terminal);
 
-        // interseção entre trio e Ts selecionados
         let inter = 0;
         trioTs.forEach(t=>{
           if (!filtrosT.size || filtrosT.has(t)) inter++;
         });
 
         const score = inter / trioTs.length;
-
         candidatos.push({ eixo: e.nome, trio, score });
       });
     });
@@ -89,10 +104,8 @@
       }
     };
 
-    // equilíbrio entre eixos
     ["ZERO","TIERS","ORPHELINS"].forEach(nome=>{
-      candidatos
-        .filter(x=>x.eixo===nome && x.score>0)
+      candidatos.filter(x=>x.eixo===nome && x.score>0)
         .slice(0,3)
         .forEach(add);
     });
@@ -110,19 +123,26 @@
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
-  document.body.innerHTML=`
+  document.body.innerHTML = `
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM — Leitura por Conjunto de Terminais</h3>
+      <h3 style="text-align:center">CSM — Auto / Manual Terminais</h3>
 
       <div style="border:1px solid #444;padding:8px">
         📋 Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px">
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
+
           Janela:
           <select id="jan">
             ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
+          </select>
+
+          Auto T:
+          <select id="autoT">
+            <option value="0">Manual</option>
+            ${[2,3,4,5,6,7].map(n=>`<option value="${n}">${n}</option>`).join("")}
           </select>
         </div>
       </div>
@@ -130,7 +150,7 @@
       <div style="margin:8px 0">🕒 Timeline (14): <span id="tl"></span></div>
 
       <div style="border:2px solid #00e676;padding:8px;margin:10px 0">
-        🎯 <b>Selecionar Terminais (T)</b>
+        🎯 <b>Terminais (Manual ou Automático)</b>
         <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
@@ -150,19 +170,31 @@
     </div>
   `;
 
-  // Botões T0–T9
+  // ================= BOTÕES T0–T9 =================
   const btnT = document.getElementById("btnT");
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
-    b.textContent="T"+t;
+    b.dataset.t = t;
+    b.textContent = "T"+t;
     b.style="padding:6px;background:#333;color:#fff;border:1px solid #555";
     b.onclick=()=>{
+      autoTCount = 0;
+      document.getElementById("autoT").value = "0";
       filtrosT.has(t) ? filtrosT.delete(t) : filtrosT.add(t);
-      b.style.background = filtrosT.has(t) ? "#00e676" : "#333";
+      atualizarBotoesT();
       render();
     };
     btnT.appendChild(b);
   }
+
+  // ================= EVENTOS =================
+  document.getElementById("autoT").onchange=e=>{
+    autoTCount = parseInt(e.target.value,10);
+    filtrosT.clear();
+    if(autoTCount>0) calcularAutoTerminais();
+    atualizarBotoesT();
+    render();
+  };
 
   document.getElementById("jan").onchange=e=>{
     janela=parseInt(e.target.value,10);
@@ -180,6 +212,7 @@
   function add(n){
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
+    if(autoTCount>0) calcularAutoTerminais();
     render();
   }
 
@@ -195,18 +228,30 @@
   document.getElementById("lim").onclick=()=>{
     timeline=[];
     filtrosT.clear();
-    document.querySelectorAll("#btnT button").forEach(b=>b.style.background="#333");
+    autoTCount=0;
+    document.getElementById("autoT").value="0";
+    atualizarBotoesT();
     render();
   };
 
   function render(){
     document.getElementById("tl").textContent = timeline.join(" · ");
+
     const trios = triosSelecionados9();
     const por = { ZERO:[], TIERS:[], ORPHELINS:[] };
-    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
-    document.getElementById("colZERO").innerHTML = por.ZERO.map(x=>`<div>${x}</div>`).join("");
-    document.getElementById("colTIERS").innerHTML = por.TIERS.map(x=>`<div>${x}</div>`).join("");
-    document.getElementById("colORPH").innerHTML = por.ORPHELINS.map(x=>`<div>${x}</div>`).join("");
+
+    trios.forEach(x=>{
+      por[x.eixo].push(x.trio.join("-"));
+    });
+
+    document.getElementById("colZERO").innerHTML =
+      por.ZERO.map(x=>`<div>${x}</div>`).join("");
+
+    document.getElementById("colTIERS").innerHTML =
+      por.TIERS.map(x=>`<div>${x}</div>`).join("");
+
+    document.getElementById("colORPH").innerHTML =
+      por.ORPHELINS.map(x=>`<div>${x}</div>`).join("");
   }
 
   render();
