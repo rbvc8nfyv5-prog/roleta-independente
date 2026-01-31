@@ -2,17 +2,15 @@
 
   // ================= CONFIG BASE =================
   const track = [
-    32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,
-    23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,
-    12,35,3,26,0
+    32,15,19,4,21,2,25,17,34,6,
+    27,13,36,11,30,8,23,10,5,24,
+    16,33,1,20,14,31,9,22,18,29,
+    7,28,12,35,3,26,0
   ];
-
-  // ================= TERMINAIS PERMITIDOS =================
-  const faixaTerminais = new Set([0,2,4,6,7]);
 
   const terminal = n => n % 10;
 
-  // ================= TRINCAS TIMING =================
+  // ================= TRINCAS TIMING (TEAM) =================
   const trincasTiming = [
     [4,7,16],
     [2,20,30],
@@ -22,102 +20,59 @@
     [9,17,26]
   ];
 
-  // ================= EIXOS + TRIOS =================
-  const eixos = [
-    {
-      nome: "ZERO",
-      trios: [[0,32,15],[15,19,4],[21,2,25],[17,34,6]]
-    },
-    {
-      nome: "TIERS",
-      trios: [[13,36,11],[30,8,23],[10,5,24],[16,33,1]]
-    },
-    {
-      nome: "ORPHELINS",
-      trios: [[20,14,31],[31,9,22],[29,7,28],[12,35,3]]
-    }
-  ];
+  // ================= MAPA FIXO DE TRIOS POR T =================
+  const mapaTriosPorT = {
+    0: [[26,0,32],[15,19,4],[11,30,8],[10,5,24],[14,31,9],[12,35,3],[3,26,0],[35,3,26]],
+    2: [[32,2,25],[21,2,25],[22,18,29],[31,9,22],[2,20,30],[14,31,9],[26,0,32],[3,26,0]],
+    4: [[19,4,21],[15,19,4],[4,21,2],[14,31,9],[20,14,31],[30,8,23],[11,30,8],[15,19,4]],
+    6: [[34,6,27],[17,34,6],[13,36,11],[36,11,30],[6,9,26],[9,17,26],[35,3,26],[3,26,0]],
+    7: [[29,7,28],[17,34,6],[9,17,26],[20,14,31],[14,31,9],[12,35,3],[35,3,26]]
+  };
 
   // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
 
-  // ================= UTIL =================
-  function dentroDaFaixa(n){
-    return faixaTerminais.has(terminal(n));
-  }
-
-  // ================= CENTRAIS TIMING =================
-  function centraisTimingValidos(){
-    let res = new Set();
-    trincasTiming.forEach(t=>{
-      t.forEach(n=>{
-        if(dentroDaFaixa(n)) res.add(n);
+  // ================= TRINCA TIMING ATIVA =================
+  function trincaTimingAtiva(){
+    let best = null;
+    trincasTiming.forEach(trinca=>{
+      let score = 0;
+      timeline.slice(0,janela).forEach(n=>{
+        if(trinca.includes(n)) score++;
       });
+      if(!best || score > best.score){
+        best = { trinca, score };
+      }
     });
-    return [...res];
-  }
-
-  // ================= TRIOS VALIDOS =================
-  function triosValidos(){
-    let lista = [];
-    eixos.forEach(e=>{
-      e.trios.forEach(t=>{
-        if(t.some(n=>dentroDaFaixa(n))){
-          lista.push({
-            eixo: e.nome,
-            trio: t
-          });
-        }
-      });
-    });
-    return lista;
+    return best;
   }
 
   // ================= UI =================
-  document.body.style.background = "#111";
-  document.body.style.color = "#fff";
-  document.body.style.fontFamily = "sans-serif";
+  document.body.style.background="#111";
+  document.body.style.color="#fff";
+  document.body.style.fontFamily="sans-serif";
 
-  document.body.innerHTML = `
-    <div style="padding:10px;max-width:780px;margin:auto">
-      <h3 style="text-align:center">CSM — Faixa T0 T2 T4 T6 T7</h3>
+  document.body.innerHTML=`
+    <div style="padding:10px;max-width:800px;margin:auto">
+      <h3 style="text-align:center">CSM — Trinca Timing + Trios de Eixo</h3>
 
-      <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
-        📋 Histórico:
-        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px">
-          <button id="col">Colar</button>
-          <button id="lim">Limpar</button>
-          Janela:
-          <select id="jan">
-            <option>3</option><option>4</option><option>5</option>
-            <option selected>6</option>
-            <option>7</option><option>8</option><option>9</option><option>10</option>
-          </select>
-        </div>
-      </div>
-
-      <div>🕒 Timeline (14): <span id="tl"></span></div>
+      <div>🕒 Timeline: <span id="tl"></span></div>
 
       <div style="border:2px solid #00e676;padding:10px;margin:10px 0">
-        🎯 <b>Centrais TIMING (faixa)</b><br>
-        <span id="centraisTiming"></span>
+        🎯 <b>TRINCA TIMING (TEAM)</b><br>
+        <span id="trincaBox"></span><br>
+        <small id="centralBox"></small>
       </div>
 
-      <div style="border:2px solid #ff9800;padding:10px;margin:10px 0">
-        🧭 <b>Trios válidos por eixo (faixa)</b>
+      <div style="border:2px solid #e53935;padding:10px;margin:10px 0">
+        🧭 <b>TRIOS DO EIXO (MAPA)</b>
         <div id="triosBox"></div>
       </div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
     </div>
   `;
-
-  document.getElementById("jan").onchange = e=>{
-    janela = parseInt(e.target.value,10);
-    render();
-  };
 
   for(let n=0;n<=36;n++){
     let b=document.createElement("button");
@@ -133,33 +88,28 @@
     render();
   }
 
-  document.getElementById("col").onclick=()=>{
-    document.getElementById("inp").value
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n=>n>=0 && n<=36)
-      .forEach(add);
-    document.getElementById("inp").value="";
-  };
-
-  document.getElementById("lim").onclick=()=>{
-    timeline=[];
-    render();
-  };
-
   function render(){
     document.getElementById("tl").textContent = timeline.join(" · ");
+    if(!timeline.length) return;
 
-    document.getElementById("centraisTiming").textContent =
-      centraisTimingValidos().join(" · ");
+    const t = trincaTimingAtiva();
+    if(!t) return;
 
-    const trios = triosValidos();
+    const trinca = t.trinca;
+    const central = trinca[1]; // CENTRAL DO TIME
+    const term = terminal(central);
+
+    document.getElementById("trincaBox").textContent =
+      `${trinca.join(" - ")} | hits ${t.score}`;
+
+    document.getElementById("centralBox").textContent =
+      `Central do time: ${central} (T${term})`;
+
+    const trios = mapaTriosPorT[term] || [];
     document.getElementById("triosBox").innerHTML =
-      trios.map(t=>`
-        <div style="margin-top:6px">
-          <b>${t.eixo}</b>: ${t.trio.join("-")}
-        </div>
-      `).join("");
+      trios.length
+        ? trios.map(tr=>`<div>${tr.join(" - ")}</div>`).join("")
+        : `<div>Sem trios mapeados para T${term}</div>`;
   }
 
   render();
