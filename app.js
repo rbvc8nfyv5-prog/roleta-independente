@@ -40,7 +40,7 @@
       ]
     },
     {
-      nome: "FECHO",
+      nome: "FECHO", // interno
       trios: [[3,26,0]]
     }
   ];
@@ -54,40 +54,24 @@
   // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
-  let filtrosT = new Set(); // T selecionados
+  let filtrosT = new Set(); // Ts selecionados
 
-  // ================= T POR EIXO (COM FILTRO) =================
-  function statsTerminaisPorEixo(){
-    const base = timeline.slice(0, janela);
-    const cont = {
-      ZERO: Array(10).fill(0),
-      TIERS: Array(10).fill(0),
-      ORPHELINS: Array(10).fill(0),
-      FECHO: Array(10).fill(0)
-    };
-
-    base.forEach(n=>{
-      const t = terminal(n);
-      if (filtrosT.size && !filtrosT.has(t)) return;
-
-      const e = eixoPorNumero.get(n) || "FECHO";
-      cont[e][t]++;
-    });
-
-    return cont;
-  }
-
-  // ================= SELEÇÃO DOS 9 TRIOS =================
+  // ================= TRIOS SELECIONADOS (ADERÊNCIA AO CONJUNTO DE T) =================
   function triosSelecionados9(){
-    const cont = statsTerminaisPorEixo();
     let candidatos = [];
 
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
-        const score =
-          cont[e.nome][terminal(trio[0])] +
-          cont[e.nome][terminal(trio[1])] +
-          cont[e.nome][terminal(trio[2])];
+        const trioTs = trio.map(terminal);
+
+        // interseção entre trio e Ts selecionados
+        let inter = 0;
+        trioTs.forEach(t=>{
+          if (!filtrosT.size || filtrosT.has(t)) inter++;
+        });
+
+        const score = inter / trioTs.length;
+
         candidatos.push({ eixo: e.nome, trio, score });
       });
     });
@@ -97,7 +81,7 @@
     const pick = [];
     const usados = new Set();
 
-    const add = (x)=>{
+    const add = x=>{
       const k = x.eixo + "|" + x.trio.join("-");
       if(!usados.has(k)){
         usados.add(k);
@@ -105,8 +89,12 @@
       }
     };
 
+    // equilíbrio entre eixos
     ["ZERO","TIERS","ORPHELINS"].forEach(nome=>{
-      candidatos.filter(x=>x.eixo===nome).slice(0,2).forEach(add);
+      candidatos
+        .filter(x=>x.eixo===nome && x.score>0)
+        .slice(0,3)
+        .forEach(add);
     });
 
     for(const c of candidatos){
@@ -124,7 +112,7 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM — Seleção de Terminais</h3>
+      <h3 style="text-align:center">CSM — Leitura por Conjunto de Terminais</h3>
 
       <div style="border:1px solid #444;padding:8px">
         📋 Histórico:
@@ -142,7 +130,7 @@
       <div style="margin:8px 0">🕒 Timeline (14): <span id="tl"></span></div>
 
       <div style="border:2px solid #00e676;padding:8px;margin:10px 0">
-        🎯 <b>Selecionar Terminais (T)</b><br>
+        🎯 <b>Selecionar Terminais (T)</b>
         <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
