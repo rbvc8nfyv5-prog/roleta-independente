@@ -10,26 +10,15 @@
 
   const terminal = n => n % 10;
 
-  // ================= TRINCAS TIMING (TEAM) =================
-  const trincasTiming = [
-    [4,7,16],
-    [2,20,30],
-    [6,9,26],
-    [17,23,31],
-    [18,19,24],
-    [9,17,26]
-  ];
-
-  // ================= EIXOS (CORRIGIDOS + FECHO INTERNO) =================
-  // FECHO é interno (não exibido), só para cobrir T0..T9 sem buraco.
+  // ================= EIXOS =================
   const eixos = [
     {
       nome: "ZERO",
       trios: [
         [0,32,15],
-        [19,4,21],   // 4 central
-        [2,25,17],   // 25 central
-        [34,6,27]    // 6 central
+        [19,4,21],
+        [2,25,17],
+        [34,6,27]
       ]
     },
     {
@@ -45,21 +34,17 @@
       nome: "ORPHELINS",
       trios: [
         [20,14,31],
-        [9,22,18],   // 22 central
+        [9,22,18],
         [7,29,28],
-        [12,35,3]    // 35 central
+        [12,35,3]
       ]
     },
     {
-      // eixo interno para não deixar números sem eixo (ex.: 26)
       nome: "FECHO",
-      trios: [
-        [3,26,0]
-      ]
+      trios: [[3,26,0]]
     }
   ];
 
-  // número -> eixo (cobre TODOS os números)
   const eixoPorNumero = (() => {
     const m = new Map();
     eixos.forEach(e => e.trios.flat().forEach(n => m.set(n, e.nome)));
@@ -69,24 +54,9 @@
   // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
+  let filtrosT = new Set(); // T selecionados
 
-  // ================= TRINCA TIMING =================
-  function trincaTimingAtiva(){
-    let best = null;
-    const base = timeline.slice(0, janela);
-
-    trincasTiming.forEach(trinca=>{
-      let score = 0;
-      base.forEach(n => { if(trinca.includes(n)) score++; });
-      if(!best || score > best.score){
-        best = { trinca, score };
-      }
-    });
-
-    return best;
-  }
-
-  // ================= T POR EIXO (T0..T9) =================
+  // ================= T POR EIXO (COM FILTRO) =================
   function statsTerminaisPorEixo(){
     const base = timeline.slice(0, janela);
     const cont = {
@@ -97,8 +67,11 @@
     };
 
     base.forEach(n=>{
+      const t = terminal(n);
+      if (filtrosT.size && !filtrosT.has(t)) return;
+
       const e = eixoPorNumero.get(n) || "FECHO";
-      cont[e][terminal(n)]++;
+      cont[e][t]++;
     });
 
     return cont;
@@ -110,7 +83,6 @@
     let candidatos = [];
 
     eixos.forEach(e=>{
-      // FECHO participa do score, mas NÃO é exibido
       e.trios.forEach(trio=>{
         const score =
           cont[e.nome][terminal(trio[0])] +
@@ -124,6 +96,7 @@
 
     const pick = [];
     const usados = new Set();
+
     const add = (x)=>{
       const k = x.eixo + "|" + x.trio.join("-");
       if(!usados.has(k)){
@@ -132,7 +105,6 @@
       }
     };
 
-    // garante cobertura dos 3 eixos visuais
     ["ZERO","TIERS","ORPHELINS"].forEach(nome=>{
       candidatos.filter(x=>x.eixo===nome).slice(0,2).forEach(add);
     });
@@ -142,7 +114,6 @@
       add(c);
     }
 
-    // não exibir FECHO
     return pick.filter(x=>x.eixo!=="FECHO").slice(0,9);
   }
 
@@ -153,9 +124,9 @@
 
   document.body.innerHTML=`
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM — Timing + Trios por Eixo (T0–T9)</h3>
+      <h3 style="text-align:center">CSM — Seleção de Terminais</h3>
 
-      <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
+      <div style="border:1px solid #444;padding:8px">
         📋 Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
         <div style="margin-top:6px">
@@ -163,32 +134,27 @@
           <button id="lim">Limpar</button>
           Janela:
           <select id="jan">
-            <option>3</option><option>4</option><option>5</option>
-            <option selected>6</option>
-            <option>7</option><option>8</option><option>9</option><option>10</option>
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
           </select>
         </div>
       </div>
 
-      <div>🕒 Timeline (14): <span id="tl"></span></div>
+      <div style="margin:8px 0">🕒 Timeline (14): <span id="tl"></span></div>
 
-      <div style="border:2px solid #00e676;padding:10px;margin:10px 0">
-        🎯 <b>TRINCA TIMING (TEAM)</b><br>
-        <span id="trincaBox"></span>
+      <div style="border:2px solid #00e676;padding:8px;margin:10px 0">
+        🎯 <b>Selecionar Terminais (T)</b><br>
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
         <div style="border:2px solid #ff5252;padding:8px">
-          <b>ZERO</b>
-          <div id="colZERO"></div>
+          <b>ZERO</b><div id="colZERO"></div>
         </div>
         <div style="border:2px solid #42a5f5;padding:8px">
-          <b>TIERS</b>
-          <div id="colTIERS"></div>
+          <b>TIERS</b><div id="colTIERS"></div>
         </div>
         <div style="border:2px solid #66bb6a;padding:8px">
-          <b>ORPHELINS</b>
-          <div id="colORPH"></div>
+          <b>ORPHELINS</b><div id="colORPH"></div>
         </div>
       </div>
 
@@ -196,13 +162,27 @@
     </div>
   `;
 
+  // Botões T0–T9
+  const btnT = document.getElementById("btnT");
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#333;color:#fff;border:1px solid #555";
+    b.onclick=()=>{
+      filtrosT.has(t) ? filtrosT.delete(t) : filtrosT.add(t);
+      b.style.background = filtrosT.has(t) ? "#00e676" : "#333";
+      render();
+    };
+    btnT.appendChild(b);
+  }
+
   document.getElementById("jan").onchange=e=>{
     janela=parseInt(e.target.value,10);
     render();
   };
 
   for(let n=0;n<=36;n++){
-    let b=document.createElement("button");
+    const b=document.createElement("button");
     b.textContent=n;
     b.style="padding:8px;background:#333;color:#fff";
     b.onclick=()=>add(n);
@@ -226,28 +206,19 @@
 
   document.getElementById("lim").onclick=()=>{
     timeline=[];
+    filtrosT.clear();
+    document.querySelectorAll("#btnT button").forEach(b=>b.style.background="#333");
     render();
   };
 
   function render(){
     document.getElementById("tl").textContent = timeline.join(" · ");
-
-    const t = trincaTimingAtiva();
-    document.getElementById("trincaBox").textContent =
-      t ? `${t.trinca.join(" - ")} | hits ${t.score}` : "-";
-
     const trios = triosSelecionados9();
-    const porEixo = { ZERO:[], TIERS:[], ORPHELINS:[] };
-    trios.forEach(x=>porEixo[x.eixo].push(x));
-
-    document.getElementById("colZERO").innerHTML =
-      porEixo.ZERO.map(x=>`<div>${x.trio.join("-")}</div>`).join("");
-
-    document.getElementById("colTIERS").innerHTML =
-      porEixo.TIERS.map(x=>`<div>${x.trio.join("-")}</div>`).join("");
-
-    document.getElementById("colORPH").innerHTML =
-      porEixo.ORPHELINS.map(x=>`<div>${x.trio.join("-")}</div>`).join("");
+    const por = { ZERO:[], TIERS:[], ORPHELINS:[] };
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    document.getElementById("colZERO").innerHTML = por.ZERO.map(x=>`<div>${x}</div>`).join("");
+    document.getElementById("colTIERS").innerHTML = por.TIERS.map(x=>`<div>${x}</div>`).join("");
+    document.getElementById("colORPH").innerHTML = por.ORPHELINS.map(x=>`<div>${x}</div>`).join("");
   }
 
   render();
