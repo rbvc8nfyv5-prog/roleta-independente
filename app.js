@@ -7,7 +7,12 @@
     12,35,3,26,0
   ];
 
-  // ================= TRINCAS DE TIMING =================
+  // ================= TERMINAIS PERMITIDOS =================
+  const faixaTerminais = new Set([0,2,4,6,7]);
+
+  const terminal = n => n % 10;
+
+  // ================= TRINCAS TIMING =================
   const trincasTiming = [
     [4,7,16],
     [2,20,30],
@@ -21,24 +26,15 @@
   const eixos = [
     {
       nome: "ZERO",
-      nums: [0,32,15,19,4,21,2,25,17,34,6,27],
-      trios: [
-        [0,32,15],[15,19,4],[21,2,25],[17,34,6]
-      ]
+      trios: [[0,32,15],[15,19,4],[21,2,25],[17,34,6]]
     },
     {
       nome: "TIERS",
-      nums: [13,36,11,30,8,23,10,5,24,16,33,1],
-      trios: [
-        [13,36,11],[30,8,23],[10,5,24],[16,33,1]
-      ]
+      trios: [[13,36,11],[30,8,23],[10,5,24],[16,33,1]]
     },
     {
       nome: "ORPHELINS",
-      nums: [20,14,31,9,22,18,29,7,28,12,35,3],
-      trios: [
-        [20,14,31],[31,9,22],[29,7,28],[12,35,3]
-      ]
+      trios: [[20,14,31],[31,9,22],[29,7,28],[12,35,3]]
     }
   ];
 
@@ -46,43 +42,46 @@
   let timeline = [];
   let janela = 6;
 
-  // ================= SCORE TRINCA =================
-  function melhorTrinca(){
-    let best=null;
-    trincasTiming.forEach(trinca=>{
-      let score=0;
-      timeline.slice(0,janela).forEach(n=>{
-        if(trinca.includes(n)) score++;
-      });
-      if(!best || score>best.score){
-        best={trinca,score};
-      }
-    });
-    return best;
+  // ================= UTIL =================
+  function dentroDaFaixa(n){
+    return faixaTerminais.has(terminal(n));
   }
 
-  // ================= 2 EIXOS DOMINANTES =================
-  function doisEixosDominantes(){
-    let cont = eixos.map(e=>{
-      let c=0;
-      timeline.slice(0,janela).forEach(n=>{
-        if(e.nums.includes(n)) c++;
+  // ================= CENTRAIS TIMING =================
+  function centraisTimingValidos(){
+    let res = new Set();
+    trincasTiming.forEach(t=>{
+      t.forEach(n=>{
+        if(dentroDaFaixa(n)) res.add(n);
       });
-      return {...e,count:c};
     });
+    return [...res];
+  }
 
-    cont.sort((a,b)=>b.count-a.count);
-    return cont.slice(0,2);
+  // ================= TRIOS VALIDOS =================
+  function triosValidos(){
+    let lista = [];
+    eixos.forEach(e=>{
+      e.trios.forEach(t=>{
+        if(t.some(n=>dentroDaFaixa(n))){
+          lista.push({
+            eixo: e.nome,
+            trio: t
+          });
+        }
+      });
+    });
+    return lista;
   }
 
   // ================= UI =================
-  document.body.style.background="#111";
-  document.body.style.color="#fff";
-  document.body.style.fontFamily="sans-serif";
+  document.body.style.background = "#111";
+  document.body.style.color = "#fff";
+  document.body.style.fontFamily = "sans-serif";
 
   document.body.innerHTML = `
-    <div style="padding:10px;max-width:760px;margin:auto">
-      <h3 style="text-align:center">CSM – Dois Eixos Dominantes</h3>
+    <div style="padding:10px;max-width:780px;margin:auto">
+      <h3 style="text-align:center">CSM — Faixa T0 T2 T4 T6 T7</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Histórico:
@@ -99,24 +98,24 @@
         </div>
       </div>
 
-      <div>🕒 Timeline: <span id="tl"></span></div>
+      <div>🕒 Timeline (14): <span id="tl"></span></div>
 
-      <div style="border:2px solid #00e676;padding:10px;margin:10px 0;text-align:center">
-        🎯 <b>Trinca Timing</b><br>
-        <span id="trincaBox"></span>
+      <div style="border:2px solid #00e676;padding:10px;margin:10px 0">
+        🎯 <b>Centrais TIMING (faixa)</b><br>
+        <span id="centraisTiming"></span>
       </div>
 
       <div style="border:2px solid #ff9800;padding:10px;margin:10px 0">
-        🧭 <b>2 EIXOS DOMINANTES</b>
-        <div id="eixosBox"></div>
+        🧭 <b>Trios válidos por eixo (faixa)</b>
+        <div id="triosBox"></div>
       </div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
     </div>
   `;
 
-  document.getElementById("jan").onchange=e=>{
-    janela=parseInt(e.target.value,10);
+  document.getElementById("jan").onchange = e=>{
+    janela = parseInt(e.target.value,10);
     render();
   };
 
@@ -138,7 +137,7 @@
     document.getElementById("inp").value
       .split(/[\s,]+/)
       .map(Number)
-      .filter(n=>n>=0&&n<=36)
+      .filter(n=>n>=0 && n<=36)
       .forEach(add);
     document.getElementById("inp").value="";
   };
@@ -149,19 +148,16 @@
   };
 
   function render(){
-    document.getElementById("tl").textContent=timeline.join(" · ");
-    if(!timeline.length) return;
+    document.getElementById("tl").textContent = timeline.join(" · ");
 
-    const t=melhorTrinca();
-    document.getElementById("trincaBox").textContent =
-      `${t.trinca.join(" - ")} | ${t.score}`;
+    document.getElementById("centraisTiming").textContent =
+      centraisTimingValidos().join(" · ");
 
-    const dois=doisEixosDominantes();
-    document.getElementById("eixosBox").innerHTML =
-      dois.map((e,i)=>`
+    const trios = triosValidos();
+    document.getElementById("triosBox").innerHTML =
+      trios.map(t=>`
         <div style="margin-top:6px">
-          <b>${i+1}º ${e.nome}</b> (${e.count})<br>
-          Trios: ${e.trios.map(t=>t.join("-")).join(" | ")}
+          <b>${t.eixo}</b>: ${t.trio.join("-")}
         </div>
       `).join("");
   }
