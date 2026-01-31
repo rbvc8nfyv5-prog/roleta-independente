@@ -17,12 +17,28 @@
     [9,17,26]
   ];
 
-  // ================= EIXOS (RACE REAL) =================
+  // ================= EIXOS + CENTRAIS =================
   const eixos = [
-    { nome: "ZERO", nums: [0,32,15,19,4,21,2,25,17,34,6,27] },
-    { nome: "TIERS", nums: [13,36,11,30,8,23,10,5,24,16,33,1] },
-    { nome: "ORPHELINS", nums: [20,14,31,9,22,18,29,7,28,12,35,3] },
-    { nome: "FECHO", nums: [26] }
+    {
+      nome: "ZERO",
+      nums: [0,32,15,19,4,21,2,25,17,34,6,27],
+      centrais: [32,19,2,34]
+    },
+    {
+      nome: "TIERS",
+      nums: [13,36,11,30,8,23,10,5,24,16,33,1],
+      centrais: [36,8,5,33]
+    },
+    {
+      nome: "ORPHELINS",
+      nums: [20,14,31,9,22,18,29,7,28,12,35,3],
+      centrais: [14,9,7,35]
+    },
+    {
+      nome: "FECHO",
+      nums: [26],
+      centrais: [26,3]
+    }
   ];
 
   // ================= ESTADO =================
@@ -42,7 +58,7 @@
     return a;
   }
 
-  // ================= SCORE DA TRINCA (SEM PESO) =================
+  // ================= SCORE TRINCA (SEM PESO) =================
   function scoreTrinca(trinca){
     let zona = new Set();
     trinca.forEach(c=>{
@@ -50,22 +66,11 @@
     });
 
     let total = 0;
-    let curto = 0;
-
     timeline.slice(0,janela).forEach(n=>{
       if(zona.has(n)) total++;
     });
 
-    timeline.slice(0,3).forEach(n=>{
-      if(zona.has(n)) curto++;
-    });
-
-    let penalidade = 0;
-    if(total > 0 && curto < Math.ceil(total * 0.5)){
-      penalidade = Math.ceil(total * 0.4);
-    }
-
-    return total - penalidade;
+    return total;
   }
 
   function melhorTrinca(){
@@ -96,9 +101,8 @@
   // ================= RELAÇÃO TRINCA × EIXO =================
   function relacaoTrincaEixo(trinca, eixo){
     let dentro = trinca.filter(n=>eixo.nums.includes(n)).length;
-
     if(dentro === 3) return { tipo:"CONTINUAÇÃO", cor:"#00e676" };
-    if(dentro === 1 || dentro === 2) return { tipo:"ALERTA", cor:"#ffeb3b" };
+    if(dentro >= 1) return { tipo:"ALERTA", cor:"#ffeb3b" };
     return { tipo:"MIGRAÇÃO", cor:"#ff5252" };
   }
 
@@ -135,7 +139,8 @@
 
       <div style="border:2px solid #888;padding:10px;margin:10px 0;text-align:center">
         🧭 <b>EIXO DOMINANTE</b><br>
-        <span id="eixoBox"></span>
+        <span id="eixoBox"></span><br>
+        <small id="centraisBox"></small>
       </div>
 
       <div style="border:2px solid #444;padding:10px;margin:10px 0;text-align:center">
@@ -182,7 +187,7 @@
 
   function render(){
     document.getElementById("tl").textContent = timeline.join(" · ");
-    if(timeline.length===0) return;
+    if(!timeline.length) return;
 
     const t = melhorTrinca();
     const e = eixoDominante();
@@ -193,6 +198,9 @@
 
     document.getElementById("eixoBox").textContent =
       `${e.nome} (${e.count})`;
+
+    document.getElementById("centraisBox").textContent =
+      `Centrais do eixo: ${e.centrais.join(" · ")}`;
 
     document.getElementById("leituraBox").innerHTML =
       `<span style="color:${r.cor};font-size:18px">${r.tipo}</span>`;
