@@ -56,6 +56,7 @@
   let filtrosT = new Set();
   let autoTCount = 0;
   let modoVizinho = false;
+  let modoNumNum = false;
 
   // ================= AUTO TERMINAIS =================
   function calcularAutoTerminais(){
@@ -66,15 +67,13 @@
       set.add(terminal(n));
       if (set.size >= autoTCount) break;
     }
-
     filtrosT = set;
     atualizarBotoesT();
   }
 
-  // ================= VIZINHO MODE =================
+  // ================= VIZINHO =================
   function calcularVizinhoTerminais(){
     const cont = {};
-
     timeline.slice(0,janela).forEach(n=>{
       vizinhos(n).forEach(v=>{
         const t = terminal(v);
@@ -82,13 +81,30 @@
       });
     });
 
-    // 🔧 ALTERAÇÃO ÚNICA: agora só 3 terminais
-    const ordenados = Object.entries(cont)
+    const tops = Object.entries(cont)
       .sort((a,b)=>b[1]-a[1])
       .slice(0,3)
       .map(x=>parseInt(x[0],10));
 
-    filtrosT = new Set(ordenados);
+    filtrosT = new Set(tops);
+    atualizarBotoesT();
+  }
+
+  // ================= NUMERO–NUMERO =================
+  function calcularNumeroNumero(){
+    if (timeline.length < 2) return;
+
+    const set = new Set();
+    const [a,b] = timeline;
+
+    [a,b].forEach(n=>{
+      set.add(terminal(n));
+      vizinhos(n).forEach(v=>{
+        set.add(terminal(v));
+      });
+    });
+
+    filtrosT = set;
     atualizarBotoesT();
   }
 
@@ -102,21 +118,16 @@
   // ================= TRIOS =================
   function triosSelecionados9(){
     let candidatos = [];
-
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
-        const trioTs = trio.map(terminal);
-        let inter = 0;
-        trioTs.forEach(t=>{
-          if (!filtrosT.size || filtrosT.has(t)) inter++;
-        });
-        const score = inter / trioTs.length;
+        const ts = trio.map(terminal);
+        let inter = ts.filter(t=>!filtrosT.size || filtrosT.has(t)).length;
+        const score = inter / ts.length;
         if(score>0){
           candidatos.push({ eixo:e.nome, trio, score });
         }
       });
     });
-
     candidatos.sort((a,b)=>b.score-a.score);
     return candidatos.slice(0,9);
   }
@@ -128,7 +139,7 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM — Terminais + Vizinho</h3>
+      <h3 style="text-align:center">CSM — Terminais Avançado</h3>
 
       <div style="border:1px solid #444;padding:8px">
         📋 Histórico:
@@ -136,19 +147,8 @@
         <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
-
-          Janela:
-          <select id="jan">
-            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
-          </select>
-
-          Auto T:
-          <select id="autoT">
-            <option value="0">Manual</option>
-            ${[2,3,4,5,6,7].map(n=>`<option value="${n}">${n}</option>`).join("")}
-          </select>
-
           <button id="viz">Vizinho</button>
+          <button id="nn">NÚM–NÚM</button>
         </div>
       </div>
 
@@ -178,9 +178,9 @@
     b.style="padding:6px;background:#333;color:#fff;border:1px solid #555";
     b.onclick=()=>{
       modoVizinho=false;
+      modoNumNum=false;
       document.getElementById("viz").style.background="#333";
-      autoTCount=0;
-      document.getElementById("autoT").value="0";
+      document.getElementById("nn").style.background="#333";
       filtrosT.has(t)?filtrosT.delete(t):filtrosT.add(t);
       atualizarBotoesT();
       render();
@@ -188,29 +188,24 @@
     btnT.appendChild(b);
   }
 
+  // ================= EVENTOS =================
   document.getElementById("viz").onclick=()=>{
     modoVizinho=!modoVizinho;
-    document.getElementById("viz").style.background = modoVizinho ? "#ff9800" : "#333";
+    modoNumNum=false;
+    document.getElementById("viz").style.background = modoVizinho?"#ff9800":"#333";
+    document.getElementById("nn").style.background="#333";
     filtrosT.clear();
-    autoTCount=0;
-    document.getElementById("autoT").value="0";
     if(modoVizinho) calcularVizinhoTerminais();
     render();
   };
 
-  document.getElementById("autoT").onchange=e=>{
+  document.getElementById("nn").onclick=()=>{
+    modoNumNum=!modoNumNum;
     modoVizinho=false;
+    document.getElementById("nn").style.background = modoNumNum?"#03a9f4":"#333";
     document.getElementById("viz").style.background="#333";
-    autoTCount=parseInt(e.target.value,10);
     filtrosT.clear();
-    if(autoTCount>0) calcularAutoTerminais();
-    atualizarBotoesT();
-    render();
-  };
-
-  document.getElementById("jan").onchange=e=>{
-    janela=parseInt(e.target.value,10);
-    if(modoVizinho) calcularVizinhoTerminais();
+    if(modoNumNum) calcularNumeroNumero();
     render();
   };
 
@@ -226,7 +221,7 @@
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
     if(modoVizinho) calcularVizinhoTerminais();
-    else if(autoTCount>0) calcularAutoTerminais();
+    if(modoNumNum) calcularNumeroNumero();
     render();
   }
 
@@ -242,9 +237,10 @@
   document.getElementById("lim").onclick=()=>{
     timeline=[];
     filtrosT.clear();
-    autoTCount=0;
     modoVizinho=false;
+    modoNumNum=false;
     document.getElementById("viz").style.background="#333";
+    document.getElementById("nn").style.background="#333";
     atualizarBotoesT();
     render();
   };
