@@ -8,22 +8,25 @@
   ];
 
   // ================= EIXOS / TRIOS =================
+  // CENTRAL É O PRIMEIRO ELEMENTO DO TRIO
   const eixos = {
     ZERO: [
-      [0,32,15],
-      [19,4,21],
-      [2,25,17]
+      [32,15,19],
+      [4,21,2],
+      [25,17,34],
+      [6,27,13]
     ],
     TIERS: [
-      [13,36,11],
-      [30,8,23],
-      [10,5,24],
-      [16,33,1]
+      [36,11,30],
+      [8,23,10],
+      [5,24,16],
+      [33,1,20]
     ],
     ORPHELINS: [
-      [20,14,31],
-      [12,35,3],
-      [9,22,18]
+      [14,31,9],
+      [22,18,29],
+      [7,28,12],
+      [35,3,26]
     ]
   };
 
@@ -31,7 +34,8 @@
   let hist = [];
   let timeline = [];
   let janela = 10;
-  let autoT = 6;
+  let autoT = 5;
+  let manualTs = new Set();
 
   // ================= UTIL =================
   const terminal = n => n % 10;
@@ -46,36 +50,35 @@
     return ts;
   }
 
+  function getTsAtivos() {
+    if (manualTs.size > 0) return [...manualTs];
+    return getAutoTerminais();
+  }
+
   function scoreTrio(trio, tsAtivos) {
     const tsTrio = trio.map(terminal);
     const hits = tsTrio.filter(t => tsAtivos.includes(t)).length;
     return hits / 3;
   }
 
-  // ================= SELEÇÃO CORRETA =================
+  // ================= SELEÇÃO GLOBAL (POR MÉRITO) =================
   function selecionarTrios() {
-    const tsAtivos = getAutoTerminais();
-    const base = timeline.slice(0, janela);
-
+    const tsAtivos = getTsAtivos();
     let todos = [];
 
     Object.entries(eixos).forEach(([eixo, trios]) => {
       trios.forEach(trio => {
         const score = scoreTrio(trio, tsAtivos);
         if (score > 0) {
-          todos.push({
-            eixo,
-            trio,
-            score
-          });
+          todos.push({ eixo, trio, score });
         }
       });
     });
 
-    // 🔴 CORREÇÃO CRÍTICA
+    // ordenação GLOBAL por mérito
     todos.sort((a, b) => b.score - a.score);
 
-    // pega os 9 melhores (ou menos se não tiver)
+    // pega os 9 melhores (ou menos)
     return todos.slice(0, 9);
   }
 
@@ -86,12 +89,12 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;max-width:900px;margin:auto">
-      <h3 style="text-align:center">CSM — Trinca Timing (Correção Estrutural)</h3>
+      <h3 style="text-align:center">CSM — Trinca Timing (Centrais por Eixo)</h3>
 
       <div style="border:1px solid #444;padding:8px;margin-bottom:8px">
         📋 Cole histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff;border:1px solid #555"/>
-        <div style="margin-top:6px">
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
           Janela:
@@ -100,15 +103,20 @@
           </select>
           Auto T:
           <select id="autoT">
-            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===5?'selected':''}>${i+3}</option>`).join("")}
           </select>
         </div>
+      </div>
+
+      <div style="border:1px solid #555;padding:8px;margin-bottom:8px">
+        🎛️ Terminais (Manual):
+        <div id="ts" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
       <div>🕒 Timeline (14): <span id="tl"></span></div>
 
       <div style="border:2px solid #0f0;padding:10px;margin-top:10px">
-        🎯 <b>TRIOS SELECIONADOS (POR MÉRITO)</b>
+        🎯 <b>CENTRAIS POR EIXO (MERITO)</b>
         <div id="res"></div>
       </div>
 
@@ -116,8 +124,27 @@
     </div>
   `;
 
-  const nums = document.getElementById("nums");
+  // ================= TERMINAIS MANUAIS =================
+  const tsBox = document.getElementById("ts");
+  for (let t = 0; t <= 9; t++) {
+    const b = document.createElement("button");
+    b.textContent = "T" + t;
+    b.style = "padding:6px;background:#333;color:#fff;border:1px solid #555";
+    b.onclick = () => {
+      if (manualTs.has(t)) {
+        manualTs.delete(t);
+        b.style.background = "#333";
+      } else {
+        manualTs.add(t);
+        b.style.background = "#0a0";
+      }
+      render();
+    };
+    tsBox.appendChild(b);
+  }
 
+  // ================= NÚMEROS =================
+  const nums = document.getElementById("nums");
   for (let n = 0; n <= 36; n++) {
     let b = document.createElement("button");
     b.textContent = n;
@@ -145,6 +172,7 @@
   document.getElementById("lim").onclick = () => {
     hist = [];
     timeline = [];
+    manualTs.clear();
     render();
   };
 
@@ -158,6 +186,7 @@
     render();
   };
 
+  // ================= RENDER =================
   function render() {
     document.getElementById("tl").textContent = timeline.join(" · ");
     if (!timeline.length) return;
@@ -166,10 +195,36 @@
     const box = document.getElementById("res");
     box.innerHTML = "";
 
+    const centraisAtivos = new Map();
+
     trios.forEach(t => {
+      const central = t.trio[0];
+      const pct = Math.round(t.score * 100);
+      centraisAtivos.set(central, pct);
+    });
+
+    Object.entries({
+      ZERO:[32,4,25,6],
+      TIERS:[36,8,5,33],
+      ORPHELINS:[14,22,7,35]
+    }).forEach(([eixo, cents]) => {
       const d = document.createElement("div");
-      d.textContent = `${t.trio.join("-")} | ${t.eixo} | score ${(t.score*100).toFixed(0)}%`;
-      d.style = "margin:4px 0";
+      d.style = "margin-top:8px";
+      d.innerHTML = `<b>${eixo}</b>: `;
+
+      cents.forEach(c=>{
+        const span = document.createElement("span");
+        const pct = centraisAtivos.get(c);
+        span.textContent = pct ? `${c} (${pct}%)` : `${c}`;
+        span.style = `
+          margin-right:8px;
+          padding:4px 6px;
+          border-radius:4px;
+          background:${pct ? "#0a0" : "#333"};
+        `;
+        d.appendChild(span);
+      });
+
       box.appendChild(d);
     });
   }
