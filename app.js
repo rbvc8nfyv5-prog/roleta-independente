@@ -82,9 +82,10 @@
       });
     });
 
+    // 🔧 ALTERAÇÃO ÚNICA: agora só 3 terminais
     const ordenados = Object.entries(cont)
       .sort((a,b)=>b[1]-a[1])
-      .slice(0,4)
+      .slice(0,3)
       .map(x=>parseInt(x[0],10));
 
     filtrosT = new Set(ordenados);
@@ -168,7 +169,7 @@
     </div>
   `;
 
-  // ================= BOTÕES =================
+  // ================= BOTÕES T =================
   const btnT = document.getElementById("btnT");
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
