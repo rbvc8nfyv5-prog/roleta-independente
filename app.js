@@ -18,8 +18,9 @@
 
   // ================= ESTADO =================
   let timeline = [];
-  let autoTCount = 0;
+  let janela = 6;
   let modoAtivo = "MANUAL";
+  let autoTCount = 0;
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] },
@@ -28,57 +29,88 @@
     NUNUM:  { filtros:new Set(), res:[] }
   };
 
-  // ================= AUTO TERMINAIS =================
-  function calcularAutoTerminais(){
-    if(autoTCount < 2) return;
+  // ================= UTIL =================
+  function vizinhosRace(n){
+    const i = track.indexOf(n);
+    return [
+      track[(i+36)%37],
+      track[i],
+      track[(i+1)%37]
+    ];
+  }
+
+  // ================= AUTO =================
+  function calcularAuto(){
     const set = new Set();
-    for(const n of timeline){
+    for(const n of timeline.slice(0,janela)){
       set.add(terminal(n));
-      if(set.size >= autoTCount) break;
+      if(set.size>=autoTCount) break;
     }
     analises.AUTO.filtros = set;
   }
 
-  // ================= VIZINHO =================
-  function calcularVizinho(){
-    const set = new Set();
-    if(!timeline.length) return;
-    const i = track.indexOf(timeline[0]);
-    [track[(i+36)%37], timeline[0], track[(i+1)%37]]
-      .forEach(n=>set.add(terminal(n)));
-    analises.VIZINHO.filtros = set;
+  // ================= MELHOR TRINCA =================
+  function melhorTrincaBase(){
+    let cont = {};
+    timeline.slice(0,janela).forEach(n=>{
+      const t = terminal(n);
+      cont[t] = (cont[t]||0)+1;
+    });
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(x=>+x[0]);
   }
 
-  // ================= NUNUM =================
+  // ================= VIZINHO (CORRETO) =================
+  function calcularVizinho(){
+    const base = melhorTrincaBase();
+    analises.VIZINHO.filtros = new Set(base);
+
+    // motor interno (race sobre trinca)
+    analises.VIZINHO.motor = new Set();
+    base.forEach(t=>{
+      track.filter(n=>terminal(n)===t)
+        .forEach(n=>vizinhosRace(n)
+          .forEach(v=>analises.VIZINHO.motor.add(v))
+        );
+    });
+  }
+
+  // ================= NUNUM (CORRETO) =================
   function calcularNunum(){
     const set = new Set();
-    timeline.slice(0,2).forEach(n=>set.add(terminal(n)));
+    timeline.slice(0,2).forEach(n=>{
+      vizinhosRace(n).forEach(v=>set.add(terminal(v)));
+    });
     analises.NUNUM.filtros = set;
   }
 
   // ================= TRIOS =================
   function triosSelecionados(filtros){
-    let candidatos=[];
+    let lista=[];
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
-        const ts = trio.map(terminal);
-        const inter = ts.filter(t=>!filtros.size||filtros.has(t)).length;
-        if(inter>0) candidatos.push({eixo:e.nome,trio,score:inter});
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio,score:inter});
       });
     });
-    candidatos.sort((a,b)=>b.score-a.score);
-    return candidatos.slice(0,9); // 🔒 máximo 9
+    lista.sort((a,b)=>b.score-a.score);
+    return lista.slice(0,9);
   }
 
-  function validarNumero(n, trios){
-    return trios.some(t=>t.trio.includes(n));
+  function validar(n, modo){
+    if(modo==="VIZINHO"){
+      return analises.VIZINHO.motor?.has(n);
+    }
+    const trios = triosSelecionados(analises[modo].filtros);
+    return trios.some(x=>x.trio.includes(n));
   }
 
-  // ================= REGISTRAR RESULTADO =================
-  function registrarResultado(n){
+  function registrar(n){
     Object.keys(analises).forEach(m=>{
-      const trios = triosSelecionados(analises[m].filtros);
-      const ok = validarNumero(n,trios);
+      const ok = validar(n,m);
       analises[m].res.unshift(ok?"V":"X");
       if(analises[m].res.length>timeline.length)
         analises[m].res.length=timeline.length;
@@ -90,7 +122,7 @@
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
-  document.body.innerHTML = `
+  document.body.innerHTML=`
   <div style="padding:10px;max-width:1000px;margin:auto">
     <h3 style="text-align:center">CSM</h3>
 
@@ -100,11 +132,12 @@
       <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
         <button id="col">Colar</button>
         <button id="lim">Limpar</button>
+        Janela:
+        <select id="jan">${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}</select>
         Auto T:
         <select id="autoT">
           <option value="0">Manual</option>
-          <option>2</option><option>3</option><option>4</option>
-          <option>5</option><option>6</option><option>7</option>
+          ${[2,3,4,5,6,7].map(n=>`<option>${n}</option>`).join("")}
         </select>
       </div>
     </div>
@@ -117,9 +150,7 @@
     <div style="display:flex;gap:6px;margin-bottom:8px">
       ${["MANUAL","AUTO","VIZINHO","NUNUM"].map(m=>`
         <button class="modo" data-m="${m}"
-          style="padding:6px;background:#444;color:#fff;border:1px solid #666">
-          ${m}
-        </button>`).join("")}
+          style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
     </div>
 
     <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -137,7 +168,7 @@
   </div>
   `;
 
-  // ================= MODOS =================
+  // ================= EVENTOS =================
   document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
       modoAtivo=b.dataset.m;
@@ -147,7 +178,19 @@
     };
   });
 
-  // ================= BOTÕES T =================
+  document.getElementById("jan").onchange=e=>{
+    janela=+e.target.value;
+    render();
+  };
+
+  document.getElementById("autoT").onchange=e=>{
+    autoTCount=+e.target.value;
+    if(autoTCount>0) calcularAuto();
+    modoAtivo="AUTO";
+    render();
+  };
+
+  // ================= BOTÕES =================
   const btnT=document.getElementById("btnT");
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
@@ -155,14 +198,14 @@
     b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
     b.onclick=()=>{
       modoAtivo="MANUAL";
-      const s=analises.MANUAL.filtros;
-      s.has(t)?s.delete(t):s.add(t);
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
       render();
     };
     btnT.appendChild(b);
   }
 
-  // ================= NUMBERS =================
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
@@ -174,20 +217,12 @@
   function add(n){
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
-    registrarResultado(n);
-    if(autoTCount>0) calcularAutoTerminais();
+    registrar(n);
+    if(autoTCount>0) calcularAuto();
     calcularVizinho();
     calcularNunum();
     render();
   }
-
-  document.getElementById("autoT").onchange=e=>{
-    autoTCount=+e.target.value;
-    analises.AUTO.filtros.clear();
-    if(autoTCount>0) calcularAutoTerminais();
-    modoAtivo="AUTO";
-    render();
-  };
 
   document.getElementById("col").onclick=()=>{
     document.getElementById("inp").value
@@ -204,32 +239,26 @@
 
   // ================= RENDER =================
   function render(){
-    // botões modo
     document.querySelectorAll(".modo").forEach(b=>{
-      b.style.background = b.dataset.m===modoAtivo ? "#00e676" : "#444";
+      b.style.background=b.dataset.m===modoAtivo?"#00e676":"#444";
     });
 
-    // timeline V/X
-    const res = analises[modoAtivo].res;
-    document.getElementById("tl").innerHTML =
-      timeline.map((n,i)=>{
-        const r=res[i];
-        const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#ccc";
-        return `<span style="color:${c}">${n}</span>`;
-      }).join(" · ");
+    const res=analises[modoAtivo].res;
+    tl.innerHTML=timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#ccc";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
 
-    // pintar T
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       b.style.background =
         analises[modoAtivo].filtros.has(t) ? "#00e676" : "#444";
     });
 
-    // trios
-    const trios = triosSelecionados(analises[modoAtivo].filtros);
+    const trios=triosSelecionados(analises[modoAtivo].filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
     trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
-
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
