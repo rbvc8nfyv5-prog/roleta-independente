@@ -7,7 +7,6 @@
     16,33,1,20,14,31,9,22,18,29,
     7,28,12,35,3,26,0
   ];
-
   const terminal = n => n % 10;
 
   // ================= EIXOS =================
@@ -40,6 +39,23 @@
     analises.AUTO.filtros = set;
   }
 
+  // ================= VIZINHO =================
+  function calcularVizinho(){
+    const set = new Set();
+    if(!timeline.length) return;
+    const i = track.indexOf(timeline[0]);
+    [track[(i+36)%37], timeline[0], track[(i+1)%37]]
+      .forEach(n=>set.add(terminal(n)));
+    analises.VIZINHO.filtros = set;
+  }
+
+  // ================= NUNUM =================
+  function calcularNunum(){
+    const set = new Set();
+    timeline.slice(0,2).forEach(n=>set.add(terminal(n)));
+    analises.NUNUM.filtros = set;
+  }
+
   // ================= TRIOS =================
   function triosSelecionados(filtros){
     let candidatos=[];
@@ -51,7 +67,7 @@
       });
     });
     candidatos.sort((a,b)=>b.score-a.score);
-    return candidatos.slice(0,9); // 8–9
+    return candidatos.slice(0,9); // 🔒 máximo 9
   }
 
   function validarNumero(n, trios){
@@ -61,8 +77,7 @@
   // ================= REGISTRAR RESULTADO =================
   function registrarResultado(n){
     Object.keys(analises).forEach(m=>{
-      const filtros = analises[m].filtros;
-      const trios = triosSelecionados(filtros);
+      const trios = triosSelecionados(analises[m].filtros);
       const ok = validarNumero(n,trios);
       analises[m].res.unshift(ok?"V":"X");
       if(analises[m].res.length>timeline.length)
@@ -126,6 +141,8 @@
   document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
       modoAtivo=b.dataset.m;
+      if(modoAtivo==="VIZINHO") calcularVizinho();
+      if(modoAtivo==="NUNUM") calcularNunum();
       render();
     };
   });
@@ -159,6 +176,8 @@
     if(timeline.length>14) timeline.pop();
     registrarResultado(n);
     if(autoTCount>0) calcularAutoTerminais();
+    calcularVizinho();
+    calcularNunum();
     render();
   }
 
@@ -185,6 +204,12 @@
 
   // ================= RENDER =================
   function render(){
+    // botões modo
+    document.querySelectorAll(".modo").forEach(b=>{
+      b.style.background = b.dataset.m===modoAtivo ? "#00e676" : "#444";
+    });
+
+    // timeline V/X
     const res = analises[modoAtivo].res;
     document.getElementById("tl").innerHTML =
       timeline.map((n,i)=>{
@@ -193,12 +218,14 @@
         return `<span style="color:${c}">${n}</span>`;
       }).join(" · ");
 
+    // pintar T
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       b.style.background =
         analises[modoAtivo].filtros.has(t) ? "#00e676" : "#444";
     });
 
+    // trios
     const trios = triosSelecionados(analises[modoAtivo].filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
     trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
