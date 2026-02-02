@@ -7,24 +7,25 @@
     16,33,1,20,14,31,9,22,18,29,
     7,28,12,35,3,26,0
   ];
+
   const terminal = n => n % 10;
 
   // ================= EIXOS =================
-  const eixos = [
-    { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
-    { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
-    { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
-  ];
+  const eixos = {
+    ZERO:       [0,32,15,19,4,21,2,25,17,34,6,27],
+    TIERS:      [13,36,11,30,8,23,10,5,24,16,33,1],
+    ORPHELINS:  [20,14,31,9,22,18,7,29,28,12,35,3]
+  };
 
   // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
-  let modoAtivo = "MANUAL"; // MANUAL | VIZINHO | NUNUM | AUTO
+  let modoAtivo = "MANUAL";
   let autoTAtivo = null;
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] },
-    VIZINHO:{ filtros:new Set(), res:[], motor:new Set() },
+    VIZINHO:{ filtros:new Set(), res:[] },
     NUNUM:  { filtros:new Set(), res:[] },
     AUTO: {
       2:{ filtros:new Set(), res:[] },
@@ -32,48 +33,51 @@
       4:{ filtros:new Set(), res:[] },
       5:{ filtros:new Set(), res:[] },
       6:{ filtros:new Set(), res:[] },
-      7:{ filtros:new Set(), res:[] }
+      7:{ filtros:new Set(), res:[] },
+      8:{ filtros:new Set(), res:[] },
+      9:{ filtros:new Set(), res:[] },
+      10:{ filtros:new Set(), res:[] }
     }
   };
 
   // ================= UTIL =================
   function vizinhosRace(n){
     const i = track.indexOf(n);
-    return [ track[(i+36)%37], track[i], track[(i+1)%37] ];
-  }
-
-  function melhorTrincaBase(){
-    let cont = {};
-    timeline.slice(0,janela).forEach(n=>{
-      const t = terminal(n);
-      cont[t] = (cont[t]||0)+1;
-    });
-    return Object.entries(cont)
-      .sort((a,b)=>b[1]-a[1])
-      .slice(0,3)
-      .map(x=>+x[0]);
+    return [
+      track[(i+36)%37],
+      n,
+      track[(i+1)%37]
+    ];
   }
 
   function calcularAutoT(k){
     const set = new Set();
-    for(const n of timeline.slice(0,janela)){
+    for (const n of timeline.slice(0,janela)) {
       set.add(terminal(n));
-      if(set.size>=k) break;
+      if (set.size >= k) break;
     }
     analises.AUTO[k].filtros = set;
   }
 
   function calcularVizinho(){
-    const base = melhorTrincaBase();
-    analises.VIZINHO.filtros = new Set(base);
-    analises.VIZINHO.motor.clear();
+    const cont = {};
+    timeline.slice(0,janela).forEach(n=>{
+      const t = terminal(n);
+      cont[t] = (cont[t]||0)+1;
+    });
+    const base = Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(x=>+x[0]);
 
+    const set = new Set();
     base.forEach(t=>{
       track.filter(n=>terminal(n)===t)
         .forEach(n=>vizinhosRace(n)
-          .forEach(v=>analises.VIZINHO.motor.add(v))
+          .forEach(v=>set.add(terminal(v)))
         );
     });
+    analises.VIZINHO.filtros = set;
   }
 
   function calcularNunum(){
@@ -84,56 +88,50 @@
     analises.NUNUM.filtros = set;
   }
 
-  function triosSelecionados(filtros){
-    let lista=[];
-    eixos.forEach(e=>{
-      e.trios.forEach(trio=>{
-        const inter = trio.map(terminal)
-          .filter(t=>!filtros.size||filtros.has(t)).length;
-        if(inter>0) lista.push({eixo:e.nome,trio,score:inter});
-      });
-    });
-    lista.sort((a,b)=>b.score-a.score);
-    return lista.slice(0,9);
-  }
+  // ================= TRIOS DINÂMICOS POR EIXO =================
+  function gerarTriosDinamicos(filtros){
+    const usados = new Set();
+    const trios = [];
 
-  function validar(n, modo){
-    if(modo==="VIZINHO") return analises.VIZINHO.motor.has(n);
-    if(modo==="NUNUM"){
-      return triosSelecionados(analises.NUNUM.filtros)
-        .some(x=>x.trio.includes(n));
-    }
-    if(modo==="MANUAL"){
-      return triosSelecionados(analises.MANUAL.filtros)
-        .some(x=>x.trio.includes(n));
-    }
-    if(modo==="AUTO"){
-      return triosSelecionados(analises.AUTO[autoTAtivo].filtros)
-        .some(x=>x.trio.includes(n));
-    }
+    Object.entries(eixos).forEach(([nome, nums])=>{
+      let count = 0;
+      for(let i=0;i<nums.length-2;i++){
+        const trio = [nums[i], nums[i+1], nums[i+2]];
+        if (trio.some(n=>usados.has(n))) continue;
+
+        const ok = trio.some(n=>!filtros.size || filtros.has(terminal(n)));
+        if (!ok) continue;
+
+        trio.forEach(n=>usados.add(n));
+        trios.push({ eixo:nome, trio });
+        count++;
+        if (count >= 3) break;
+        if (trios.length >= 9) break;
+      }
+    });
+
+    return trios.slice(0,9);
   }
 
   function registrar(n){
-    analises.MANUAL.res.unshift(validar(n,"MANUAL")?"V":"X");
-    analises.VIZINHO.res.unshift(validar(n,"VIZINHO")?"V":"X");
-    analises.NUNUM.res.unshift(validar(n,"NUNUM")?"V":"X");
-
-    for(let k of [2,3,4,5,6,7]){
-      analises.AUTO[k].res.unshift(
-        triosSelecionados(analises.AUTO[k].filtros)
-          .some(x=>x.trio.includes(n)) ? "V":"X"
-      );
-    }
-  }
-
-  function atualizarBotoesModo(){
-    document.querySelectorAll(".modo").forEach(b=>{
-      b.style.background =
-        b.dataset.m === modoAtivo ? "#00e676" : "#444";
+    Object.keys(analises).forEach(k=>{
+      if(k==="AUTO"){
+        Object.keys(analises.AUTO).forEach(x=>{
+          analises.AUTO[x].res.unshift(
+            gerarTriosDinamicos(analises.AUTO[x].filtros)
+              .some(t=>t.trio.includes(n)) ? "V":"X"
+          );
+        });
+      } else {
+        analises[k].res.unshift(
+          gerarTriosDinamicos(analises[k].filtros)
+            .some(t=>t.trio.includes(n)) ? "V":"X"
+        );
+      }
     });
   }
 
-  // ================= UI =================
+  // ================= UI (layout preservado) =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -145,19 +143,17 @@
       <div style="border:1px solid #444;padding:8px">
         Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
-
-          <button class="modo" data-m="MANUAL">MANUAL</button>
-          <button class="modo" data-m="VIZINHO">VIZINHO</button>
-          <button class="modo" data-m="NUNUM">NUNUM</button>
-          <button class="modo" data-m="AUTO">AUTO</button>
-
+          Janela:
+          <select id="jan">
+            ${Array.from({length:8},(_,i)=>`<option>${i+3}</option>`).join("")}
+          </select>
           Auto T:
           <select id="autoT">
             <option value="">Manual</option>
-            ${[2,3,4,5,6,7].map(n=>`<option>${n}</option>`).join("")}
+            ${Array.from({length:9},(_,i)=>`<option>${i+2}</option>`).join("")}
           </select>
         </div>
       </div>
@@ -165,6 +161,12 @@
       <div style="margin:10px 0">
         🕒 Timeline (14):
         <span id="tl" style="font-size:18px;font-weight:600"></span>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+          <button class="modo" data-m="${m}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -183,14 +185,11 @@
   `;
 
   // ================= EVENTOS =================
-  document.getElementById("jan")?.addEventListener("change", e=>{
-    janela=+e.target.value;
-    render();
-  });
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
 
-  document.getElementById("autoT").onchange=e=>{
+  autoT.onchange=e=>{
     autoTAtivo=+e.target.value;
-    modoAtivo = autoTAtivo ? "AUTO" : "MANUAL";
+    modoAtivo="AUTO";
     calcularAutoT(autoTAtivo);
     render();
   };
@@ -198,7 +197,6 @@
   document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
       modoAtivo=b.dataset.m;
-      atualizarBotoesModo();
       render();
     };
   });
@@ -212,7 +210,6 @@
       analises.MANUAL.filtros.has(t)
         ? analises.MANUAL.filtros.delete(t)
         : analises.MANUAL.filtros.add(t);
-      atualizarBotoesModo();
       render();
     };
     btnT.appendChild(b);
@@ -232,9 +229,24 @@
     registrar(n);
     calcularVizinho();
     calcularNunum();
-    [2,3,4,5,6,7].forEach(calcularAutoT);
+    Object.keys(analises.AUTO).forEach(calcularAutoT);
     render();
   }
+
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+    });
+    render();
+  };
 
   function render(){
     const res =
@@ -258,14 +270,12 @@
       b.style.background = filtros.has(t)?"#00e676":"#444";
     });
 
-    const trios = triosSelecionados(filtros);
+    const trios = gerarTriosDinamicos(filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
     trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
-
-    atualizarBotoesModo();
   }
 
   render();
