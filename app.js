@@ -12,15 +12,9 @@
 
   // ================= EIXOS =================
   const eixos = {
-    ZERO: [
-      [0,32,15],[19,4,21],[2,25,17],[34,6,27]
-    ],
-    TIERS: [
-      [13,36,11],[30,8,23],[10,5,24],[16,33,1]
-    ],
-    ORPH: [
-      [20,14,31],[9,22,18],[7,29,28],[12,35,3]
-    ]
+    ZERO: [[0,32,15],[19,4,21],[2,25,17],[34,6,27]],
+    TIERS: [[13,36,11],[30,8,23],[10,5,24],[16,33,1]],
+    ORPH: [[20,14,31],[9,22,18],[7,29,28],[12,35,3]]
   };
 
   // ================= ESTADO =================
@@ -30,31 +24,48 @@
   let autoT = 5;
   let manualT = new Set();
 
-  // ================= T ATIVOS =================
-  function getTerminais(){
-    if(modo==="MANUAL") return new Set(manualT);
+  // ================= UTIL =================
+  function vizinhos(n){
+    const i = track.indexOf(n);
+    return [track[(i+36)%37], track[(i+1)%37]];
+  }
 
-    if(modo==="AUTO"){
+  // ================= TERMINAIS ATIVOS =================
+  function getTerminais(){
+    if (modo === "MANUAL") return new Set(manualT);
+
+    if (modo === "AUTO") {
       const s = new Set();
-      for(const n of hist){
+      for (const n of hist) {
         s.add(terminal(n));
-        if(s.size>=autoT) break;
+        if (s.size >= autoT) break;
       }
       return s;
     }
 
-    if(modo==="VIZINHO"){
-      const c={};
+    if (modo === "VIZINHO") {
+      const c = {};
       hist.slice(0,janela).forEach(n=>{
-        const i=track.indexOf(n);
-        [track[(i+36)%37],track[(i+1)%37]].forEach(v=>{
-          const t=terminal(v);
+        vizinhos(n).forEach(v=>{
+          const t = terminal(v);
           c[t]=(c[t]||0)+1;
         });
       });
       return new Set(
         Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>+x[0])
       );
+    }
+
+    if (modo === "NUNUM") {
+      if (hist.length < 2) return new Set();
+      const [a,b] = hist;
+      const s = new Set([
+        terminal(a),
+        terminal(b)
+      ]);
+      vizinhos(a).forEach(v=>s.add(terminal(v)));
+      vizinhos(b).forEach(v=>s.add(terminal(v)));
+      return s;
     }
 
     return new Set();
@@ -86,8 +97,8 @@
     <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
 
     <div style="margin:6px 0">
-      <button id="col">Colar</button>
-      <button id="lim">Limpar</button>
+      <button id="col" class="ctl">Colar</button>
+      <button id="lim" class="ctl">Limpar</button>
       Janela:
       <select id="jan">${[3,4,5,6,7,8,9,10].map(n=>`<option ${n===6?'selected':''}>${n}</option>`)}</select>
       Auto T:
@@ -95,9 +106,10 @@
     </div>
 
     <div style="margin:6px 0">
-      <button onclick="setModo('AUTO')">Auto</button>
-      <button onclick="setModo('MANUAL')">Manual</button>
-      <button onclick="setModo('VIZINHO')">Vizinho</button>
+      <button class="modo" data-m="AUTO">Auto</button>
+      <button class="modo" data-m="MANUAL">Manual</button>
+      <button class="modo" data-m="VIZINHO">Vizinhos</button>
+      <button class="modo" data-m="NUNUM">Nunum</button>
     </div>
 
     <div style="border:1px solid #555;padding:6px;margin:6px 0">
@@ -116,7 +128,7 @@
     <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
   </div>`;
 
-  // ================= BOTÕES =================
+  // ================= BOTÕES T =================
   const btnT=document.getElementById("btnT");
   for(let i=0;i<10;i++){
     const b=document.createElement("button");
@@ -129,6 +141,7 @@
     btnT.appendChild(b);
   }
 
+  // ================= NUMBERS =================
   for(let i=0;i<=36;i++){
     const b=document.createElement("button");
     b.textContent=i;
@@ -137,12 +150,9 @@
     document.getElementById("nums").appendChild(b);
   }
 
-  document.getElementById("jan").onchange=e=>{
-    janela=+e.target.value; render();
-  };
-  document.getElementById("auto").onchange=e=>{
-    autoT=+e.target.value; render();
-  };
+  // ================= EVENTOS =================
+  document.getElementById("jan").onchange=e=>{janela=+e.target.value;render();};
+  document.getElementById("auto").onchange=e=>{autoT=+e.target.value;render();};
 
   document.getElementById("col").onclick=()=>{
     document.getElementById("inp").value
@@ -153,14 +163,28 @@
   };
 
   document.getElementById("lim").onclick=()=>{
-    hist=[]; manualT.clear(); render();
+    hist=[];manualT.clear();render();
   };
 
-  window.setModo=m=>{modo=m;render();};
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.style.background="#333";
+    b.style.color="#fff";
+    b.onclick=()=>{
+      modo=b.dataset.m;
+      document.querySelectorAll(".modo").forEach(x=>{
+        x.style.background="#333";
+        x.style.fontSize="14px";
+      });
+      b.style.background="#00e676";
+      b.style.fontSize="16px";
+      render();
+    };
+  });
 
+  // ================= RENDER =================
   function render(){
-    const ts = getTerminais();
-    const tr = triosAtivos(ts);
+    const ts=getTerminais();
+    const tr=triosAtivos(ts);
 
     document.getElementById("tl").innerHTML =
       hist.slice(0,14).map(n=>{
