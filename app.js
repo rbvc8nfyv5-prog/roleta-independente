@@ -33,8 +33,7 @@
     analises[nome] = {
       tipo, param,
       filtrosT:new Set(),
-      trios:[],
-      res:[]
+      trios:[]
     };
   }
 
@@ -84,19 +83,15 @@
     const out=[];
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
-        const hit=trio.map(terminal).some(t=>a.filtrosT.has(t));
-        if(hit) out.push({e:e.nome,t:trio});
+        if(trio.map(terminal).some(t=>a.filtrosT.has(t))){
+          out.push({e:e.nome,t:trio});
+        }
       });
     });
     a.trios = out.slice(0,9);
   }
 
   function processar(n){
-    Object.values(analises).forEach(a=>{
-      if(!a.trios.length) a.res.unshift(null);
-      else a.res.unshift(a.trios.some(x=>x.t.includes(n)));
-    });
-
     timeline.unshift(n);
     if(timeline.length>500) timeline.pop();
 
@@ -112,8 +107,8 @@
   document.body.style.fontFamily="sans-serif";
 
   document.body.innerHTML=`
-  <div style="max-width:1100px;margin:auto;padding:10px">
-    <h3 style="text-align:center">CSM — Modos & Temas Visíveis</h3>
+  <div style="max-width:1000px;margin:auto;padding:10px">
+    <h3 style="text-align:center">CSM — Auto / Manual Terminais</h3>
 
     Histórico:
     <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
@@ -125,14 +120,19 @@
       <select id="jan">${[3,4,5,6,7,8,9,10].map(n=>`<option ${n===6?'selected':''}>${n}</option>`)}</select>
     </div>
 
-    <div id="modos" style="margin:8px 0"></div>
-
     <div style="margin:8px 0">
-      <b>Temas (T):</b>
-      <div id="btnT"></div>
+      <button onclick="setModo('MANUAL')">Manual</button>
+      ${[3,4,5,6,7,8,9].map(n=>`<button onclick="setModo('AUTO_${n}')">Auto ${n}</button>`).join("")}
+      <button onclick="setModo('VIZINHO')">Vizinho</button>
+      <button onclick="setModo('NUMNUM')">NumNum</button>
     </div>
 
-    <div>Timeline (14): <div id="tl" style="display:flex;gap:6px"></div></div>
+    <div style="border:2px solid #00e676;padding:8px;margin:10px 0">
+      🎯 Terminais (Manual ou Automático)
+      <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+    </div>
+
+    <div>Timeline (14): <span id="tl"></span></div>
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px">
       <div><b>ZERO</b><div id="z"></div></div>
@@ -143,48 +143,21 @@
     <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
   </div>`;
 
-  // ================= MODOS =================
-  const modosDiv=document.getElementById("modos");
-
-  function addModo(nome,label){
-    const b=document.createElement("button");
-    b.textContent=label;
-    b.onclick=()=>setModo(nome);
-    b.dataset.modo=nome;
-    modosDiv.appendChild(b);
-  }
-
-  addModo("MANUAL","Manual");
-  [3,4,5,6,7,8,9].forEach(n=>addModo("AUTO_"+n,"Auto "+n));
-  addModo("VIZINHO","Vizinho");
-  addModo("NUMNUM","NumNum");
-
-  function pintarModos(){
-    document.querySelectorAll("#modos button").forEach(b=>{
-      b.style.background = b.dataset.modo===modoVisivel ? "#00e676" : "#333";
-    });
-  }
-
   // ================= BOTÕES T =================
   const btnT=document.getElementById("btnT");
   for(let i=0;i<10;i++){
     const b=document.createElement("button");
     b.textContent="T"+i;
     b.dataset.t=i;
+    b.style="padding:6px;background:#333;color:#fff;border:1px solid #555";
     b.onclick=()=>{
-      filtrosManual.has(i)?filtrosManual.delete(i):filtrosManual.add(i);
-      setModo("MANUAL");
+      // 🔥 AGORA FUNCIONA EM QUALQUER MODO
+      filtrosManual.has(i)
+        ? filtrosManual.delete(i)
+        : filtrosManual.add(i);
       render();
     };
     btnT.appendChild(b);
-  }
-
-  function pintarT(){
-    const ativos = analises[modoVisivel].filtrosT;
-    document.querySelectorAll("#btnT button").forEach(b=>{
-      const t=+b.dataset.t;
-      b.style.background = ativos.has(t) ? "#00e676" : "#333";
-    });
   }
 
   // ================= CONTROLES =================
@@ -197,7 +170,10 @@
 
   document.getElementById("jan").onchange=e=>{
     janela=+e.target.value;
-    Object.values(analises).forEach(a=>{calcFiltros(a);calcTrios(a);});
+    Object.values(analises).forEach(a=>{
+      calcFiltros(a);
+      calcTrios(a);
+    });
     render();
   };
 
@@ -212,30 +188,28 @@
   document.getElementById("lim").onclick=()=>{
     timeline=[];
     filtrosManual.clear();
-    Object.values(analises).forEach(a=>{a.trios=[];a.res=[];a.filtrosT.clear();});
+    Object.values(analises).forEach(a=>{
+      a.trios=[];
+      a.filtrosT.clear();
+    });
     render();
   };
 
-  function setModo(m){
+  window.setModo=m=>{
     modoVisivel=m;
     render();
-  }
+  };
 
   function render(){
-    pintarModos();
-    pintarT();
-
     const a=analises[modoVisivel];
 
-    const tl=document.getElementById("tl");
-    tl.innerHTML="";
-    for(let i=0;i<Math.min(14,timeline.length);i++){
-      const d=document.createElement("div");
-      d.textContent=timeline[i];
-      d.style=`padding:4px 6px;border-radius:4px;background:${
-        a.res[i]===true?"#2e7d32":a.res[i]===false?"#c62828":"#333"}`;
-      tl.appendChild(d);
-    }
+    document.getElementById("tl").textContent = timeline.slice(0,14).join(" · ");
+
+    // pinta T conforme modo
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.dataset.t;
+      b.style.background = a.filtrosT.has(t) ? "#00e676" : "#333";
+    });
 
     const p={ZERO:[],TIERS:[],ORPHELINS:[]};
     a.trios.forEach(x=>p[x.e].push(x.t.join("-")));
