@@ -22,86 +22,109 @@
     { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
-  // ================= ESTADO =================
+  // ================= ESTADO GLOBAL =================
   let timeline = [];
-  let resultados = [];
+  const MAX_HIST = 500;
+
   let janela = 6;
+  let modoVisivel = "MANUAL"; // o que está sendo exibido
 
-  let filtrosT = new Set();
-  let autoTCount = 0;
-  let modo = "MANUAL";
+  // ================= ANALISES PARALELAS =================
+  const analises = {};
 
-  let triosAtivosAnterior = [];
+  function criarAnalise(nome, tipo, param){
+    analises[nome] = {
+      tipo,
+      param,
+      filtrosT: new Set(),
+      triosArmados: [],
+      resultados: []
+    };
+  }
 
-  let mostrarCompleto = false; // 👈 NOVO
+  // manual
+  criarAnalise("MANUAL","MANUAL");
 
-  // ================= MODOS =================
-  function calcularAutoTerminais(){
-    const set = new Set();
-    for (const n of timeline){
-      set.add(terminal(n));
-      if (set.size >= autoTCount) break;
+  // autos
+  [3,4,5,6,7,8,9].forEach(n=>{
+    criarAnalise("AUTO_"+n,"AUTO",n);
+  });
+
+  // vizinho e num-num
+  criarAnalise("VIZINHO","VIZINHO");
+  criarAnalise("NUMNUM","NUMNUM");
+
+  // ================= FILTROS POR TIPO =================
+  function calcularFiltros(analise){
+    const { tipo, param } = analise;
+
+    if(tipo==="MANUAL") return;
+
+    if(tipo==="AUTO"){
+      const set = new Set();
+      for(const n of timeline){
+        set.add(terminal(n));
+        if(set.size>=param) break;
+      }
+      analise.filtrosT = set;
     }
-    filtrosT = set;
-    atualizarBotoesT();
-  }
 
-  function calcularVizinhoTerminais(){
-    const cont = {};
-    timeline.slice(0,janela).forEach(n=>{
-      vizinhos(n).forEach(v=>{
-        const t = terminal(v);
-        cont[t] = (cont[t]||0)+1;
+    if(tipo==="VIZINHO"){
+      const cont = {};
+      timeline.slice(0,janela).forEach(n=>{
+        vizinhos(n).forEach(v=>{
+          const t=terminal(v);
+          cont[t]=(cont[t]||0)+1;
+        });
       });
-    });
-    filtrosT = new Set(
-      Object.entries(cont)
-        .sort((a,b)=>b[1]-a[1])
-        .slice(0,3)
-        .map(x=>parseInt(x[0],10))
-    );
-    atualizarBotoesT();
+      analise.filtrosT = new Set(
+        Object.entries(cont).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>+x[0])
+      );
+    }
+
+    if(tipo==="NUMNUM"){
+      const set = new Set();
+      timeline.slice(0,2).forEach(n=>{
+        set.add(terminal(n));
+        vizinhos(n).forEach(v=>set.add(terminal(v)));
+      });
+      analise.filtrosT = set;
+    }
   }
 
-  function calcularNumeroNumero(){
-    const set = new Set();
-    timeline.slice(0,2).forEach(n=>{
-      set.add(terminal(n));
-      vizinhos(n).forEach(v=>set.add(terminal(v)));
-    });
-    filtrosT = set;
-    atualizarBotoesT();
-  }
-
-  function atualizarBotoesT(){
-    document.querySelectorAll("#btnT button").forEach(b=>{
-      const t = parseInt(b.dataset.t);
-      b.style.background = filtrosT.has(t)
-        ? (modo==="MANUAL"?"#42a5f5":modo==="AUTO"?"#00e676":modo==="VIZINHO"?"#ff9800":"#ab47bc")
-        : "#333";
-    });
-  }
-
-  // ================= TRIOS =================
-  function triosSelecionados(){
-    let out = [];
+  function calcularTrios(analise){
+    let out=[];
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
         const hits = trio.map(terminal)
-          .filter(t=>!filtrosT.size || filtrosT.has(t)).length;
-        if(hits>0) out.push({ eixo:e.nome, trio, score:hits/3 });
+          .filter(t=>!analise.filtrosT.size||analise.filtrosT.has(t)).length;
+        if(hits>0) out.push({ eixo:e.nome, trio });
       });
     });
-    return out.sort((a,b)=>b.score-a.score).slice(0,9);
+    analise.triosArmados = out.slice(0,9);
   }
 
-  // ================= VALIDAÇÃO =================
-  function validarNumero(n){
-    if(!triosAtivosAnterior.length){
-      resultados.unshift(null);
-      return;
-    }
-    resultados.unshift(triosAtivosAnterior.some(t=>t.trio.includes(n)));
+  // ================= MOTOR PARALELO =================
+  function processarNumero(n){
+    // valida para TODAS as análises
+    Object.values(analises).forEach(a=>{
+      if(!a.triosArmados.length){
+        a.resultados.unshift(null);
+      }else{
+        a.resultados.unshift(a.triosArmados.some(t=>t.trio.includes(n)));
+      }
+      if(a.resultados.length>MAX_HIST) a.resultados.pop();
+    });
+
+    // adiciona número
+    timeline.unshift(n);
+    if(timeline.length>MAX_HIST) timeline.pop();
+
+    // recalcula tudo para todas
+    Object.values(analises).forEach(a=>{
+      calcularFiltros(a);
+      calcularTrios(a);
+    });
   }
 
   // ================= UI =================
@@ -109,37 +132,29 @@
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
-  document.body.innerHTML = `
+  document.body.innerHTML=`
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM</h3>
+      <h3 style="text-align:center">CSM — Análises Paralelas</h3>
 
       <div style="border:1px solid #444;padding:8px">
         Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
           Janela:
           <select id="jan">${[3,4,5,6,7,8,9,10].map(n=>`<option ${n===6?'selected':''}>${n}</option>`)}</select>
-          Auto T:
-          <select id="autoT">
-            <option value="0">Manual</option>
-            ${[2,3,4,5,6,7].map(n=>`<option value="${n}">${n}</option>`)}
-          </select>
-          <button id="viz">Vizinho</button>
-          <button id="nn">Num-Num</button>
         </div>
       </div>
 
-      <div style="margin:8px 0;display:flex;align-items:center;gap:8px">
-        <b>Linha do tempo</b>
-        <span id="toggle" style="cursor:pointer;color:#90caf9">⋯</span>
+      <div style="margin:8px 0">
+        <b>Modo visível:</b>
+        <select id="modo"></select>
       </div>
-      <div id="tl" style="display:flex;gap:6px;flex-wrap:wrap"></div>
 
-      <div style="border:2px solid #00e676;padding:8px;margin:10px 0">
-        Terminais
-        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      <div style="margin:8px 0">
+        Linha do tempo:
+        <div id="tl" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
@@ -152,53 +167,24 @@
     </div>
   `;
 
-  // ================= BOTÕES =================
-  const btnT = document.getElementById("btnT");
-  for(let t=0;t<=9;t++){
-    const b=document.createElement("button");
-    b.dataset.t=t;
-    b.textContent="T"+t;
-    b.style="padding:6px;background:#333;color:#fff";
-    b.onclick=()=>{
-      modo="MANUAL";
-      filtrosT.has(t)?filtrosT.delete(t):filtrosT.add(t);
-      atualizarBotoesT();
-      render();
-    };
-    btnT.appendChild(b);
-  }
-
-  document.getElementById("toggle").onclick=()=>{
-    mostrarCompleto = !mostrarCompleto;
+  // seletor de modos
+  const sel=document.getElementById("modo");
+  Object.keys(analises).forEach(k=>{
+    const o=document.createElement("option");
+    o.value=k; o.textContent=k;
+    sel.appendChild(o);
+  });
+  sel.onchange=e=>{
+    modoVisivel=e.target.value;
     render();
   };
 
   document.getElementById("jan").onchange=e=>{
-    janela=parseInt(e.target.value);
-    if(modo==="VIZINHO") calcularVizinhoTerminais();
-    render();
-  };
-
-  document.getElementById("autoT").onchange=e=>{
-    autoTCount=parseInt(e.target.value);
-    filtrosT.clear();
-    modo = autoTCount>0 ? "AUTO" : "MANUAL";
-    if(modo==="AUTO") calcularAutoTerminais();
-    atualizarBotoesT();
-    render();
-  };
-
-  document.getElementById("viz").onclick=()=>{
-    modo="VIZINHO";
-    filtrosT.clear();
-    calcularVizinhoTerminais();
-    render();
-  };
-
-  document.getElementById("nn").onclick=()=>{
-    modo="NUMNUM";
-    filtrosT.clear();
-    calcularNumeroNumero();
+    janela=+e.target.value;
+    Object.values(analises).forEach(a=>{
+      calcularFiltros(a);
+      calcularTrios(a);
+    });
     render();
   };
 
@@ -206,59 +192,44 @@
     const b=document.createElement("button");
     b.textContent=n;
     b.style="padding:8px;background:#333;color:#fff";
-    b.onclick=()=>add(n);
+    b.onclick=()=>{ processarNumero(n); render(); };
     document.getElementById("nums").appendChild(b);
-  }
-
-  function add(n){
-    validarNumero(n);
-    timeline.unshift(n);
-    if(timeline.length>200) timeline.pop();
-
-    if(modo==="VIZINHO") calcularVizinhoTerminais();
-    else if(modo==="NUMNUM") calcularNumeroNumero();
-    else if(modo==="AUTO") calcularAutoTerminais();
-
-    triosAtivosAnterior = triosSelecionados();
-    render();
   }
 
   document.getElementById("col").onclick=()=>{
     document.getElementById("inp").value
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n=>n>=0&&n<=36)
-      .forEach(add);
+      .split(/[\s,]+/).map(Number).filter(n=>n>=0&&n<=36)
+      .forEach(n=>processarNumero(n));
     document.getElementById("inp").value="";
+    render();
   };
 
   document.getElementById("lim").onclick=()=>{
     timeline=[];
-    resultados=[];
-    filtrosT.clear();
-    autoTCount=0;
-    modo="MANUAL";
+    Object.values(analises).forEach(a=>{
+      a.triosArmados=[];
+      a.resultados=[];
+      a.filtrosT.clear();
+    });
     render();
   };
 
   function render(){
-    const tl = document.getElementById("tl");
+    const a = analises[modoVisivel];
+
+    const tl=document.getElementById("tl");
     tl.innerHTML="";
-
-    const limite = mostrarCompleto ? timeline.length : 14;
-
-    for(let i=0;i<Math.min(limite, timeline.length);i++){
+    for(let i=0;i<Math.min(14,timeline.length);i++){
       const d=document.createElement("div");
-      d.textContent = timeline[i];
-      const r = resultados[i];
+      d.textContent=timeline[i];
+      const r=a.resultados[i];
       d.style=`padding:4px 6px;border-radius:4px;
         background:${r===true?"#2e7d32":r===false?"#c62828":"#333"}`;
       tl.appendChild(d);
     }
 
-    const trios = triosSelecionados();
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
-    trios.forEach(t=>por[t.eixo].push(t.trio.join("-")));
+    a.triosArmados.forEach(t=>por[t.eixo].push(t.trio.join("-")));
     document.getElementById("colZERO").innerHTML=por.ZERO.join("<br>");
     document.getElementById("colTIERS").innerHTML=por.TIERS.join("<br>");
     document.getElementById("colORPH").innerHTML=por.ORPHELINS.join("<br>");
