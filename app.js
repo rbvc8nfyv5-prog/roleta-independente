@@ -7,120 +7,126 @@
     16,33,1,20,14,31,9,22,18,29,
     7,28,12,35,3,26,0
   ];
-
   const terminal = n => n % 10;
 
   // ================= EIXOS =================
   const eixos = [
-    {
-      nome: "ZERO",
-      trios: [
-        [0,32,15],
-        [19,4,21],
-        [2,25,17],
-        [34,6,27]
-      ]
-    },
-    {
-      nome: "TIERS",
-      trios: [
-        [13,36,11],
-        [30,8,23],
-        [10,5,24],
-        [16,33,1]
-      ]
-    },
-    {
-      nome: "ORPHELINS",
-      trios: [
-        [20,14,31],
-        [9,22,18],
-        [7,29,28],
-        [12,35,3]
-      ]
-    }
+    { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
+    { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
+    { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
   // ================= ESTADO =================
   let timeline = [];
-  let filtrosT = new Set();
-  let autoTCount = 0;
-  let modoAtivo = "MANUAL"; // MANUAL | VIZINHO | NUNUM | AUTO
+  let janela = 6;
+  let modoAtivo = "MANUAL";
+  let autoTAtivo = null;
 
-  // ================= AUTO TERMINAIS =================
-  function calcularAutoTerminais(){
-    if (autoTCount < 2) return;
-    const set = new Set();
-    for (const n of timeline) {
-      set.add(terminal(n));
-      if (set.size >= autoTCount) break;
+  const analises = {
+    MANUAL: { filtros:new Set(), res:[] },
+    VIZINHO:{ filtros:new Set(), res:[], motor:new Set() },
+    NUNUM:  { filtros:new Set(), res:[] },
+    AUTO: {
+      2:{ filtros:new Set(), res:[] },
+      3:{ filtros:new Set(), res:[] },
+      4:{ filtros:new Set(), res:[] },
+      5:{ filtros:new Set(), res:[] },
+      6:{ filtros:new Set(), res:[] },
+      7:{ filtros:new Set(), res:[] }
     }
-    filtrosT = set;
-    atualizarBotoesT();
+  };
+
+  // ================= UTIL =================
+  function vizinhosRace(n){
+    const i = track.indexOf(n);
+    return [ track[(i+36)%37], track[i], track[(i+1)%37] ];
   }
 
-  function atualizarBotoesT(){
-    document.querySelectorAll("#btnT button").forEach(b=>{
-      const t = +b.dataset.t;
-      b.style.background = filtrosT.has(t) ? "#00e676" : "#444";
+  function melhorTrincaBase(){
+    let cont = {};
+    timeline.slice(0,janela).forEach(n=>{
+      const t = terminal(n);
+      cont[t] = (cont[t]||0)+1;
+    });
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(x=>+x[0]);
+  }
+
+  function calcularAutoT(k){
+    const set = new Set();
+    for(const n of timeline.slice(0,janela)){
+      set.add(terminal(n));
+      if(set.size>=k) break;
+    }
+    analises.AUTO[k].filtros = set;
+  }
+
+  function calcularVizinho(){
+    const base = melhorTrincaBase();
+    analises.VIZINHO.filtros = new Set(base);
+    analises.VIZINHO.motor.clear();
+
+    base.forEach(t=>{
+      track.filter(n=>terminal(n)===t)
+        .forEach(n=>vizinhosRace(n)
+          .forEach(v=>analises.VIZINHO.motor.add(v))
+        );
     });
   }
 
-  // ================= MODOS =================
-  function atualizarBotoesModo(){
-    document.querySelectorAll(".modo").forEach(b=>{
-      b.style.background =
-        b.dataset.m === modoAtivo ? "#00e676" : "#444";
+  function calcularNunum(){
+    const set = new Set();
+    timeline.slice(0,2).forEach(n=>{
+      vizinhosRace(n).forEach(v=>set.add(terminal(v)));
     });
+    analises.NUNUM.filtros = set;
   }
 
-  // ================= TRIOS =================
-  function triosSelecionados(){
-    let candidatos = [];
-
+  function triosSelecionados(filtros){
+    let lista=[];
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
-        const trioTs = trio.map(terminal);
-        let inter = 0;
-        trioTs.forEach(t=>{
-          if (!filtrosT.size || filtrosT.has(t)) inter++;
-        });
-        candidatos.push({
-          eixo: e.nome,
-          trio,
-          score: inter / trioTs.length
-        });
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio,score:inter});
       });
     });
-
-    candidatos.sort((a,b)=>b.score - a.score);
-
-    const pick = [];
-    const usados = new Set();
-
-    const add = x=>{
-      const k = x.eixo + "|" + x.trio.join("-");
-      if(!usados.has(k)){
-        usados.add(k);
-        pick.push(x);
-      }
-    };
-
-    ["ZERO","TIERS","ORPHELINS"].forEach(nome=>{
-      candidatos.filter(x=>x.eixo===nome && x.score>0)
-        .slice(0,3)
-        .forEach(add);
-    });
-
-    for(const c of candidatos){
-      if(pick.length >= 9) break;
-      add(c);
-    }
-
-    return pick.slice(0,9);
+    lista.sort((a,b)=>b.score-a.score);
+    return lista.slice(0,9);
   }
 
-  // ================= UI =================
+  function validar(n, modo){
+    if(modo==="VIZINHO") return analises.VIZINHO.motor.has(n);
+    if(modo==="NUNUM"){
+      return triosSelecionados(analises.NUNUM.filtros)
+        .some(x=>x.trio.includes(n));
+    }
+    if(modo==="MANUAL"){
+      return triosSelecionados(analises.MANUAL.filtros)
+        .some(x=>x.trio.includes(n));
+    }
+    if(modo==="AUTO"){
+      return triosSelecionados(analises.AUTO[autoTAtivo].filtros)
+        .some(x=>x.trio.includes(n));
+    }
+  }
+
+  function registrar(n){
+    analises.MANUAL.res.unshift(validar(n,"MANUAL")?"V":"X");
+    analises.VIZINHO.res.unshift(validar(n,"VIZINHO")?"V":"X");
+    analises.NUNUM.res.unshift(validar(n,"NUNUM")?"V":"X");
+
+    for(let k of [2,3,4,5,6,7]){
+      analises.AUTO[k].res.unshift(
+        triosSelecionados(analises.AUTO[k].filtros)
+          .some(x=>x.trio.includes(n)) ? "V":"X"
+      );
+    }
+  }
+
+  // ================= UI (layout intacto) =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -132,19 +138,15 @@
       <div style="border:1px solid #444;padding:8px">
         Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
-
-          <button class="modo" data-m="MANUAL">Manual</button>
-          <button class="modo" data-m="VIZINHO">Vizinho</button>
-          <button class="modo" data-m="NUNUM">Nunum</button>
-
-          Auto-T:
+          Janela:
+          <select id="jan">${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}</select>
+          Auto T:
           <select id="autoT">
-            <option value="0">Off</option>
-            <option>2</option><option>3</option><option>4</option>
-            <option>5</option><option>6</option><option>7</option>
+            <option value="">Manual</option>
+            ${[2,3,4,5,6,7].map(n=>`<option>${n}</option>`).join("")}
           </select>
         </div>
       </div>
@@ -154,118 +156,107 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+          <button class="modo" data-m="${m}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
+      </div>
+
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
         Terminais:
         <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-        <div style="border:1px solid #ff5252;padding:8px">
-          <b>ZERO</b><div id="cZERO"></div>
-        </div>
-        <div style="border:1px solid #42a5f5;padding:8px">
-          <b>TIERS</b><div id="cTIERS"></div>
-        </div>
-        <div style="border:1px solid #66bb6a;padding:8px">
-          <b>ORPHELINS</b><div id="cORPH"></div>
-        </div>
+        <div><b>ZERO</b><div id="cZERO"></div></div>
+        <div><b>TIERS</b><div id="cTIERS"></div></div>
+        <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
 
-  // ================= BOTÕES T =================
-  const btnT = document.getElementById("btnT");
-  for(let t=0;t<=9;t++){
-    const b=document.createElement("button");
-    b.dataset.t=t;
-    b.textContent="T"+t;
-    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
-    b.onclick=()=>{
-      modoAtivo = "MANUAL";
-      autoTCount=0;
-      document.getElementById("autoT").value="0";
-      filtrosT.has(t)?filtrosT.delete(t):filtrosT.add(t);
-      atualizarBotoesT();
-      atualizarBotoesModo();
-      render();
-    };
-    btnT.appendChild(b);
-  }
-
   // ================= EVENTOS =================
+  document.getElementById("jan").onchange=e=>{
+    janela=+e.target.value;
+    render();
+  };
+
+  document.getElementById("autoT").onchange=e=>{
+    autoTAtivo=+e.target.value;
+    modoAtivo="AUTO";
+    calcularAutoT(autoTAtivo);
+    render();
+  };
+
   document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
-      modoAtivo = b.dataset.m;
-      atualizarBotoesModo();
+      modoAtivo=b.dataset.m;
       render();
     };
   });
 
-  document.getElementById("autoT").onchange=e=>{
-    autoTCount=+e.target.value;
-    filtrosT.clear();
-    if(autoTCount>0){
-      modoAtivo="AUTO";
-      calcularAutoTerminais();
-    } else {
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
       modoAtivo="MANUAL";
-    }
-    atualizarBotoesModo();
-    render();
-  };
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+      render();
+    };
+    btnT.appendChild(b);
+  }
 
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
     b.style="padding:8px;background:#333;color:#fff";
     b.onclick=()=>add(n);
-    document.getElementById("nums").appendChild(b);
+    nums.appendChild(b);
   }
 
   function add(n){
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
-    if(autoTCount>0) calcularAutoTerminais();
+    registrar(n);
+    calcularVizinho();
+    calcularNunum();
+    [2,3,4,5,6,7].forEach(calcularAutoT);
     render();
   }
 
-  document.getElementById("col").onclick=()=>{
-    document.getElementById("inp").value
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n=>n>=0&&n<=36)
-      .forEach(add);
-    document.getElementById("inp").value="";
-  };
-
-  document.getElementById("lim").onclick=()=>{
-    timeline=[];
-    filtrosT.clear();
-    autoTCount=0;
-    modoAtivo="MANUAL";
-    document.getElementById("autoT").value="0";
-    atualizarBotoesT();
-    atualizarBotoesModo();
-    render();
-  };
-
   function render(){
-    document.getElementById("tl").textContent = timeline.join(" · ");
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
 
-    const trios = triosSelecionados();
-    const por = { ZERO:[], TIERS:[], ORPHELINS:[] };
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
 
-    trios.forEach(x=>{
-      por[x.eixo].push(x.trio.join("-"));
+    const filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.filtros || new Set()
+        : analises[modoAtivo].filtros;
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      b.style.background = filtros.has(t)?"#00e676":"#444";
     });
 
-    document.getElementById("cZERO").innerHTML = por.ZERO.map(x=>`<div>${x}</div>`).join("");
-    document.getElementById("cTIERS").innerHTML = por.TIERS.map(x=>`<div>${x}</div>`).join("");
-    document.getElementById("cORPH").innerHTML = por.ORPHELINS.map(x=>`<div>${x}</div>`).join("");
-
-    atualizarBotoesModo();
+    const trios = triosSelecionados(filtros);
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
   }
 
   render();
