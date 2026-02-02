@@ -7,120 +7,74 @@
     16,33,1,20,14,31,9,22,18,29,
     7,28,12,35,3,26,0
   ];
-
   const terminal = n => n % 10;
-  const idx = n => track.indexOf(n);
-
-  function vizinhos(n, d=1){
-    const i = idx(n);
-    let arr = [];
-    for(let x=-d;x<=d;x++){
-      if(x!==0) arr.push(track[(i+37+x)%37]);
-    }
-    return arr;
-  }
 
   // ================= EIXOS =================
   const eixos = {
-    ZERO: [
-      [0,32,15],[19,4,21],[2,25,17],[34,6,27]
-    ],
-    TIERS: [
-      [13,36,11],[30,8,23],[10,5,24],[16,33,1]
-    ],
-    ORPHELINS: [
-      [20,14,31],[9,22,18],[7,29,28],[12,35,3]
-    ]
+    ZERO: [[0,32,15],[19,4,21],[2,25,17],[34,6,27]],
+    TIERS: [[13,36,11],[30,8,23],[10,5,24],[16,33,1]],
+    ORPHELINS: [[20,14,31],[9,22,18],[7,29,28],[12,35,3]]
   };
 
   // ================= ESTADO GLOBAL =================
   let timeline = [];
+  let janela = 6;
 
-  // ================= ANÁLISES =================
+  let modoAtivo = "MANUAL"; // MANUAL | AUTO | VIZINHO | NUNUM
   const analises = {
-    manual: { T:new Set(), hist:[], res:[] },
-    auto:   { T:new Set(), hist:[], res:[] },
-    viz:    { T:new Set(), hist:[], res:[] },
-    nunum:  { T:new Set(), hist:[], res:[] }
+    MANUAL: { filtrosT:new Set(), res:[] },
+    AUTO:   { filtrosT:new Set(), res:[] },
+    VIZINHO:{ filtrosT:new Set(), res:[] },
+    NUNUM:  { filtrosT:new Set(), res:[] }
   };
 
-  let modo = "manual";
-  let autoCount = 0;
+  let autoTCount = 0;
 
-  // ================= AUTO =================
-  function calcAuto(){
-    if(autoCount<2) return;
-    const s = new Set();
+  // ================= UTIL =================
+  function vizinhos(n,d){
+    const i = track.indexOf(n);
+    const r = new Set();
+    for(let x=-d;x<=d;x++) r.add(track[(i+37+x)%37]);
+    return r;
+  }
+
+  function validarNumero(numero, trios){
+    return trios.some(t=>t.flatMap(c=>[...vizinhos(c,1)]).includes(numero));
+  }
+
+  // ================= AUTO TERMINAIS =================
+  function calcularAutoTerminais(){
+    const set = new Set();
     for(const n of timeline){
-      s.add(terminal(n));
-      if(s.size>=autoCount) break;
+      set.add(terminal(n));
+      if(set.size>=autoTCount) break;
     }
-    analises.auto.T = s;
-  }
-
-  // ================= VIZINHOS =================
-  function calcViz(){
-    const s = new Set();
-    timeline.slice(0,6).forEach(n=>{
-      s.add(terminal(n));
-      vizinhos(n).forEach(v=>s.add(terminal(v)));
-    });
-    analises.viz.T = new Set([...s].slice(0,3));
-  }
-
-  // ================= NUNUM =================
-  function calcNunum(){
-    if(timeline.length<2) return;
-    const a = timeline[0], b = timeline[1];
-    const s = new Set([
-      terminal(a),terminal(b),
-      ...vizinhos(a).map(terminal),
-      ...vizinhos(b).map(terminal)
-    ]);
-    analises.nunum.T = s;
+    analises.AUTO.filtrosT = set;
   }
 
   // ================= TRIOS =================
-  function triosPorT(setT){
-    let out=[];
-    for(const eixo in eixos){
-      eixos[eixo].forEach(t=>{
-        const ts = t.map(terminal);
-        const ok = ts.filter(x=>setT.has(x)).length;
-        if(ok>0) out.push({eixo,trio:t,score:ok/3});
+  function gerarTrios(filtrosT){
+    let lista=[];
+    Object.entries(eixos).forEach(([nome,trios])=>{
+      trios.forEach(trio=>{
+        const inter = trio.map(terminal).filter(t=>!filtrosT.size||filtrosT.has(t)).length;
+        if(inter>0) lista.push({ eixo:nome, trio, score:inter });
       });
-    }
-    out.sort((a,b)=>b.score-a.score);
-    return out.slice(0,9);
+    });
+    lista.sort((a,b)=>b.score-a.score);
+
+    // mínimo 8 / máximo 9
+    return lista.slice(0,9).filter((_,i)=>i<9);
   }
 
-  // ================= VALIDAR =================
-  function validar(n){
-    for(const k in analises){
-      const a = analises[k];
-      if(!a.trios) continue;
-      const hit = a.trios.some(t=>t.trio.includes(n));
-      a.res.unshift(hit?"V":"X");
-      if(a.res.length>14) a.res.pop();
-    }
-  }
-
-  // ================= ADD =================
-  function add(n){
-    timeline.unshift(n);
-    if(timeline.length>200) timeline.pop();
-
-    validar(n);
-
-    if(autoCount>0) calcAuto();
-    calcViz();
-    calcNunum();
-
-    for(const k in analises){
-      analises[k].trios = triosPorT(analises[k].T);
-    }
-
-    render();
+  // ================= REGISTRAR RESULTADO =================
+  function registrarResultado(modo, numero){
+    const filtros = analises[modo].filtrosT;
+    const trios = gerarTrios(filtros).map(x=>x.trio);
+    const r = validarNumero(numero,trios) ? "V" : "X";
+    analises[modo].res.unshift(r);
+    if(analises[modo].res.length>timeline.length)
+      analises[modo].res.length=timeline.length;
   }
 
   // ================= UI =================
@@ -128,79 +82,143 @@
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
-  document.body.innerHTML = `
-    <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM</h3>
+  document.body.innerHTML=`
+  <div style="padding:10px;max-width:1000px;margin:auto">
+    <h3 style="text-align:center">CSM</h3>
 
-      <div style="border:1px solid #444;padding:8px">
-        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+    <div style="border:1px solid #444;padding:8px">
+      <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+      <div style="margin-top:6px">
         <button id="col">Colar</button>
         <button id="lim">Limpar</button>
-
-        <button class="m" data-m="manual">Manual</button>
-        <button class="m" data-m="auto">Auto</button>
-        <button class="m" data-m="viz">Vizinhos</button>
-        <button class="m" data-m="nunum">Nunum</button>
-
+        Janela:
+        <select id="jan">${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}</select>
         Auto T:
-        <select id="auto">
-          <option>0</option><option>3</option><option>4</option><option>5</option><option>6</option>
+        <select id="autoT">
+          <option value="0">Manual</option>
+          ${[2,3,4,5,6,7].map(n=>`<option value="${n}">${n}</option>`).join("")}
         </select>
       </div>
-
-      <div style="margin:10px 0;font-size:17px">
-        Timeline: <span id="tl"></span>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-        <div><b>ZERO</b><div id="z"></div></div>
-        <div><b>TIERS</b><div id="t"></div></div>
-        <div><b>ORPHELINS</b><div id="o"></div></div>
-      </div>
     </div>
+
+    <div style="margin:8px 0">
+      🕒 Timeline:
+      <span id="tl"></span>
+    </div>
+
+    <div style="display:flex;gap:6px;margin:8px 0">
+      ${["MANUAL","AUTO","VIZINHO","NUNUM"].map(m=>`<button class="modo" data-m="${m}">${m}</button>`).join("")}
+    </div>
+
+    <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px">
+      <div><b>ZERO</b><div id="cZERO"></div></div>
+      <div><b>TIERS</b><div id="cTIERS"></div></div>
+      <div><b>ORPHELINS</b><div id="cORP"></div></div>
+    </div>
+
+    <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
+  </div>
   `;
 
-  document.querySelectorAll(".m").forEach(b=>{
+  // ================= BOTÕES =================
+  document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
-      modo=b.dataset.m;
-      document.querySelectorAll(".m").forEach(x=>x.style.background="#444");
-      b.style.background="#00e676";
+      modoAtivo=b.dataset.m;
       render();
     };
   });
 
-  document.getElementById("auto").onchange=e=>{
-    autoCount=+e.target.value;
-    analises.auto.T.clear();
-    calcAuto();
+  const btnT=document.getElementById("btnT");
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.onclick=()=>{
+      analises.MANUAL.filtrosT.has(t)
+        ? analises.MANUAL.filtrosT.delete(t)
+        : analises.MANUAL.filtrosT.add(t);
+      modoAtivo="MANUAL";
+      render();
+    };
+    btnT.appendChild(b);
+  }
+
+  for(let n=0;n<=36;n++){
+    const b=document.createElement("button");
+    b.textContent=n;
+    b.onclick=()=>add(n);
+    document.getElementById("nums").appendChild(b);
+  }
+
+  // ================= EVENTOS =================
+  function add(n){
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
+
+    Object.keys(analises).forEach(m=>{
+      if(timeline.length>1)
+        registrarResultado(m,n);
+    });
+
+    if(autoTCount>0) calcularAutoTerminais();
     render();
-  };
+  }
 
   document.getElementById("col").onclick=()=>{
-    document.getElementById("inp").value
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n=>n>=0&&n<=36)
-      .forEach(add);
+    document.getElementById("inp").value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
     document.getElementById("inp").value="";
   };
 
   document.getElementById("lim").onclick=()=>{
     timeline=[];
-    for(const k in analises){
-      analises[k].res=[];
-    }
+    Object.values(analises).forEach(a=>a.res=[]);
     render();
   };
 
+  document.getElementById("jan").onchange=e=>{
+    janela=parseInt(e.target.value,10);
+    render();
+  };
+
+  document.getElementById("autoT").onchange=e=>{
+    autoTCount=parseInt(e.target.value,10);
+    analises.AUTO.filtrosT.clear();
+    if(autoTCount>0) calcularAutoTerminais();
+    modoAtivo="AUTO";
+    render();
+  };
+
+  // ================= RENDER =================
   function render(){
-    document.getElementById("tl").textContent = timeline.slice(0,14).join(" · ");
-    const a = analises[modo];
+    // timeline verde/vermelha
+    const res = analises[modoAtivo].res;
+    document.getElementById("tl").innerHTML =
+      timeline.map((n,i)=>{
+        const r=res[i];
+        const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#ccc";
+        return `<span style="font-size:17px;font-weight:600;color:${c}">${n}</span>`;
+      }).join(" · ");
+
+    // pintar T
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo = modoAtivo==="MANUAL"
+        ? analises.MANUAL.filtrosT.has(t)
+        : analises[modoAtivo].filtrosT.has(t);
+      b.style.background=ativo?"#00e676":"#333";
+      b.style.color="#fff";
+    });
+
+    // trios
+    const trios=gerarTrios(analises[modoAtivo].filtrosT);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
-    (a.trios||[]).forEach(x=>por[x.eixo].push(x.trio.join("-")));
-    document.getElementById("z").innerHTML=por.ZERO.join("<br>");
-    document.getElementById("t").innerHTML=por.TIERS.join("<br>");
-    document.getElementById("o").innerHTML=por.ORPHELINS.join("<br>");
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+
+    document.getElementById("cZERO").innerHTML=por.ZERO.join("<br>");
+    document.getElementById("cTIERS").innerHTML=por.TIERS.join("<br>");
+    document.getElementById("cORP").innerHTML=por.ORPHELINS.join("<br>");
   }
 
   render();
