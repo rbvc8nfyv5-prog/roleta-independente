@@ -66,7 +66,9 @@
           c[t]=(c[t]||0)+1;
         });
       });
-      Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,3)
+      Object.entries(c)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0,3)
         .forEach(x=>a.filtrosT.add(+x[0]));
     }
 
@@ -111,7 +113,7 @@
 
   document.body.innerHTML=`
   <div style="max-width:1100px;margin:auto;padding:10px">
-    <h3 style="text-align:center">CSM — Manual / Auto / Vizinho / NumNum</h3>
+    <h3 style="text-align:center">CSM — Modos & Temas Visíveis</h3>
 
     Histórico:
     <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
@@ -123,16 +125,10 @@
       <select id="jan">${[3,4,5,6,7,8,9,10].map(n=>`<option ${n===6?'selected':''}>${n}</option>`)}</select>
     </div>
 
-    <div style="margin:8px 0">
-      <b>Modo:</b>
-      <button onclick="setModo('MANUAL')">Manual</button>
-      ${[3,4,5,6,7,8,9].map(n=>`<button onclick="setModo('AUTO_${n}')">Auto ${n}</button>`).join("")}
-      <button onclick="setModo('VIZINHO')">Vizinho</button>
-      <button onclick="setModo('NUMNUM')">NumNum</button>
-    </div>
+    <div id="modos" style="margin:8px 0"></div>
 
     <div style="margin:8px 0">
-      <b>Terminais Manuais:</b>
+      <b>Temas (T):</b>
       <div id="btnT"></div>
     </div>
 
@@ -147,11 +143,34 @@
     <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:10px"></div>
   </div>`;
 
-  // BOTÕES T
+  // ================= MODOS =================
+  const modosDiv=document.getElementById("modos");
+
+  function addModo(nome,label){
+    const b=document.createElement("button");
+    b.textContent=label;
+    b.onclick=()=>setModo(nome);
+    b.dataset.modo=nome;
+    modosDiv.appendChild(b);
+  }
+
+  addModo("MANUAL","Manual");
+  [3,4,5,6,7,8,9].forEach(n=>addModo("AUTO_"+n,"Auto "+n));
+  addModo("VIZINHO","Vizinho");
+  addModo("NUMNUM","NumNum");
+
+  function pintarModos(){
+    document.querySelectorAll("#modos button").forEach(b=>{
+      b.style.background = b.dataset.modo===modoVisivel ? "#00e676" : "#333";
+    });
+  }
+
+  // ================= BOTÕES T =================
   const btnT=document.getElementById("btnT");
   for(let i=0;i<10;i++){
     const b=document.createElement("button");
     b.textContent="T"+i;
+    b.dataset.t=i;
     b.onclick=()=>{
       filtrosManual.has(i)?filtrosManual.delete(i):filtrosManual.add(i);
       setModo("MANUAL");
@@ -160,15 +179,21 @@
     btnT.appendChild(b);
   }
 
-  // NÚMEROS
+  function pintarT(){
+    const ativos = analises[modoVisivel].filtrosT;
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.dataset.t;
+      b.style.background = ativos.has(t) ? "#00e676" : "#333";
+    });
+  }
+
+  // ================= CONTROLES =================
   for(let i=0;i<=36;i++){
     const b=document.createElement("button");
     b.textContent=i;
     b.onclick=()=>{processar(i);render();};
     document.getElementById("nums").appendChild(b);
   }
-
-  window.setModo=m=>{modoVisivel=m;render();};
 
   document.getElementById("jan").onchange=e=>{
     janela=+e.target.value;
@@ -191,7 +216,15 @@
     render();
   };
 
+  function setModo(m){
+    modoVisivel=m;
+    render();
+  }
+
   function render(){
+    pintarModos();
+    pintarT();
+
     const a=analises[modoVisivel];
 
     const tl=document.getElementById("tl");
