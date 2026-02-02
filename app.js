@@ -19,7 +19,7 @@
   // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
-  let modoAtivo = "MANUAL";
+  let modoAtivo = "MANUAL"; // MANUAL | VIZINHO | NUNUM | AUTO
   let autoTAtivo = null;
 
   const analises = {
@@ -126,7 +126,14 @@
     }
   }
 
-  // ================= UI (layout intacto) =================
+  function atualizarBotoesModo(){
+    document.querySelectorAll(".modo").forEach(b=>{
+      b.style.background =
+        b.dataset.m === modoAtivo ? "#00e676" : "#444";
+    });
+  }
+
+  // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -138,11 +145,15 @@
       <div style="border:1px solid #444;padding:8px">
         Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
-          Janela:
-          <select id="jan">${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}</select>
+
+          <button class="modo" data-m="MANUAL">MANUAL</button>
+          <button class="modo" data-m="VIZINHO">VIZINHO</button>
+          <button class="modo" data-m="NUNUM">NUNUM</button>
+          <button class="modo" data-m="AUTO">AUTO</button>
+
           Auto T:
           <select id="autoT">
             <option value="">Manual</option>
@@ -154,12 +165,6 @@
       <div style="margin:10px 0">
         🕒 Timeline (14):
         <span id="tl" style="font-size:18px;font-weight:600"></span>
-      </div>
-
-      <div style="display:flex;gap:6px;margin-bottom:8px">
-        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
-          <button class="modo" data-m="${m}"
-            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -178,14 +183,14 @@
   `;
 
   // ================= EVENTOS =================
-  document.getElementById("jan").onchange=e=>{
+  document.getElementById("jan")?.addEventListener("change", e=>{
     janela=+e.target.value;
     render();
-  };
+  });
 
   document.getElementById("autoT").onchange=e=>{
     autoTAtivo=+e.target.value;
-    modoAtivo="AUTO";
+    modoAtivo = autoTAtivo ? "AUTO" : "MANUAL";
     calcularAutoT(autoTAtivo);
     render();
   };
@@ -193,6 +198,7 @@
   document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
       modoAtivo=b.dataset.m;
+      atualizarBotoesModo();
       render();
     };
   });
@@ -206,6 +212,7 @@
       analises.MANUAL.filtros.has(t)
         ? analises.MANUAL.filtros.delete(t)
         : analises.MANUAL.filtros.add(t);
+      atualizarBotoesModo();
       render();
     };
     btnT.appendChild(b);
@@ -257,6 +264,8 @@
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
+    atualizarBotoesModo();
   }
 
   render();
