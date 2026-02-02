@@ -23,16 +23,27 @@
   ];
 
   // ================= ESTADO =================
-  let timeline = [];              // números
-  let timelineVX = [];            // V / X
+  let timeline = [];
   let janela = 6;
 
   let filtrosT = new Set();
   let autoTCount = 0;
-  let modoVizinho = false;
-  let modoNumNum = false;
 
-  let triosAtivosAnterior = [];   // 🔴 memória crítica
+  let modo = "MANUAL"; // MANUAL | AUTO | VIZINHO | NUMNUM
+
+  const timelinesModo = {
+    MANUAL: [],
+    AUTO: [],
+    VIZINHO: [],
+    NUMNUM: []
+  };
+
+  let triosAtivosAnterior = {
+    MANUAL: [],
+    AUTO: [],
+    VIZINHO: [],
+    NUMNUM: []
+  };
 
   // ================= AUTO T =================
   function calcularAutoTerminais(){
@@ -79,7 +90,14 @@
   function atualizarBotoesT(){
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t = parseInt(b.dataset.t);
-      b.style.background = filtrosT.has(t) ? "#00e676" : "#333";
+      if(filtrosT.has(t)){
+        b.style.background =
+          modo==="MANUAL" ? "#42a5f5" :
+          modo==="AUTO"   ? "#00e676" :
+          modo==="VIZINHO"? "#ff9800" : "#ab47bc";
+      } else {
+        b.style.background = "#333";
+      }
     });
   }
 
@@ -100,13 +118,13 @@
 
   // ================= VALIDAÇÃO =================
   function validarNumero(n){
-    if(!triosAtivosAnterior.length){
-      timelineVX.unshift("-");
+    const prev = triosAtivosAnterior[modo];
+    if(!prev.length){
+      timelinesModo[modo].unshift(null);
       return;
     }
-    const ganhou = triosAtivosAnterior
-      .some(t => t.trio.includes(n));
-    timelineVX.unshift(ganhou ? "V" : "X");
+    const ganhou = prev.some(t => t.trio.includes(n));
+    timelinesModo[modo].unshift(ganhou);
   }
 
   // ================= UI =================
@@ -116,7 +134,7 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM — Validação Real</h3>
+      <h3 style="text-align:center">CSM</h3>
 
       <div style="border:1px solid #444;padding:8px">
         📋 Histórico:
@@ -127,9 +145,12 @@
           Janela:
           <select id="jan">${[3,4,5,6,7,8,9,10].map(n=>`<option ${n===6?'selected':''}>${n}</option>`)}</select>
           Auto T:
-          <select id="autoT"><option value="0">Manual</option>${[2,3,4,5,6,7].map(n=>`<option>${n}</option>`)}</select>
+          <select id="autoT">
+            <option value="0">Manual</option>
+            ${[2,3,4,5,6,7].map(n=>`<option value="${n}">${n}</option>`)}
+          </select>
           <button id="viz">Vizinho</button>
-          <button id="nn">NÚM–NÚM</button>
+          <button id="nn">Num-Num</button>
         </div>
       </div>
 
@@ -153,7 +174,7 @@
     </div>
   `;
 
-  // ================= BOTÕES =================
+  // ================= BOTÕES T =================
   const btnT = document.getElementById("btnT");
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
@@ -161,37 +182,40 @@
     b.textContent="T"+t;
     b.style="padding:6px;background:#333;color:#fff";
     b.onclick=()=>{
-      modoVizinho=false; modoNumNum=false;
+      modo="MANUAL";
       filtrosT.has(t)?filtrosT.delete(t):filtrosT.add(t);
-      atualizarBotoesT(); render();
+      atualizarBotoesT();
+      render();
     };
     btnT.appendChild(b);
   }
 
   document.getElementById("jan").onchange=e=>{
     janela=parseInt(e.target.value);
-    if(modoVizinho) calcularVizinhoTerminais();
+    if(modo==="VIZINHO") calcularVizinhoTerminais();
     render();
   };
 
   document.getElementById("autoT").onchange=e=>{
     autoTCount=parseInt(e.target.value);
     filtrosT.clear();
-    calcularAutoTerminais();
+    modo = autoTCount>0 ? "AUTO" : "MANUAL";
+    if(autoTCount>0) calcularAutoTerminais();
+    atualizarBotoesT();
     render();
   };
 
   document.getElementById("viz").onclick=()=>{
-    modoVizinho=!modoVizinho; modoNumNum=false;
+    modo="VIZINHO";
     filtrosT.clear();
-    if(modoVizinho) calcularVizinhoTerminais();
+    calcularVizinhoTerminais();
     render();
   };
 
   document.getElementById("nn").onclick=()=>{
-    modoNumNum=!modoNumNum; modoVizinho=false;
+    modo="NUMNUM";
     filtrosT.clear();
-    if(modoNumNum) calcularNumeroNumero();
+    calcularNumeroNumero();
     render();
   };
 
@@ -206,13 +230,13 @@
   function add(n){
     validarNumero(n);
     timeline.unshift(n);
-    if(timeline.length>14){ timeline.pop(); timelineVX.pop(); }
+    if(timeline.length>14) timeline.pop();
 
-    if(modoVizinho) calcularVizinhoTerminais();
-    else if(modoNumNum) calcularNumeroNumero();
-    else if(autoTCount>0) calcularAutoTerminais();
+    if(modo==="VIZINHO") calcularVizinhoTerminais();
+    else if(modo==="NUMNUM") calcularNumeroNumero();
+    else if(modo==="AUTO") calcularAutoTerminais();
 
-    triosAtivosAnterior = triosSelecionados();
+    triosAtivosAnterior[modo] = triosSelecionados();
     render();
   }
 
@@ -226,20 +250,23 @@
   };
 
   document.getElementById("lim").onclick=()=>{
-    timeline=[]; timelineVX=[];
-    filtrosT.clear(); triosAtivosAnterior=[];
+    timeline=[];
+    Object.keys(timelinesModo).forEach(k=>timelinesModo[k]=[]);
+    filtrosT.clear();
+    autoTCount=0;
+    modo="MANUAL";
+    atualizarBotoesT();
     render();
   };
 
-  // ================= RENDER =================
   function render(){
     const tl = document.getElementById("tl");
     tl.innerHTML="";
-    timeline.forEach((n,i)=>{
+    timelinesModo[modo].forEach((v,i)=>{
       const d=document.createElement("div");
-      d.textContent = `${n}${timelineVX[i]?`(${timelineVX[i]})`:""}`;
+      d.textContent = timeline[i];
       d.style=`padding:4px 6px;border-radius:4px;
-        background:${timelineVX[i]==="V"?"#2e7d32":timelineVX[i]==="X"?"#c62828":"#333"}`;
+        background:${v===true?"#2e7d32":v===false?"#c62828":"#333"}`;
       tl.appendChild(d);
     });
 
