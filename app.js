@@ -7,15 +7,38 @@
     16,33,1,20,14,31,9,22,18,29,
     7,28,12,35,3,26,0
   ];
-
   const terminal = n => n % 10;
 
-  // ================= EIXOS =================
-  const eixos = {
-    ZERO:       [0,32,15,19,4,21,2,25,17,34,6,27],
-    TIERS:      [13,36,11,30,8,23,10,5,24,16,33,1],
-    ORPHELINS:  [20,14,31,9,22,18,7,29,28,12,35,3]
-  };
+  // ================= TRIOS FIXOS POR EIXO =================
+  const eixos = [
+    {
+      nome: "ZERO",
+      trios: [
+        [0,32,15],
+        [19,4,21],
+        [2,25,17],
+        [34,6,27]
+      ]
+    },
+    {
+      nome: "TIERS",
+      trios: [
+        [13,36,11],
+        [30,8,23],
+        [10,5,24],
+        [16,33,1]
+      ]
+    },
+    {
+      nome: "ORPHELINS",
+      trios: [
+        [20,14,31],
+        [9,22,18],
+        [7,29,28],
+        [12,35,3]
+      ]
+    }
+  ];
 
   // ================= ESTADO =================
   let timeline = [];
@@ -25,59 +48,55 @@
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] },
-    VIZINHO:{ filtros:new Set(), res:[] },
+    VIZINHO:{ filtros:new Set(), res:[], motor:new Set() },
     NUNUM:  { filtros:new Set(), res:[] },
     AUTO: {
-      2:{ filtros:new Set(), res:[] },
       3:{ filtros:new Set(), res:[] },
       4:{ filtros:new Set(), res:[] },
       5:{ filtros:new Set(), res:[] },
       6:{ filtros:new Set(), res:[] },
-      7:{ filtros:new Set(), res:[] },
-      8:{ filtros:new Set(), res:[] },
-      9:{ filtros:new Set(), res:[] },
-      10:{ filtros:new Set(), res:[] }
+      7:{ filtros:new Set(), res:[] }
     }
   };
 
   // ================= UTIL =================
   function vizinhosRace(n){
     const i = track.indexOf(n);
-    return [
-      track[(i+36)%37],
-      n,
-      track[(i+1)%37]
-    ];
+    return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
   function calcularAutoT(k){
     const set = new Set();
-    for (const n of timeline.slice(0,janela)) {
+    for(const n of timeline.slice(0,janela)){
       set.add(terminal(n));
-      if (set.size >= k) break;
+      if(set.size>=k) break;
     }
     analises.AUTO[k].filtros = set;
   }
 
-  function calcularVizinho(){
+  function melhorTrincaBase(){
     const cont = {};
     timeline.slice(0,janela).forEach(n=>{
       const t = terminal(n);
       cont[t] = (cont[t]||0)+1;
     });
-    const base = Object.entries(cont)
+    return Object.entries(cont)
       .sort((a,b)=>b[1]-a[1])
       .slice(0,3)
       .map(x=>+x[0]);
+  }
 
-    const set = new Set();
+  function calcularVizinho(){
+    const base = melhorTrincaBase();
+    analises.VIZINHO.filtros = new Set(base);
+    analises.VIZINHO.motor.clear();
+
     base.forEach(t=>{
       track.filter(n=>terminal(n)===t)
         .forEach(n=>vizinhosRace(n)
-          .forEach(v=>set.add(terminal(v)))
+          .forEach(v=>analises.VIZINHO.motor.add(v))
         );
     });
-    analises.VIZINHO.filtros = set;
   }
 
   function calcularNunum(){
@@ -88,50 +107,35 @@
     analises.NUNUM.filtros = set;
   }
 
-  // ================= TRIOS DINÂMICOS POR EIXO =================
-  function gerarTriosDinamicos(filtros){
-    const usados = new Set();
-    const trios = [];
-
-    Object.entries(eixos).forEach(([nome, nums])=>{
-      let count = 0;
-      for(let i=0;i<nums.length-2;i++){
-        const trio = [nums[i], nums[i+1], nums[i+2]];
-        if (trio.some(n=>usados.has(n))) continue;
-
-        const ok = trio.some(n=>!filtros.size || filtros.has(terminal(n)));
-        if (!ok) continue;
-
-        trio.forEach(n=>usados.add(n));
-        trios.push({ eixo:nome, trio });
-        count++;
-        if (count >= 3) break;
-        if (trios.length >= 9) break;
-      }
+  function triosSelecionados(filtros){
+    let lista=[];
+    eixos.forEach(e=>{
+      e.trios.forEach(trio=>{
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio});
+      });
     });
+    return lista.slice(0,9);
+  }
 
-    return trios.slice(0,9);
+  function validar(n, filtros){
+    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
   }
 
   function registrar(n){
-    Object.keys(analises).forEach(k=>{
-      if(k==="AUTO"){
-        Object.keys(analises.AUTO).forEach(x=>{
-          analises.AUTO[x].res.unshift(
-            gerarTriosDinamicos(analises.AUTO[x].filtros)
-              .some(t=>t.trio.includes(n)) ? "V":"X"
-          );
-        });
-      } else {
-        analises[k].res.unshift(
-          gerarTriosDinamicos(analises[k].filtros)
-            .some(t=>t.trio.includes(n)) ? "V":"X"
-        );
-      }
+    analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
+    analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
+    analises.NUNUM.res.unshift(validar(n,analises.NUNUM.filtros)?"V":"X");
+
+    [3,4,5,6,7].forEach(k=>{
+      analises.AUTO[k].res.unshift(
+        validar(n,analises.AUTO[k].filtros)?"V":"X"
+      );
     });
   }
 
-  // ================= UI (layout preservado) =================
+  // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -148,12 +152,7 @@
           <button id="lim">Limpar</button>
           Janela:
           <select id="jan">
-            ${Array.from({length:8},(_,i)=>`<option>${i+3}</option>`).join("")}
-          </select>
-          Auto T:
-          <select id="autoT">
-            <option value="">Manual</option>
-            ${Array.from({length:9},(_,i)=>`<option>${i+2}</option>`).join("")}
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
           </select>
         </div>
       </div>
@@ -163,10 +162,16 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <div style="display:flex;gap:6px;margin-bottom:8px">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
           <button class="modo" data-m="${m}"
             style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${[3,4,5,6,7].map(n=>`
+          <button class="auto" data-a="${n}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -187,16 +192,19 @@
   // ================= EVENTOS =================
   jan.onchange=e=>{ janela=+e.target.value; render(); };
 
-  autoT.onchange=e=>{
-    autoTAtivo=+e.target.value;
-    modoAtivo="AUTO";
-    calcularAutoT(autoTAtivo);
-    render();
-  };
-
   document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
       modoAtivo=b.dataset.m;
+      autoTAtivo=null;
+      render();
+    };
+  });
+
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
       render();
     };
   });
@@ -229,7 +237,7 @@
     registrar(n);
     calcularVizinho();
     calcularNunum();
-    Object.keys(analises.AUTO).forEach(calcularAutoT);
+    [3,4,5,6,7].forEach(calcularAutoT);
     render();
   }
 
@@ -245,6 +253,8 @@
       if(a.res) a.res=[];
       if(a.filtros) a.filtros.clear();
     });
+    autoTAtivo=null;
+    modoAtivo="MANUAL";
     render();
   };
 
@@ -260,9 +270,15 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
+    document.querySelectorAll(".modo,.auto").forEach(b=>{
+      b.style.background =
+        (b.dataset.m===modoAtivo || +b.dataset.a===autoTAtivo)
+          ? "#00e676" : "#444";
+    });
+
     const filtros =
       modoAtivo==="AUTO"
-        ? analises.AUTO[autoTAtivo]?.filtros || new Set()
+        ? analises.AUTO[autoTAtivo].filtros
         : analises[modoAtivo].filtros;
 
     document.querySelectorAll("#btnT button").forEach(b=>{
@@ -270,7 +286,7 @@
       b.style.background = filtros.has(t)?"#00e676":"#444";
     });
 
-    const trios = gerarTriosDinamicos(filtros);
+    const trios = triosSelecionados(filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
     trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
     cZERO.innerHTML=por.ZERO.join("<div></div>");
