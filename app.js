@@ -12,45 +12,19 @@
 
   function vizinhos(n){
     const i = track.indexOf(n);
-    return [
-      track[(i+36)%37],
-      track[(i+1)%37]
-    ];
+    return [track[(i+36)%37], track[(i+1)%37]];
   }
 
   // ================= EIXOS =================
   const eixos = [
-    {
-      nome: "ZERO",
-      trios: [
-        [0,32,15],
-        [19,4,21],
-        [2,25,17],
-        [34,6,27]
-      ]
-    },
-    {
-      nome: "TIERS",
-      trios: [
-        [13,36,11],
-        [30,8,23],
-        [10,5,24],
-        [16,33,1]
-      ]
-    },
-    {
-      nome: "ORPHELINS",
-      trios: [
-        [20,14,31],
-        [9,22,18],
-        [7,29,28],
-        [12,35,3]
-      ]
-    }
+    { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
+    { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
+    { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
   // ================= ESTADO =================
-  let timeline = [];
+  let timeline = [];              // números
+  let timelineVX = [];            // V / X
   let janela = 6;
 
   let filtrosT = new Set();
@@ -58,12 +32,13 @@
   let modoVizinho = false;
   let modoNumNum = false;
 
-  // ================= AUTO TERMINAIS =================
+  let triosAtivosAnterior = [];   // 🔴 memória crítica
+
+  // ================= AUTO T =================
   function calcularAutoTerminais(){
     if (autoTCount < 2) return;
-
     const set = new Set();
-    for (const n of timeline) {
+    for (const n of timeline){
       set.add(terminal(n));
       if (set.size >= autoTCount) break;
     }
@@ -80,56 +55,58 @@
         cont[t] = (cont[t]||0)+1;
       });
     });
-
-    const tops = Object.entries(cont)
-      .sort((a,b)=>b[1]-a[1])
-      .slice(0,3)
-      .map(x=>parseInt(x[0],10));
-
-    filtrosT = new Set(tops);
+    filtrosT = new Set(
+      Object.entries(cont)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0,3)
+        .map(x=>parseInt(x[0]))
+    );
     atualizarBotoesT();
   }
 
-  // ================= NUMERO–NUMERO =================
+  // ================= NUM–NUM =================
   function calcularNumeroNumero(){
-    if (timeline.length < 2) return;
-
+    if(timeline.length < 2) return;
     const set = new Set();
-    const [a,b] = timeline;
-
-    [a,b].forEach(n=>{
+    timeline.slice(0,2).forEach(n=>{
       set.add(terminal(n));
-      vizinhos(n).forEach(v=>{
-        set.add(terminal(v));
-      });
+      vizinhos(n).forEach(v=>set.add(terminal(v)));
     });
-
     filtrosT = set;
     atualizarBotoesT();
   }
 
   function atualizarBotoesT(){
     document.querySelectorAll("#btnT button").forEach(b=>{
-      const t = parseInt(b.dataset.t,10);
+      const t = parseInt(b.dataset.t);
       b.style.background = filtrosT.has(t) ? "#00e676" : "#333";
     });
   }
 
   // ================= TRIOS =================
-  function triosSelecionados9(){
-    let candidatos = [];
+  function triosSelecionados(){
+    let out = [];
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
-        const ts = trio.map(terminal);
-        let inter = ts.filter(t=>!filtrosT.size || filtrosT.has(t)).length;
-        const score = inter / ts.length;
-        if(score>0){
-          candidatos.push({ eixo:e.nome, trio, score });
+        const hits = trio.map(terminal)
+          .filter(t=>!filtrosT.size || filtrosT.has(t)).length;
+        if(hits>0){
+          out.push({ eixo:e.nome, trio, score:hits/3 });
         }
       });
     });
-    candidatos.sort((a,b)=>b.score-a.score);
-    return candidatos.slice(0,9);
+    return out.sort((a,b)=>b.score-a.score).slice(0,9);
+  }
+
+  // ================= VALIDAÇÃO =================
+  function validarNumero(n){
+    if(!triosAtivosAnterior.length){
+      timelineVX.unshift("-");
+      return;
+    }
+    const ganhou = triosAtivosAnterior
+      .some(t => t.trio.includes(n));
+    timelineVX.unshift(ganhou ? "V" : "X");
   }
 
   // ================= UI =================
@@ -139,20 +116,27 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM — Terminais Avançado</h3>
+      <h3 style="text-align:center">CSM — Validação Real</h3>
 
       <div style="border:1px solid #444;padding:8px">
         📋 Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+        <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
           <button id="col">Colar</button>
           <button id="lim">Limpar</button>
+          Janela:
+          <select id="jan">${[3,4,5,6,7,8,9,10].map(n=>`<option ${n===6?'selected':''}>${n}</option>`)}</select>
+          Auto T:
+          <select id="autoT"><option value="0">Manual</option>${[2,3,4,5,6,7].map(n=>`<option>${n}</option>`)}</select>
           <button id="viz">Vizinho</button>
           <button id="nn">NÚM–NÚM</button>
         </div>
       </div>
 
-      <div style="margin:8px 0">🕒 Timeline (14): <span id="tl"></span></div>
+      <div style="margin:8px 0">
+        🕒 Timeline:
+        <div id="tl" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
 
       <div style="border:2px solid #00e676;padding:8px;margin:10px 0">
         🎯 Terminais
@@ -169,41 +153,43 @@
     </div>
   `;
 
-  // ================= BOTÕES T =================
+  // ================= BOTÕES =================
   const btnT = document.getElementById("btnT");
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
     b.dataset.t=t;
     b.textContent="T"+t;
-    b.style="padding:6px;background:#333;color:#fff;border:1px solid #555";
+    b.style="padding:6px;background:#333;color:#fff";
     b.onclick=()=>{
-      modoVizinho=false;
-      modoNumNum=false;
-      document.getElementById("viz").style.background="#333";
-      document.getElementById("nn").style.background="#333";
+      modoVizinho=false; modoNumNum=false;
       filtrosT.has(t)?filtrosT.delete(t):filtrosT.add(t);
-      atualizarBotoesT();
-      render();
+      atualizarBotoesT(); render();
     };
     btnT.appendChild(b);
   }
 
-  // ================= EVENTOS =================
+  document.getElementById("jan").onchange=e=>{
+    janela=parseInt(e.target.value);
+    if(modoVizinho) calcularVizinhoTerminais();
+    render();
+  };
+
+  document.getElementById("autoT").onchange=e=>{
+    autoTCount=parseInt(e.target.value);
+    filtrosT.clear();
+    calcularAutoTerminais();
+    render();
+  };
+
   document.getElementById("viz").onclick=()=>{
-    modoVizinho=!modoVizinho;
-    modoNumNum=false;
-    document.getElementById("viz").style.background = modoVizinho?"#ff9800":"#333";
-    document.getElementById("nn").style.background="#333";
+    modoVizinho=!modoVizinho; modoNumNum=false;
     filtrosT.clear();
     if(modoVizinho) calcularVizinhoTerminais();
     render();
   };
 
   document.getElementById("nn").onclick=()=>{
-    modoNumNum=!modoNumNum;
-    modoVizinho=false;
-    document.getElementById("nn").style.background = modoNumNum?"#03a9f4":"#333";
-    document.getElementById("viz").style.background="#333";
+    modoNumNum=!modoNumNum; modoVizinho=false;
     filtrosT.clear();
     if(modoNumNum) calcularNumeroNumero();
     render();
@@ -218,10 +204,15 @@
   }
 
   function add(n){
+    validarNumero(n);
     timeline.unshift(n);
-    if(timeline.length>14) timeline.pop();
+    if(timeline.length>14){ timeline.pop(); timelineVX.pop(); }
+
     if(modoVizinho) calcularVizinhoTerminais();
-    if(modoNumNum) calcularNumeroNumero();
+    else if(modoNumNum) calcularNumeroNumero();
+    else if(autoTCount>0) calcularAutoTerminais();
+
+    triosAtivosAnterior = triosSelecionados();
     render();
   }
 
@@ -235,24 +226,29 @@
   };
 
   document.getElementById("lim").onclick=()=>{
-    timeline=[];
-    filtrosT.clear();
-    modoVizinho=false;
-    modoNumNum=false;
-    document.getElementById("viz").style.background="#333";
-    document.getElementById("nn").style.background="#333";
-    atualizarBotoesT();
+    timeline=[]; timelineVX=[];
+    filtrosT.clear(); triosAtivosAnterior=[];
     render();
   };
 
+  // ================= RENDER =================
   function render(){
-    document.getElementById("tl").textContent = timeline.join(" · ");
-    const trios = triosSelecionados9();
-    const por = { ZERO:[], TIERS:[], ORPHELINS:[] };
-    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
-    document.getElementById("colZERO").innerHTML = por.ZERO.join("<br>");
-    document.getElementById("colTIERS").innerHTML = por.TIERS.join("<br>");
-    document.getElementById("colORPH").innerHTML = por.ORPHELINS.join("<br>");
+    const tl = document.getElementById("tl");
+    tl.innerHTML="";
+    timeline.forEach((n,i)=>{
+      const d=document.createElement("div");
+      d.textContent = `${n}${timelineVX[i]?`(${timelineVX[i]})`:""}`;
+      d.style=`padding:4px 6px;border-radius:4px;
+        background:${timelineVX[i]==="V"?"#2e7d32":timelineVX[i]==="X"?"#c62828":"#333"}`;
+      tl.appendChild(d);
+    });
+
+    const trios = triosSelecionados();
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(t=>por[t.eixo].push(t.trio.join("-")));
+    document.getElementById("colZERO").innerHTML=por.ZERO.join("<br>");
+    document.getElementById("colTIERS").innerHTML=por.TIERS.join("<br>");
+    document.getElementById("colORPH").innerHTML=por.ORPHELINS.join("<br>");
   }
 
   render();
