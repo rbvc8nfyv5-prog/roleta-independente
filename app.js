@@ -24,30 +24,19 @@
 
   // ================= ESTADO =================
   let timeline = [];
+  let resultados = [];
   let janela = 6;
 
   let filtrosT = new Set();
   let autoTCount = 0;
+  let modo = "MANUAL";
 
-  let modo = "MANUAL"; // MANUAL | AUTO | VIZINHO | NUMNUM
+  let triosAtivosAnterior = [];
 
-  const timelinesModo = {
-    MANUAL: [],
-    AUTO: [],
-    VIZINHO: [],
-    NUMNUM: []
-  };
+  let mostrarCompleto = false; // 👈 NOVO
 
-  let triosAtivosAnterior = {
-    MANUAL: [],
-    AUTO: [],
-    VIZINHO: [],
-    NUMNUM: []
-  };
-
-  // ================= AUTO T =================
+  // ================= MODOS =================
   function calcularAutoTerminais(){
-    if (autoTCount < 2) return;
     const set = new Set();
     for (const n of timeline){
       set.add(terminal(n));
@@ -57,7 +46,6 @@
     atualizarBotoesT();
   }
 
-  // ================= VIZINHO =================
   function calcularVizinhoTerminais(){
     const cont = {};
     timeline.slice(0,janela).forEach(n=>{
@@ -70,14 +58,12 @@
       Object.entries(cont)
         .sort((a,b)=>b[1]-a[1])
         .slice(0,3)
-        .map(x=>parseInt(x[0]))
+        .map(x=>parseInt(x[0],10))
     );
     atualizarBotoesT();
   }
 
-  // ================= NUM–NUM =================
   function calcularNumeroNumero(){
-    if(timeline.length < 2) return;
     const set = new Set();
     timeline.slice(0,2).forEach(n=>{
       set.add(terminal(n));
@@ -90,14 +76,9 @@
   function atualizarBotoesT(){
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t = parseInt(b.dataset.t);
-      if(filtrosT.has(t)){
-        b.style.background =
-          modo==="MANUAL" ? "#42a5f5" :
-          modo==="AUTO"   ? "#00e676" :
-          modo==="VIZINHO"? "#ff9800" : "#ab47bc";
-      } else {
-        b.style.background = "#333";
-      }
+      b.style.background = filtrosT.has(t)
+        ? (modo==="MANUAL"?"#42a5f5":modo==="AUTO"?"#00e676":modo==="VIZINHO"?"#ff9800":"#ab47bc")
+        : "#333";
     });
   }
 
@@ -108,9 +89,7 @@
       e.trios.forEach(trio=>{
         const hits = trio.map(terminal)
           .filter(t=>!filtrosT.size || filtrosT.has(t)).length;
-        if(hits>0){
-          out.push({ eixo:e.nome, trio, score:hits/3 });
-        }
+        if(hits>0) out.push({ eixo:e.nome, trio, score:hits/3 });
       });
     });
     return out.sort((a,b)=>b.score-a.score).slice(0,9);
@@ -118,13 +97,11 @@
 
   // ================= VALIDAÇÃO =================
   function validarNumero(n){
-    const prev = triosAtivosAnterior[modo];
-    if(!prev.length){
-      timelinesModo[modo].unshift(null);
+    if(!triosAtivosAnterior.length){
+      resultados.unshift(null);
       return;
     }
-    const ganhou = prev.some(t => t.trio.includes(n));
-    timelinesModo[modo].unshift(ganhou);
+    resultados.unshift(triosAtivosAnterior.some(t=>t.trio.includes(n)));
   }
 
   // ================= UI =================
@@ -137,7 +114,7 @@
       <h3 style="text-align:center">CSM</h3>
 
       <div style="border:1px solid #444;padding:8px">
-        📋 Histórico:
+        Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
         <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
           <button id="col">Colar</button>
@@ -154,13 +131,14 @@
         </div>
       </div>
 
-      <div style="margin:8px 0">
-        🕒 Timeline:
-        <div id="tl" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div style="margin:8px 0;display:flex;align-items:center;gap:8px">
+        <b>Linha do tempo</b>
+        <span id="toggle" style="cursor:pointer;color:#90caf9">⋯</span>
       </div>
+      <div id="tl" style="display:flex;gap:6px;flex-wrap:wrap"></div>
 
       <div style="border:2px solid #00e676;padding:8px;margin:10px 0">
-        🎯 Terminais
+        Terminais
         <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
@@ -174,7 +152,7 @@
     </div>
   `;
 
-  // ================= BOTÕES T =================
+  // ================= BOTÕES =================
   const btnT = document.getElementById("btnT");
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
@@ -190,6 +168,11 @@
     btnT.appendChild(b);
   }
 
+  document.getElementById("toggle").onclick=()=>{
+    mostrarCompleto = !mostrarCompleto;
+    render();
+  };
+
   document.getElementById("jan").onchange=e=>{
     janela=parseInt(e.target.value);
     if(modo==="VIZINHO") calcularVizinhoTerminais();
@@ -200,7 +183,7 @@
     autoTCount=parseInt(e.target.value);
     filtrosT.clear();
     modo = autoTCount>0 ? "AUTO" : "MANUAL";
-    if(autoTCount>0) calcularAutoTerminais();
+    if(modo==="AUTO") calcularAutoTerminais();
     atualizarBotoesT();
     render();
   };
@@ -230,13 +213,13 @@
   function add(n){
     validarNumero(n);
     timeline.unshift(n);
-    if(timeline.length>14) timeline.pop();
+    if(timeline.length>200) timeline.pop();
 
     if(modo==="VIZINHO") calcularVizinhoTerminais();
     else if(modo==="NUMNUM") calcularNumeroNumero();
     else if(modo==="AUTO") calcularAutoTerminais();
 
-    triosAtivosAnterior[modo] = triosSelecionados();
+    triosAtivosAnterior = triosSelecionados();
     render();
   }
 
@@ -251,24 +234,27 @@
 
   document.getElementById("lim").onclick=()=>{
     timeline=[];
-    Object.keys(timelinesModo).forEach(k=>timelinesModo[k]=[]);
+    resultados=[];
     filtrosT.clear();
     autoTCount=0;
     modo="MANUAL";
-    atualizarBotoesT();
     render();
   };
 
   function render(){
     const tl = document.getElementById("tl");
     tl.innerHTML="";
-    timelinesModo[modo].forEach((v,i)=>{
+
+    const limite = mostrarCompleto ? timeline.length : 14;
+
+    for(let i=0;i<Math.min(limite, timeline.length);i++){
       const d=document.createElement("div");
       d.textContent = timeline[i];
+      const r = resultados[i];
       d.style=`padding:4px 6px;border-radius:4px;
-        background:${v===true?"#2e7d32":v===false?"#c62828":"#333"}`;
+        background:${r===true?"#2e7d32":r===false?"#c62828":"#333"}`;
       tl.appendChild(d);
-    });
+    }
 
     const trios = triosSelecionados();
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
