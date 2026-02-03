@@ -44,7 +44,7 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // ================= LÓGICAS BASE =================
+  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -166,7 +166,7 @@
         <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
 
-      <div id="conjArea" style="display:none;margin-top:12px"></div>
+      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
@@ -192,30 +192,26 @@
   });
 
   btnConj.onclick=()=>{
-    modoConjuntos = !modoConjuntos;
-    if(modoConjuntos){
-      modoAtivo = "MANUAL";
-      analises.MANUAL.filtros = filtrosConjuntos;
-    }
-    btnConj.style.background = modoConjuntos ? "#00e676" : "#444";
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
     render();
   };
 
+  // ================= BOTÕES T =================
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
     b.textContent="T"+t;
     b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
     b.onclick=()=>{
-      if(modoConjuntos){
-        filtrosConjuntos.has(t)
-          ? filtrosConjuntos.delete(t)
-          : filtrosConjuntos.add(t);
-        analises.MANUAL.filtros = filtrosConjuntos;
-      }else{
-        analises.MANUAL.filtros.has(t)
-          ? analises.MANUAL.filtros.delete(t)
-          : analises.MANUAL.filtros.add(t);
-      }
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
+
       render();
     };
     btnT.appendChild(b);
@@ -272,6 +268,15 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
+    // 🔥 ATUALIZAÇÃO: T acende se MANUAL ou CONJUNTO
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
+      b.style.background = ativo ? "#00e676" : "#444";
+    });
+
     const filtros =
       modoAtivo==="AUTO"
         ? analises.AUTO[autoTAtivo].filtros
@@ -284,7 +289,7 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ================= CONJUNTOS (linha secundária) =================
+    // ================= CONJUNTOS =================
     conjArea.style.display = modoConjuntos ? "block" : "none";
     if(modoConjuntos){
       const marcados=new Set();
@@ -305,15 +310,10 @@
           ${timeline.map(n=>`
             <div style="
               height:26px;
-              display:flex;
-              align-items:center;
-              justify-content:center;
+              display:flex;align-items:center;justify-content:center;
               background:${marcados.has(n)?"#00e676":"#222"};
-              color:#fff;
-              font-size:10px;
-              font-weight:700;
-              border-radius:4px;
-              border:1px solid #333;
+              color:#fff;font-size:10px;font-weight:700;
+              border-radius:4px;border:1px solid #333;
             ">${n}</div>
           `).join("")}
         </div>
