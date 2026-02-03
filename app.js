@@ -245,6 +245,7 @@
     Object.values(analises).forEach(a=>{
       if(a.res) a.res=[];
       if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
     });
     modoAtivo="MANUAL";
     autoTAtivo=null;
@@ -280,7 +281,7 @@
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
     // ================= CONJUNTOS =================
-    conjArea.style.display = modoConjuntos?"block":"none";
+    conjArea.style.display = modoConjuntos ? "block" : "none";
     if(modoConjuntos){
       const marcados=new Set();
       filtrosConjuntos.forEach(t=>{
@@ -291,14 +292,25 @@
         });
       });
 
+      // ✅ Layout automático (não fixa em 6 colunas)
+      // ✅ Caixas menores (não gigantes)
       conjArea.innerHTML = `
-        <div style="display:grid;grid-template-columns:repeat(6,60px);gap:6px">
+        <div style="
+          display:grid;
+          grid-template-columns:repeat(auto-fit, minmax(34px, 1fr));
+          gap:6px;
+          align-items:stretch;
+        ">
           ${timeline.map(n=>`
             <div style="
-              width:60px;height:60px;
+              height:34px;
               display:flex;align-items:center;justify-content:center;
               background:${marcados.has(n)?"#00e676":"#222"};
-              color:#fff;font-size:18px;border-radius:6px
+              color:#fff;
+              font-size:12px;
+              font-weight:700;
+              border-radius:6px;
+              border:1px solid #333;
             ">${n}</div>
           `).join("")}
         </div>
