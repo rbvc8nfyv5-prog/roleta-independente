@@ -18,9 +18,8 @@
 
   // ================= ESTADO =================
   let timeline = [];
-  let janela = 6;
-  let modoConjuntos = false;
   let filtrosConjuntos = new Set();
+  let modoConjuntos = false;
 
   function vizinhosRace(n){
     const i = track.indexOf(n);
@@ -32,11 +31,15 @@
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
         const inter = trio.map(terminal)
-          .filter(t=>!filtros.size||filtros.has(t)).length;
-        if(inter>0) lista.push({eixo:e.nome,trio});
+          .filter(t=>!filtros.size || filtros.has(t)).length;
+        if(inter>0) lista.push(trio);
       });
     });
-    return lista.slice(0,9);
+    return lista;
+  }
+
+  function numeroValido(n, filtros){
+    return triosSelecionados(filtros).some(trio=>trio.includes(n));
   }
 
   // ================= UI =================
@@ -54,6 +57,7 @@
       <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
         <button id="col">Colar</button>
         <button id="lim">Limpar</button>
+        <button id="btnConj">CONJUNTOS</button>
       </div>
     </div>
 
@@ -62,13 +66,7 @@
       <span id="tl" style="font-size:18px;font-weight:600"></span>
     </div>
 
-    <div style="display:flex;gap:6px;margin-bottom:6px">
-      <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
-        CONJUNTOS
-      </button>
-    </div>
-
-    <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+    <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
       <div><b>ZERO</b><div id="cZERO"></div></div>
@@ -107,7 +105,7 @@
 
   btnConj.onclick=()=>{
     modoConjuntos=!modoConjuntos;
-    btnConj.style.background = modoConjuntos ? "#00e676" : "#444";
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
     render();
   };
 
@@ -134,16 +132,33 @@
   };
 
   function render(){
-    tl.innerHTML = timeline.join(" · ");
 
-    const trios = triosSelecionados(filtrosConjuntos);
+    // ===== TIMELINE VERDE / VERMELHO =====
+    tl.innerHTML = timeline.map(n=>{
+      const ok = numeroValido(n, filtrosConjuntos);
+      return `<span style="color:${ok?"#00e676":"#ff5252"}">${n}</span>`;
+    }).join(" · ");
+
+    // ===== BOTÕES T VERDES =====
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t = +b.textContent.slice(1);
+      b.style.background = filtrosConjuntos.has(t) ? "#00e676" : "#444";
+    });
+
+    // ===== TRIOS =====
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
-    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    triosSelecionados(filtrosConjuntos).forEach(trio=>{
+      eixos.forEach(e=>{
+        if(e.trios.some(t=>t.join()==trio.join()))
+          por[e.nome].push(trio.join("-"));
+      });
+    });
+
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ===== TIMELINE SECUNDÁRIA (CONJUNTOS) =====
+    // ===== CONJUNTOS (timeline secundária) =====
     if(modoConjuntos){
       const marcados=new Set();
       filtrosConjuntos.forEach(t=>{
@@ -155,24 +170,18 @@
       });
 
       conjTimeline.innerHTML = `
-        <div style="font-size:12px;margin-bottom:4px">Conjuntos (14):</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(24px,1fr));gap:4px">
           ${timeline.map(n=>`
             <div style="
               height:24px;
               display:flex;align-items:center;justify-content:center;
               background:${marcados.has(n)?"#00e676":"#222"};
-              color:#fff;
-              font-size:11px;
-              border-radius:4px;
-              border:1px solid #333;
+              color:#fff;font-size:11px;border-radius:4px
             ">${n}</div>
           `).join("")}
         </div>
       `;
-    } else {
-      conjTimeline.innerHTML="";
-    }
+    } else conjTimeline.innerHTML="";
   }
 
   render();
