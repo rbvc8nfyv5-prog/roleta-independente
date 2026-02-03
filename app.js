@@ -9,11 +9,35 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= EIXOS =================
+  // ================= EIXOS (TRIOS ATUALIZADOS) =================
   const eixos = [
-    { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
-    { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
-    { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
+    {
+      nome: "ZERO",
+      trios: [
+        [32,0,26],
+        [15,19,4],
+        [21,2,25],
+        [17,34,6]
+      ]
+    },
+    {
+      nome: "TIERS",
+      trios: [
+        [36,13,27],
+        [11,30,8],
+        [23,10,5],
+        [24,16,33]
+      ]
+    },
+    {
+      nome: "ORPHELINS",
+      trios: [
+        [1,20,14],
+        [31,9,22],
+        [1,29,7],
+        [28,12,35,3] // central lógico = 12
+      ]
+    }
   ];
 
   // ================= ESTADO =================
@@ -141,7 +165,7 @@
       </div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
-        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+        ${["VIZINHO","NUNUM"].map(m=>`
           <button class="modo" data-m="${m}"
             style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
         <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
@@ -198,20 +222,15 @@
     render();
   };
 
-  // ================= BOTÕES T =================
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
     b.textContent="T"+t;
     b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
     b.onclick=()=>{
-      analises.MANUAL.filtros.has(t)
-        ? analises.MANUAL.filtros.delete(t)
-        : analises.MANUAL.filtros.add(t);
-
       filtrosConjuntos.has(t)
         ? filtrosConjuntos.delete(t)
         : filtrosConjuntos.add(t);
-
+      analises.MANUAL.filtros = new Set(filtrosConjuntos);
       render();
     };
     btnT.appendChild(b);
@@ -268,13 +287,16 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // 🔥 ATUALIZAÇÃO: T acende se MANUAL ou CONJUNTO
+    document.querySelectorAll(".modo,.auto").forEach(b=>{
+      b.style.background =
+        (b.dataset.m===modoAtivo || +b.dataset.a===autoTAtivo)
+          ? "#00e676" : "#444";
+    });
+
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
-      const ativo =
-        analises.MANUAL.filtros.has(t) ||
-        filtrosConjuntos.has(t);
-      b.style.background = ativo ? "#00e676" : "#444";
+      b.style.background =
+        analises.MANUAL.filtros.has(t) ? "#00e676" : "#444";
     });
 
     const filtros =
@@ -288,37 +310,6 @@
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
-
-    // ================= CONJUNTOS =================
-    conjArea.style.display = modoConjuntos ? "block" : "none";
-    if(modoConjuntos){
-      const marcados=new Set();
-      filtrosConjuntos.forEach(t=>{
-        track.forEach(n=>{
-          if(terminal(n)===t){
-            vizinhosRace(n).forEach(v=>marcados.add(v));
-          }
-        });
-      });
-
-      conjArea.innerHTML = `
-        <div style="
-          display:grid;
-          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
-          gap:4px;
-        ">
-          ${timeline.map(n=>`
-            <div style="
-              height:26px;
-              display:flex;align-items:center;justify-content:center;
-              background:${marcados.has(n)?"#00e676":"#222"};
-              color:#fff;font-size:10px;font-weight:700;
-              border-radius:4px;border:1px solid #333;
-            ">${n}</div>
-          `).join("")}
-        </div>
-      `;
-    }
   }
 
   render();
