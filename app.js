@@ -1,6 +1,6 @@
 (function () {
 
-  /* ================= CONFIG ================= */
+  // ================= CONFIG BASE =================
   const track = [
     32,15,19,4,21,2,25,17,34,6,
     27,13,36,11,30,8,23,10,5,24,
@@ -9,150 +9,291 @@
   ];
   const terminal = n => n % 10;
 
+  // ================= TRIOS FIXOS POR EIXO =================
+  const eixos = [
+    {
+      nome: "ZERO",
+      trios: [
+        [0,32,15],
+        [19,4,21],
+        [2,25,17],
+        [34,6,27]
+      ]
+    },
+    {
+      nome: "TIERS",
+      trios: [
+        [13,36,11],
+        [30,8,23],
+        [10,5,24],
+        [16,33,1]
+      ]
+    },
+    {
+      nome: "ORPHELINS",
+      trios: [
+        [20,14,31],
+        [9,22,18],
+        [7,29,28],
+        [12,35,3]
+      ]
+    }
+  ];
+
+  // ================= ESTADO =================
+  let timeline = [];
+  let janela = 6;
+  let modoAtivo = "MANUAL";
+  let autoTAtivo = null;
+
+  const analises = {
+    MANUAL: { filtros:new Set(), res:[] },
+    VIZINHO:{ filtros:new Set(), res:[], motor:new Set() },
+    NUNUM:  { filtros:new Set(), res:[] },
+    AUTO: {
+      3:{ filtros:new Set(), res:[] },
+      4:{ filtros:new Set(), res:[] },
+      5:{ filtros:new Set(), res:[] },
+      6:{ filtros:new Set(), res:[] },
+      7:{ filtros:new Set(), res:[] }
+    }
+  };
+
+  // ================= UTIL =================
   function vizinhosRace(n){
     const i = track.indexOf(n);
-    return [track[(i+36)%37], n, track[(i+1)%37]];
+    return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  /* ================= ESTADO ================= */
-  let timeline = [];
-  let filtrosConj = new Set();
+  function calcularAutoT(k){
+    const set = new Set();
+    for(const n of timeline.slice(0,janela)){
+      set.add(terminal(n));
+      if(set.size>=k) break;
+    }
+    analises.AUTO[k].filtros = set;
+  }
 
-  /* ================= LAYOUT DUAS TELAS ================= */
-  document.body.style.margin = "0";
-  document.body.style.background = "#111";
-  document.body.style.color = "#fff";
-  document.body.style.fontFamily = "sans-serif";
+  function melhorTrincaBase(){
+    const cont = {};
+    timeline.slice(0,janela).forEach(n=>{
+      const t = terminal(n);
+      cont[t] = (cont[t]||0)+1;
+    });
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(x=>+x[0]);
+  }
+
+  function calcularVizinho(){
+    const base = melhorTrincaBase();
+    analises.VIZINHO.filtros = new Set(base);
+    analises.VIZINHO.motor.clear();
+
+    base.forEach(t=>{
+      track.filter(n=>terminal(n)===t)
+        .forEach(n=>vizinhosRace(n)
+          .forEach(v=>analises.VIZINHO.motor.add(v))
+        );
+    });
+  }
+
+  function calcularNunum(){
+    const set = new Set();
+    timeline.slice(0,2).forEach(n=>{
+      vizinhosRace(n).forEach(v=>set.add(terminal(v)));
+    });
+    analises.NUNUM.filtros = set;
+  }
+
+  function triosSelecionados(filtros){
+    let lista=[];
+    eixos.forEach(e=>{
+      e.trios.forEach(trio=>{
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio});
+      });
+    });
+    return lista.slice(0,9);
+  }
+
+  function validar(n, filtros){
+    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
+  }
+
+  function registrar(n){
+    analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
+    analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
+    analises.NUNUM.res.unshift(validar(n,analises.NUNUM.filtros)?"V":"X");
+
+    [3,4,5,6,7].forEach(k=>{
+      analises.AUTO[k].res.unshift(
+        validar(n,analises.AUTO[k].filtros)?"V":"X"
+      );
+    });
+  }
+
+  // ================= UI =================
+  document.body.style.background="#111";
+  document.body.style.color="#fff";
+  document.body.style.fontFamily="sans-serif";
 
   document.body.innerHTML = `
-    <div style="
-      display:flex;
-      width:200vw;
-      height:100vh;
-      overflow-x:auto;
-      scroll-snap-type:x mandatory;
-    ">
+    <div style="padding:10px;max-width:1000px;margin:auto">
+      <h3 style="text-align:center">CSM</h3>
 
-      <!-- ================= TELA 1 ================= -->
-      <div style="width:100vw;padding:10px;scroll-snap-align:start">
-        <h3 style="text-align:center">CSM (BASE)</h3>
-
-        <input id="inp" placeholder="Cole histórico"
-          style="width:100%;padding:6px;background:#222;color:#fff"/>
-
-        <div id="timeline1"
-          style="margin:10px 0;font-size:18px;font-weight:600">
-        </div>
-
-        <div id="nums"
-          style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px">
+      <div style="border:1px solid #444;padding:8px">
+        Histórico:
+        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+          <button id="col">Colar</button>
+          <button id="lim">Limpar</button>
+          Janela:
+          <select id="jan">
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
+          </select>
         </div>
       </div>
 
-      <!-- ================= TELA 2 ================= -->
-      <div style="width:100vw;padding:10px;scroll-snap-align:start">
-        <h3 style="text-align:center">CONJUNTOS</h3>
-
-        <button id="btnConj"
-          style="padding:6px 12px;background:#444;color:#fff;border:1px solid #666">
-          Conjuntos ▾
-        </button>
-
-        <div id="listaT"
-          style="display:none;flex-wrap:wrap;gap:6px;margin:8px 0">
-        </div>
-
-        <div id="gridConj"
-          style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">
-        </div>
+      <div style="margin:10px 0">
+        🕒 Timeline (14):
+        <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+          <button class="modo" data-m="${m}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${[3,4,5,6,7].map(n=>`
+          <button class="auto" data-a="${n}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
+      </div>
+
+      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
+        Terminais:
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div><b>ZERO</b><div id="cZERO"></div></div>
+        <div><b>TIERS</b><div id="cTIERS"></div></div>
+        <div><b>ORPHELINS</b><div id="cORPH"></div></div>
+      </div>
+
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
 
-  /* ================= BOTÕES NÚMEROS ================= */
-  const numsDiv = document.getElementById("nums");
+  // ================= EVENTOS =================
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
+
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      autoTAtivo=null;
+      render();
+    };
+  });
+
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      render();
+    };
+  });
+
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
+      modoAtivo="MANUAL";
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+      render();
+    };
+    btnT.appendChild(b);
+  }
+
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
     b.style="padding:8px;background:#333;color:#fff";
     b.onclick=()=>add(n);
-    numsDiv.appendChild(b);
+    nums.appendChild(b);
   }
 
-  /* ================= INPUT ================= */
-  document.getElementById("inp").onchange=e=>{
-    e.target.value
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n=>n>=0&&n<=36)
-      .forEach(add);
-    e.target.value="";
-  };
-
-  /* ================= CONJUNTOS ================= */
-  const listaT = document.getElementById("listaT");
-  const gridConj = document.getElementById("gridConj");
-
-  for(let t=0;t<=9;t++){
-    const b=document.createElement("button");
-    b.textContent="T"+t;
-    b.style="padding:6px;background:#333;color:#fff;border:1px solid #555";
-    b.onclick=()=>{
-      filtrosConj.has(t)
-        ? filtrosConj.delete(t)
-        : filtrosConj.add(t);
-      atualizarBT();
-      renderConjuntos();
-    };
-    listaT.appendChild(b);
-  }
-
-  document.getElementById("btnConj").onclick=()=>{
-    listaT.style.display = listaT.style.display==="flex"?"none":"flex";
-    listaT.style.display="flex";
-  };
-
-  function atualizarBT(){
-    [...listaT.children].forEach(b=>{
-      const t=+b.textContent.slice(1);
-      b.style.background = filtrosConj.has(t) ? "#00e676" : "#333";
-    });
-  }
-
-  /* ================= FUNÇÕES ================= */
   function add(n){
     timeline.unshift(n);
-    if(timeline.length>60) timeline.pop();
-    renderTimeline();
-    renderConjuntos();
+    if(timeline.length>14) timeline.pop();
+    registrar(n);
+    calcularVizinho();
+    calcularNunum();
+    [3,4,5,6,7].forEach(calcularAutoT);
+    render();
   }
 
-  function renderTimeline(){
-    document.getElementById("timeline1").innerHTML =
-      timeline.join(" · ");
-  }
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
 
-  function renderConjuntos(){
-    gridConj.innerHTML="";
-    const marcados=new Set();
+  lim.onclick=()=>{
+    timeline=[];
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+    });
+    autoTAtivo=null;
+    modoAtivo="MANUAL";
+    render();
+  };
 
-    filtrosConj.forEach(t=>{
-      track.filter(n=>terminal(n)===t)
-        .forEach(n=>vizinhosRace(n).forEach(v=>marcados.add(v)));
+  function render(){
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
+
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
+
+    document.querySelectorAll(".modo,.auto").forEach(b=>{
+      b.style.background =
+        (b.dataset.m===modoAtivo || +b.dataset.a===autoTAtivo)
+          ? "#00e676" : "#444";
     });
 
-    timeline.forEach(n=>{
-      const d=document.createElement("div");
-      d.textContent=n;
-      d.style=`
-        padding:10px;
-        text-align:center;
-        font-weight:600;
-        background:${marcados.has(n)?"#00e676":"#222"};
-        border:1px solid #555;
-      `;
-      gridConj.appendChild(d);
+    const filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo].filtros
+        : analises[modoAtivo].filtros;
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      b.style.background = filtros.has(t)?"#00e676":"#444";
     });
+
+    const trios = triosSelecionados(filtros);
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
   }
+
+  render();
 
 })();
