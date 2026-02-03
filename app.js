@@ -9,11 +9,30 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= EIXOS =================
+  // ================= EIXOS (ATUALIZADO) =================
   const eixos = [
-    { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
-    { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
-    { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
+    {
+      nome: "ZERO",
+      trios: [
+        [32,0,26,3,35],
+        [15,19,4,21,2],
+        [25,17,34,6,27]
+      ]
+    },
+    {
+      nome: "TIERS",
+      trios: [
+        [13,36,11,30,8,23], // central 11
+        [10,5,24,16,33,1]   // central 16
+      ]
+    },
+    {
+      nome: "ORPHELINS",
+      trios: [
+        [20,14,31,9,22],
+        [18,29,7,28,12]
+      ]
+    }
   ];
 
   // ================= ESTADO =================
@@ -95,7 +114,7 @@
         if(inter>0) lista.push({eixo:e.nome,trio});
       });
     });
-    return lista.slice(0,9);
+    return lista.slice(0,5);
   }
 
   function validar(n, filtros){
@@ -268,7 +287,6 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // 🔥 ATUALIZAÇÃO: T acende se MANUAL ou CONJUNTO
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       const ativo =
@@ -289,7 +307,6 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ================= CONJUNTOS =================
     conjArea.style.display = modoConjuntos ? "block" : "none";
     if(modoConjuntos){
       const marcados=new Set();
