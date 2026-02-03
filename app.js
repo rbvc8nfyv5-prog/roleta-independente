@@ -178,9 +178,6 @@
   document.querySelectorAll(".modo").forEach(b=>{
     b.onclick=()=>{
       modoAtivo=b.dataset.m;
-      autoTAtivo=null;
-      modoConjuntos=false;
-      btnConj.style.background="#444";
       render();
     };
   });
@@ -189,8 +186,6 @@
     b.onclick=()=>{
       modoAtivo="AUTO";
       autoTAtivo=+b.dataset.a;
-      modoConjuntos=false;
-      btnConj.style.background="#444";
       calcularAutoT(autoTAtivo);
       render();
     };
@@ -255,7 +250,6 @@
   };
 
   function render(){
-    // timeline V/X
     const res =
       modoAtivo==="AUTO"
         ? analises.AUTO[autoTAtivo]?.res || []
@@ -267,7 +261,6 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // trios
     const filtros =
       modoAtivo==="AUTO"
         ? analises.AUTO[autoTAtivo].filtros
@@ -292,24 +285,21 @@
         });
       });
 
-      // ✅ Layout automático (não fixa em 6 colunas)
-      // ✅ Caixas menores (não gigantes)
       conjArea.innerHTML = `
         <div style="
           display:grid;
-          grid-template-columns:repeat(auto-fit, minmax(34px, 1fr));
-          gap:6px;
-          align-items:stretch;
+          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
+          gap:4px;
         ">
           ${timeline.map(n=>`
             <div style="
-              height:34px;
+              height:26px;
               display:flex;align-items:center;justify-content:center;
               background:${marcados.has(n)?"#00e676":"#222"};
               color:#fff;
-              font-size:12px;
+              font-size:10px;
               font-weight:700;
-              border-radius:6px;
+              border-radius:4px;
               border:1px solid #333;
             ">${n}</div>
           `).join("")}
