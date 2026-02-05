@@ -39,7 +39,7 @@
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
-  // ===== NOVO: GRUPOS SECUNDÁRIOS MANUAL =====
+  // ===== GRUPOS SECUNDÁRIOS MANUAL =====
   const gruposManual = [
     new Set([2,5,8,9]),
     new Set([1,4,7,9]),
@@ -147,8 +147,8 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- NOVO: LINHAS SECUNDÁRIAS MANUAL -->
-      <div id="manualSec" style="margin-bottom:8px"></div>
+      <!-- QUADROS MANUAL -->
+      <div id="manualSec" style="margin-bottom:10px"></div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
@@ -279,33 +279,69 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // ===== RENDER LINHAS SECUNDÁRIAS =====
+    // ===== QUADROS MANUAL =====
     if(modoAtivo==="MANUAL"){
-      manualSec.innerHTML = gruposManual.map(grupo=>{
-        const marcados=new Set();
-        track.forEach(n=>{
-          if(grupo.has(terminal(n))){
-            vizinhosRace(n).forEach(v=>marcados.add(v));
-          }
-        });
 
-        return `
-          <div style="display:flex;gap:4px;margin-top:3px;font-size:11px">
-            ${timeline.map(n=>`
-              <span style="
-                padding:2px 4px;
-                border-radius:3px;
-                background:${marcados.has(n)?"#00e676":"#222"}
-              ">${n}</span>
-            `).join("")}
-          </div>
-        `;
-      }).join("");
+      manualSec.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          ${gruposManual.map(grupo=>{
+
+            const marcados=new Set();
+            track.forEach(n=>{
+              if(grupo.has(terminal(n))){
+                vizinhosRace(n).forEach(v=>marcados.add(v));
+              }
+            });
+
+            const cont={};
+            timeline.forEach(n=>{
+              const t=terminal(n);
+              if(grupo.has(t)){
+                cont[t]=(cont[t]||0)+1;
+              }
+            });
+
+            const melhor = Object.entries(cont)
+              .sort((a,b)=>b[1]-a[1])
+              .slice(0,3)
+              .map(x=>x[0])
+              .join("");
+
+            return `
+              <div style="
+                border:1px solid #333;
+                border-radius:8px;
+                padding:6px;
+                background:#181818
+              ">
+                <div style="font-size:13px;font-weight:600">
+                  ${[...grupo].join("")}
+                </div>
+
+                <div style="font-size:11px;color:#00e676;margin-bottom:4px">
+                  Melhor: ${melhor || "--"}
+                </div>
+
+                <div style="display:flex;flex-wrap:wrap;gap:3px;font-size:11px">
+                  ${timeline.map(n=>`
+                    <span style="
+                      padding:2px 4px;
+                      border-radius:3px;
+                      background:${marcados.has(n)?"#00e676":"#222"}
+                    ">${n}</span>
+                  `).join("")}
+                </div>
+
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+
     } else {
       manualSec.innerHTML="";
     }
 
-    // 🔥 T acende
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       const ativo =
@@ -326,36 +362,6 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ================= CONJUNTOS =================
-    conjArea.style.display = modoConjuntos ? "block" : "none";
-    if(modoConjuntos){
-      const marcados=new Set();
-      filtrosConjuntos.forEach(t=>{
-        track.forEach(n=>{
-          if(terminal(n)===t){
-            vizinhosRace(n).forEach(v=>marcados.add(v));
-          }
-        });
-      });
-
-      conjArea.innerHTML = `
-        <div style="
-          display:grid;
-          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
-          gap:4px;
-        ">
-          ${timeline.map(n=>`
-            <div style="
-              height:26px;
-              display:flex;align-items:center;justify-content:center;
-              background:${marcados.has(n)?"#00e676":"#222"};
-              color:#fff;font-size:10px;font-weight:700;
-              border-radius:4px;border:1px solid #333;
-            ">${n}</div>
-          `).join("")}
-        </div>
-      `;
-    }
   }
 
   render();
