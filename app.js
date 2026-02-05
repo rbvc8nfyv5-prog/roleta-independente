@@ -51,7 +51,6 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -182,9 +181,25 @@
     </div>
   `;
 
-  // EVENTOS E BOTÕES ORIGINAIS CONTINUAM IGUAIS...
+  // BOTÕES 0 A 36
+  for(let n=0;n<=36;n++){
+    const b=document.createElement("button");
+    b.textContent=n;
+    b.style="padding:8px;background:#333;color:#fff;border:1px solid #555";
+    b.onclick=()=>add(n);
+    nums.appendChild(b);
+  }
 
-  // ========= ÚNICA ALTERAÇÃO ESTÁ NO RENDER =========
+  function add(n){
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
+    registrar(n);
+    calcularVizinho();
+    calcularNunum();
+    [3,4,5,6,7].forEach(calcularAutoT);
+    render();
+  }
+
   function render(){
 
     tl.innerHTML = timeline.join(" · ");
