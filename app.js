@@ -39,6 +39,13 @@
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
+  // ===== NOVO: GRUPOS SECUNDÁRIOS MANUAL =====
+  const gruposManual = [
+    new Set([2,5,8,9]),
+    new Set([1,4,7,9]),
+    new Set([0,3,6,9])
+  ];
+
   function vizinhosRace(n){
     const i = track.indexOf(n);
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
@@ -139,6 +146,9 @@
         🕒 Timeline (14):
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
+
+      <!-- NOVO: LINHAS SECUNDÁRIAS MANUAL -->
+      <div id="manualSec" style="margin-bottom:8px"></div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
@@ -257,6 +267,7 @@
   };
 
   function render(){
+
     const res =
       modoAtivo==="AUTO"
         ? analises.AUTO[autoTAtivo]?.res || []
@@ -268,7 +279,33 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // 🔥 ATUALIZAÇÃO: T acende se MANUAL ou CONJUNTO
+    // ===== RENDER LINHAS SECUNDÁRIAS =====
+    if(modoAtivo==="MANUAL"){
+      manualSec.innerHTML = gruposManual.map(grupo=>{
+        const marcados=new Set();
+        track.forEach(n=>{
+          if(grupo.has(terminal(n))){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+
+        return `
+          <div style="display:flex;gap:4px;margin-top:3px;font-size:11px">
+            ${timeline.map(n=>`
+              <span style="
+                padding:2px 4px;
+                border-radius:3px;
+                background:${marcados.has(n)?"#00e676":"#222"}
+              ">${n}</span>
+            `).join("")}
+          </div>
+        `;
+      }).join("");
+    } else {
+      manualSec.innerHTML="";
+    }
+
+    // 🔥 T acende
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       const ativo =
