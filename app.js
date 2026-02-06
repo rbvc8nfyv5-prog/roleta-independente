@@ -51,6 +51,7 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
+  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -181,11 +182,53 @@
     </div>
   `;
 
-  // BOTÕES 0 A 36
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
+
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      render();
+    };
+  });
+
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      render();
+    };
+  });
+
+  btnConj.onclick=()=>{
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
+    render();
+  };
+
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
+
+      render();
+    };
+    btnT.appendChild(b);
+  }
+
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
-    b.style="padding:8px;background:#333;color:#fff;border:1px solid #555";
+    b.style="padding:8px;background:#333;color:#fff";
     b.onclick=()=>add(n);
     nums.appendChild(b);
   }
@@ -200,53 +243,61 @@
     render();
   }
 
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoAtivo="MANUAL";
+    autoTAtivo=null;
+    modoConjuntos=false;
+    btnConj.style.background="#444";
+    render();
+  };
+
   function render(){
 
-    tl.innerHTML = timeline.join(" · ");
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
 
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
+
+    // ===== MANUAL HORIZONTAL =====
     if(modoAtivo==="MANUAL"){
 
       manualSec.innerHTML = gruposManual.map(grupo=>{
 
         const marcados=new Set();
-
         track.forEach(n=>{
           if(grupo.has(terminal(n))){
             vizinhosRace(n).forEach(v=>marcados.add(v));
           }
         });
 
-        const cont={};
-        timeline.forEach(n=>{
-          const t = terminal(n);
-          if(grupo.has(t)){
-            cont[t]=(cont[t]||0)+1;
-          }
-        });
-
-        const fortes = Object.entries(cont)
-          .sort((a,b)=>b[1]-a[1])
-          .slice(0,3)
-          .map(x=>x[0])
-          .join("");
-
         return `
-          <div style="margin-top:4px">
-
-            <div style="font-size:11px;color:#00e676">
-              ${[...grupo].join("")} → ${fortes || "--"}
-            </div>
-
-            <div style="display:flex;gap:3px">
-              ${timeline.map(n=>`
-                <span style="
-                  padding:3px 5px;
-                  background:${marcados.has(n)?"#00e676":"#222"};
-                  border-radius:3px;
-                ">${n}</span>
-              `).join("")}
-            </div>
-
+          <div style="display:flex;gap:4px;margin-top:4px">
+            ${timeline.map(n=>`
+              <span style="
+                padding:2px 4px;
+                border-radius:3px;
+                background:${marcados.has(n)?"#00e676":"#222"}
+              ">${n}</span>
+            `).join("")}
           </div>
         `;
 
@@ -255,6 +306,57 @@
     } else {
       manualSec.innerHTML="";
     }
+
+    // ===== CONJUNTOS =====
+    conjArea.style.display = modoConjuntos ? "block" : "none";
+
+    if(modoConjuntos){
+
+      const marcados=new Set();
+
+      filtrosConjuntos.forEach(t=>{
+        track.forEach(n=>{
+          if(terminal(n)===t){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+      });
+
+      conjArea.innerHTML = `
+        <div style="display:flex;gap:4px;margin-top:6px">
+          ${timeline.map(n=>`
+            <span style="
+              padding:2px 4px;
+              border-radius:3px;
+              background:${marcados.has(n)?"#00e676":"#222"}
+            ">${n}</span>
+          `).join("")}
+        </div>
+      `;
+
+    } else {
+      conjArea.innerHTML="";
+    }
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
+      b.style.background = ativo ? "#00e676" : "#444";
+    });
+
+    const filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo].filtros
+        : analises[modoAtivo].filtros;
+
+    const trios = triosSelecionados(filtros);
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
   }
 
