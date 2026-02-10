@@ -120,6 +120,18 @@
     });
   }
 
+  // ================= HOT 9 =================
+  function calcularHot9(){
+    const cont = {};
+    timeline.forEach(n=>{
+      cont[n] = (cont[n]||0)+1;
+    });
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,9)
+      .map(([n,q])=>({n:+n,q}));
+  }
+
   // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
@@ -147,7 +159,11 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- LINHAS MANUAL -->
+      <div style="margin:10px 0;border:1px solid #444;padding:8px">
+        🔥 9 números mais quentes:
+        <div id="hot9" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
+
       <div id="manualSec" style="margin-bottom:10px"></div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
@@ -277,18 +293,30 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // ===== MANUAL HORIZONTAL =====
+    const hot = calcularHot9();
+    hot9.innerHTML = hot.map(x=>`
+      <div style="
+        padding:6px;
+        min-width:32px;
+        text-align:center;
+        border-radius:4px;
+        background:#ff9800;
+        color:#000;
+        font-weight:700
+      ">
+        ${x.n}
+        <div style="font-size:11px;font-weight:400">(${x.q})</div>
+      </div>
+    `).join("");
+
     if(modoAtivo==="MANUAL"){
-
       manualSec.innerHTML = gruposManual.map(grupo=>{
-
         const marcados=new Set();
         track.forEach(n=>{
           if(grupo.has(terminal(n))){
             vizinhosRace(n).forEach(v=>marcados.add(v));
           }
         });
-
         return `
           <div style="display:flex;gap:4px;margin-top:4px">
             ${timeline.map(n=>`
@@ -300,20 +328,15 @@
             `).join("")}
           </div>
         `;
-
       }).join("");
-
     } else {
       manualSec.innerHTML="";
     }
 
-    // ===== CONJUNTOS =====
     conjArea.style.display = modoConjuntos ? "block" : "none";
 
     if(modoConjuntos){
-
       const marcados=new Set();
-
       filtrosConjuntos.forEach(t=>{
         track.forEach(n=>{
           if(terminal(n)===t){
@@ -321,7 +344,6 @@
           }
         });
       });
-
       conjArea.innerHTML = `
         <div style="display:flex;gap:4px;margin-top:6px">
           ${timeline.map(n=>`
@@ -333,7 +355,6 @@
           `).join("")}
         </div>
       `;
-
     } else {
       conjArea.innerHTML="";
     }
@@ -357,7 +378,6 @@
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
-
   }
 
   render();
