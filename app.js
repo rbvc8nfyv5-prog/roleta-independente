@@ -18,6 +18,7 @@
 
   // ================= ESTADO =================
   let timeline = [];
+  let historico50 = [];
   let janela = 6;
   let modoAtivo = "MANUAL";
   let autoTAtivo = null;
@@ -120,10 +121,10 @@
     });
   }
 
-  // ================= HOT 9 =================
+  // ================= HOT 9 (50 últimos) =================
   function calcularHot9(){
     const cont = {};
-    timeline.forEach(n=>{
+    historico50.forEach(n=>{
       cont[n] = (cont[n]||0)+1;
     });
     return Object.entries(cont)
@@ -160,7 +161,7 @@
       </div>
 
       <div style="margin:10px 0;border:1px solid #444;padding:8px">
-        🔥 9 números mais quentes:
+        🔥 9 números mais quentes (últimos 50):
         <div id="hot9" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
@@ -252,6 +253,10 @@
   function add(n){
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
+
+    historico50.unshift(n);
+    if(historico50.length>50) historico50.pop();
+
     registrar(n);
     calcularVizinho();
     calcularNunum();
@@ -267,6 +272,7 @@
 
   lim.onclick=()=>{
     timeline=[];
+    historico50=[];
     filtrosConjuntos.clear();
     Object.values(analises).forEach(a=>{
       if(a.res) a.res=[];
