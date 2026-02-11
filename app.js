@@ -21,7 +21,6 @@
   let janela = 6;
   let modoAtivo = "MANUAL";
   let autoTAtivo = null;
-  let grupoManualAtivo = null; // 🔹 NOVO
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] },
@@ -47,26 +46,16 @@
     new Set([0,3,6,9])
   ];
 
+  // ✅ UPDATE: nomes + quadro ativo no MANUAL
+  const gruposManualNomes = ["2589","1479","0369"];
+  let grupoManualAtivo = null;
+
   function vizinhosRace(n){
     const i = track.indexOf(n);
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // 🔹 NOVO — calcula 2 melhores terminais dentro do grupo
-  function melhoresTerminaisGrupo(grupoSet){
-    const cont = {};
-    timeline.slice(0,janela).forEach(n=>{
-      const t = terminal(n);
-      if(grupoSet.has(t)){
-        cont[t] = (cont[t]||0)+1;
-      }
-    });
-    return Object.entries(cont)
-      .sort((a,b)=>b[1]-a[1])
-      .slice(0,2)
-      .map(x=>+x[0]);
-  }
-
+  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -135,6 +124,19 @@
     });
   }
 
+  // ✅ UPDATE: melhores 2 terminais dentro do grupo (pela janela)
+  function melhores2TerminaisGrupo(grupoSet){
+    const cont = {};
+    timeline.slice(0,janela).forEach(n=>{
+      const t = terminal(n);
+      if(grupoSet.has(t)) cont[t] = (cont[t]||0) + 1;
+    });
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,2)
+      .map(([t])=>+t);
+  }
+
   // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
@@ -162,8 +164,28 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- MANUAL -->
+      <!-- LINHAS MANUAL -->
       <div id="manualSec" style="margin-bottom:10px"></div>
+
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+          <button class="modo" data-m="${m}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
+        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
+          CONJUNTOS
+        </button>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${[3,4,5,6,7].map(n=>`
+          <button class="auto" data-a="${n}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
+      </div>
+
+      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
+        Terminais:
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
         <div><b>ZERO</b><div id="cZERO"></div></div>
@@ -171,8 +193,64 @@
         <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
 
+      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
+
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
+
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
+
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      if(modoAtivo!=="MANUAL") grupoManualAtivo = null; // ✅ só vale no MANUAL
+      render();
+    };
+  });
+
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      grupoManualAtivo = null; // ✅ só vale no MANUAL
+      render();
+    };
+  });
+
+  btnConj.onclick=()=>{
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
+    render();
+  };
+
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
+
+      render();
+    };
+    btnT.appendChild(b);
+  }
+
+  for(let n=0;n<=36;n++){
+    const b=document.createElement("button");
+    b.textContent=n;
+    b.style="padding:8px;background:#333;color:#fff";
+    b.onclick=()=>add(n);
+    nums.appendChild(b);
+  }
 
   function add(n){
     timeline.unshift(n);
@@ -192,65 +270,179 @@
 
   lim.onclick=()=>{
     timeline=[];
-    grupoManualAtivo=null;
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoAtivo="MANUAL";
+    autoTAtivo=null;
+    modoConjuntos=false;
+    btnConj.style.background="#444";
+    grupoManualAtivo = null; // ✅ reset
     render();
   };
 
   function render(){
 
-    tl.innerHTML = timeline.join(" · ");
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
 
-    // 🔹 MANUAL agora em quadros (mesmas linhas)
-    manualSec.innerHTML = gruposManual.map((grupo,i)=>`
-      <div data-i="${i}" style="
-        border:2px solid ${grupoManualAtivo===i?'#00e676':'#444'};
-        padding:6px;
-        margin-bottom:6px;
-        cursor:pointer;
-      ">
-        ${timeline.map(n=>{
-          const t=terminal(n);
-          return `<span style="
-            padding:2px 4px;
-            margin-right:3px;
-            background:${grupo.has(t)?'#00e676':'#222'};
-            border-radius:3px
-          ">${n}</span>`;
-        }).join("")}
-      </div>
-    `).join("");
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
 
-    document.querySelectorAll("#manualSec > div").forEach(div=>{
-      div.onclick=()=>{
-        grupoManualAtivo=+div.dataset.i;
-        render();
-      };
-    });
+    // ===== MANUAL: 3 QUADROS (mesmas linhas, só separado + clicável) =====
+    if(modoAtivo==="MANUAL"){
 
-    let filtrosExtras = new Set();
+      manualSec.innerHTML = gruposManual.map((grupo, idx)=>{
 
-    if(grupoManualAtivo!==null){
-      const melhores = melhoresTerminaisGrupo(gruposManual[grupoManualAtivo]);
-      filtrosExtras = new Set(melhores);
+        const marcados=new Set();
+        track.forEach(n=>{
+          if(grupo.has(terminal(n))){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+
+        const ativo = grupoManualAtivo===idx;
+
+        return `
+          <div class="mBox" data-idx="${idx}" style="
+            border:2px solid ${ativo?"#00e676":"#444"};
+            padding:8px;
+            border-radius:6px;
+            background:#161616;
+            margin-top:8px;
+            cursor:pointer;
+          ">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <b>Grupo ${gruposManualNomes[idx]}</b>
+              <span style="font-size:12px;color:#aaa">clique para focar</span>
+            </div>
+
+            <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
+              ${timeline.map(n=>`
+                <span style="
+                  padding:2px 4px;
+                  border-radius:3px;
+                  background:${marcados.has(n)?"#00e676":"#222"}
+                ">${n}</span>
+              `).join("")}
+            </div>
+          </div>
+        `;
+
+      }).join("");
+
+      document.querySelectorAll(".mBox").forEach(el=>{
+        el.onclick=()=>{
+          const idx = +el.dataset.idx;
+          grupoManualAtivo = (grupoManualAtivo===idx) ? null : idx; // toggle
+          render();
+        };
+      });
+
+    } else {
+      manualSec.innerHTML="";
     }
 
-    const trios = triosSelecionados(filtrosExtras);
+    // ===== CONJUNTOS (base original) =====
+    conjArea.style.display = modoConjuntos ? "block" : "none";
+
+    if(modoConjuntos){
+
+      const marcados=new Set();
+
+      filtrosConjuntos.forEach(t=>{
+        track.forEach(n=>{
+          if(terminal(n)===t){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+      });
+
+      conjArea.innerHTML = `
+        <div style="display:flex;gap:4px;margin-top:6px">
+          ${timeline.map(n=>`
+            <span style="
+              padding:2px 4px;
+              border-radius:3px;
+              background:${marcados.has(n)?"#00e676":"#222"}
+            ">${n}</span>
+          `).join("")}
+        </div>
+      `;
+
+    } else {
+      conjArea.innerHTML="";
+    }
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
+      b.style.background = ativo ? "#00e676" : "#444";
+    });
+
+    // ===== TRIOS (base original + “acender” quando grupo manual estiver ativo) =====
+    let filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo].filtros
+        : analises[modoAtivo].filtros;
+
+    let melhoresSet = null;
+
+    if(modoAtivo==="MANUAL" && grupoManualAtivo!==null){
+      const melhores = melhores2TerminaisGrupo(gruposManual[grupoManualAtivo]);
+      melhoresSet = new Set(melhores);
+      filtros = melhoresSet; // mostra os 9 trios “do quadro”
+    }
+
+    const trios = triosSelecionados(filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
 
     trios.forEach(x=>{
-      por[x.eixo].push(`
-        <div style="
-          background:${grupoManualAtivo!==null?'#00e676':'transparent'};
-          padding:2px;
-        ">
-          ${x.trio.join("-")}
-        </div>
-      `);
+      if(melhoresSet){
+        const trioTemHit = x.trio.some(n=>melhoresSet.has(terminal(n)));
+
+        const trioHtml = x.trio.map(n=>{
+          const hit = melhoresSet.has(terminal(n));
+          return `<span style="
+            padding:1px 4px;
+            border-radius:3px;
+            background:${hit?"#00e676":"transparent"};
+            color:${hit?"#000":"#fff"};
+            font-weight:${hit?"700":"400"};
+          ">${n}</span>`;
+        }).join(" - ");
+
+        por[x.eixo].push(`
+          <div style="
+            margin:2px 0;
+            padding:4px 6px;
+            border-radius:4px;
+            background:${trioTemHit?"#00e676":"transparent"};
+            color:${trioTemHit?"#000":"#fff"};
+            font-weight:${trioTemHit?"700":"400"};
+          ">
+            ${trioHtml}
+          </div>
+        `);
+      } else {
+        por[x.eixo].push(x.trio.join("-"));
+      }
     });
 
-    cZERO.innerHTML=por.ZERO.join("");
-    cTIERS.innerHTML=por.TIERS.join("");
-    cORPH.innerHTML=por.ORPHELINS.join("");
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
   }
 
   render();
