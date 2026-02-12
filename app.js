@@ -35,7 +35,6 @@
     }
   };
 
-  // ================= CONJUNTOS =================
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
@@ -44,27 +43,38 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // ===== FUNÇÃO NOVA =====
   function pertenceGrupoVizinho(n, grupo){
     return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
   }
 
-  // ===== MELHOR TRIO POR GRUPO =====
+  // ===== MELHOR TRIO INTERNO DO GRUPO =====
   function melhorTrioGrupo(grupo){
-    const cont = {};
-    timeline.forEach(n=>{
-      if(pertenceGrupoVizinho(n, grupo)){
-        eixos.forEach(e=>{
-          e.trios.forEach(trio=>{
-            if(trio.includes(n)){
-              const chave = trio.join("-");
-              cont[chave]=(cont[chave]||0)+1;
-            }
-          });
-        });
+
+    const trios = [];
+    for(let i=0;i<grupo.length;i++){
+      for(let j=i+1;j<grupo.length;j++){
+        for(let k=j+1;k<grupo.length;k++){
+          trios.push([grupo[i],grupo[j],grupo[k]]);
+        }
       }
+    }
+
+    const cont = {};
+
+    trios.forEach(trio=>{
+      const chave = trio.join("-");
+      cont[chave]=0;
+
+      timeline.forEach(n=>{
+        if(vizinhosRace(n).some(v=> trio.includes(terminal(v)))){
+          cont[chave]++;
+        }
+      });
     });
-    const ordenado = Object.entries(cont).sort((a,b)=>b[1]-a[1]);
+
+    const ordenado = Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1]);
+
     return ordenado.length ? ordenado[0][0] : null;
   }
 
@@ -164,7 +174,7 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- ===== QUADROS DOS GRUPOS ===== -->
+      <!-- QUADROS -->
       <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
         <b>1479</b>
         <div id="tl1479"></div>
@@ -211,7 +221,7 @@
     </div>
   `;
 
-  // ================= EVENTOS (mantidos iguais ao seu código original) =================
+  // ================= EVENTOS =================
   jan.onchange=e=>{ janela=+e.target.value; render(); };
 
   document.querySelectorAll(".modo").forEach(b=>{
@@ -364,7 +374,6 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // CONJUNTOS original mantido
     conjArea.style.display = modoConjuntos ? "block" : "none";
     if(modoConjuntos){
       const marcados=new Set();
