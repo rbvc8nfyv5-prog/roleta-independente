@@ -9,7 +9,7 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= ZONAS DEFINIDAS =================
+  // ================= ZONAS =================
   const zonas = {
     TIER: [27,13,36,11,30,8,23,10,5,24,16,33],
     ORFINS: [6,34,17,1,20,14,31,9],
@@ -42,9 +42,6 @@
       7:{ filtros:new Set(), res:[] }
     }
   };
-
-  let modoConjuntos = false;
-  let filtrosConjuntos = new Set();
 
   const gruposManual = [
     new Set([2,5,8,9]),
@@ -128,29 +125,14 @@
     });
   }
 
-  function melhores3TerminaisGrupo(grupoSet){
-    const cont = {};
-    timeline.slice(0,14).forEach(n=>{
-      const t = terminal(n);
-      if(grupoSet.has(t)) cont[t] = (cont[t]||0) + 1;
-    });
-    return Object.entries(cont)
-      .sort((a,b)=>b[1]-a[1])
-      .slice(0,3)
-      .map(([t])=>+t);
-  }
-
-  // ===== NOVO: ESTATÍSTICA DAS ZONAS =====
   function calcularEstatisticasZonas(){
     const base = timeline.slice(0,14);
     const total = base.length || 1;
     const res = {};
-
     Object.keys(zonas).forEach(z=>{
       const count = base.filter(n=>zonas[z].includes(n)).length;
       res[z] = ((count/total)*100).toFixed(1);
     });
-
     return res;
   }
 
@@ -163,66 +145,48 @@
     <div style="padding:10px;max-width:1000px;margin:auto">
       <h3 style="text-align:center">CSM</h3>
 
-      <div style="border:1px solid #444;padding:8px">
-        Histórico:
-        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
-          <button id="col">Colar</button>
-          <button id="lim">Limpar</button>
-          Janela:
-          <select id="jan">
-            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
-          </select>
-        </div>
+      Histórico:
+      <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+      <div style="margin:6px 0">
+        <button id="col">Colar</button>
+        <button id="lim">Limpar</button>
       </div>
 
-      <div style="margin:10px 0">
-        🕒 Timeline (14):
-        <span id="tl" style="font-size:18px;font-weight:600"></span>
-      </div>
+      🕒 Timeline (14):
+      <div id="tl" style="margin-bottom:10px;font-weight:600"></div>
 
       <div id="manualSec" style="margin-bottom:10px"></div>
 
-      <!-- 🔥 PAINEL DE ESTATÍSTICA -->
-      <div style="border:1px solid #444;padding:8px;margin-bottom:10px">
-        <b>📊 Estatística de Zonas (Timeline 14)</b>
-        <div id="statsZonas" style="margin-top:6px"></div>
-      </div>
+      📊 Estatística de Zonas:
+      <div id="statsZonas" style="margin-bottom:12px"></div>
 
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
-          <button class="modo" data-m="${m}"
-            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
-        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
-          CONJUNTOS
-        </button>
-      </div>
-
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        ${[3,4,5,6,7].map(n=>`
-          <button class="auto" data-a="${n}"
-            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
-      </div>
-
-      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
-        Terminais:
-        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-        <div><b>ZERO</b><div id="cZERO"></div></div>
-        <div><b>TIERS</b><div id="cTIERS"></div></div>
-        <div><b>ORPHELINS</b><div id="cORPH"></div></div>
-      </div>
-
-      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
-
-      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px"></div>
     </div>
   `;
 
-  // ===== EVENTOS =====
-  jan.onchange=e=>{ janela=+e.target.value; render(); };
+  function renderManual(){
+    manualSec.innerHTML = `
+      <b>🎯 Grupos Manuais</b>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        ${gruposManual.map((g,i)=>`
+          <button data-i="${i}"
+            style="padding:6px;background:${grupoManualAtivo===i?'#0a84ff':'#333'};color:#fff">
+            ${gruposManualNomes[i]}
+          </button>
+        `).join("")}
+      </div>
+    `;
+
+    manualSec.querySelectorAll("button").forEach(btn=>{
+      btn.onclick=()=>{
+        const i = +btn.dataset.i;
+        grupoManualAtivo = grupoManualAtivo===i ? null : i;
+        analises.MANUAL.filtros =
+          grupoManualAtivo!==null ? gruposManual[grupoManualAtivo] : new Set();
+        render();
+      };
+    });
+  }
 
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
@@ -254,15 +218,13 @@
   };
 
   function render(){
-
     tl.innerHTML = timeline.join(" · ");
-
-    // Atualiza estatística
+    renderManual();
     const stats = calcularEstatisticasZonas();
-    statsZonas.innerHTML = Object.entries(stats)
-      .map(([z,p])=>`${z}: <b>${p}%</b>`)
-      .join(" | ");
-
+    statsZonas.innerHTML =
+      Object.entries(stats)
+        .map(([z,p])=>`${z}: <b>${p}%</b>`)
+        .join(" | ");
   }
 
   render();
