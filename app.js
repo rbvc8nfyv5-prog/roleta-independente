@@ -140,6 +140,19 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
+      <!-- 🔥 NOVOS 3 QUADROS -->
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>2589</b>
+        </div>
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>1479</b>
+        </div>
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>0369</b>
+        </div>
+      </div>
+
       <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
           <button class="modo" data-m="${m}"
@@ -268,7 +281,6 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // 🔥 ATUALIZAÇÃO: T acende se MANUAL ou CONJUNTO
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       const ativo =
@@ -289,7 +301,6 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ================= CONJUNTOS =================
     conjArea.style.display = modoConjuntos ? "block" : "none";
     if(modoConjuntos){
       const marcados=new Set();
