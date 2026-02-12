@@ -16,13 +16,6 @@
     { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
-  // ================= NOVOS GRUPOS EXTRAS =================
-  const gruposExtras = {
-    "2589": [2,5,8,9],
-    "1479": [1,4,7,9],
-    "0369": [0,3,6,9]
-  };
-
   // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
@@ -120,6 +113,48 @@
     });
   }
 
+  // ================= ADIÇÃO (SEM MEXER NO RESTO): linhas secundárias dos 3 quadros =================
+  // 2589 -> 259 vs 289
+  // 1479 -> 149 vs 179
+  // 0369 -> 039 vs 069
+  function renderLinhasQuadros(){
+    const cfgs = [
+      { lineId:"line2589", bestId:"best2589", t1:[2,5,9], t2:[2,8,9], all:[2,5,8,9] }, // 259 vs 289
+      { lineId:"line1479", bestId:"best1479", t1:[1,4,9], t2:[1,7,9], all:[1,4,7,9] }, // 149 vs 179
+      { lineId:"line0369", bestId:"best0369", t1:[0,3,9], t2:[0,6,9], all:[0,3,6,9] }  // 039 vs 069
+    ];
+
+    cfgs.forEach(cfg=>{
+      const elLine = document.getElementById(cfg.lineId);
+      const elBest = document.getElementById(cfg.bestId);
+      if(!elLine || !elBest) return;
+
+      let c1=0, c2=0;
+      timeline.slice(0,14).forEach(n=>{
+        const t = terminal(n);
+        if(cfg.t1.includes(t)) c1++;
+        if(cfg.t2.includes(t)) c2++;
+      });
+
+      const best = (c1>c2) ? cfg.t1 : (c2>c1) ? cfg.t2 : cfg.t1;
+      const bestTxt = best.join("");
+
+      elBest.textContent = `melhor: ${bestTxt}`;
+
+      const setBest = new Set(best);
+      const setAll  = new Set(cfg.all);
+
+      elLine.innerHTML = timeline.slice(0,14).map(n=>{
+        const t = terminal(n);
+        const cor =
+          setBest.has(t) ? "#00e676" :     // melhor trio
+          setAll.has(t)  ? "#ffeb3b" :     // pertence ao quadro, mas não é do melhor trio
+          "#aaa";                          // fora
+        return `<span style="color:${cor};font-weight:600">${n}</span>`;
+      }).join(" · ");
+    });
+  }
+
   // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
@@ -147,9 +182,24 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- ================= LINHAS SECUNDÁRIAS ================= -->
-      <div id="extrasLinhas" style="margin-bottom:15px"></div>
-      <!-- ====================================================== -->
+      <!-- 🔥 NOVOS 3 QUADROS -->
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>2589</b>
+          <div id="best2589" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+          <div id="line2589" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+        </div>
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>1479</b>
+          <div id="best1479" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+          <div id="line1479" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+        </div>
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>0369</b>
+          <div id="best0369" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+          <div id="line0369" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+        </div>
+      </div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
@@ -183,43 +233,58 @@
     </div>
   `;
 
-  function renderExtras(){
-    const container = document.getElementById("extrasLinhas");
-    container.innerHTML = "";
+  // ================= EVENTOS =================
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
 
-    Object.entries(gruposExtras).forEach(([nome, lista])=>{
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      render();
+    };
+  });
 
-      let score = 0;
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      render();
+    };
+  });
 
-      const linha = timeline.map(n=>{
-        const t = terminal(n);
+  btnConj.onclick=()=>{
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
+    render();
+  };
 
-        if(lista.includes(t)){
-          score++;
-          return `<span style="color:#00e676">${n}</span>`;
-        }
+  // ================= BOTÕES T =================
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
 
-        const viz = vizinhosRace(n);
-        if(viz.some(v=>lista.includes(terminal(v)))){
-          return `<span style="color:#ffeb3b">${n}</span>`;
-        }
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
 
-        return `<span style="color:#555">${n}</span>`;
-      }).join(" · ");
-
-      container.innerHTML += `
-        <div style="border:1px solid #444;padding:6px;margin-bottom:6px">
-          <div style="font-weight:bold;margin-bottom:4px">
-            ${nome} (${score})
-          </div>
-          <div>${linha}</div>
-        </div>
-      `;
-    });
+      render();
+    };
+    btnT.appendChild(b);
   }
 
-  // ================= RESTANTE DO CÓDIGO ORIGINAL =================
-  // (nenhuma função original foi alterada)
+  for(let n=0;n<=36;n++){
+    const b=document.createElement("button");
+    b.textContent=n;
+    b.style="padding:8px;background:#333;color:#fff";
+    b.onclick=()=>add(n);
+    nums.appendChild(b);
+  }
 
   function add(n){
     timeline.unshift(n);
@@ -230,6 +295,27 @@
     [3,4,5,6,7].forEach(calcularAutoT);
     render();
   }
+
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoAtivo="MANUAL";
+    autoTAtivo=null;
+    modoConjuntos=false;
+    btnConj.style.background="#444";
+    render();
+  };
 
   function render(){
     const res =
@@ -243,7 +329,58 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    renderExtras();
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
+      b.style.background = ativo ? "#00e676" : "#444";
+    });
+
+    const filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo].filtros
+        : analises[modoAtivo].filtros;
+
+    const trios = triosSelecionados(filtros);
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
+    conjArea.style.display = modoConjuntos ? "block" : "none";
+    if(modoConjuntos){
+      const marcados=new Set();
+      filtrosConjuntos.forEach(t=>{
+        track.forEach(n=>{
+          if(terminal(n)===t){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+      });
+
+      conjArea.innerHTML = `
+        <div style="
+          display:grid;
+          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
+          gap:4px;
+        ">
+          ${timeline.map(n=>`
+            <div style="
+              height:26px;
+              display:flex;align-items:center;justify-content:center;
+              background:${marcados.has(n)?"#00e676":"#222"};
+              color:#fff;font-size:10px;font-weight:700;
+              border-radius:4px;border:1px solid #333;
+            ">${n}</div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    // ✅ ADIÇÃO: atualizar as 3 linhas secundárias sem mexer em mais nada
+    renderLinhasQuadros();
   }
 
   render();
