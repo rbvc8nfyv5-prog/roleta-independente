@@ -35,6 +35,7 @@
     }
   };
 
+  // ================= CONJUNTOS =================
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
@@ -43,11 +44,12 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
+  // ===== NOVA FUNÇÃO (ADICIONADA APENAS) =====
   function pertenceGrupoVizinho(n, grupo){
     return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
   }
 
-  // ================= LÓGICAS ORIGINAIS =================
+  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -143,19 +145,20 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
-        <div style="border:1px solid #444;padding:6px">
-          <b>1479</b>
-          <div id="tl1479"></div>
-        </div>
-        <div style="border:1px solid #444;padding:6px">
-          <b>2589</b>
-          <div id="tl2589"></div>
-        </div>
-        <div style="border:1px solid #444;padding:6px">
-          <b>0369</b>
-          <div id="tl0369"></div>
-        </div>
+      <!-- QUADROS NOVOS -->
+      <div style="border:1px solid #444;padding:6px;margin-bottom:4px">
+        <b>1479</b>
+        <div id="tl1479"></div>
+      </div>
+
+      <div style="border:1px solid #444;padding:6px;margin-bottom:4px">
+        <b>2589</b>
+        <div id="tl2589"></div>
+      </div>
+
+      <div style="border:1px solid #444;padding:6px;margin-bottom:8px">
+        <b>0369</b>
+        <div id="tl0369"></div>
       </div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
@@ -196,7 +199,7 @@
         `).join("");
     });
 
-    // ===== CONJUNTOS RESTAURADO =====
+    // ===== CONJUNTOS ORIGINAL RESTAURADO =====
     conjArea.style.display = modoConjuntos ? "block" : "none";
     if(modoConjuntos){
       const marcados=new Set();
