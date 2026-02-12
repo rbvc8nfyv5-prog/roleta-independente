@@ -35,6 +35,7 @@
     }
   };
 
+  // ================= CONJUNTOS =================
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
@@ -43,7 +44,7 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // ================= LÓGICAS ORIGINAIS (INTACTAS) =================
+  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -112,58 +113,45 @@
     });
   }
 
-  // ================= NOVA LÓGICA DOS QUADROS (ATUALIZADA) =================
-
+  // ================= ADIÇÃO (SEM MEXER NO RESTO): linhas secundárias dos 3 quadros =================
+  // 2589 -> 259 vs 289
+  // 1479 -> 149 vs 179
+  // 0369 -> 039 vs 069
   function renderLinhasQuadros(){
-
-    const grupos = [
-      { lineId:"line2589", bestId:"best2589", grupo:[2,5,8,9] },
-      { lineId:"line1479", bestId:"best1479", grupo:[1,4,7,9] },
-      { lineId:"line0369", bestId:"best0369", grupo:[0,3,6,9] }
+    const cfgs = [
+      { lineId:"line2589", bestId:"best2589", t1:[2,5,9], t2:[2,8,9], all:[2,5,8,9] }, // 259 vs 289
+      { lineId:"line1479", bestId:"best1479", t1:[1,4,9], t2:[1,7,9], all:[1,4,7,9] }, // 149 vs 179
+      { lineId:"line0369", bestId:"best0369", t1:[0,3,9], t2:[0,6,9], all:[0,3,6,9] }  // 039 vs 069
     ];
 
-    function combinacoes3(arr){
-      const r=[];
-      for(let i=0;i<arr.length;i++){
-        for(let j=i+1;j<arr.length;j++){
-          for(let k=j+1;k<arr.length;k++){
-            r.push([arr[i],arr[j],arr[k]]);
-          }
-        }
-      }
-      return r;
-    }
-
-    grupos.forEach(cfg=>{
+    cfgs.forEach(cfg=>{
       const elLine = document.getElementById(cfg.lineId);
       const elBest = document.getElementById(cfg.bestId);
       if(!elLine || !elBest) return;
 
-      const combos = combinacoes3(cfg.grupo);
-
-      let melhor = combos[0];
-      let maior = -1;
-
-      combos.forEach(c=>{
-        let count=0;
-        timeline.slice(0,14).forEach(n=>{
-          if(c.includes(terminal(n))) count++;
-        });
-        if(count>maior){
-          maior=count;
-          melhor=c;
-        }
+      let c1=0, c2=0;
+      timeline.slice(0,14).forEach(n=>{
+        const t = terminal(n);
+        if(cfg.t1.includes(t)) c1++;
+        if(cfg.t2.includes(t)) c2++;
       });
 
-      elBest.textContent = `melhor: ${melhor.join("")}`;
+      const best = (c1>c2) ? cfg.t1 : (c2>c1) ? cfg.t2 : cfg.t1;
+      const bestTxt = best.join("");
 
-      const linha = timeline.slice(0,14).map(n=>{
-        const viz = vizinhosRace(n);
-        const ehViz = viz.some(v=>melhor.includes(terminal(v)));
-        return `<span style="color:${ehViz ? "#00e676" : "#ff5252"};font-weight:600">${n}</span>`;
+      elBest.textContent = `melhor: ${bestTxt}`;
+
+      const setBest = new Set(best);
+      const setAll  = new Set(cfg.all);
+
+      elLine.innerHTML = timeline.slice(0,14).map(n=>{
+        const t = terminal(n);
+        const cor =
+          setBest.has(t) ? "#00e676" :     // melhor trio
+          setAll.has(t)  ? "#ffeb3b" :     // pertence ao quadro, mas não é do melhor trio
+          "#aaa";                          // fora
+        return `<span style="color:${cor};font-weight:600">${n}</span>`;
       }).join(" · ");
-
-      elLine.innerHTML = linha;
     });
   }
 
@@ -176,31 +164,127 @@
     <div style="padding:10px;max-width:1000px;margin:auto">
       <h3 style="text-align:center">CSM</h3>
 
+      <div style="border:1px solid #444;padding:8px">
+        Histórico:
+        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+          <button id="col">Colar</button>
+          <button id="lim">Limpar</button>
+          Janela:
+          <select id="jan">
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+
       <div style="margin:10px 0">
         🕒 Timeline (14):
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- QUADROS EMPILHADOS -->
-      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
-        <b>2589</b>
-        <div id="best2589" style="margin-top:4px;font-size:12px;color:#bbb"></div>
-        <div id="line2589" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+      <!-- 🔥 NOVOS 3 QUADROS -->
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>2589</b>
+          <div id="best2589" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+          <div id="line2589" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+        </div>
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>1479</b>
+          <div id="best1479" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+          <div id="line1479" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+        </div>
+        <div style="flex:1;border:1px solid #555;padding:8px;text-align:center">
+          <b>0369</b>
+          <div id="best0369" style="margin-top:4px;font-size:12px;color:#bbb"></div>
+          <div id="line0369" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+          <button class="modo" data-m="${m}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
+        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
+          CONJUNTOS
+        </button>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${[3,4,5,6,7].map(n=>`
+          <button class="auto" data-a="${n}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
-        <b>1479</b>
-        <div id="best1479" style="margin-top:4px;font-size:12px;color:#bbb"></div>
-        <div id="line1479" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+        Terminais:
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
-      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
-        <b>0369</b>
-        <div id="best0369" style="margin-top:4px;font-size:12px;color:#bbb"></div>
-        <div id="line0369" style="margin-top:6px;font-size:14px;font-weight:600"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div><b>ZERO</b><div id="cZERO"></div></div>
+        <div><b>TIERS</b><div id="cTIERS"></div></div>
+        <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
+
+      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
+
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
+
+  // ================= EVENTOS =================
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
+
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      render();
+    };
+  });
+
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      render();
+    };
+  });
+
+  btnConj.onclick=()=>{
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
+    render();
+  };
+
+  // ================= BOTÕES T =================
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
+
+      render();
+    };
+    btnT.appendChild(b);
+  }
+
+  for(let n=0;n<=36;n++){
+    const b=document.createElement("button");
+    b.textContent=n;
+    b.style="padding:8px;background:#333;color:#fff";
+    b.onclick=()=>add(n);
+    nums.appendChild(b);
+  }
 
   function add(n){
     timeline.unshift(n);
@@ -212,8 +296,90 @@
     render();
   }
 
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoAtivo="MANUAL";
+    autoTAtivo=null;
+    modoConjuntos=false;
+    btnConj.style.background="#444";
+    render();
+  };
+
   function render(){
-    tl.innerHTML = timeline.map(n=>n).join(" · ");
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
+
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
+      b.style.background = ativo ? "#00e676" : "#444";
+    });
+
+    const filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo].filtros
+        : analises[modoAtivo].filtros;
+
+    const trios = triosSelecionados(filtros);
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
+    conjArea.style.display = modoConjuntos ? "block" : "none";
+    if(modoConjuntos){
+      const marcados=new Set();
+      filtrosConjuntos.forEach(t=>{
+        track.forEach(n=>{
+          if(terminal(n)===t){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+      });
+
+      conjArea.innerHTML = `
+        <div style="
+          display:grid;
+          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
+          gap:4px;
+        ">
+          ${timeline.map(n=>`
+            <div style="
+              height:26px;
+              display:flex;align-items:center;justify-content:center;
+              background:${marcados.has(n)?"#00e676":"#222"};
+              color:#fff;font-size:10px;font-weight:700;
+              border-radius:4px;border:1px solid #333;
+            ">${n}</div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    // ✅ ADIÇÃO: atualizar as 3 linhas secundárias sem mexer em mais nada
     renderLinhasQuadros();
   }
 
