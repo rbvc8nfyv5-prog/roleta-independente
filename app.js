@@ -43,12 +43,12 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // ===== ADIÇÃO NOVA =====
+  // ===== NOVA FUNÇÃO ADICIONADA =====
   function pertenceGrupoVizinho(n, grupo){
     return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
   }
 
-  // ================= LÓGICAS ORIGINAIS =================
+  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -169,14 +169,30 @@
         </button>
       </div>
 
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${[3,4,5,6,7].map(n=>`
+          <button class="auto" data-a="${n}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
+      </div>
+
       <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
+
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
 
   function render(){
 
-    tl.innerHTML = timeline.join(" · ");
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
+
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
 
     const grupos = {
       tl1479: [1,4,7,9],
