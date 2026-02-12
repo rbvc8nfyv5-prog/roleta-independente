@@ -9,13 +9,6 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= GRUPOS SECUNDÁRIOS =================
-  const gruposSec = {
-    "2589": new Set([2,5,8,9]),
-    "1479": new Set([1,4,7,9]),
-    "0369": new Set([0,3,6,9])
-  };
-
   // ================= EIXOS =================
   const eixos = [
     { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
@@ -42,6 +35,7 @@
     }
   };
 
+  // ================= CONJUNTOS =================
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
@@ -50,13 +44,12 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // ================= NOVA LÓGICA GRUPOS =================
-  function pertenceGrupoComVizinho(n, grupo){
-    const viz = vizinhosRace(n);
-    return viz.some(v => grupo.has(terminal(v)));
+  // ===== NOVA FUNÇÃO (ADICIONADA) =====
+  function pertenceGrupoVizinho(n, grupo){
+    return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
   }
 
-  // ================= LÓGICAS ORIGINAIS =================
+  // ================= LÓGICAS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -152,7 +145,10 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <div id="secTimelines" style="margin-bottom:10px"></div>
+      <!-- NOVAS TIMELINES -->
+      <div id="tl2589" style="margin:2px 0"></div>
+      <div id="tl1479" style="margin:2px 0"></div>
+      <div id="tl0369" style="margin:2px 0"></div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
@@ -185,7 +181,89 @@
     </div>
   `;
 
-  // ================= RENDER =================
+  // ================= EVENTOS =================
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
+
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      render();
+    };
+  });
+
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      render();
+    };
+  });
+
+  btnConj.onclick=()=>{
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
+    render();
+  };
+
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
+
+      render();
+    };
+    btnT.appendChild(b);
+  }
+
+  for(let n=0;n<=36;n++){
+    const b=document.createElement("button");
+    b.textContent=n;
+    b.style="padding:8px;background:#333;color:#fff";
+    b.onclick=()=>add(n);
+    nums.appendChild(b);
+  }
+
+  function add(n){
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
+    registrar(n);
+    calcularVizinho();
+    calcularNunum();
+    [3,4,5,6,7].forEach(calcularAutoT);
+    render();
+  }
+
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoAtivo="MANUAL";
+    autoTAtivo=null;
+    modoConjuntos=false;
+    btnConj.style.background="#444";
+    render();
+  };
+
   function render(){
 
     const res =
@@ -199,22 +277,26 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // 🔥 TIMELINES SECUNDÁRIAS
-    secTimelines.innerHTML = Object.entries(gruposSec).map(([nome,grupo])=>`
-      <div style="margin:4px 0">
-        <span style="font-size:11px;color:#888">${nome}:</span>
-        ${timeline.map(n=>`
+    // ===== RENDER TIMELINES SECUNDÁRIAS =====
+    const grupos = {
+      tl2589: [2,5,8,9],
+      tl1479: [1,4,7,9],
+      tl0369: [0,3,6,9]
+    };
+
+    Object.entries(grupos).forEach(([id,grupo])=>{
+      document.getElementById(id).innerHTML =
+        timeline.map(n=>`
           <span style="
             display:inline-block;
             width:18px;
             text-align:center;
-            background:${pertenceGrupoComVizinho(n,grupo)?"#00e676":"transparent"};
+            background:${pertenceGrupoVizinho(n,grupo)?"#00e676":"transparent"};
             border-radius:3px;
             margin-right:2px;
           ">${n}</span>
-        `).join("")}
-      </div>
-    `).join("");
+        `).join("");
+    });
 
   }
 
