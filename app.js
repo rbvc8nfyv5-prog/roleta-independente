@@ -9,6 +9,13 @@
   ];
   const terminal = n => n % 10;
 
+  // ================= GRUPOS SECUNDÁRIOS =================
+  const gruposSec = {
+    "2589": new Set([2,5,8,9]),
+    "1479": new Set([1,4,7,9]),
+    "0369": new Set([0,3,6,9])
+  };
+
   // ================= EIXOS =================
   const eixos = [
     { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
@@ -43,7 +50,13 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  // ================= LÓGICAS =================
+  // ================= NOVA LÓGICA GRUPOS =================
+  function pertenceGrupoComVizinho(n, grupo){
+    const viz = vizinhosRace(n);
+    return viz.some(v => grupo.has(terminal(v)));
+  }
+
+  // ================= LÓGICAS ORIGINAIS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -112,72 +125,99 @@
     });
   }
 
-  // ================= ATUALIZAÇÃO DOS QUADROS (ÚNICA PARTE ALTERADA) =================
-  function renderLinhasQuadros(){
+  // ================= UI =================
+  document.body.style.background="#111";
+  document.body.style.color="#fff";
+  document.body.style.fontFamily="sans-serif";
 
-    const quadros = [
-      { lineId:"line2589", bestId:"best2589", base:[2,5,8,9] },
-      { lineId:"line1479", bestId:"best1479", base:[1,4,7,9] },
-      { lineId:"line0369", bestId:"best0369", base:[0,3,6,9] }
-    ];
+  document.body.innerHTML = `
+    <div style="padding:10px;max-width:1000px;margin:auto">
+      <h3 style="text-align:center">CSM</h3>
 
-    function gerarTrios(arr){
-      const trios=[];
-      for(let i=0;i<arr.length;i++){
-        for(let j=i+1;j<arr.length;j++){
-          for(let k=j+1;k<arr.length;k++){
-            trios.push([arr[i],arr[j],arr[k]]);
-          }
-        }
-      }
-      return trios;
-    }
+      <div style="border:1px solid #444;padding:8px">
+        Histórico:
+        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+          <button id="col">Colar</button>
+          <button id="lim">Limpar</button>
+          Janela:
+          <select id="jan">
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
+          </select>
+        </div>
+      </div>
 
-    quadros.forEach(cfg=>{
-      const elLine = document.getElementById(cfg.lineId);
-      const elBest = document.getElementById(cfg.bestId);
-      if(!elLine || !elBest) return;
+      <div style="margin:10px 0">
+        🕒 Timeline (14):
+        <span id="tl" style="font-size:18px;font-weight:600"></span>
+      </div>
 
-      // 1️⃣ VIZINHOS DOS 4 TERMINAIS DO QUADRO
-      const vizinhosSet = new Set();
+      <div id="secTimelines" style="margin-bottom:10px"></div>
 
-      cfg.base.forEach(t=>{
-        track.forEach(n=>{
-          if(terminal(n)===t){
-            vizinhosRace(n).forEach(v=>vizinhosSet.add(v));
-          }
-        });
-      });
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+          <button class="modo" data-m="${m}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
+        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
+          CONJUNTOS
+        </button>
+      </div>
 
-      elLine.innerHTML = timeline.slice(0,14).map(n=>{
-        const cor = vizinhosSet.has(n) ? "#00e676" : "#aaa";
-        return `<span style="color:${cor};font-weight:600">${n}</span>`;
-      }).join(" · ");
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${[3,4,5,6,7].map(n=>`
+          <button class="auto" data-a="${n}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
+      </div>
 
-      // 2️⃣ MELHOR TRIO ENTRE OS 4
-      const trios = gerarTrios(cfg.base);
+      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
+        Terminais:
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
 
-      let melhorTrio = trios[0];
-      let melhorScore = 0;
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div><b>ZERO</b><div id="cZERO"></div></div>
+        <div><b>TIERS</b><div id="cTIERS"></div></div>
+        <div><b>ORPHELINS</b><div id="cORPH"></div></div>
+      </div>
 
-      trios.forEach(trio=>{
-        let score=0;
-        timeline.slice(0,14).forEach(n=>{
-          if(trio.includes(terminal(n))) score++;
-        });
-        if(score>melhorScore){
-          melhorScore=score;
-          melhorTrio=trio;
-        }
-      });
+      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
+    </div>
+  `;
 
-      elBest.textContent =
-        `melhor trio: ${melhorTrio.join("")} (${melhorScore})`;
-    });
+  // ================= RENDER =================
+  function render(){
+
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
+
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
+
+    // 🔥 TIMELINES SECUNDÁRIAS
+    secTimelines.innerHTML = Object.entries(gruposSec).map(([nome,grupo])=>`
+      <div style="margin:4px 0">
+        <span style="font-size:11px;color:#888">${nome}:</span>
+        ${timeline.map(n=>`
+          <span style="
+            display:inline-block;
+            width:18px;
+            text-align:center;
+            background:${pertenceGrupoComVizinho(n,grupo)?"#00e676":"transparent"};
+            border-radius:3px;
+            margin-right:2px;
+          ">${n}</span>
+        `).join("")}
+      </div>
+    `).join("");
+
   }
 
-  // ================= RESTO DO SEU CÓDIGO CONTINUA EXATAMENTE IGUAL =================
-
-  // ... (todo restante permanece igual ao que você enviou)
+  render();
 
 })();
