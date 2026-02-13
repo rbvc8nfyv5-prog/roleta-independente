@@ -35,6 +35,7 @@
     }
   };
 
+  // ================= CONJUNTOS =================
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
@@ -76,7 +77,75 @@
     return ordenado.length ? ordenado[0][0] : null;
   }
 
-  // ================= UI =================
+  // ================= LÓGICAS ORIGINAIS =================
+  function calcularAutoT(k){
+    const set = new Set();
+    for(const n of timeline.slice(0,janela)){
+      set.add(terminal(n));
+      if(set.size>=k) break;
+    }
+    analises.AUTO[k].filtros = set;
+  }
+
+  function melhorTrincaBase(){
+    const cont = {};
+    timeline.slice(0,janela).forEach(n=>{
+      const t = terminal(n);
+      cont[t] = (cont[t]||0)+1;
+    });
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(x=>+x[0]);
+  }
+
+  function calcularVizinho(){
+    const base = melhorTrincaBase();
+    analises.VIZINHO.filtros = new Set(base);
+    analises.VIZINHO.motor.clear();
+    base.forEach(t=>{
+      track.filter(n=>terminal(n)===t)
+        .forEach(n=>vizinhosRace(n)
+          .forEach(v=>analises.VIZINHO.motor.add(v))
+        );
+    });
+  }
+
+  function calcularNunum(){
+    const set = new Set();
+    timeline.slice(0,2).forEach(n=>{
+      vizinhosRace(n).forEach(v=>set.add(terminal(v)));
+    });
+    analises.NUNUM.filtros = set;
+  }
+
+  function triosSelecionados(filtros){
+    let lista=[];
+    eixos.forEach(e=>{
+      e.trios.forEach(trio=>{
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio});
+      });
+    });
+    return lista.slice(0,9);
+  }
+
+  function validar(n, filtros){
+    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
+  }
+
+  function registrar(n){
+    analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
+    analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
+    analises.NUNUM.res.unshift(validar(n,analises.NUNUM.filtros)?"V":"X");
+    [3,4,5,6,7].forEach(k=>{
+      analises.AUTO[k].res.unshift(
+        validar(n,analises.AUTO[k].filtros)?"V":"X"
+      );
+    });
+  }
+
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -105,14 +174,6 @@
 
       <!-- ===== ZONAS HORIZONTAIS ===== -->
       <div id="zonaStats" style="margin-bottom:10px"></div>
-
-      <!-- ===== ASSISTENTE VIRTUAL ===== -->
-      <div id="assistenteBox"
-           style="border:1px solid #00e676;
-                  padding:10px;
-                  margin-bottom:10px;
-                  cursor:pointer;">
-      </div>
 
       <!-- ===== QUADROS DOS GRUPOS ===== -->
       <div id="box1479" style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
@@ -159,80 +220,6 @@
     </div>
   `;
 
-  // ================= MODELO PROBABILÍSTICO ADAPTATIVO =================
-  function analiseAdaptativa(){
-
-    if(timeline.length < 6){
-      return { texto:"Aguardando mais dados...", trio:null };
-    }
-
-    const pesos = timeline.map((n,i)=>({
-      n,
-      peso:(timeline.length - i)
-    }));
-
-    // ===== Probabilidade por trio interno =====
-    const gruposTrios = [
-      [1,4,7,9],
-      [2,5,8,9],
-      [0,3,6,9]
-    ];
-
-    const scoreTrios = [];
-
-    gruposTrios.forEach(grupo=>{
-      const trio = melhorTrioGrupo(grupo);
-      if(!trio) return;
-
-      let score = 0;
-
-      pesos.forEach(obj=>{
-        if(vizinhosRace(obj.n).some(v=> trio.split("-").includes(String(terminal(v))))){
-          score += obj.peso;
-        }
-      });
-
-      scoreTrios.push({ trio, score });
-    });
-
-    scoreTrios.sort((a,b)=>b.score-a.score);
-
-    const trioDominante = scoreTrios.length ? scoreTrios[0].trio : null;
-
-    // ===== Reconhecimento de padrão repetitivo =====
-    const ultimos5 = timeline.slice(0,5);
-    const repeticao = new Set(ultimos5.map(n=>terminal(n))).size <=2;
-
-    // ===== Lateralização =====
-    const mediaPos = timeline
-      .map(n=>track.indexOf(n))
-      .reduce((a,b)=>a+b,0)/timeline.length;
-
-    const lado = mediaPos > 18 ? "Direita" : "Esquerda";
-
-    // ===== Concentração setorial =====
-    const setores = timeline.slice(0,6)
-      .map(n=>Math.floor(track.indexOf(n)/9));
-
-    const concentrado = new Set(setores).size <=2;
-
-    // ===== Virada =====
-    const dispersao = new Set(timeline.slice(0,3).map(n=>terminal(n))).size;
-    const virada = dispersao >=3;
-
-    return {
-      trio:trioDominante,
-      texto:`
-        Trio dominante (peso adaptativo): <b>${trioDominante || "-"}</b><br>
-        Padrão repetitivo: <b>${repeticao?"Sim":"Não"}</b><br>
-        Lado predominante: <b>${lado}</b><br>
-        Concentração setorial: <b>${concentrado?"Sim":"Não"}</b><br>
-        Leitura de mesa: <b>${virada?"Possível virada":"Estável"}</b><br>
-        <span style="color:#00e676">Clique para aplicar jogada</span>
-      `
-    };
-  }
-
   // ================= EVENTOS =================
   jan.onchange=e=>{ janela=+e.target.value; render(); };
 
@@ -278,6 +265,7 @@
     btnT.appendChild(b);
   }
 
+  // ================= GRID 0-36 =================
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
@@ -317,6 +305,7 @@
     render();
   };
 
+  // ================= RENDER =================
   function render(){
 
     const res =
@@ -356,22 +345,97 @@
       </div>
     `;
 
-    // ===== ASSISTENTE =====
-    const analise = analiseAdaptativa();
-    assistenteBox.innerHTML = `
-      <b>Assistente Virtual 🎯</b><br><br>
-      ${analise.texto}
-    `;
-
-    assistenteBox.onclick = ()=>{
-      if(!analise.trio) return;
-      analises.MANUAL.filtros.clear();
-      analise.trio.split("-").forEach(n=>{
-        analises.MANUAL.filtros.add(terminal(+n));
-      });
-      modoAtivo="MANUAL";
-      render();
+    // ===== GRUPOS 1479 / 2589 / 0369 =====
+    const grupos = {
+      box1479:[1,4,7,9],
+      box2589:[2,5,8,9],
+      box0369:[0,3,6,9]
     };
+
+    Object.entries(grupos).forEach(([boxId,grupo])=>{
+      const melhor = melhorTrioGrupo(grupo);
+      const box = document.getElementById(boxId);
+      const inner = box.querySelector("div");
+
+      inner.innerHTML = `
+        <div style="font-size:12px;margin-bottom:4px;color:#00e676">
+          Melhor Trio: ${melhor || "-"}
+        </div>
+        ${timeline.map(n=>`
+          <span style="
+            display:inline-block;
+            width:18px;
+            text-align:center;
+            background:${pertenceGrupoVizinho(n,grupo)?"#00e676":"transparent"};
+            border-radius:3px;
+            margin-right:2px;
+          ">${n}</span>
+        `).join("")}
+      `;
+
+      box.onclick=()=>{
+        if(!melhor) return;
+        analises.MANUAL.filtros.clear();
+        melhor.split("-").forEach(n=>{
+          analises.MANUAL.filtros.add(terminal(+n));
+        });
+        modoAtivo="MANUAL";
+        render();
+      };
+    });
+
+    // ===== T BOTÕES =====
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
+      b.style.background = ativo ? "#00e676" : "#444";
+    });
+
+    // ===== EIXOS =====
+    const filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo].filtros
+        : analises[modoAtivo].filtros;
+
+    const trios = triosSelecionados(filtros);
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
+    // ===== CONJUNTOS =====
+    conjArea.style.display = modoConjuntos ? "block" : "none";
+    if(modoConjuntos){
+      const marcados=new Set();
+      filtrosConjuntos.forEach(t=>{
+        track.forEach(n=>{
+          if(terminal(n)===t){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+      });
+
+      conjArea.innerHTML = `
+        <div style="
+          display:grid;
+          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
+          gap:4px;
+        ">
+          ${timeline.map(n=>`
+            <div style="
+              height:26px;
+              display:flex;align-items:center;justify-content:center;
+              background:${marcados.has(n)?"#00e676":"#222"};
+              color:#fff;font-size:10px;font-weight:700;
+              border-radius:4px;border:1px solid #333;
+            ">${n}</div>
+          `).join("")}
+        </div>
+      `;
+    }
 
   }
 
