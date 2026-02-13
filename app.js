@@ -9,14 +9,12 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= EIXOS =================
   const eixos = [
     { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
     { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
     { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
-  // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
   let modoAtivo = "MANUAL";
@@ -47,9 +45,7 @@
     return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
   }
 
-  // ===== MELHOR TRIO INTERNO DO GRUPO =====
   function melhorTrioGrupo(grupo){
-
     const trios = [];
     for(let i=0;i<grupo.length;i++){
       for(let j=i+1;j<grupo.length;j++){
@@ -60,11 +56,9 @@
     }
 
     const cont = {};
-
     trios.forEach(trio=>{
       const chave = trio.join("-");
       cont[chave]=0;
-
       timeline.forEach(n=>{
         if(vizinhosRace(n).some(v=> trio.includes(terminal(v)))){
           cont[chave]++;
@@ -72,13 +66,10 @@
       });
     });
 
-    const ordenado = Object.entries(cont)
-      .sort((a,b)=>b[1]-a[1]);
-
+    const ordenado = Object.entries(cont).sort((a,b)=>b[1]-a[1]);
     return ordenado.length ? ordenado[0][0] : null;
   }
 
-  // ================= LÓGICAS ORIGINAIS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -147,7 +138,6 @@
     });
   }
 
-  // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -174,21 +164,7 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- QUADROS -->
-      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>1479</b>
-        <div id="tl1479"></div>
-      </div>
-
-      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>2589</b>
-        <div id="tl2589"></div>
-      </div>
-
-      <div style="border:1px solid #555;padding:6px;margin-bottom:10px;cursor:pointer">
-        <b>0369</b>
-        <div id="tl0369"></div>
-      </div>
+      <div id="zonaStats" style="border:1px solid #555;padding:8px;margin-bottom:10px"></div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
@@ -317,42 +293,31 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    const grupos = {
-      tl1479:[1,4,7,9],
-      tl2589:[2,5,8,9],
-      tl0369:[0,3,6,9]
+    // ===== ESTATÍSTICA DE ZONA =====
+    const zonas = {
+      TIERS:[27,13,36,11,30,8,23,10,5,24,16,33],
+      ORPHELINS:[6,34,17,1,20,14,31,9],
+      VOISINS:[25,2,21,4,19,22,18,29,7,28],
+      ZERO:[15,32,0,26,3,35,12]
     };
 
-    Object.entries(grupos).forEach(([id,grupo])=>{
-      const melhor = melhorTrioGrupo(grupo);
-      const box = document.getElementById(id).parentElement;
+    const total = timeline.length || 1;
 
-      document.getElementById(id).innerHTML = `
-        <div style="font-size:12px;margin-bottom:4px;color:#00e676">
-          Melhor Trio: ${melhor || "-"}
+    const htmlZonas = Object.entries(zonas).map(([nome,nums])=>{
+      const qtd = timeline.filter(n=>nums.includes(n)).length;
+      const perc = ((qtd/total)*100).toFixed(1);
+      return `
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span>${nome}</span>
+          <span style="color:#00e676">${qtd} (${perc}%)</span>
         </div>
-        ${timeline.map(n=>`
-          <span style="
-            display:inline-block;
-            width:18px;
-            text-align:center;
-            background:${pertenceGrupoVizinho(n,grupo)?"#00e676":"transparent"};
-            border-radius:3px;
-            margin-right:2px;
-          ">${n}</span>
-        `).join("")}
       `;
+    }).join("");
 
-      box.onclick=()=>{
-        if(!melhor) return;
-        analises.MANUAL.filtros.clear();
-        melhor.split("-").forEach(n=>{
-          analises.MANUAL.filtros.add(terminal(+n));
-        });
-        modoAtivo="MANUAL";
-        render();
-      };
-    });
+    zonaStats.innerHTML = `
+      <b style="display:block;margin-bottom:6px">Estatística de Zona (14)</b>
+      ${htmlZonas}
+    `;
 
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
