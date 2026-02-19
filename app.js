@@ -35,7 +35,6 @@
     }
   };
 
-  // ================= CONJUNTOS =================
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
@@ -48,7 +47,7 @@
     return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
   }
 
-  // ================= MELHOR TRIO INTERNO =================
+  // ===== MELHOR TRIO INTERNO DO GRUPO =====
   function melhorTrioGrupo(grupo){
 
     const trios = [];
@@ -61,9 +60,11 @@
     }
 
     const cont = {};
+
     trios.forEach(trio=>{
       const chave = trio.join("-");
       cont[chave]=0;
+
       timeline.forEach(n=>{
         if(vizinhosRace(n).some(v=> trio.includes(terminal(v)))){
           cont[chave]++;
@@ -146,12 +147,13 @@
     });
   }
 
+  // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
   document.body.innerHTML = `
-    <div style="padding:10px;max-width:1100px;margin:auto">
+    <div style="padding:10px;max-width:1000px;margin:auto">
       <h3 style="text-align:center">CSM</h3>
 
       <div style="border:1px solid #444;padding:8px">
@@ -172,24 +174,23 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <!-- ===== ZONAS HORIZONTAIS ===== -->
-      <div id="zonaStats" style="margin-bottom:10px"></div>
-
-      <!-- ===== QUADROS DOS GRUPOS ===== -->
-      <div id="box047" style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>047</b>
-        <div id="tl047"></div>
+      <!-- QUADROS -->
+      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
+        <b>1479</b>
+        <div id="tl1479"></div>
       </div>
 
-      <div id="box269" style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>269</b>
-        <div id="tl269"></div>
+      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
+        <b>2589</b>
+        <div id="tl2589"></div>
       </div>
 
-      <div id="box158" style="border:1px solid #555;padding:6px;margin-bottom:10px;cursor:pointer">
-        <b>158</b>
-        <div id="tl158"></div>
-      </div>      <div style="display:flex;gap:6px;margin-bottom:6px">
+      <div style="border:1px solid #555;padding:6px;margin-bottom:10px;cursor:pointer">
+        <b>0369</b>
+        <div id="tl0369"></div>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
           <button class="modo" data-m="${m}"
             style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
@@ -246,7 +247,6 @@
     render();
   };
 
-  // ================= BOTÕES T =================
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
     b.textContent="T"+t;
@@ -265,7 +265,6 @@
     btnT.appendChild(b);
   }
 
-  // ================= GRID 0-36 =================
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
@@ -305,7 +304,6 @@
     render();
   };
 
-  // ================= RENDER =================
   function render(){
 
     const res =
@@ -319,45 +317,17 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    // ===== ZONAS HORIZONTAIS =====
-    const zonas = {
-      TIERS:[27,13,36,11,30,8,23,10,5,24,16,33],
-      VOISINS:[25,2,21,4,19,22,18,29,7,28],
-      ZERO:[15,32,0,26,3,35,12],
-      ORPHELINS:[6,34,17,1,20,14,31,9]
-    };
-
-    const total = timeline.length || 1;
-
-    zonaStats.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
-        ${Object.entries(zonas).map(([nome,nums])=>{
-          const qtd = timeline.filter(n=>nums.includes(n)).length;
-          const perc = ((qtd/total)*100).toFixed(1);
-          return `
-            <div style="background:#222;padding:6px;text-align:center;border:1px solid #444">
-              <div style="font-size:12px">${nome}</div>
-              <div style="color:#00e676;font-weight:700">${qtd}</div>
-              <div style="font-size:11px">${perc}%</div>
-            </div>
-          `;
-        }).join("")}
-      </div>
-    `;
-
-    // ===== GRUPOS 047 / 269 / 158 =====
     const grupos = {
-      box1479:[0,4,7],
-      box2589:[2,6,9],
-      box0369:[1,5,8]
+      tl1479:[1,4,7,9],
+      tl2589:[2,5,8,9],
+      tl0369:[0,3,6,9]
     };
 
-    Object.entries(grupos).forEach(([boxId,grupo])=>{
+    Object.entries(grupos).forEach(([id,grupo])=>{
       const melhor = melhorTrioGrupo(grupo);
-      const box = document.getElementById(boxId);
-      const inner = box.querySelector("div");
+      const box = document.getElementById(id).parentElement;
 
-      inner.innerHTML = `
+      document.getElementById(id).innerHTML = `
         <div style="font-size:12px;margin-bottom:4px;color:#00e676">
           Melhor Trio: ${melhor || "-"}
         </div>
@@ -384,7 +354,6 @@
       };
     });
 
-    // ===== T BOTÕES =====
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       const ativo =
@@ -393,7 +362,6 @@
       b.style.background = ativo ? "#00e676" : "#444";
     });
 
-    // ===== EIXOS =====
     const filtros =
       modoAtivo==="AUTO"
         ? analises.AUTO[autoTAtivo].filtros
@@ -406,7 +374,6 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ===== CONJUNTOS =====
     conjArea.style.display = modoConjuntos ? "block" : "none";
     if(modoConjuntos){
       const marcados=new Set();
@@ -436,7 +403,6 @@
         </div>
       `;
     }
-
   }
 
   render();
