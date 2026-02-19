@@ -176,19 +176,19 @@
       <div id="zonaStats" style="margin-bottom:10px"></div>
 
       <!-- ===== QUADROS DOS GRUPOS ===== -->
-      <div id="box1479" style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>1479</b>
-        <div id="tl1479"></div>
+      <div id="box047" style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
+        <b>047</b>
+        <div id="tl047"></div>
       </div>
 
-      <div id="box2589" style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>2589</b>
-        <div id="tl2589"></div>
+      <div id="box269" style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
+        <b>269</b>
+        <div id="tl269"></div>
       </div>
 
-      <div id="box0369" style="border:1px solid #555;padding:6px;margin-bottom:10px;cursor:pointer">
-        <b>0369</b>
-        <div id="tl0369"></div>
+      <div id="box158" style="border:1px solid #555;padding:6px;margin-bottom:10px;cursor:pointer">
+        <b>158</b>
+        <div id="tl158"></div>
       </div>      <div style="display:flex;gap:6px;margin-bottom:6px">
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
           <button class="modo" data-m="${m}"
@@ -345,11 +345,11 @@
       </div>
     `;
 
-    // ===== GRUPOS 1479 / 2589 / 0369 =====
+    // ===== GRUPOS 047 / 269 / 158 =====
     const grupos = {
-      box1479:[1,4,7,9],
-      box2589:[2,5,8,9],
-      box0369:[0,3,6,9]
+      box1479:[0,4,7],
+      box2589:[2,6,9],
+      box0369:[1,5,8]
     };
 
     Object.entries(grupos).forEach(([boxId,grupo])=>{
