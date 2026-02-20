@@ -13,7 +13,6 @@ let timeline = [];
 let estruturalCentros = [];
 let estruturalC6 = null;
 let estruturalRes = [];
-
 let mostrarSimulacao = false;
 
 /* ================= UTIL ================= */
@@ -52,7 +51,7 @@ function deslocDirecional(a,b,index){
   return d;
 }
 
-/* ================= GERADOR ================= */
+/* ================= GERADOR BÁSICO ================= */
 
 function gerarEstrutural(){
 
@@ -77,12 +76,6 @@ function gerarEstrutural(){
       freqViz[v]=(freqViz[v]||0)+1;
     });
   });
-
-  let saltoMedio = 0;
-  for(let i=0;i<timeline.length-1;i++){
-    saltoMedio += dist(timeline[i],timeline[i+1]);
-  }
-  saltoMedio = timeline.length>1 ? saltoMedio/(timeline.length-1) : 0;
 
   let somaDir = 0;
   for(let i=0;i<timeline.length-1;i++){
@@ -128,6 +121,8 @@ function gerarEstrutural(){
     if(centros.length>=5) break;
   }
 
+  /* ===== C6 RUPTURA BÁSICA ===== */
+
   let melhorScore = -1;
   let melhorC6 = null;
 
@@ -163,7 +158,7 @@ document.body.style.fontFamily="sans-serif";
 document.body.innerHTML = `
 <div style="max-width:1000px;margin:auto;padding:10px">
 
-<h3>CSM Estrutural</h3>
+<h3>CSM Estrutural (Leitura Básica)</h3>
 
 <div>
 Histórico:
@@ -194,8 +189,6 @@ Histórico:
 </div>
 `;
 
-/* ===== Botões Numéricos ===== */
-
 for(let n=0;n<=36;n++){
   const b=document.createElement("button");
   b.textContent=n;
@@ -225,16 +218,12 @@ function add(n){
 /* ================= COLAR ================= */
 
 colar.onclick = ()=>{
-
   const lista = inp.value
     .split(/[\s,]+/)
     .map(Number)
     .filter(n=>n>=0 && n<=36);
 
-  lista.forEach(n=>{
-    add(n);
-  });
-
+  lista.forEach(n=>add(n));
   inp.value="";
 };
 
@@ -261,9 +250,13 @@ function render(){
   <b>C6 Ruptura</b><br>
   <span style="color:#9c27b0">${estruturalC6}</span>
   `;
+}
+
+toggleSim.onclick=()=>{
+  mostrarSimulacao=!mostrarSimulacao;
+  simArea.style.display=mostrarSimulacao?"block":"none";
 
   if(mostrarSimulacao){
-
     const total = estruturalRes.length;
     const v = estruturalRes.filter(x=>x==="V").length;
     const r = estruturalRes.filter(x=>x==="R").length;
@@ -274,11 +267,7 @@ function render(){
       Assertividade: ${taxa}%
     `;
   }
-}
 
-toggleSim.onclick=()=>{
-  mostrarSimulacao=!mostrarSimulacao;
-  simArea.style.display=mostrarSimulacao?"block":"none";
   render();
 };
 
