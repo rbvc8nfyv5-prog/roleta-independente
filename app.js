@@ -18,6 +18,9 @@ let colunaRes = [];
 let duziasAtivas = new Set();
 let colunasAtivas = new Set();
 
+let listaDuziaGerada = [];
+let listaColunaGerada = [];
+
 function dist(a,b){
   const ia = track.indexOf(a);
   const ib = track.indexOf(b);
@@ -126,21 +129,21 @@ document.body.innerHTML = `
 <br>
 
 <div>
-  <b>Dúzias</b><br>
-  <button onclick="toggleD(1)" style="background:#2196f3;color:#fff">D1</button>
-  <button onclick="toggleD(2)" style="background:#2196f3;color:#fff">D2</button>
-  <button onclick="toggleD(3)" style="background:#2196f3;color:#fff">D3</button>
-  <div id="duziasBox" style="margin-top:6px"></div>
+<b>Dúzias</b><br>
+<button id="btnD1" onclick="toggleD(1)">D1</button>
+<button id="btnD2" onclick="toggleD(2)">D2</button>
+<button id="btnD3" onclick="toggleD(3)">D3</button>
+<div id="duziasBox" style="margin-top:6px"></div>
 </div>
 
 <br>
 
 <div>
-  <b>Colunas</b><br>
-  <button onclick="toggleC(1)" style="background:#ffc107;color:#000">C1</button>
-  <button onclick="toggleC(2)" style="background:#ffc107;color:#000">C2</button>
-  <button onclick="toggleC(3)" style="background:#ffc107;color:#000">C3</button>
-  <div id="colunaBox" style="margin-top:6px"></div>
+<b>Colunas</b><br>
+<button id="btnC1" onclick="toggleC(1)">C1</button>
+<button id="btnC2" onclick="toggleC(2)">C2</button>
+<button id="btnC3" onclick="toggleC(3)">C3</button>
+<div id="colunaBox" style="margin-top:6px"></div>
 </div>
 
 <br>
@@ -170,18 +173,32 @@ window.toggleC=function(c){
   render();
 }
 
+function gerarListasFiltradas(){
+
+  listaDuziaGerada = [];
+  listaColunaGerada = [];
+
+  const base = [...estruturalCentros, estruturalC6];
+
+  base.forEach(n=>{
+    if(duziasAtivas.has(duzia(n))){
+      listaDuziaGerada.push(n);
+    }
+    if(colunasAtivas.has(coluna(n))){
+      listaColunaGerada.push(n);
+    }
+  });
+
+}
+
 function add(n){
 
-  if(dentroEstrutural(n)) estruturalRes.unshift("V");
-  else estruturalRes.unshift("X");
+  estruturalRes.unshift(dentroEstrutural(n)?"V":"X");
 
-  if(duziasAtivas.size){
-    duziaRes.unshift(duziasAtivas.has(duzia(n))?"V":"X");
-  } else duziaRes.unshift("");
+  gerarListasFiltradas();
 
-  if(colunasAtivas.size){
-    colunaRes.unshift(colunasAtivas.has(coluna(n))?"V":"X");
-  } else colunaRes.unshift("");
+  duziaRes.unshift(listaDuziaGerada.includes(n)?"V":"X");
+  colunaRes.unshift(listaColunaGerada.includes(n)?"V":"X");
 
   timeline.unshift(n);
   if(timeline.length>14) timeline.pop();
@@ -190,23 +207,52 @@ function add(n){
   render();
 }
 
+function atualizarBotoes(){
+
+  [1,2,3].forEach(d=>{
+    const btn=document.getElementById("btnD"+d);
+    if(duziasAtivas.has(d)){
+      btn.style.background="#2196f3";
+      btn.style.color="#fff";
+      btn.style.boxShadow="0 0 6px #2196f3";
+    }else{
+      btn.style.background="#333";
+      btn.style.color="#fff";
+      btn.style.boxShadow="none";
+    }
+  });
+
+  [1,2,3].forEach(c=>{
+    const btn=document.getElementById("btnC"+c);
+    if(colunasAtivas.has(c)){
+      btn.style.background="#ffc107";
+      btn.style.color="#000";
+      btn.style.boxShadow="0 0 6px #ffc107";
+    }else{
+      btn.style.background="#333";
+      btn.style.color="#fff";
+      btn.style.boxShadow="none";
+    }
+  });
+}
+
 function render(){
 
+  gerarListasFiltradas();
+  atualizarBotoes();
+
   tlEstrutural.innerHTML = timeline.map((n,i)=>{
-    const r=estruturalRes[i];
-    const cor=r==="V"?"#00e676":"#ff5252";
+    const cor=estruturalRes[i]==="V"?"#00e676":"#ff5252";
     return `<span style="color:${cor}">${n}</span>`;
   }).join(" · ");
 
   tlDuzia.innerHTML = timeline.map((n,i)=>{
-    const r=duziaRes[i];
-    const cor=r==="V"?"#2196f3":r==="X"?"#ff5252":"#666";
+    const cor=duziaRes[i]==="V"?"#2196f3":"#ff5252";
     return `<span style="color:${cor}">${n}</span>`;
   }).join(" · ");
 
   tlColuna.innerHTML = timeline.map((n,i)=>{
-    const r=colunaRes[i];
-    const cor=r==="V"?"#ffc107":r==="X"?"#ff5252":"#666";
+    const cor=colunaRes[i]==="V"?"#ffc107":"#ff5252";
     return `<span style="color:${cor}">${n}</span>`;
   }).join(" · ");
 
@@ -219,28 +265,8 @@ function render(){
     </div>
   `;
 
-  let duziaHTML="";
-  [...duziasAtivas].sort().forEach(d=>{
-    const inicio=(d-1)*12+1;
-    const fim=d*12;
-    const nums=[];
-    for(let i=inicio;i<=fim;i++){
-      if(dentroEstrutural(i) || dentroC6(i)) nums.push(i);
-    }
-    duziaHTML+=`<div style="color:#2196f3">${nums.join(" , ")}</div>`;
-  });
-  duziasBox.innerHTML=duziaHTML;
-
-  let colunaHTML="";
-  [...colunasAtivas].sort().forEach(c=>{
-    const nums=[];
-    for(let i=1;i<=36;i++){
-      if(coluna(i)===c && (dentroEstrutural(i) || dentroC6(i)))
-        nums.push(i);
-    }
-    colunaHTML+=`<div style="color:#ffc107">${nums.join(" , ")}</div>`;
-  });
-  colunaBox.innerHTML=colunaHTML;
+  duziasBox.innerHTML = listaDuziaGerada.join(" , ");
+  colunaBox.innerHTML = listaColunaGerada.join(" , ");
 }
 
 gerarEstrutural();
