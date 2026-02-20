@@ -12,6 +12,9 @@ let estruturalCentros = [];
 let estruturalC6 = null;
 let estruturalRes = [];
 
+let duziaAtiva = null;
+let colunaAtiva = null;
+
 function dist(a,b){
   const ia = track.indexOf(a);
   const ib = track.indexOf(b);
@@ -62,7 +65,6 @@ function gerarEstrutural(){
     registrar(extra);
   }
 
-  // C6 ruptura inteligente
   let melhorScore = -1;
   let melhorC6 = null;
 
@@ -108,6 +110,18 @@ function add(n){
   render();
 }
 
+function filtrarPorDuzia(n){
+  if(!duziaAtiva) return false;
+  if(duziaAtiva===1) return n>=1 && n<=12;
+  if(duziaAtiva===2) return n>=13 && n<=24;
+  if(duziaAtiva===3) return n>=25 && n<=36;
+}
+
+function filtrarPorColuna(n){
+  if(!colunaAtiva) return false;
+  return ((n-1)%3)+1 === colunaAtiva;
+}
+
 document.body.style.background="#111";
 document.body.style.color="#fff";
 document.body.style.fontFamily="sans-serif";
@@ -121,6 +135,22 @@ document.body.innerHTML = `
 
 <div id="estruturaBox"
      style="border:1px solid #555;padding:10px;margin:10px 0">
+</div>
+
+<div style="border:1px solid #555;padding:8px;margin:10px 0">
+<b>DÚZIAS</b><br>
+<button onclick="duziaAtiva=1;render()">D1</button>
+<button onclick="duziaAtiva=2;render()">D2</button>
+<button onclick="duziaAtiva=3;render()">D3</button>
+<div id="duziaBox"></div>
+</div>
+
+<div style="border:1px solid #555;padding:8px;margin:10px 0">
+<b>COLUNAS</b><br>
+<button onclick="colunaAtiva=1;render()">C1</button>
+<button onclick="colunaAtiva=2;render()">C2</button>
+<button onclick="colunaAtiva=3;render()">C3</button>
+<div id="colunaBox"></div>
 </div>
 
 <div id="nums"
@@ -157,6 +187,16 @@ function render(){
   <b>C6 Ruptura</b><br>
   <span style="color:#9c27b0">${estruturalC6}</span>
   `;
+
+  const zona = estruturalCentros.flatMap(c=>vizinhos2(c));
+
+  duziaBox.innerHTML = duziaAtiva
+    ? zona.filter(filtrarPorDuzia).join(" , ")
+    : "";
+
+  colunaBox.innerHTML = colunaAtiva
+    ? zona.filter(filtrarPorColuna).join(" , ")
+    : "";
 }
 
 gerarEstrutural();
