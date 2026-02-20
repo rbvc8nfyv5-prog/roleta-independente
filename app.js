@@ -7,6 +7,8 @@ const track = [
   7,28,12,35,3,26,0
 ];
 
+const terminal = n => n % 10;
+
 let timeline = [];
 let estruturalCentros = [];
 let estruturalC6 = null;
@@ -14,13 +16,6 @@ let estruturalRes = [];
 
 let duziasAtivas = new Set();
 let colunasAtivas = new Set();
-
-function dist(a,b){
-  const ia = track.indexOf(a);
-  const ib = track.indexOf(b);
-  const d = Math.abs(ia-ib);
-  return Math.min(d,37-d);
-}
 
 function vizinhos2(n){
   const i = track.indexOf(n);
@@ -31,6 +26,21 @@ function vizinhos2(n){
     track[(i+1)%37],
     track[(i+2)%37]
   ];
+}
+
+function dentroNucleo(n){
+  return estruturalCentros.some(c=>vizinhos2(c).includes(n));
+}
+
+function dentroC6(n){
+  return estruturalC6!==null && vizinhos2(estruturalC6).includes(n);
+}
+
+function dist(a,b){
+  const ia = track.indexOf(a);
+  const ib = track.indexOf(b);
+  const d = Math.abs(ia-ib);
+  return Math.min(d,37-d);
 }
 
 function gerarEstrutural(){
@@ -65,127 +75,57 @@ function gerarEstrutural(){
     registrar(extra);
   }
 
-  let melhorScore = -1;
-  let melhorC6 = null;
+  let melhorScore=-1;
+  let melhorC6=null;
 
   track.forEach(n=>{
     if(centros.includes(n)) return;
-
     const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
-    const saltoRecente = timeline.length>1 ? dist(timeline[0],timeline[1]) : 0;
-    const score = (dMedia*0.5) + (saltoRecente*0.5);
-
-    if(score > melhorScore){
-      melhorScore = score;
-      melhorC6 = n;
+    const salto = timeline.length>1?dist(timeline[0],timeline[1]):0;
+    const score = (dMedia*0.5)+(salto*0.5);
+    if(score>melhorScore){
+      melhorScore=score;
+      melhorC6=n;
     }
   });
 
-  estruturalCentros = centros.slice(0,5);
-  estruturalC6 = melhorC6;
-}
-
-function dentroNucleo(n){
-  return estruturalCentros.some(c=>vizinhos2(c).includes(n));
-}
-
-function dentroC6(n){
-  return estruturalC6!==null && vizinhos2(estruturalC6).includes(n);
-}
-
-function toggleDuzia(d){
-  if(duziasAtivas.has(d)){
-    duziasAtivas.delete(d);
-  } else {
-    duziasAtivas.add(d);
-  }
-  render();
-}
-
-function toggleColuna(c){
-  if(colunasAtivas.has(c)){
-    colunasAtivas.delete(c);
-  } else {
-    colunasAtivas.add(c);
-  }
-  render();
-}
-
-function pertenceDuzia(n){
-  if(n===0) return false;
-  const d = Math.ceil(n/12);
-  return duziasAtivas.has(d);
-}
-
-function pertenceColuna(n){
-  if(n===0) return false;
-  const col = ((n-1)%3)+1;
-  return colunasAtivas.has(col);
-}
-
-function add(n){
-
-  if(dentroNucleo(n)){
-    estruturalRes.unshift("V");
-  } else if(dentroC6(n)){
-    estruturalRes.unshift("R");
-  } else {
-    estruturalRes.unshift("X");
-  }
-
-  timeline.unshift(n);
-  if(timeline.length>14) timeline.pop();
-
-  gerarEstrutural();
-  render();
+  estruturalCentros=centros.slice(0,5);
+  estruturalC6=melhorC6;
 }
 
 document.body.style.background="#111";
 document.body.style.color="#fff";
 document.body.style.fontFamily="sans-serif";
 
-document.body.innerHTML = `
+document.body.innerHTML=`
 <div style="max-width:1000px;margin:auto;padding:10px">
 
 <h3>CSM Estrutural</h3>
 
 <div>🕒 Timeline:<div id="tl"></div></div>
 
-<div id="estruturaBox"
-     style="border:1px solid #555;padding:10px;margin:10px 0">
+<div id="estruturaBox" style="border:1px solid #555;padding:10px;margin:10px 0"></div>
+
+<div style="margin:10px 0">
+<b>Dúzias:</b><br>
+<button onclick="toggleD(1)">D1</button>
+<button onclick="toggleD(2)">D2</button>
+<button onclick="toggleD(3)">D3</button>
+<div id="duziasBox" style="margin-top:6px"></div>
 </div>
 
-<div style="border:1px solid #555;padding:8px;margin:10px 0">
-<b>DÚZIAS</b><br>
-<button id="d1">D1</button>
-<button id="d2">D2</button>
-<button id="d3">D3</button>
-<div id="duziaBox" style="margin-top:8px"></div>
+<div style="margin:10px 0">
+<b>Colunas:</b><br>
+<button onclick="toggleC(1)">C1</button>
+<button onclick="toggleC(2)">C2</button>
+<button onclick="toggleC(3)">C3</button>
+<div id="colunasBox" style="margin-top:6px"></div>
 </div>
 
-<div style="border:1px solid #555;padding:8px;margin:10px 0">
-<b>COLUNAS</b><br>
-<button id="c1">C1</button>
-<button id="c2">C2</button>
-<button id="c3">C3</button>
-<div id="colunaBox" style="margin-top:8px"></div>
-</div>
-
-<div id="nums"
-     style="display:grid;grid-template-columns:repeat(9,1fr);
-            gap:6px;margin-top:12px">
-</div>
+<div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
 
 </div>
 `;
-
-d1.onclick=()=>toggleDuzia(1);
-d2.onclick=()=>toggleDuzia(2);
-d3.onclick=()=>toggleDuzia(3);
-
-c1.onclick=()=>toggleColuna(1);
-c2.onclick=()=>toggleColuna(2);
-c3.onclick=()=>toggleColuna(3);
 
 for(let n=0;n<=36;n++){
   const b=document.createElement("button");
@@ -195,43 +135,78 @@ for(let n=0;n<=36;n++){
   nums.appendChild(b);
 }
 
+window.toggleD=function(d){
+  if(duziasAtivas.has(d)) duziasAtivas.delete(d);
+  else duziasAtivas.add(d);
+  render();
+};
+
+window.toggleC=function(c){
+  if(colunasAtivas.has(c)) colunasAtivas.delete(c);
+  else colunasAtivas.add(c);
+  render();
+};
+
+function add(n){
+
+  if(dentroNucleo(n)) estruturalRes.unshift("V");
+  else if(dentroC6(n)) estruturalRes.unshift("R");
+  else estruturalRes.unshift("X");
+
+  timeline.unshift(n);
+  if(timeline.length>14) timeline.pop();
+
+  gerarEstrutural();
+  render();
+}
+
 function render(){
 
   tl.innerHTML = timeline.map((n,i)=>{
-    const r = estruturalRes[i];
-    let cor = "#aaa";
+    const r=estruturalRes[i];
+    let cor="#aaa";
     if(r==="V") cor="#00e676";
     if(r==="R") cor="#9c27b0";
     if(r==="X") cor="#ff5252";
     return `<span style="color:${cor}">${n}</span>`;
   }).join(" · ");
 
-  estruturaBox.innerHTML = `
-  <b>Núcleo (C1–C5)</b><br>
-  ${estruturalCentros.join(" , ")}
-  <br><br>
-  <b>C6 Ruptura</b><br>
-  <span style="color:#9c27b0">${estruturalC6}</span>
+  estruturaBox.innerHTML=`
+  <b>Núcleo:</b> ${estruturalCentros.join(" , ")}<br>
+  <b>C6:</b> <span style="color:#9c27b0">${estruturalC6}</span>
   `;
 
-  const zona = estruturalCentros.flatMap(c=>vizinhos2(c));
+  // DÚZIAS
+  let duziasHTML="";
+  const coresD={1:"#2196f3",2:"#ff9800",3:"#4caf50"};
 
-  duziaBox.innerHTML = zona
-    .filter(n=>pertenceDuzia(n))
-    .join(" , ");
+  duziasAtivas.forEach(d=>{
+    const inicio=(d-1)*12+1;
+    const fim=d*12;
+    const lista=[];
+    for(let i=inicio;i<=fim;i++){
+      if(dentroNucleo(i)||dentroC6(i)) lista.push(i);
+    }
+    duziasHTML+=`<div style="color:${coresD[d]}">${lista.join(" , ")}</div>`;
+  });
 
-  colunaBox.innerHTML = zona
-    .filter(n=>pertenceColuna(n))
-    .join(" , ");
+  duziasBox.innerHTML=duziasHTML;
 
-  // Highlight botões
-  d1.style.background = duziasAtivas.has(1) ? "#00e676" : "#333";
-  d2.style.background = duziasAtivas.has(2) ? "#00e676" : "#333";
-  d3.style.background = duziasAtivas.has(3) ? "#00e676" : "#333";
+  // COLUNAS
+  let colHTML="";
+  const coresC={1:"#e91e63",2:"#00bcd4",3:"#ffc107"};
 
-  c1.style.background = colunasAtivas.has(1) ? "#00e676" : "#333";
-  c2.style.background = colunasAtivas.has(2) ? "#00e676" : "#333";
-  c3.style.background = colunasAtivas.has(3) ? "#00e676" : "#333";
+  colunasAtivas.forEach(c=>{
+    const lista=[];
+    for(let i=1;i<=36;i++){
+      if(((i-1)%3)+1===c){
+        if(dentroNucleo(i)||dentroC6(i)) lista.push(i);
+      }
+    }
+    colHTML+=`<div style="color:${coresC[c]}">${lista.join(" , ")}</div>`;
+  });
+
+  colunasBox.innerHTML=colHTML;
 }
 
 gerarEstrutural();
