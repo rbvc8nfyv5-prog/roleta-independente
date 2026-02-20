@@ -1,6 +1,6 @@
 (function(){
 
-/* ================= CONFIG BASE ================= */
+/* ================= CONFIG ================= */
 
 const track = [
   32,15,19,4,21,2,25,17,34,6,
@@ -10,10 +10,18 @@ const track = [
 ];
 
 let timeline = [];
-let estruturalCentros = [];
-let rupturas = [];
-let rupturaSelecionada = 1;
-let estruturalRes = [];
+let resultados = [];
+
+let C = [];      // Núcleo C1–C5
+let R1 = null;   // Ruptura curta
+let R2 = null;   // Ruptura média
+let R3 = null;   // Ruptura extrema
+
+let usarR1 = true;
+let usarR2 = true;
+let usarR3 = true;
+
+let mostrarSim = false;
 
 /* ================= UTIL ================= */
 
@@ -35,12 +43,28 @@ function vizinhos2(n){
   ];
 }
 
+function deslocDirecional(a,b,index){
+  const size = 37;
+  let ia = track.indexOf(a);
+  let ib = track.indexOf(b);
+  let d = ib - ia;
+
+  if(d > size/2) d -= size;
+  if(d < -size/2) d += size;
+
+  if(index % 2 === 1){
+    d = -d;
+  }
+
+  return d;
+}
+
 /* ================= GERADOR ================= */
 
 function gerarEstrutural(){
 
   const usados = new Set();
-  const centros = [];
+  C = [];
 
   function pode(n){
     return vizinhos2(n).every(x=>!usados.has(x));
@@ -48,48 +72,109 @@ function gerarEstrutural(){
 
   function registrar(n){
     vizinhos2(n).forEach(x=>usados.add(x));
-    centros.push(n);
+    C.push(n);
   }
 
   const freq = {};
   timeline.forEach(n=>freq[n]=(freq[n]||0)+1);
 
-  const candidatos = track
-    .map(n=>({n,score:freq[n]||0}))
-    .sort((a,b)=>b.score-a.score)
-    .map(x=>x.n);
+  const freqViz = {};
+  timeline.forEach(n=>{
+    vizinhos2(n).forEach(v=>{
+      freqViz[v]=(freqViz[v]||0)+1;
+    });
+  });
+
+  let somaDir = 0;
+  for(let i=0;i<timeline.length-1;i++){
+    somaDir += deslocDirecional(
+      timeline[i+1],
+      timeline[i],
+      i
+    );
+  }
+
+  const mediaDir = timeline.length>1
+    ? somaDir/(timeline.length-1)
+    : 0;
+
+  const candidatos = track.map(n=>{
+
+    const permanencia = freq[n] || 0;
+    const calor = freqViz[n] || 0;
+
+    const alinhamento =
+      timeline.length
+        ? Math.abs(
+            deslocDirecional(
+              timeline[0],
+              n,
+              0
+            ) - mediaDir
+          )
+        : 0;
+
+    const score =
+      (permanencia * 1.2)
+    + (calor * 1.0)
+    + ((10 - alinhamento) * 0.8);
+
+    return {n,score};
+  })
+  .sort((a,b)=>b.score-a.score)
+  .map(x=>x.n);
 
   for(const n of candidatos){
     if(pode(n)) registrar(n);
-    if(centros.length>=5) break;
+    if(C.length>=5) break;
   }
 
-  estruturalCentros = centros;
+  gerarRupturas();
+}
 
-  /* ===== GERAR 3 RUPTURAS ===== */
+/* ================= RUPTURAS ================= */
 
-  const rupturaScores = [];
+function gerarRupturas(){
 
-  track.forEach(n=>{
-    if(centros.includes(n)) return;
-    const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
-    rupturaScores.push({n,score:dMedia});
-  });
+  const foraNucleo = track.filter(n=>!C.includes(n));
 
-  rupturaScores.sort((a,b)=>b.score-a.score);
+  function mediaDist(n){
+    return C.reduce((acc,c)=>acc+dist(c,n),0)/C.length;
+  }
 
-  rupturas = rupturaScores.slice(0,3).map(x=>x.n);
+  // R1 curta (3–6)
+  R1 = foraNucleo
+    .filter(n=>{
+      const d = mediaDist(n);
+      return d>=3 && d<=6;
+    })
+    .sort((a,b)=>mediaDist(a)-mediaDist(b))[0] || null;
+
+  // R2 média (7–12)
+  R2 = foraNucleo
+    .filter(n=>{
+      const d = mediaDist(n);
+      return d>=7 && d<=12;
+    })
+    .sort((a,b)=>mediaDist(a)-mediaDist(b))[0] || null;
+
+  // R3 extrema (>12)
+  R3 = foraNucleo
+    .filter(n=>mediaDist(n)>12)
+    .sort((a,b)=>mediaDist(b)-mediaDist(a))[0] || null;
 }
 
 /* ================= VALIDAÇÃO ================= */
 
 function dentroNucleo(n){
-  return estruturalCentros.some(c=>vizinhos2(c).includes(n));
+  return C.some(c=>vizinhos2(c).includes(n));
 }
 
-function dentroRuptura(n){
-  const r = rupturas[rupturaSelecionada-1];
-  return r !== undefined && vizinhos2(r).includes(n);
+function dentroR(n){
+  if(usarR1 && R1 && vizinhos2(R1).includes(n)) return "R1";
+  if(usarR2 && R2 && vizinhos2(R2).includes(n)) return "R2";
+  if(usarR3 && R3 && vizinhos2(R3).includes(n)) return "R3";
+  return null;
 }
 
 /* ================= UI ================= */
@@ -116,16 +201,16 @@ Histórico:
 </div>
 
 <div style="margin:10px 0">
-<b>Núcleo (C1–C5)</b>
-<div id="centros"></div>
+<button id="btnR1">R1</button>
+<button id="btnR2">R2</button>
+<button id="btnR3">R3</button>
+<button id="toggleSim">Simulação</button>
 </div>
 
-<div style="margin:10px 0">
-<b>Rupturas</b><br>
-<button id="r1">R1</button>
-<button id="r2">R2</button>
-<button id="r3">R3</button>
-<div id="rupturasBox"></div>
+<div id="simArea" style="display:none;margin-bottom:10px"></div>
+
+<div id="estruturaBox"
+     style="border:1px solid #555;padding:10px;margin:10px 0">
 </div>
 
 <div id="nums"
@@ -143,25 +228,20 @@ for(let n=0;n<=36;n++){
   nums.appendChild(b);
 }
 
-/* ================= BOTÕES RUPTURA ================= */
-
-r1.onclick=()=>{ rupturaSelecionada=1; render(); };
-r2.onclick=()=>{ rupturaSelecionada=2; render(); };
-r3.onclick=()=>{ rupturaSelecionada=3; render(); };
-
 /* ================= ADD ================= */
 
 function add(n){
 
   if(dentroNucleo(n)){
-    estruturalRes.unshift("V");
-  } else if(dentroRuptura(n)){
-    estruturalRes.unshift("R");
+    resultados.unshift("C");
   } else {
-    estruturalRes.unshift("X");
+    const r = dentroR(n);
+    if(r) resultados.unshift(r);
+    else resultados.unshift("X");
   }
 
   timeline.unshift(n);
+
   gerarEstrutural();
   render();
 }
@@ -178,45 +258,68 @@ colar.onclick = ()=>{
   inp.value="";
 };
 
-limpar.onclick=()=>{
-  timeline=[];
-  estruturalRes=[];
-  estruturalCentros=[];
-  rupturas=[];
-  render();
-};
-
 /* ================= RENDER ================= */
 
 function render(){
 
-  const ultimos14 = timeline.slice(0,14);
-  const ultRes = estruturalRes.slice(0,14);
+  const ult14 = timeline.slice(0,14);
+  const ultRes = resultados.slice(0,14);
 
-  tl.innerHTML = ultimos14.map((n,i)=>{
+  tl.innerHTML = ult14.map((n,i)=>{
     const r = ultRes[i];
     let cor = "#aaa";
-    if(r==="V") cor="#00e676";
-    if(r==="R") cor="#9c27b0";
+
+    if(r==="C") cor="#00e676";
+    if(r==="R1") cor="#b39ddb";
+    if(r==="R2") cor="#7e57c2";
+    if(r==="R3") cor="#4a148c";
     if(r==="X") cor="#ff5252";
+
     return `<span style="color:${cor}">${n}</span>`;
   }).join(" · ");
 
-  centros.innerHTML = estruturalCentros.join(" , ");
+  estruturaBox.innerHTML = `
+  <b>Núcleo</b><br>${C.join(" , ")}<br><br>
+  <b>R1</b> ${R1 || "-"}<br>
+  <b>R2</b> ${R2 || "-"}<br>
+  <b>R3</b> ${R3 || "-"}
+  `;
 
-  rupturasBox.innerHTML = rupturas.map((r,i)=>{
-    const ativo = (i+1)===rupturaSelecionada;
-    return `
-      <div style="
-        color:${ativo?"#9c27b0":"#aaa"};
-        font-weight:${ativo?"700":"400"};
-      ">
-        R${i+1}: ${r}
-      </div>
+  if(mostrarSim){
+    const total = resultados.length;
+    const wins = resultados.filter(x=>x!=="X").length;
+    const taxa = total ? ((wins/total)*100).toFixed(1) : 0;
+
+    simArea.innerHTML = `
+      Total: ${total}<br>
+      Assertividade: ${taxa}%<br>
+      Núcleo: ${resultados.filter(x=>x==="C").length}<br>
+      R1: ${resultados.filter(x=>x==="R1").length}<br>
+      R2: ${resultados.filter(x=>x==="R2").length}<br>
+      R3: ${resultados.filter(x=>x==="R3").length}
     `;
-  }).join("");
-
+  }
 }
+
+/* ================= BOTÕES ================= */
+
+btnR1.onclick=()=>{usarR1=!usarR1; render();}
+btnR2.onclick=()=>{usarR2=!usarR2; render();}
+btnR3.onclick=()=>{usarR3=!usarR3; render();}
+
+toggleSim.onclick=()=>{
+  mostrarSim=!mostrarSim;
+  simArea.style.display=mostrarSim?"block":"none";
+  render();
+};
+
+limpar.onclick=()=>{
+  timeline=[];
+  resultados=[];
+  C=[];
+  R1=R2=R3=null;
+  render();
+};
 
 gerarEstrutural();
 render();
