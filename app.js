@@ -1,5 +1,7 @@
 (function(){
 
+// ================= CONFIG =================
+
 const track = [
 32,15,19,4,21,2,25,17,34,6,
 27,13,36,11,30,8,23,10,5,24,
@@ -8,10 +10,12 @@ const track = [
 ];
 
 let timeline=[];
+let fullHistory=[];
 let estruturalCentros=[];
 let estruturalC6=null;
 let estruturalRes=[];
-let relatorioErros=[];
+
+// ================= HELPERS =================
 
 function vizinhos2(n){
   const i=track.indexOf(n);
@@ -31,7 +35,11 @@ function dist(a,b){
   return Math.min(d,37-d);
 }
 
+// ================= GERADOR AVANÇADO =================
+
 function gerarEstrutural(){
+
+  if(timeline.length<3) return;
 
   const usados=new Set();
   const centros=[];
@@ -45,9 +53,11 @@ function gerarEstrutural(){
     centros.push(n);
   }
 
+  // ===== PERMANÊNCIA =====
   const freq={};
   timeline.forEach(n=>freq[n]=(freq[n]||0)+1);
 
+  // ===== CALOR DE VIZINHO =====
   const freqViz={};
   timeline.forEach(n=>{
     vizinhos2(n).forEach(v=>{
@@ -55,23 +65,80 @@ function gerarEstrutural(){
     });
   });
 
-  let saltoMedio=0;
+  // ===== SALTOS =====
+  const saltos=[];
   for(let i=0;i<timeline.length-1;i++){
-    saltoMedio+=dist(timeline[i],timeline[i+1]);
+    saltos.push(dist(timeline[i],timeline[i+1]));
   }
-  saltoMedio=timeline.length>1?saltoMedio/(timeline.length-1):0;
 
-  const candidatos=track.map(n=>{
+  const mediaSalto=
+    saltos.length
+      ? saltos.reduce((a,b)=>a+b,0)/saltos.length
+      : 0;
+
+  const variancia =
+    saltos.length
+      ? saltos.reduce((a,b)=>a+Math.pow(b-mediaSalto,2),0)/saltos.length
+      : 0;
+
+  const desvio = Math.sqrt(variancia);
+
+  // ===== TENDÊNCIA EXPANSÃO =====
+
+  const recentes = saltos.slice(0,5);
+  const antigos = saltos.slice(5,10);
+
+  const mediaRecente =
+    recentes.length
+      ? recentes.reduce((a,b)=>a+b,0)/recentes.length
+      : 0;
+
+  const mediaAntiga =
+    antigos.length
+      ? antigos.reduce((a,b)=>a+b,0)/antigos.length
+      : 0;
+
+  const expandindo = mediaRecente > mediaAntiga;
+
+  // ===== MUDANÇA DE REGIME =====
+
+  const regimeMudou =
+    Math.abs(mediaRecente-mediaSalto) > (desvio*0.8);
+
+  // ===== PESOS DINÂMICOS =====
+
+  let pesoPermanencia = 1.2;
+  let pesoCalor = 1.0;
+  let pesoEspalhamento = 1.1;
+  let pesoRuptura = 1.0;
+
+  if(expandindo){
+    pesoRuptura += 0.6;
+    pesoEspalhamento += 0.4;
+  }
+
+  if(regimeMudou){
+    pesoPermanencia *= 0.7;
+    pesoCalor *= 0.8;
+    pesoEspalhamento *= 1.3;
+  }
+
+  // ===== SCORE =====
+
+  const candidatos = track.map(n=>{
+
     const permanencia=freq[n]||0;
     const calor=freqViz[n]||0;
-    const espalhamento=
-      centros.length?
-      centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length:0;
 
-    const score=
-      (permanencia*1.2)+
-      (calor*1.0)+
-      ((10-Math.abs(saltoMedio-espalhamento))*1.1);
+    const espalhamento =
+      centros.length
+        ? centros.reduce((a,c)=>a+dist(c,n),0)/centros.length
+        : mediaSalto;
+
+    const score =
+      (permanencia*pesoPermanencia)+
+      (calor*pesoCalor)+
+      ((10-Math.abs(mediaSalto-espalhamento))*pesoEspalhamento);
 
     return {n,score};
   })
@@ -83,14 +150,22 @@ function gerarEstrutural(){
     if(centros.length>=5) break;
   }
 
+  // ===== C6 RUPTURA ADAPTATIVA =====
+
   let melhor=-1;
   let c6=null;
 
   track.forEach(n=>{
     if(centros.includes(n)) return;
-    const dMedia=centros.reduce((a,c)=>a+dist(c,n),0)/centros.length;
-    if(dMedia>melhor){
-      melhor=dMedia;
+
+    const dMedia=
+      centros.reduce((a,c)=>a+dist(c,n),0)/centros.length;
+
+    const scoreRuptura =
+      dMedia*pesoRuptura;
+
+    if(scoreRuptura>melhor){
+      melhor=scoreRuptura;
       c6=n;
     }
   });
@@ -98,6 +173,8 @@ function gerarEstrutural(){
   estruturalCentros=centros;
   estruturalC6=c6;
 }
+
+// ================= VALIDAÇÃO =================
 
 function dentroNucleo(n){
   return estruturalCentros.some(c=>vizinhos2(c).includes(n));
@@ -107,54 +184,7 @@ function dentroRuptura(n){
   return estruturalC6!==null && vizinhos2(estruturalC6).includes(n);
 }
 
-function analisarErro(n){
-
-  const distMedia=
-    estruturalCentros.reduce((a,c)=>a+dist(c,n),0)/estruturalCentros.length;
-
-  const distC6=
-    estruturalC6!==null?dist(estruturalC6,n):null;
-
-  let saltoMedio=0;
-  for(let i=0;i<timeline.length-1;i++){
-    saltoMedio+=dist(timeline[i],timeline[i+1]);
-  }
-  saltoMedio=timeline.length>1?saltoMedio/(timeline.length-1):0;
-
-  let motivo="";
-
-  if(distMedia>8) motivo="Quebra extrema fora do espalhamento";
-  else if(distC6>8) motivo="Fora da zona de ruptura";
-  else motivo="Fora do padrão estatístico ativo";
-
-  relatorioErros.unshift({
-    numero:n,
-    distMedia:distMedia.toFixed(2),
-    distC6:distC6,
-    saltoMedio:saltoMedio.toFixed(2),
-    motivo
-  });
-}
-
-function add(n){
-
-  if(dentroNucleo(n)){
-    estruturalRes.unshift("V");
-  }
-  else if(dentroRuptura(n)){
-    estruturalRes.unshift("R");
-  }
-  else{
-    estruturalRes.unshift("X");
-    analisarErro(n);
-  }
-
-  timeline.unshift(n);
-  if(timeline.length>14) timeline.pop();
-
-  gerarEstrutural();
-  render();
-}
+// ================= UI =================
 
 document.body.style.background="#111";
 document.body.style.color="#fff";
@@ -162,23 +192,27 @@ document.body.style.fontFamily="sans-serif";
 
 document.body.innerHTML=`
 <div style="max-width:1000px;margin:auto;padding:10px">
-<h3>CSM Estrutural</h3>
 
-<div>🕒 Timeline:<div id="tl"></div></div>
+<h3>CSM Adaptativo Completo</h3>
 
-<div id="estruturaBox"
-style="border:1px solid #555;padding:10px;margin:10px 0"></div>
+<div>
+Histórico:
+<input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+<button id="col">Colar</button>
+<button id="lim">Limpar</button>
+</div>
 
-<button id="btnRel"
-style="padding:8px;background:#9c27b0;color:#fff;border:none;margin-bottom:10px">
-RELATÓRIO
-</button>
+<div style="margin-top:10px">
+🕒 Timeline (14):<br>
+<div id="tl"></div>
+</div>
 
-<div id="areaRel"
-style="display:none;border:1px solid #444;padding:10px;margin-bottom:10px"></div>
+<div id="estruturaBox" style="border:1px solid #555;padding:10px;margin:10px 0"></div>
 
-<div id="nums"
-style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px"></div>
+<div id="stats" style="margin:10px 0"></div>
+
+<div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px"></div>
+
 </div>
 `;
 
@@ -190,43 +224,86 @@ for(let n=0;n<=36;n++){
   nums.appendChild(b);
 }
 
-btnRel.onclick=()=>{
-  areaRel.style.display=
-    areaRel.style.display==="none"?"block":"none";
+// ================= FUNÇÕES =================
 
-  areaRel.innerHTML=
-    relatorioErros.map(r=>`
-    <div style="margin-bottom:8px">
-      Número: ${r.numero}<br>
-      Distância média dos centrais: ${r.distMedia}<br>
-      Distância do C6: ${r.distC6}<br>
-      Salto médio: ${r.saltoMedio}<br>
-      Motivo: ${r.motivo}
-    </div>
-    `).join("");
+function atualizarStats(){
+
+  let win=0;
+  let ruptura=0;
+  let loss=0;
+
+  estruturalRes.forEach(r=>{
+    if(r==="V") win++;
+    else if(r==="R") ruptura++;
+    else loss++;
+  });
+
+  const total=win+ruptura+loss;
+  const perc = total?((win+ruptura)/total*100).toFixed(1):0;
+
+  stats.innerHTML=`
+  WIN Núcleo: ${win}<br>
+  WIN Ruptura: ${ruptura}<br>
+  LOSS: ${loss}<br>
+  Assertividade Total: ${perc}%<br>
+  `;
+}
+
+function add(n){
+
+  fullHistory.unshift(n);
+
+  if(dentroNucleo(n)) estruturalRes.unshift("V");
+  else if(dentroRuptura(n)) estruturalRes.unshift("R");
+  else estruturalRes.unshift("X");
+
+  timeline.unshift(n);
+  if(timeline.length>14) timeline.pop();
+
+  gerarEstrutural();
+  render();
+}
+
+col.onclick=()=>{
+  const arr = inp.value.split(/[\s,]+/)
+    .map(Number)
+    .filter(n=>n>=0&&n<=36);
+
+  arr.reverse().forEach(add);
+  inp.value="";
+};
+
+lim.onclick=()=>{
+  timeline=[];
+  fullHistory=[];
+  estruturalRes=[];
+  estruturalCentros=[];
+  estruturalC6=null;
+  render();
 };
 
 function render(){
 
-  tl.innerHTML=timeline.map((n,i)=>{
-    const r=estruturalRes[i];
-    let cor="#aaa";
-    if(r==="V") cor="#00e676";
-    if(r==="R") cor="#9c27b0";
-    if(r==="X") cor="#ff5252";
-    return `<span style="color:${cor}">${n}</span>`;
-  }).join(" · ");
+  tl.innerHTML =
+    timeline.map((n,i)=>{
+      const r=estruturalRes[i];
+      let cor="#aaa";
+      if(r==="V") cor="#00e676";
+      if(r==="R") cor="#9c27b0";
+      if(r==="X") cor="#ff5252";
+      return `<span style="color:${cor}">${n}</span>`;
+    }).join(" · ");
 
   estruturaBox.innerHTML=`
-  <b>Núcleo</b><br>
-  ${estruturalCentros.join(" , ")}
-  <br><br>
-  <b>C6 Ruptura</b><br>
+  <b>Núcleo:</b><br>
+  ${estruturalCentros.join(" , ")}<br><br>
+  <b>C6 Ruptura:</b><br>
   <span style="color:#9c27b0">${estruturalC6}</span>
   `;
+
+  atualizarStats();
 }
 
-gerarEstrutural();
 render();
 
 })();
