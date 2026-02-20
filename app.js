@@ -7,25 +7,10 @@ const track = [
   7,28,12,35,3,26,0
 ];
 
-const terminal = n => n % 10;
-
 let timeline = [];
 let estruturalCentros = [];
 let estruturalC6 = null;
 let estruturalRes = [];
-let estruturalAtivo = true;
-
-const quadros = {
-  q047: [0,4,7],
-  q269: [2,6,9],
-  q581: [5,8,1]
-};
-
-const coresQuadro = {
-  q047: ["#00e676","#2196f3","#ff5252"],
-  q269: ["#ff9800","#9c27b0","#03a9f4"],
-  q581: ["#ffc107","#8bc34a","#e91e63"]
-};
 
 function dist(a,b){
   const ia = track.indexOf(a);
@@ -98,36 +83,6 @@ function gerarEstrutural(){
   estruturalC6 = melhorC6;
 }
 
-document.body.style.background="#111";
-document.body.style.color="#fff";
-document.body.style.fontFamily="sans-serif";
-
-document.body.innerHTML = `
-<div style="max-width:1000px;margin:auto;padding:10px">
-
-<h3>CSM Estrutural</h3>
-
-<div>🕒 Timeline:<div id="tl"></div></div>
-
-<div id="estruturaBox" style="border:1px solid #555;padding:10px;margin:10px 0"></div>
-
-<div id="q047" style="border:1px solid #555;padding:6px;margin-bottom:6px"></div>
-<div id="q269" style="border:1px solid #555;padding:6px;margin-bottom:6px"></div>
-<div id="q581" style="border:1px solid #555;padding:6px;margin-bottom:6px"></div>
-
-<div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
-
-</div>
-`;
-
-for(let n=0;n<=36;n++){
-  const b=document.createElement("button");
-  b.textContent=n;
-  b.style="padding:8px;background:#333;color:#fff";
-  b.onclick=()=>add(n);
-  nums.appendChild(b);
-}
-
 function dentroNucleo(n){
   return estruturalCentros.some(c=>vizinhos2(c).includes(n));
 }
@@ -153,6 +108,37 @@ function add(n){
   render();
 }
 
+document.body.style.background="#111";
+document.body.style.color="#fff";
+document.body.style.fontFamily="sans-serif";
+
+document.body.innerHTML = `
+<div style="max-width:1000px;margin:auto;padding:10px">
+
+<h3>CSM Estrutural</h3>
+
+<div>🕒 Timeline:<div id="tl"></div></div>
+
+<div id="estruturaBox"
+     style="border:1px solid #555;padding:10px;margin:10px 0">
+</div>
+
+<div id="nums"
+     style="display:grid;grid-template-columns:repeat(9,1fr);
+            gap:6px;margin-top:12px">
+</div>
+
+</div>
+`;
+
+for(let n=0;n<=36;n++){
+  const b=document.createElement("button");
+  b.textContent=n;
+  b.style="padding:8px;background:#333;color:#fff";
+  b.onclick=()=>add(n);
+  nums.appendChild(b);
+}
+
 function render(){
 
   tl.innerHTML = timeline.map((n,i)=>{
@@ -171,28 +157,6 @@ function render(){
   <b>C6 Ruptura</b><br>
   <span style="color:#9c27b0">${estruturalC6}</span>
   `;
-
-  Object.entries(quadros).forEach(([id,grupo])=>{
-
-    document.getElementById(id).innerHTML=`
-      <b>${id.replace("q","")}</b><br><br>
-      ${timeline.map(n=>{
-        let cor = "transparent";
-        grupo.forEach((t,i)=>{
-          if(vizinhos2(n).some(v=>terminal(v)===t)){
-            cor = coresQuadro[id][i];
-          }
-        });
-        return `<span style="
-          display:inline-block;
-          width:18px;
-          text-align:center;
-          background:${cor};
-          margin-right:2px;
-        ">${n}</span>`;
-      }).join("")}
-    `;
-  });
 }
 
 gerarEstrutural();
