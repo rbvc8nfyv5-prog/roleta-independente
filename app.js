@@ -13,6 +13,7 @@ let timeline = [];
 let estruturalCentros = [];
 let estruturalC6 = null;
 let estruturalRes = [];
+
 let mostrarSimulacao = false;
 
 /* ================= UTIL ================= */
@@ -77,15 +78,11 @@ function gerarEstrutural(){
     });
   });
 
-  /* ===== SALTO MÉDIO ===== */
-
   let saltoMedio = 0;
   for(let i=0;i<timeline.length-1;i++){
     saltoMedio += dist(timeline[i],timeline[i+1]);
   }
   saltoMedio = timeline.length>1 ? saltoMedio/(timeline.length-1) : 0;
-
-  /* ===== DIREÇÃO MÉDIA ===== */
 
   let somaDir = 0;
   for(let i=0;i<timeline.length-1;i++){
@@ -99,35 +96,6 @@ function gerarEstrutural(){
   const mediaDirecional = timeline.length>1
     ? somaDir/(timeline.length-1)
     : 0;
-
-  const intensidade = Math.abs(mediaDirecional);
-
-  /* ===== REGIME ===== */
-
-  let regime = "neutro";
-  if(saltoMedio > 8) regime = "expansao";
-  if(saltoMedio < 4) regime = "compressao";
-
-  /* ===== DRIFT INTELIGENTE ===== */
-
-  let drift = 0;
-
-  if(regime === "compressao"){
-    drift = 0;
-  }
-  else if(regime === "neutro"){
-    if(intensidade > 6) drift = 1;
-  }
-  else if(regime === "expansao"){
-    if(intensidade > 6) drift = 1;
-    if(intensidade > 10) drift = 2;
-  }
-
-  if(mediaDirecional < 0){
-    drift = -drift;
-  }
-
-  /* ===== SCORE BASE ===== */
 
   const candidatos = track.map(n=>{
 
@@ -160,30 +128,14 @@ function gerarEstrutural(){
     if(centros.length>=5) break;
   }
 
-  /* ===== APLICAR DRIFT ADAPTATIVO ===== */
-
-  if(drift !== 0){
-    for(let i=0;i<centros.length;i++){
-      let idx = track.indexOf(centros[i]);
-      let novo = track[(idx + drift + 37) % 37];
-      centros[i] = novo;
-    }
-  }
-
-  /* ===== RUPTURA REAL ===== */
-
   let melhorScore = -1;
   let melhorC6 = null;
 
   track.forEach(n=>{
     if(centros.includes(n)) return;
-
     const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
-
-    const fugaEixo = Math.abs(dMedia - saltoMedio);
-
-    if(fugaEixo > melhorScore){
-      melhorScore = fugaEixo;
+    if(dMedia > melhorScore){
+      melhorScore = dMedia;
       melhorC6 = n;
     }
   });
@@ -211,7 +163,7 @@ document.body.style.fontFamily="sans-serif";
 document.body.innerHTML = `
 <div style="max-width:1000px;margin:auto;padding:10px">
 
-<h3>CSM Estrutural Adaptativo</h3>
+<h3>CSM Estrutural</h3>
 
 <div>
 Histórico:
@@ -242,6 +194,8 @@ Histórico:
 </div>
 `;
 
+/* ===== Botões Numéricos ===== */
+
 for(let n=0;n<=36;n++){
   const b=document.createElement("button");
   b.textContent=n;
@@ -249,6 +203,8 @@ for(let n=0;n<=36;n++){
   b.onclick=()=>add(n);
   nums.appendChild(b);
 }
+
+/* ================= ADD ================= */
 
 function add(n){
 
@@ -266,15 +222,23 @@ function add(n){
   render();
 }
 
+/* ================= COLAR ================= */
+
 colar.onclick = ()=>{
+
   const lista = inp.value
     .split(/[\s,]+/)
     .map(Number)
     .filter(n=>n>=0 && n<=36);
 
-  lista.forEach(n=>add(n));
+  lista.forEach(n=>{
+    add(n);
+  });
+
   inp.value="";
 };
+
+/* ================= RENDER ================= */
 
 function render(){
 
@@ -297,13 +261,9 @@ function render(){
   <b>C6 Ruptura</b><br>
   <span style="color:#9c27b0">${estruturalC6}</span>
   `;
-}
-
-toggleSim.onclick=()=>{
-  mostrarSimulacao=!mostrarSimulacao;
-  simArea.style.display=mostrarSimulacao?"block":"none";
 
   if(mostrarSimulacao){
+
     const total = estruturalRes.length;
     const v = estruturalRes.filter(x=>x==="V").length;
     const r = estruturalRes.filter(x=>x==="R").length;
@@ -314,7 +274,11 @@ toggleSim.onclick=()=>{
       Assertividade: ${taxa}%
     `;
   }
+}
 
+toggleSim.onclick=()=>{
+  mostrarSimulacao=!mostrarSimulacao;
+  simArea.style.display=mostrarSimulacao?"block":"none";
   render();
 };
 
