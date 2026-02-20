@@ -9,8 +9,6 @@ const track = [
   7,28,12,35,3,26,0
 ];
 
-const terminal = n => n % 10;
-
 let timeline = [];
 let estruturalCentros = [];
 let estruturalC6 = null;
@@ -38,8 +36,6 @@ function vizinhos2(n){
   ];
 }
 
-/* ================= DIREÇÃO ALTERNADA ================= */
-
 function deslocDirecional(a,b,index){
   const size = 37;
   let ia = track.indexOf(a);
@@ -56,7 +52,7 @@ function deslocDirecional(a,b,index){
   return d;
 }
 
-/* ================= GERADOR ESTRUTURAL ================= */
+/* ================= GERADOR ================= */
 
 function gerarEstrutural(){
 
@@ -72,11 +68,9 @@ function gerarEstrutural(){
     centros.push(n);
   }
 
-  /* ===== Permanência ===== */
   const freq = {};
   timeline.forEach(n=>freq[n]=(freq[n]||0)+1);
 
-  /* ===== Calor ===== */
   const freqViz = {};
   timeline.forEach(n=>{
     vizinhos2(n).forEach(v=>{
@@ -84,29 +78,24 @@ function gerarEstrutural(){
     });
   });
 
-  /* ===== Salto médio ===== */
   let saltoMedio = 0;
   for(let i=0;i<timeline.length-1;i++){
     saltoMedio += dist(timeline[i],timeline[i+1]);
   }
   saltoMedio = timeline.length>1 ? saltoMedio/(timeline.length-1) : 0;
 
-  /* ===== Direcional ===== */
   let somaDir = 0;
-  let totalDir = 0;
-
   for(let i=0;i<timeline.length-1;i++){
     somaDir += deslocDirecional(
       timeline[i+1],
       timeline[i],
       i
     );
-    totalDir++;
   }
 
-  const mediaDirecional = totalDir ? somaDir/totalDir : 0;
-
-  /* ===== Score ===== */
+  const mediaDirecional = timeline.length>1
+    ? somaDir/(timeline.length-1)
+    : 0;
 
   const candidatos = track.map(n=>{
 
@@ -124,15 +113,9 @@ function gerarEstrutural(){
           )
         : 0;
 
-    const espalhamento =
-      centros.length
-        ? centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length
-        : 0;
-
     const score =
       (permanencia * 1.2)
     + (calor * 1.0)
-    + ((10 - Math.abs(saltoMedio - espalhamento)) * 1.1)
     + ((10 - alinhamento) * 0.8);
 
     return {n,score};
@@ -145,19 +128,14 @@ function gerarEstrutural(){
     if(centros.length>=5) break;
   }
 
-  /* ===== C6 Ruptura ===== */
-
   let melhorScore = -1;
   let melhorC6 = null;
 
   track.forEach(n=>{
     if(centros.includes(n)) return;
-
     const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
-    const score = dMedia + Math.random();
-
-    if(score > melhorScore){
-      melhorScore = score;
+    if(dMedia > melhorScore){
+      melhorScore = dMedia;
       melhorC6 = n;
     }
   });
@@ -188,13 +166,19 @@ document.body.innerHTML = `
 <h3>CSM Estrutural</h3>
 
 <div>
-🕒 Timeline:
+Histórico:
+<input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+<button id="colar">Colar</button>
+<button id="limpar">Limpar</button>
+</div>
+
+<div style="margin-top:10px">
+🕒 Timeline (14):
 <div id="tl" style="font-weight:600;font-size:18px"></div>
 </div>
 
 <div style="margin:10px 0">
 <button id="toggleSim">Mostrar Simulação</button>
-<button id="limpar">Limpar</button>
 </div>
 
 <div id="simArea" style="display:none;margin-bottom:10px"></div>
@@ -233,18 +217,36 @@ function add(n){
   }
 
   timeline.unshift(n);
-  if(timeline.length>50) timeline.pop();
 
   gerarEstrutural();
   render();
 }
 
+/* ================= COLAR ================= */
+
+colar.onclick = ()=>{
+
+  const lista = inp.value
+    .split(/[\s,]+/)
+    .map(Number)
+    .filter(n=>n>=0 && n<=36);
+
+  lista.forEach(n=>{
+    add(n);
+  });
+
+  inp.value="";
+};
+
 /* ================= RENDER ================= */
 
 function render(){
 
-  tl.innerHTML = timeline.map((n,i)=>{
-    const r = estruturalRes[i];
+  const ultimos14 = timeline.slice(0,14);
+  const ultRes = estruturalRes.slice(0,14);
+
+  tl.innerHTML = ultimos14.map((n,i)=>{
+    const r = ultRes[i];
     let cor = "#aaa";
     if(r==="V") cor="#00e676";
     if(r==="R") cor="#9c27b0";
@@ -265,24 +267,18 @@ function render(){
     const total = estruturalRes.length;
     const v = estruturalRes.filter(x=>x==="V").length;
     const r = estruturalRes.filter(x=>x==="R").length;
-
     const taxa = total ? ((v+r)/total*100).toFixed(1) : 0;
 
     simArea.innerHTML = `
-      <b>Simulação Interna</b><br>
-      Total: ${total}<br>
-      Vitórias núcleo: ${v}<br>
-      Ruptura: ${r}<br>
+      Total analisado: ${total}<br>
       Assertividade: ${taxa}%
     `;
   }
 }
 
-/* ================= CONTROLES ================= */
-
 toggleSim.onclick=()=>{
-  mostrarSimulacao = !mostrarSimulacao;
-  simArea.style.display = mostrarSimulacao?"block":"none";
+  mostrarSimulacao=!mostrarSimulacao;
+  simArea.style.display=mostrarSimulacao?"block":"none";
   render();
 };
 
