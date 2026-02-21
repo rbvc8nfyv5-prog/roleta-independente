@@ -1,5 +1,7 @@
 (function(){
 
+/* ================= CONFIG BASE ================= */
+
 const track = [
   32,15,19,4,21,2,25,17,34,6,
   27,13,36,11,30,8,23,10,5,24,
@@ -7,18 +9,18 @@ const track = [
   7,28,12,35,3,26,0
 ];
 
-let ultimoNumero = null;
+let timeline = [];
+let estruturalCentros = [];
+let estruturalC6 = null;
+let estruturalRes = [];
+
+let horarioCentros = [];
+let horarioC6 = null;
+
+let antiCentros = [];
+let antiC6 = null;
 
 /* ================= UTIL ================= */
-
-function vizinhos1(n){
-  const i = track.indexOf(n);
-  return [
-    track[(i-1+37)%37],
-    n,
-    track[(i+1)%37]
-  ];
-}
 
 function dist(a,b){
   const ia = track.indexOf(a);
@@ -38,9 +40,9 @@ function vizinhos2(n){
   ];
 }
 
-/* ================= GERADOR BASEADO SÓ NA SEQUÊNCIA ================= */
+/* ================= MOTOR ESTRUTURAL ================= */
 
-function gerarPorSequencia(seq){
+function gerarMotor(baseTimeline){
 
   const usados = new Set();
   const centros = [];
@@ -55,19 +57,19 @@ function gerarPorSequencia(seq){
   }
 
   const freq = {};
-  seq.forEach(n=>freq[n]=(freq[n]||0)+1);
+  baseTimeline.forEach(n=>freq[n]=(freq[n]||0)+1);
+
+  const freqViz = {};
+  baseTimeline.forEach(n=>{
+    vizinhos2(n).forEach(v=>{
+      freqViz[v]=(freqViz[v]||0)+1;
+    });
+  });
 
   const candidatos = track.map(n=>{
-
     const permanencia = freq[n] || 0;
-
-    const alinhamento =
-      Math.abs(dist(seq[1],n));
-
-    const score =
-      (permanencia * 2)
-    + ((10 - alinhamento) * 1.2);
-
+    const calor = freqViz[n] || 0;
+    const score = (permanencia * 1.2) + (calor * 1.0);
     return {n,score};
   })
   .sort((a,b)=>b.score-a.score)
@@ -79,18 +81,63 @@ function gerarPorSequencia(seq){
   }
 
   let melhorScore = -1;
-  let ruptura = null;
+  let melhorC6 = null;
 
   track.forEach(n=>{
     if(centros.includes(n)) return;
     const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
     if(dMedia > melhorScore){
       melhorScore = dMedia;
-      ruptura = n;
+      melhorC6 = n;
     }
   });
 
-  return {centros, ruptura};
+  return {centros, ruptura:melhorC6};
+}
+
+/* ================= GERADORES ================= */
+
+function gerarBase(){
+  const r = gerarMotor(timeline);
+  estruturalCentros = r.centros;
+  estruturalC6 = r.ruptura;
+}
+
+function gerarHorarioAnti(){
+
+  if(timeline.length === 0){
+    horarioCentros = [];
+    antiCentros = [];
+    return;
+  }
+
+  const ultimo = timeline[0];
+  const i = track.indexOf(ultimo);
+
+  const vizEsq = track[(i-1+37)%37];
+  const vizDir = track[(i+1)%37];
+
+  const horarioBase = [vizEsq, ultimo, vizDir];
+  const antiBase = [vizDir, ultimo, vizEsq];
+
+  const h = gerarMotor(horarioBase.concat(timeline));
+  const a = gerarMotor(antiBase.concat(timeline));
+
+  horarioCentros = h.centros;
+  horarioC6 = h.ruptura;
+
+  antiCentros = a.centros;
+  antiC6 = a.ruptura;
+}
+
+/* ================= VALIDAÇÃO ================= */
+
+function dentroNucleo(n){
+  return estruturalCentros.some(c=>vizinhos2(c).includes(n));
+}
+
+function dentroC6(n){
+  return estruturalC6!==null && vizinhos2(estruturalC6).includes(n);
 }
 
 /* ================= UI ================= */
@@ -100,17 +147,38 @@ document.body.style.color="#fff";
 document.body.style.fontFamily="sans-serif";
 
 document.body.innerHTML = `
-<div style="max-width:1000px;margin:auto;padding:10px">
+<div style="max-width:1100px;margin:auto;padding:10px">
 
-<h3>Simulação Direcional do Último Número</h3>
+<h3>CSM Estrutural</h3>
 
 <div>
-Último número:
-<div id="numeroAtual" style="font-size:22px;font-weight:bold;margin:6px 0"></div>
+Histórico:
+<input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+<button id="colar">Colar</button>
+<button id="limpar">Limpar</button>
+</div>
+
+<div style="margin-top:10px">
+🕒 Timeline (14):
+<div id="tl" style="font-weight:600;font-size:18px"></div>
 </div>
 
 <div id="estruturaBox"
      style="border:1px solid #555;padding:10px;margin:10px 0">
+</div>
+
+<div style="display:flex;gap:20px;margin-bottom:20px">
+
+  <div style="flex:1;border:1px solid #444;padding:10px">
+    <b>HORÁRIO</b><br>
+    <div id="painelHorario"></div>
+  </div>
+
+  <div style="flex:1;border:1px solid #444;padding:10px">
+    <b>ANTI-HORÁRIO</b><br>
+    <div id="painelAnti"></div>
+  </div>
+
 </div>
 
 <div id="nums"
@@ -120,7 +188,7 @@ document.body.innerHTML = `
 </div>
 `;
 
-/* ================= BOTÕES ================= */
+/* ===== BOTÕES ===== */
 
 for(let n=0;n<=36;n++){
   const b=document.createElement("button");
@@ -134,53 +202,82 @@ for(let n=0;n<=36;n++){
 
 function add(n){
 
-  ultimoNumero = n;
+  if(dentroNucleo(n)){
+    estruturalRes.unshift("V");
+  } else if(dentroC6(n)){
+    estruturalRes.unshift("R");
+  } else {
+    estruturalRes.unshift("X");
+  }
 
+  timeline.unshift(n);
+
+  gerarBase();
+  gerarHorarioAnti();
   render();
 }
+
+/* ================= COLAR ================= */
+
+colar.onclick = ()=>{
+
+  const lista = inp.value
+    .split(/[\s,]+/)
+    .map(Number)
+    .filter(n=>n>=0 && n<=36);
+
+  lista.forEach(n=>add(n));
+
+  inp.value="";
+};
 
 /* ================= RENDER ================= */
 
 function render(){
 
-  if(ultimoNumero === null){
-    numeroAtual.innerHTML = "-";
-    estruturaBox.innerHTML = "";
-    return;
-  }
+  const ultimos14 = timeline.slice(0,14);
+  const ultRes = estruturalRes.slice(0,14);
 
-  numeroAtual.innerHTML = ultimoNumero;
-
-  const lateral = vizinhos1(ultimoNumero);
-
-  const seqHorario = [
-    lateral[0],
-    lateral[1],
-    lateral[2]
-  ];
-
-  const seqAnti = [
-    lateral[2],
-    lateral[1],
-    lateral[0]
-  ];
-
-  const projHorario = gerarPorSequencia(seqHorario);
-  const projAnti = gerarPorSequencia(seqAnti);
+  tl.innerHTML = ultimos14.map((n,i)=>{
+    const r = ultRes[i];
+    let cor = "#aaa";
+    if(r==="V") cor="#00e676";
+    if(r==="R") cor="#9c27b0";
+    if(r==="X") cor="#ff5252";
+    return `<span style="color:${cor}">${n}</span>`;
+  }).join(" · ");
 
   estruturaBox.innerHTML = `
-  <b style="color:#00e676">Projeção Horária</b><br>
-  Sequência: ${seqHorario.join(" → ")}<br>
-  Núcleo: ${projHorario.centros.join(" , ")}<br>
-  Ruptura: <span style="color:#9c27b0">${projHorario.ruptura}</span>
+  <b>Núcleo Base (C1–C5)</b><br>
+  ${estruturalCentros.join(" , ")}
   <br><br>
-  <b style="color:#ff5252">Projeção Anti-Horária</b><br>
-  Sequência: ${seqAnti.join(" → ")}<br>
-  Núcleo: ${projAnti.centros.join(" , ")}<br>
-  Ruptura: <span style="color:#9c27b0">${projAnti.ruptura}</span>
+  <b>Ruptura (C6)</b><br>
+  <span style="color:#9c27b0">${estruturalC6}</span>
+  `;
+
+  painelHorario.innerHTML = `
+    C1–C5: ${horarioCentros.join(" , ")}<br>
+    C6: <span style="color:#9c27b0">${horarioC6}</span>
+  `;
+
+  painelAnti.innerHTML = `
+    C1–C5: ${antiCentros.join(" , ")}<br>
+    C6: <span style="color:#9c27b0">${antiC6}</span>
   `;
 }
 
+limpar.onclick=()=>{
+  timeline=[];
+  estruturalRes=[];
+  estruturalCentros=[];
+  estruturalC6=null;
+  horarioCentros=[];
+  antiCentros=[];
+  render();
+};
+
+gerarBase();
+gerarHorarioAnti();
 render();
 
 })();
