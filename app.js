@@ -60,7 +60,7 @@ function deslocDirecional(a,b,index){
   return d;
 }
 
-/* ================= MOTOR BASE ORIGINAL ================= */
+/* ================= MOTOR BASE ================= */
 
 function gerarEstruturalBase(lista){
 
@@ -155,7 +155,7 @@ document.body.style.color="#fff";
 document.body.style.fontFamily="sans-serif";
 
 document.body.innerHTML = `
-<div style="max-width:1000px;margin:auto;padding:10px">
+<div style="max-width:1100px;margin:auto;padding:10px">
 
 <h3>CSM Estrutural</h3>
 
@@ -221,31 +221,22 @@ function add(n){
     antiPrev = gerarEstruturalBase([v[2],v[1],v[0]]);
   }
 
-  /* VALIDA HORÁRIO */
   if(horarioPrev){
-    if(
+    horarioRes.unshift(
       horarioPrev.centros.some(c=>vizinhos1(c).includes(n)) ||
       (horarioPrev.ruptura && vizinhos1(horarioPrev.ruptura).includes(n))
-    ){
-      horarioRes.unshift("V");
-    } else {
-      horarioRes.unshift("X");
-    }
+        ? "V" : "X"
+    );
   }
 
-  /* VALIDA ANTI */
   if(antiPrev){
-    if(
+    antiRes.unshift(
       antiPrev.centros.some(c=>vizinhos1(c).includes(n)) ||
       (antiPrev.ruptura && vizinhos1(antiPrev.ruptura).includes(n))
-    ){
-      antiRes.unshift("V");
-    } else {
-      antiRes.unshift("X");
-    }
+        ? "V" : "X"
+    );
   }
 
-  /* VALIDA BASE */
   if(estruturalCentros.length){
     if(estruturalCentros.some(c=>vizinhos2(c).includes(n))){
       estruturalRes.unshift("V");
@@ -265,48 +256,24 @@ function add(n){
   render();
 }
 
-/* ================= COLAR ================= */
-
-colar.onclick = ()=>{
-  const lista = inp.value
-    .split(/[\s,]+/)
-    .map(Number)
-    .filter(n=>n>=0 && n<=36);
-
-  lista.forEach(n=>add(n));
-  inp.value="";
-};
-
-limpar.onclick=()=>{
-  timeline=[];
-  estruturalCentros=[];
-  estruturalC6=null;
-  estruturalRes=[];
-  horarioRes=[];
-  antiRes=[];
-  render();
-};
-
 /* ================= RENDER ================= */
+
+function pintar(res){
+  return timeline.slice(0,14).map((n,i)=>{
+    const r = res[i];
+    let cor="#aaa";
+    if(r==="V") cor="#00e676";
+    if(r==="R") cor="#9c27b0";
+    if(r==="X") cor="#ff5252";
+    return `<span style="color:${cor}">${n}</span>`;
+  }).join(" · ");
+}
 
 function render(){
 
-  const ult14 = timeline.slice(0,14);
-
-  function pintar(lista,res){
-    return ult14.map((n,i)=>{
-      const r = res[i];
-      let cor="#aaa";
-      if(r==="V") cor="#00e676";
-      if(r==="R") cor="#9c27b0";
-      if(r==="X") cor="#ff5252";
-      return `<span style="color:${cor}">${n}</span>`;
-    }).join(" · ");
-  }
-
-  tlBase.innerHTML = pintar(ult14,estruturalRes);
-  tlHorario.innerHTML = pintar(ult14,horarioRes);
-  tlAnti.innerHTML = pintar(ult14,antiRes);
+  tlBase.innerHTML = pintar(estruturalRes);
+  tlHorario.innerHTML = pintar(horarioRes);
+  tlAnti.innerHTML = pintar(antiRes);
 
   estruturaBox.innerHTML = `
   <b>Núcleo (C1–C5)</b><br>
@@ -316,6 +283,32 @@ function render(){
   <span style="color:#9c27b0">${estruturalC6}</span>
   `;
 
+  if(timeline.length){
+
+    const ultimo = timeline[0];
+    const v = vizinhos1(ultimo);
+
+    const horario = gerarEstruturalBase(v);
+    const anti = gerarEstruturalBase([v[2],v[1],v[0]]);
+
+    painelSim.innerHTML = `
+      <div style="flex:1;border:1px solid #00e676;padding:10px">
+        <b>Horário</b><br>
+        Base: ${v.join(" , ")}<br><br>
+        C1–C5: ${horario.centros.join(" , ")}<br>
+        C6: <span style="color:#9c27b0">${horario.ruptura}</span>
+      </div>
+
+      <div style="flex:1;border:1px solid #2196f3;padding:10px">
+        <b>Anti-Horário</b><br>
+        Base: ${[v[2],v[1],v[0]].join(" , ")}<br><br>
+        C1–C5: ${anti.centros.join(" , ")}<br>
+        C6: <span style="color:#9c27b0">${anti.ruptura}</span>
+      </div>
+    `;
+  } else {
+    painelSim.innerHTML="";
+  }
 }
 
 render();
