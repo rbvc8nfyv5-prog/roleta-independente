@@ -8,18 +8,20 @@ const track = [
 ];
 
 let timeline = [];
+let estruturalCentros = [];
+let estruturalC6 = null;
 let estruturalRes = [];
+
+let horarioRes = [];
+let antiRes = [];
+
+/* ================= UTIL ================= */
 
 function dist(a,b){
   const ia = track.indexOf(a);
   const ib = track.indexOf(b);
   const d = Math.abs(ia-ib);
   return Math.min(d,37-d);
-}
-
-function vizinhos1(n){
-  const i = track.indexOf(n);
-  return [track[(i-1+37)%37], n, track[(i+1)%37]];
 }
 
 function vizinhos2(n){
@@ -33,9 +35,34 @@ function vizinhos2(n){
   ];
 }
 
-/* ================= MOTOR BASE COM MODO ================= */
+function vizinhos1(n){
+  const i = track.indexOf(n);
+  return [
+    track[(i-1+37)%37],
+    n,
+    track[(i+1)%37]
+  ];
+}
 
-function gerarEstruturalModo(modo){
+function deslocDirecional(a,b,index){
+  const size = 37;
+  let ia = track.indexOf(a);
+  let ib = track.indexOf(b);
+  let d = ib - ia;
+
+  if(d > size/2) d -= size;
+  if(d < -size/2) d += size;
+
+  if(index % 2 === 1){
+    d = -d;
+  }
+
+  return d;
+}
+
+/* ================= MOTOR BASE ORIGINAL ================= */
+
+function gerarEstruturalBase(lista){
 
   const usados = new Set();
   const centros = [];
@@ -50,60 +77,27 @@ function gerarEstruturalModo(modo){
   }
 
   const freq = {};
-  timeline.forEach(n=>freq[n]=(freq[n]||0)+1);
+  lista.forEach(n=>freq[n]=(freq[n]||0)+1);
 
   const freqViz = {};
-  timeline.forEach(n=>{
+  lista.forEach(n=>{
     vizinhos2(n).forEach(v=>{
       freqViz[v]=(freqViz[v]||0)+1;
     });
   });
 
-  function deslocDirecional(a,b,index){
-
-    let ia = track.indexOf(a);
-    let ib = track.indexOf(b);
-    let d = ib - ia;
-
-    if(d > 18) d -= 37;
-    if(d < -18) d += 37;
-
-    if(modo==="BASE"){
-      if(index % 2 === 1) d = -d;
-    }
-
-    if(modo==="H"){
-      if(d < 0) d += 37;
-    }
-
-    if(modo==="A"){
-      if(d > 0) d -= 37;
-    }
-
-    return d;
-  }
-
-  let saltoMedio = 0;
-  for(let i=0;i<timeline.length-1;i++){
-    saltoMedio += dist(timeline[i],timeline[i+1]);
-  }
-  saltoMedio = timeline.length>1
-    ? saltoMedio/(timeline.length-1)
-    : 0;
-
   let somaDir = 0;
-  for(let i=0;i<timeline.length-1;i++){
+  for(let i=0;i<lista.length-1;i++){
     somaDir += deslocDirecional(
-      timeline[i+1],
-      timeline[i],
+      lista[i+1],
+      lista[i],
       i
     );
   }
 
-  const mediaDirecional =
-    timeline.length>1
-      ? somaDir/(timeline.length-1)
-      : 0;
+  const mediaDirecional = lista.length>1
+    ? somaDir/(lista.length-1)
+    : 0;
 
   const candidatos = track.map(n=>{
 
@@ -111,10 +105,10 @@ function gerarEstruturalModo(modo){
     const calor = freqViz[n] || 0;
 
     const alinhamento =
-      timeline.length
+      lista.length
         ? Math.abs(
             deslocDirecional(
-              timeline[0],
+              lista[0],
               n,
               0
             ) - mediaDirecional
@@ -141,10 +135,7 @@ function gerarEstruturalModo(modo){
 
   track.forEach(n=>{
     if(centros.includes(n)) return;
-    const dMedia =
-      centros.reduce((acc,c)=>acc+dist(c,n),0)
-      / centros.length;
-
+    const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
     if(dMedia > melhorScore){
       melhorScore = dMedia;
       melhorC6 = n;
@@ -153,7 +144,7 @@ function gerarEstruturalModo(modo){
 
   return {
     centros,
-    c6: melhorC6
+    ruptura: melhorC6
   };
 }
 
@@ -176,24 +167,26 @@ Histórico:
 </div>
 
 <div style="margin-top:10px">
-🕒 Timeline:
+🕒 Timeline Base:
 <div id="tl" style="font-weight:600;font-size:18px"></div>
 </div>
 
-<div id="painelBase"
+<div style="margin-top:10px">
+🕒 Timeline Horário (±1):
+<div id="tlHorario" style="font-weight:600"></div>
+</div>
+
+<div style="margin-top:10px">
+🕒 Timeline Anti-Horário (±1):
+<div id="tlAnti" style="font-weight:600"></div>
+</div>
+
+<div id="estruturaBox"
      style="border:1px solid #555;padding:10px;margin:10px 0">
 </div>
 
-<div style="display:flex;gap:10px">
-
-<div id="painelHorario"
-     style="flex:1;border:1px solid #444;padding:10px">
-</div>
-
-<div id="painelAnti"
-     style="flex:1;border:1px solid #444;padding:10px">
-</div>
-
+<div id="painelSim"
+     style="display:flex;gap:20px;margin-top:10px">
 </div>
 
 <div id="nums"
@@ -202,6 +195,8 @@ Histórico:
 
 </div>
 `;
+
+/* ===== Botões ===== */
 
 for(let n=0;n<=36;n++){
   const b=document.createElement("button");
@@ -215,27 +210,57 @@ for(let n=0;n<=36;n++){
 
 function add(n){
 
-  const base = gerarEstruturalModo("BASE");
+  // ===== VALIDA BASE =====
+  if(estruturalCentros.length){
 
-  if(base.centros.some(c=>vizinhos2(c).includes(n))){
-    estruturalRes.unshift("V");
-  } else if(vizinhos2(base.c6).includes(n)){
-    estruturalRes.unshift("R");
-  } else {
-    estruturalRes.unshift("X");
+    if(estruturalCentros.some(c=>vizinhos2(c).includes(n))){
+      estruturalRes.unshift("V");
+    } else if(estruturalC6 && vizinhos2(estruturalC6).includes(n)){
+      estruturalRes.unshift("R");
+    } else {
+      estruturalRes.unshift("X");
+    }
   }
 
   timeline.unshift(n);
+
+  // ===== REGERA BASE =====
+  const base = gerarEstruturalBase(timeline);
+  estruturalCentros = base.centros;
+  estruturalC6 = base.ruptura;
+
+  // ===== GERA HORÁRIO / ANTI =====
+  if(timeline.length){
+    const ultimo = timeline[0];
+    const v = vizinhos1(ultimo);
+
+    const horario = gerarEstruturalBase(v);
+    const anti = gerarEstruturalBase([v[2],v[1],v[0]]);
+
+    // validação ±1
+    if(horario.centros.some(c=>vizinhos1(c).includes(n))){
+      horarioRes.unshift("V");
+    } else {
+      horarioRes.unshift("X");
+    }
+
+    if(anti.centros.some(c=>vizinhos1(c).includes(n))){
+      antiRes.unshift("V");
+    } else {
+      antiRes.unshift("X");
+    }
+  }
+
   render();
 }
 
 /* ================= COLAR ================= */
 
-colar.onclick=()=>{
+colar.onclick = ()=>{
   const lista = inp.value
     .split(/[\s,]+/)
     .map(Number)
-    .filter(n=>n>=0&&n<=36);
+    .filter(n=>n>=0 && n<=36);
 
   lista.forEach(n=>add(n));
   inp.value="";
@@ -243,7 +268,11 @@ colar.onclick=()=>{
 
 limpar.onclick=()=>{
   timeline=[];
+  estruturalCentros=[];
+  estruturalC6=null;
   estruturalRes=[];
+  horarioRes=[];
+  antiRes=[];
   render();
 };
 
@@ -251,36 +280,56 @@ limpar.onclick=()=>{
 
 function render(){
 
-  tl.innerHTML = timeline.slice(0,14).map((n,i)=>{
-    const r=estruturalRes[i];
-    let cor="#aaa";
-    if(r==="V") cor="#00e676";
-    if(r==="R") cor="#9c27b0";
-    if(r==="X") cor="#ff5252";
-    return `<span style="color:${cor}">${n}</span>`;
-  }).join(" · ");
+  function pintar(lista, res){
+    return lista.slice(0,14).map((n,i)=>{
+      const r = res[i];
+      let cor = "#aaa";
+      if(r==="V") cor="#00e676";
+      if(r==="R") cor="#9c27b0";
+      if(r==="X") cor="#ff5252";
+      return `<span style="color:${cor}">${n}</span>`;
+    }).join(" · ");
+  }
 
-  const base = gerarEstruturalModo("BASE");
-  const horario = gerarEstruturalModo("H");
-  const anti = gerarEstruturalModo("A");
+  tl.innerHTML = pintar(timeline, estruturalRes);
+  tlHorario.innerHTML = pintar(timeline, horarioRes);
+  tlAnti.innerHTML = pintar(timeline, antiRes);
 
-  painelBase.innerHTML = `
-    <b>BASE</b><br>
-    Núcleo: ${base.centros.join(" , ")}<br>
-    C6: <span style="color:#9c27b0">${base.c6}</span>
+  estruturaBox.innerHTML = `
+  <b>Núcleo (C1–C5)</b><br>
+  ${estruturalCentros.join(" , ")}
+  <br><br>
+  <b>C6 Ruptura</b><br>
+  <span style="color:#9c27b0">${estruturalC6}</span>
   `;
 
-  painelHorario.innerHTML = `
-    <b>HORÁRIO</b><br>
-    Núcleo: ${horario.centros.join(" , ")}<br>
-    C6: <span style="color:#9c27b0">${horario.c6}</span>
-  `;
+  if(timeline.length){
 
-  painelAnti.innerHTML = `
-    <b>ANTI-HORÁRIO</b><br>
-    Núcleo: ${anti.centros.join(" , ")}<br>
-    C6: <span style="color:#9c27b0">${anti.c6}</span>
-  `;
+    const ultimo = timeline[0];
+    const v = vizinhos1(ultimo);
+
+    const horario = gerarEstruturalBase(v);
+    const anti = gerarEstruturalBase([v[2],v[1],v[0]]);
+
+    painelSim.innerHTML = `
+      <div style="flex:1;border:1px solid #00e676;padding:10px">
+        <b>Horário</b><br>
+        Base: ${v.join(" , ")}<br><br>
+        C1–C5: ${horario.centros.join(" , ")}<br>
+        C6: <span style="color:#9c27b0">${horario.ruptura}</span>
+      </div>
+
+      <div style="flex:1;border:1px solid #2196f3;padding:10px">
+        <b>Anti-Horário</b><br>
+        Base: ${[v[2],v[1],v[0]].join(" , ")}<br><br>
+        C1–C5: ${anti.centros.join(" , ")}<br>
+        C6: <span style="color:#9c27b0">${anti.ruptura}</span>
+      </div>
+    `;
+  } else {
+    painelSim.innerHTML="";
+  }
+
 }
 
 render();
