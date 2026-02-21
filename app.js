@@ -1,7 +1,5 @@
 (function(){
 
-/* ================= CONFIG BASE ================= */
-
 const track = [
   32,15,19,4,21,2,25,17,34,6,
   27,13,36,11,30,8,23,10,5,24,
@@ -10,15 +8,7 @@ const track = [
 ];
 
 let timeline = [];
-
-let estruturalCentros = [];
-let estruturalC6 = null;
-
 let estruturalRes = [];
-let estruturalResHorario = [];
-let estruturalResAnti = [];
-
-/* ================= UTIL ================= */
 
 function dist(a,b){
   const ia = track.indexOf(a);
@@ -29,11 +19,7 @@ function dist(a,b){
 
 function vizinhos1(n){
   const i = track.indexOf(n);
-  return [
-    track[(i-1+37)%37],
-    n,
-    track[(i+1)%37]
-  ];
+  return [track[(i-1+37)%37], n, track[(i+1)%37]];
 }
 
 function vizinhos2(n){
@@ -47,25 +33,9 @@ function vizinhos2(n){
   ];
 }
 
-function deslocDirecional(a,b,index){
-  const size = 37;
-  let ia = track.indexOf(a);
-  let ib = track.indexOf(b);
-  let d = ib - ia;
+/* ================= MOTOR BASE COM MODO ================= */
 
-  if(d > size/2) d -= size;
-  if(d < -size/2) d += size;
-
-  if(index % 2 === 1){
-    d = -d;
-  }
-
-  return d;
-}
-
-/* ================= MOTOR BASE ORIGINAL ================= */
-
-function gerarEstruturalBase(tl){
+function gerarEstruturalModo(modo){
 
   const usados = new Set();
   const centros = [];
@@ -80,33 +50,60 @@ function gerarEstruturalBase(tl){
   }
 
   const freq = {};
-  tl.forEach(n=>freq[n]=(freq[n]||0)+1);
+  timeline.forEach(n=>freq[n]=(freq[n]||0)+1);
 
   const freqViz = {};
-  tl.forEach(n=>{
+  timeline.forEach(n=>{
     vizinhos2(n).forEach(v=>{
       freqViz[v]=(freqViz[v]||0)+1;
     });
   });
 
-  let saltoMedio = 0;
-  for(let i=0;i<tl.length-1;i++){
-    saltoMedio += dist(tl[i],tl[i+1]);
+  function deslocDirecional(a,b,index){
+
+    let ia = track.indexOf(a);
+    let ib = track.indexOf(b);
+    let d = ib - ia;
+
+    if(d > 18) d -= 37;
+    if(d < -18) d += 37;
+
+    if(modo==="BASE"){
+      if(index % 2 === 1) d = -d;
+    }
+
+    if(modo==="H"){
+      if(d < 0) d += 37;
+    }
+
+    if(modo==="A"){
+      if(d > 0) d -= 37;
+    }
+
+    return d;
   }
-  saltoMedio = tl.length>1 ? saltoMedio/(tl.length-1) : 0;
+
+  let saltoMedio = 0;
+  for(let i=0;i<timeline.length-1;i++){
+    saltoMedio += dist(timeline[i],timeline[i+1]);
+  }
+  saltoMedio = timeline.length>1
+    ? saltoMedio/(timeline.length-1)
+    : 0;
 
   let somaDir = 0;
-  for(let i=0;i<tl.length-1;i++){
+  for(let i=0;i<timeline.length-1;i++){
     somaDir += deslocDirecional(
-      tl[i+1],
-      tl[i],
+      timeline[i+1],
+      timeline[i],
       i
     );
   }
 
-  const mediaDirecional = tl.length>1
-    ? somaDir/(tl.length-1)
-    : 0;
+  const mediaDirecional =
+    timeline.length>1
+      ? somaDir/(timeline.length-1)
+      : 0;
 
   const candidatos = track.map(n=>{
 
@@ -114,10 +111,10 @@ function gerarEstruturalBase(tl){
     const calor = freqViz[n] || 0;
 
     const alinhamento =
-      tl.length
+      timeline.length
         ? Math.abs(
             deslocDirecional(
-              tl[0],
+              timeline[0],
               n,
               0
             ) - mediaDirecional
@@ -144,7 +141,10 @@ function gerarEstruturalBase(tl){
 
   track.forEach(n=>{
     if(centros.includes(n)) return;
-    const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
+    const dMedia =
+      centros.reduce((acc,c)=>acc+dist(c,n),0)
+      / centros.length;
+
     if(dMedia > melhorScore){
       melhorScore = dMedia;
       melhorC6 = n;
@@ -155,14 +155,16 @@ function gerarEstruturalBase(tl){
     centros,
     c6: melhorC6
   };
-}/* ================= UI ================= */
+}
+
+/* ================= UI ================= */
 
 document.body.style.background="#111";
 document.body.style.color="#fff";
 document.body.style.fontFamily="sans-serif";
 
 document.body.innerHTML = `
-<div style="max-width:1100px;margin:auto;padding:10px">
+<div style="max-width:1000px;margin:auto;padding:10px">
 
 <h3>CSM Estrutural</h3>
 
@@ -173,47 +175,33 @@ Histórico:
 <button id="limpar">Limpar</button>
 </div>
 
-<div style="margin-top:15px">
-🕒 Timeline Base:
-<div id="tlBase" style="font-weight:600;font-size:18px"></div>
-</div>
-
 <div style="margin-top:10px">
-🕒 Timeline Horário (±1):
-<div id="tlHorario" style="font-weight:600"></div>
+🕒 Timeline:
+<div id="tl" style="font-weight:600;font-size:18px"></div>
 </div>
 
-<div style="margin-top:10px">
-🕒 Timeline Anti-Horário (±1):
-<div id="tlAnti" style="font-weight:600"></div>
+<div id="painelBase"
+     style="border:1px solid #555;padding:10px;margin:10px 0">
 </div>
 
-<div id="estruturaBox"
-     style="border:1px solid #555;padding:10px;margin:15px 0">
+<div style="display:flex;gap:10px">
+
+<div id="painelHorario"
+     style="flex:1;border:1px solid #444;padding:10px">
 </div>
 
-<div style="display:flex;gap:20px">
-
-  <div style="flex:1">
-    <b>Painel Horário</b>
-    <div id="painelHorario"></div>
-  </div>
-
-  <div style="flex:1">
-    <b>Painel Anti-Horário</b>
-    <div id="painelAnti"></div>
-  </div>
+<div id="painelAnti"
+     style="flex:1;border:1px solid #444;padding:10px">
+</div>
 
 </div>
 
 <div id="nums"
-     style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:15px">
+     style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px">
 </div>
 
 </div>
 `;
-
-/* ===== Botões ===== */
 
 for(let n=0;n<=36;n++){
   const b=document.createElement("button");
@@ -223,74 +211,31 @@ for(let n=0;n<=36;n++){
   nums.appendChild(b);
 }
 
-/* ================= VALIDAÇÃO ================= */
-
-function dentroNucleo(n, centros){
-  return centros.some(c=>vizinhos2(c).includes(n));
-}
-
-function dentroC6(n, c6){
-  return c6!==null && vizinhos2(c6).includes(n);
-}
-
-function dentroNucleoLateral(n, centros){
-  return centros.some(c=>vizinhos1(c).includes(n));
-}
-
 /* ================= ADD ================= */
 
 function add(n){
 
-  // BASE
-  if(dentroNucleo(n, estruturalCentros)){
+  const base = gerarEstruturalModo("BASE");
+
+  if(base.centros.some(c=>vizinhos2(c).includes(n))){
     estruturalRes.unshift("V");
-  } else if(dentroC6(n, estruturalC6)){
+  } else if(vizinhos2(base.c6).includes(n)){
     estruturalRes.unshift("R");
   } else {
     estruturalRes.unshift("X");
   }
 
-  // HORÁRIO
-  const horarioTL = [
-    n,
-    vizinhos1(n)[2],
-    vizinhos1(n)[1]
-  ];
-
-  const motorHorario = gerarEstruturalBase(horarioTL);
-
-  estruturalResHorario.unshift(
-    dentroNucleoLateral(n, motorHorario.centros) ? "V" : "X"
-  );
-
-  // ANTI
-  const antiTL = [
-    n,
-    vizinhos1(n)[0],
-    vizinhos1(n)[1]
-  ];
-
-  const motorAnti = gerarEstruturalBase(antiTL);
-
-  estruturalResAnti.unshift(
-    dentroNucleoLateral(n, motorAnti.centros) ? "V" : "X"
-  );
-
   timeline.unshift(n);
-
-  const base = gerarEstruturalBase(timeline);
-
-  estruturalCentros = base.centros;
-  estruturalC6 = base.c6;
-
   render();
-}/* ================= COLAR ================= */
+}
 
-colar.onclick = ()=>{
+/* ================= COLAR ================= */
+
+colar.onclick=()=>{
   const lista = inp.value
     .split(/[\s,]+/)
     .map(Number)
-    .filter(n=>n>=0 && n<=36);
+    .filter(n=>n>=0&&n<=36);
 
   lista.forEach(n=>add(n));
   inp.value="";
@@ -299,10 +244,6 @@ colar.onclick = ()=>{
 limpar.onclick=()=>{
   timeline=[];
   estruturalRes=[];
-  estruturalResHorario=[];
-  estruturalResAnti=[];
-  estruturalCentros=[];
-  estruturalC6=null;
   render();
 };
 
@@ -310,71 +251,36 @@ limpar.onclick=()=>{
 
 function render(){
 
-  const ultimos14 = timeline.slice(0,14);
-
-  const ultResBase = estruturalRes.slice(0,14);
-  const ultResHorario = estruturalResHorario.slice(0,14);
-  const ultResAnti = estruturalResAnti.slice(0,14);
-
-  tlBase.innerHTML = ultimos14.map((n,i)=>{
-    const r = ultResBase[i];
-    let cor = "#aaa";
+  tl.innerHTML = timeline.slice(0,14).map((n,i)=>{
+    const r=estruturalRes[i];
+    let cor="#aaa";
     if(r==="V") cor="#00e676";
     if(r==="R") cor="#9c27b0";
     if(r==="X") cor="#ff5252";
     return `<span style="color:${cor}">${n}</span>`;
   }).join(" · ");
 
-  tlHorario.innerHTML = ultimos14.map((n,i)=>{
-    const r = ultResHorario[i];
-    let cor = r==="V" ? "#00e676" : "#ff5252";
-    return `<span style="color:${cor}">${n}</span>`;
-  }).join(" · ");
+  const base = gerarEstruturalModo("BASE");
+  const horario = gerarEstruturalModo("H");
+  const anti = gerarEstruturalModo("A");
 
-  tlAnti.innerHTML = ultimos14.map((n,i)=>{
-    const r = ultResAnti[i];
-    let cor = r==="V" ? "#00e676" : "#ff5252";
-    return `<span style="color:${cor}">${n}</span>`;
-  }).join(" · ");
-
-  estruturaBox.innerHTML = `
-    <b>Núcleo (C1–C5)</b><br>
-    ${estruturalCentros.join(" , ")}
-    <br><br>
-    <b>C6 Ruptura</b><br>
-    <span style="color:#9c27b0">${estruturalC6}</span>
+  painelBase.innerHTML = `
+    <b>BASE</b><br>
+    Núcleo: ${base.centros.join(" , ")}<br>
+    C6: <span style="color:#9c27b0">${base.c6}</span>
   `;
 
-  // PAINEL HORÁRIO
-  const ultimo = timeline[0];
-  if(ultimo!==undefined){
+  painelHorario.innerHTML = `
+    <b>HORÁRIO</b><br>
+    Núcleo: ${horario.centros.join(" , ")}<br>
+    C6: <span style="color:#9c27b0">${horario.c6}</span>
+  `;
 
-    const horarioTL = [
-      ultimo,
-      vizinhos1(ultimo)[2],
-      vizinhos1(ultimo)[1]
-    ];
-
-    const motorHorario = gerarEstruturalBase(horarioTL);
-
-    painelHorario.innerHTML = `
-      Núcleo: ${motorHorario.centros.join(" , ")}<br>
-      C6: <span style="color:#9c27b0">${motorHorario.c6}</span>
-    `;
-
-    const antiTL = [
-      ultimo,
-      vizinhos1(ultimo)[0],
-      vizinhos1(ultimo)[1]
-    ];
-
-    const motorAnti = gerarEstruturalBase(antiTL);
-
-    painelAnti.innerHTML = `
-      Núcleo: ${motorAnti.centros.join(" , ")}<br>
-      C6: <span style="color:#9c27b0">${motorAnti.c6}</span>
-    `;
-  }
+  painelAnti.innerHTML = `
+    <b>ANTI-HORÁRIO</b><br>
+    Núcleo: ${anti.centros.join(" , ")}<br>
+    C6: <span style="color:#9c27b0">${anti.c6}</span>
+  `;
 }
 
 render();
