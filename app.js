@@ -10,8 +10,8 @@ const track = [
 let timeline = [];
 let estruturalCentros = [];
 let estruturalC6 = null;
-let estruturalRes = [];
 
+let estruturalRes = [];
 let horarioRes = [];
 let antiRes = [];
 
@@ -168,17 +168,17 @@ Histórico:
 
 <div style="margin-top:10px">
 🕒 Timeline Base:
-<div id="tl" style="font-weight:600;font-size:18px"></div>
+<div id="tlBase" style="font-weight:600;font-size:18px"></div>
 </div>
 
 <div style="margin-top:10px">
 🕒 Timeline Horário (±1):
-<div id="tlHorario" style="font-weight:600"></div>
+<div id="tlHorario"></div>
 </div>
 
 <div style="margin-top:10px">
-🕒 Timeline Anti-Horário (±1):
-<div id="tlAnti" style="font-weight:600"></div>
+🕒 Timeline Anti (±1):
+<div id="tlAnti"></div>
 </div>
 
 <div id="estruturaBox"
@@ -210,9 +210,43 @@ for(let n=0;n<=36;n++){
 
 function add(n){
 
-  // ===== VALIDA BASE =====
-  if(estruturalCentros.length){
+  let horarioPrev = null;
+  let antiPrev = null;
 
+  if(timeline.length){
+    const ultimoAnterior = timeline[0];
+    const v = vizinhos1(ultimoAnterior);
+
+    horarioPrev = gerarEstruturalBase(v);
+    antiPrev = gerarEstruturalBase([v[2],v[1],v[0]]);
+  }
+
+  /* VALIDA HORÁRIO */
+  if(horarioPrev){
+    if(
+      horarioPrev.centros.some(c=>vizinhos1(c).includes(n)) ||
+      (horarioPrev.ruptura && vizinhos1(horarioPrev.ruptura).includes(n))
+    ){
+      horarioRes.unshift("V");
+    } else {
+      horarioRes.unshift("X");
+    }
+  }
+
+  /* VALIDA ANTI */
+  if(antiPrev){
+    if(
+      antiPrev.centros.some(c=>vizinhos1(c).includes(n)) ||
+      (antiPrev.ruptura && vizinhos1(antiPrev.ruptura).includes(n))
+    ){
+      antiRes.unshift("V");
+    } else {
+      antiRes.unshift("X");
+    }
+  }
+
+  /* VALIDA BASE */
+  if(estruturalCentros.length){
     if(estruturalCentros.some(c=>vizinhos2(c).includes(n))){
       estruturalRes.unshift("V");
     } else if(estruturalC6 && vizinhos2(estruturalC6).includes(n)){
@@ -224,32 +258,9 @@ function add(n){
 
   timeline.unshift(n);
 
-  // ===== REGERA BASE =====
   const base = gerarEstruturalBase(timeline);
   estruturalCentros = base.centros;
   estruturalC6 = base.ruptura;
-
-  // ===== GERA HORÁRIO / ANTI =====
-  if(timeline.length){
-    const ultimo = timeline[0];
-    const v = vizinhos1(ultimo);
-
-    const horario = gerarEstruturalBase(v);
-    const anti = gerarEstruturalBase([v[2],v[1],v[0]]);
-
-    // validação ±1
-    if(horario.centros.some(c=>vizinhos1(c).includes(n))){
-      horarioRes.unshift("V");
-    } else {
-      horarioRes.unshift("X");
-    }
-
-    if(anti.centros.some(c=>vizinhos1(c).includes(n))){
-      antiRes.unshift("V");
-    } else {
-      antiRes.unshift("X");
-    }
-  }
 
   render();
 }
@@ -280,10 +291,12 @@ limpar.onclick=()=>{
 
 function render(){
 
-  function pintar(lista, res){
-    return lista.slice(0,14).map((n,i)=>{
+  const ult14 = timeline.slice(0,14);
+
+  function pintar(lista,res){
+    return ult14.map((n,i)=>{
       const r = res[i];
-      let cor = "#aaa";
+      let cor="#aaa";
       if(r==="V") cor="#00e676";
       if(r==="R") cor="#9c27b0";
       if(r==="X") cor="#ff5252";
@@ -291,9 +304,9 @@ function render(){
     }).join(" · ");
   }
 
-  tl.innerHTML = pintar(timeline, estruturalRes);
-  tlHorario.innerHTML = pintar(timeline, horarioRes);
-  tlAnti.innerHTML = pintar(timeline, antiRes);
+  tlBase.innerHTML = pintar(ult14,estruturalRes);
+  tlHorario.innerHTML = pintar(ult14,horarioRes);
+  tlAnti.innerHTML = pintar(ult14,antiRes);
 
   estruturaBox.innerHTML = `
   <b>Núcleo (C1–C5)</b><br>
@@ -302,33 +315,6 @@ function render(){
   <b>C6 Ruptura</b><br>
   <span style="color:#9c27b0">${estruturalC6}</span>
   `;
-
-  if(timeline.length){
-
-    const ultimo = timeline[0];
-    const v = vizinhos1(ultimo);
-
-    const horario = gerarEstruturalBase(v);
-    const anti = gerarEstruturalBase([v[2],v[1],v[0]]);
-
-    painelSim.innerHTML = `
-      <div style="flex:1;border:1px solid #00e676;padding:10px">
-        <b>Horário</b><br>
-        Base: ${v.join(" , ")}<br><br>
-        C1–C5: ${horario.centros.join(" , ")}<br>
-        C6: <span style="color:#9c27b0">${horario.ruptura}</span>
-      </div>
-
-      <div style="flex:1;border:1px solid #2196f3;padding:10px">
-        <b>Anti-Horário</b><br>
-        Base: ${[v[2],v[1],v[0]].join(" , ")}<br><br>
-        C1–C5: ${anti.centros.join(" , ")}<br>
-        C6: <span style="color:#9c27b0">${anti.ruptura}</span>
-      </div>
-    `;
-  } else {
-    painelSim.innerHTML="";
-  }
 
 }
 
