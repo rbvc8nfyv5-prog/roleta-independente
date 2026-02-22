@@ -1,316 +1,410 @@
-(function(){
+(function () {
 
-const track = [
-  32,15,19,4,21,2,25,17,34,6,
-  27,13,36,11,30,8,23,10,5,24,
-  16,33,1,20,14,31,9,22,18,29,
-  7,28,12,35,3,26,0
-];
-
-let timeline = [];
-let estruturalCentros = [];
-let estruturalC6 = null;
-
-let estruturalRes = [];
-let horarioRes = [];
-let antiRes = [];
-
-/* ================= UTIL ================= */
-
-function dist(a,b){
-  const ia = track.indexOf(a);
-  const ib = track.indexOf(b);
-  const d = Math.abs(ia-ib);
-  return Math.min(d,37-d);
-}
-
-function vizinhos2(n){
-  const i = track.indexOf(n);
-  return [
-    track[(i-2+37)%37],
-    track[(i-1+37)%37],
-    n,
-    track[(i+1)%37],
-    track[(i+2)%37]
+  // ================= CONFIG BASE =================
+  const track = [
+    32,15,19,4,21,2,25,17,34,6,
+    27,13,36,11,30,8,23,10,5,24,
+    16,33,1,20,14,31,9,22,18,29,
+    7,28,12,35,3,26,0
   ];
-}
+  const terminal = n => n % 10;
 
-function vizinhos1(n){
-  const i = track.indexOf(n);
-  return [
-    track[(i-1+37)%37],
-    n,
-    track[(i+1)%37]
+  // ================= EIXOS =================
+  const eixos = [
+    { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
+    { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
+    { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
-}
 
-function deslocDirecional(a,b,index){
-  const size = 37;
-  let ia = track.indexOf(a);
-  let ib = track.indexOf(b);
-  let d = ib - ia;
+  // ================= ESTADO =================
+  let timeline = [];
+  let janela = 6;
+  let modoAtivo = "MANUAL";
+  let autoTAtivo = null;
 
-  if(d > size/2) d -= size;
-  if(d < -size/2) d += size;
+  const analises = {
+    MANUAL: { filtros:new Set(), res:[] },
+    VIZINHO:{ filtros:new Set(), res:[], motor:new Set() },
+    NUNUM:  { filtros:new Set(), res:[] },
+    AUTO: {
+      3:{ filtros:new Set(), res:[] },
+      4:{ filtros:new Set(), res:[] },
+      5:{ filtros:new Set(), res:[] },
+      6:{ filtros:new Set(), res:[] },
+      7:{ filtros:new Set(), res:[] }
+    }
+  };
 
-  if(index % 2 === 1){
-    d = -d;
+  let modoConjuntos = false;
+  let filtrosConjuntos = new Set();
+
+  function vizinhosRace(n){
+    const i = track.indexOf(n);
+    return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  return d;
-}
+  function pertenceGrupoVizinho(n, grupo){
+    return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
+  }
 
-/* ================= MOTOR BASE ================= */
+  // ===== MELHOR TRIO INTERNO DO GRUPO =====
+  function melhorTrioGrupo(grupo){
 
-function gerarEstruturalBase(lista){
+    const trios = [];
+    for(let i=0;i<grupo.length;i++){
+      for(let j=i+1;j<grupo.length;j++){
+        for(let k=j+1;k<grupo.length;k++){
+          trios.push([grupo[i],grupo[j],grupo[k]]);
+        }
+      }
+    }
 
-  const usados = new Set();
-  const centros = [];
+    const cont = {};
 
-  function pode(n){
-    return vizinhos2(n).every(x=>!usados.has(x));
+    trios.forEach(trio=>{
+      const chave = trio.join("-");
+      cont[chave]=0;
+
+      timeline.forEach(n=>{
+        if(vizinhosRace(n).some(v=> trio.includes(terminal(v)))){
+          cont[chave]++;
+        }
+      });
+    });
+
+    const ordenado = Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1]);
+
+    return ordenado.length ? ordenado[0][0] : null;
+  }
+
+  // ================= LÓGICAS ORIGINAIS =================
+  function calcularAutoT(k){
+    const set = new Set();
+    for(const n of timeline.slice(0,janela)){
+      set.add(terminal(n));
+      if(set.size>=k) break;
+    }
+    analises.AUTO[k].filtros = set;
+  }
+
+  function melhorTrincaBase(){
+    const cont = {};
+    timeline.slice(0,janela).forEach(n=>{
+      const t = terminal(n);
+      cont[t] = (cont[t]||0)+1;
+    });
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(x=>+x[0]);
+  }
+
+  function calcularVizinho(){
+    const base = melhorTrincaBase();
+    analises.VIZINHO.filtros = new Set(base);
+    analises.VIZINHO.motor.clear();
+    base.forEach(t=>{
+      track.filter(n=>terminal(n)===t)
+        .forEach(n=>vizinhosRace(n)
+          .forEach(v=>analises.VIZINHO.motor.add(v))
+        );
+    });
+  }
+
+  function calcularNunum(){
+    const set = new Set();
+    timeline.slice(0,2).forEach(n=>{
+      vizinhosRace(n).forEach(v=>set.add(terminal(v)));
+    });
+    analises.NUNUM.filtros = set;
+  }
+
+  function triosSelecionados(filtros){
+    let lista=[];
+    eixos.forEach(e=>{
+      e.trios.forEach(trio=>{
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio});
+      });
+    });
+    return lista.slice(0,9);
+  }
+
+  function validar(n, filtros){
+    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
   }
 
   function registrar(n){
-    vizinhos2(n).forEach(x=>usados.add(x));
-    centros.push(n);
-  }
-
-  const freq = {};
-  lista.forEach(n=>freq[n]=(freq[n]||0)+1);
-
-  const freqViz = {};
-  lista.forEach(n=>{
-    vizinhos2(n).forEach(v=>{
-      freqViz[v]=(freqViz[v]||0)+1;
+    analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
+    analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
+    analises.NUNUM.res.unshift(validar(n,analises.NUNUM.filtros)?"V":"X");
+    [3,4,5,6,7].forEach(k=>{
+      analises.AUTO[k].res.unshift(
+        validar(n,analises.AUTO[k].filtros)?"V":"X"
+      );
     });
-  });
-
-  let somaDir = 0;
-  for(let i=0;i<lista.length-1;i++){
-    somaDir += deslocDirecional(
-      lista[i+1],
-      lista[i],
-      i
-    );
   }
 
-  const mediaDirecional = lista.length>1
-    ? somaDir/(lista.length-1)
-    : 0;
+  // ================= UI =================
+  document.body.style.background="#111";
+  document.body.style.color="#fff";
+  document.body.style.fontFamily="sans-serif";
 
-  const candidatos = track.map(n=>{
+  document.body.innerHTML = `
+    <div style="padding:10px;max-width:1000px;margin:auto">
+      <h3 style="text-align:center">CSM</h3>
 
-    const permanencia = freq[n] || 0;
-    const calor = freqViz[n] || 0;
+      <div style="border:1px solid #444;padding:8px">
+        Histórico:
+        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+          <button id="col">Colar</button>
+          <button id="lim">Limpar</button>
+          Janela:
+          <select id="jan">
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
+          </select>
+        </div>
+      </div>
 
-    const alinhamento =
-      lista.length
-        ? Math.abs(
-            deslocDirecional(
-              lista[0],
-              n,
-              0
-            ) - mediaDirecional
-          )
-        : 0;
+      <div style="margin:10px 0">
+        🕒 Timeline (14):
+        <span id="tl" style="font-size:18px;font-weight:600"></span>
+      </div>
 
-    const score =
-      (permanencia * 1.2)
-    + (calor * 1.0)
-    + ((10 - alinhamento) * 0.8);
+      <!-- QUADROS -->
+      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
+        <b>1479</b>
+        <div id="tl1479"></div>
+      </div>
 
-    return {n,score};
-  })
-  .sort((a,b)=>b.score-a.score)
-  .map(x=>x.n);
+      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
+        <b>2589</b>
+        <div id="tl2589"></div>
+      </div>
 
-  for(const n of candidatos){
-    if(pode(n)) registrar(n);
-    if(centros.length>=5) break;
-  }
+      <div style="border:1px solid #555;padding:6px;margin-bottom:10px;cursor:pointer">
+        <b>0369</b>
+        <div id="tl0369"></div>
+      </div>
 
-  let melhorScore = -1;
-  let melhorC6 = null;
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
+          <button class="modo" data-m="${m}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
+        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
+          CONJUNTOS
+        </button>
+      </div>
 
-  track.forEach(n=>{
-    if(centros.includes(n)) return;
-    const dMedia = centros.reduce((acc,c)=>acc+dist(c,n),0)/centros.length;
-    if(dMedia > melhorScore){
-      melhorScore = dMedia;
-      melhorC6 = n;
-    }
-  });
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${[3,4,5,6,7].map(n=>`
+          <button class="auto" data-a="${n}"
+            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
+      </div>
 
-  return {
-    centros,
-    ruptura: melhorC6
-  };
-}
+      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
+        Terminais:
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
 
-/* ================= UI ================= */
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div><b>ZERO</b><div id="cZERO"></div></div>
+        <div><b>TIERS</b><div id="cTIERS"></div></div>
+        <div><b>ORPHELINS</b><div id="cORPH"></div></div>
+      </div>
 
-document.body.style.background="#111";
-document.body.style.color="#fff";
-document.body.style.fontFamily="sans-serif";
-
-document.body.innerHTML = `
-<div style="max-width:1100px;margin:auto;padding:10px">
-
-<h3>CSM Estrutural</h3>
-
-<div>
-Histórico:
-<input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-<button id="colar">Colar</button>
-<button id="limpar">Limpar</button>
-</div>
-
-<div style="margin-top:10px">
-🕒 Timeline Base:
-<div id="tlBase" style="font-weight:600;font-size:18px"></div>
-</div>
-
-<div style="margin-top:10px">
-🕒 Timeline Horário (±1):
-<div id="tlHorario"></div>
-</div>
-
-<div style="margin-top:10px">
-🕒 Timeline Anti (±1):
-<div id="tlAnti"></div>
-</div>
-
-<div id="estruturaBox"
-     style="border:1px solid #555;padding:10px;margin:10px 0">
-</div>
-
-<div id="painelSim"
-     style="display:flex;gap:20px;margin-top:10px">
-</div>
-
-<div id="nums"
-     style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px">
-</div>
-
-</div>
-`;
-
-/* ===== Botões ===== */
-
-for(let n=0;n<=36;n++){
-  const b=document.createElement("button");
-  b.textContent=n;
-  b.style="padding:10px;background:#222;color:#fff;border:1px solid #444";
-  b.onclick=()=>add(n);
-  nums.appendChild(b);
-}
-
-/* ================= ADD ================= */
-
-function add(n){
-
-  let horarioPrev = null;
-  let antiPrev = null;
-
-  if(timeline.length){
-    const ultimoAnterior = timeline[0];
-    const v = vizinhos1(ultimoAnterior);
-
-    horarioPrev = gerarEstruturalBase(v);
-    antiPrev = gerarEstruturalBase([v[2],v[1],v[0]]);
-  }
-
-  if(horarioPrev){
-    horarioRes.unshift(
-      horarioPrev.centros.some(c=>vizinhos1(c).includes(n)) ||
-      (horarioPrev.ruptura && vizinhos1(horarioPrev.ruptura).includes(n))
-        ? "V" : "X"
-    );
-  }
-
-  if(antiPrev){
-    antiRes.unshift(
-      antiPrev.centros.some(c=>vizinhos1(c).includes(n)) ||
-      (antiPrev.ruptura && vizinhos1(antiPrev.ruptura).includes(n))
-        ? "V" : "X"
-    );
-  }
-
-  if(estruturalCentros.length){
-    if(estruturalCentros.some(c=>vizinhos2(c).includes(n))){
-      estruturalRes.unshift("V");
-    } else if(estruturalC6 && vizinhos2(estruturalC6).includes(n)){
-      estruturalRes.unshift("R");
-    } else {
-      estruturalRes.unshift("X");
-    }
-  }
-
-  timeline.unshift(n);
-
-  const base = gerarEstruturalBase(timeline);
-  estruturalCentros = base.centros;
-  estruturalC6 = base.ruptura;
-
-  render();
-}
-
-/* ================= RENDER ================= */
-
-function pintar(res){
-  return timeline.slice(0,14).map((n,i)=>{
-    const r = res[i];
-    let cor="#aaa";
-    if(r==="V") cor="#00e676";
-    if(r==="R") cor="#9c27b0";
-    if(r==="X") cor="#ff5252";
-    return `<span style="color:${cor}">${n}</span>`;
-  }).join(" · ");
-}
-
-function render(){
-
-  tlBase.innerHTML = pintar(estruturalRes);
-  tlHorario.innerHTML = pintar(horarioRes);
-  tlAnti.innerHTML = pintar(antiRes);
-
-  estruturaBox.innerHTML = `
-  <b>Núcleo (C1–C5)</b><br>
-  ${estruturalCentros.join(" , ")}
-  <br><br>
-  <b>C6 Ruptura</b><br>
-  <span style="color:#9c27b0">${estruturalC6}</span>
+      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
+    </div>
   `;
 
-  if(timeline.length){
+  // ================= EVENTOS =================
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
 
-    const ultimo = timeline[0];
-    const v = vizinhos1(ultimo);
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      render();
+    };
+  });
 
-    const horario = gerarEstruturalBase(v);
-    const anti = gerarEstruturalBase([v[2],v[1],v[0]]);
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      render();
+    };
+  });
 
-    painelSim.innerHTML = `
-      <div style="flex:1;border:1px solid #00e676;padding:10px">
-        <b>Horário</b><br>
-        Base: ${v.join(" , ")}<br><br>
-        C1–C5: ${horario.centros.join(" , ")}<br>
-        C6: <span style="color:#9c27b0">${horario.ruptura}</span>
-      </div>
+  btnConj.onclick=()=>{
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
+    render();
+  };
 
-      <div style="flex:1;border:1px solid #2196f3;padding:10px">
-        <b>Anti-Horário</b><br>
-        Base: ${[v[2],v[1],v[0]].join(" , ")}<br><br>
-        C1–C5: ${anti.centros.join(" , ")}<br>
-        C6: <span style="color:#9c27b0">${anti.ruptura}</span>
-      </div>
-    `;
-  } else {
-    painelSim.innerHTML="";
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    b.onclick=()=>{
+      analises.MANUAL.filtros.has(t)
+        ? analises.MANUAL.filtros.delete(t)
+        : analises.MANUAL.filtros.add(t);
+
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
+
+      render();
+    };
+    btnT.appendChild(b);
   }
-}
 
-render();
+  for(let n=0;n<=36;n++){
+    const b=document.createElement("button");
+    b.textContent=n;
+    b.style="padding:8px;background:#333;color:#fff";
+    b.onclick=()=>add(n);
+    nums.appendChild(b);
+  }
+
+  function add(n){
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
+    registrar(n);
+    calcularVizinho();
+    calcularNunum();
+    [3,4,5,6,7].forEach(calcularAutoT);
+    render();
+  }
+
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoAtivo="MANUAL";
+    autoTAtivo=null;
+    modoConjuntos=false;
+    btnConj.style.background="#444";
+    render();
+  };
+
+  function render(){
+
+    const res =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.res || []
+        : analises[modoAtivo].res;
+
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
+
+    const grupos = {
+      tl1479:[1,4,7,9],
+      tl2589:[2,5,8,9],
+      tl0369:[0,3,6,9]
+    };
+
+    Object.entries(grupos).forEach(([id,grupo])=>{
+      const melhor = melhorTrioGrupo(grupo);
+      const box = document.getElementById(id).parentElement;
+
+      document.getElementById(id).innerHTML = `
+        <div style="font-size:12px;margin-bottom:4px;color:#00e676">
+          Melhor Trio: ${melhor || "-"}
+        </div>
+        ${timeline.map(n=>`
+          <span style="
+            display:inline-block;
+            width:18px;
+            text-align:center;
+            background:${pertenceGrupoVizinho(n,grupo)?"#00e676":"transparent"};
+            border-radius:3px;
+            margin-right:2px;
+          ">${n}</span>
+        `).join("")}
+      `;
+
+      box.onclick=()=>{
+        if(!melhor) return;
+        analises.MANUAL.filtros.clear();
+        melhor.split("-").forEach(n=>{
+          analises.MANUAL.filtros.add(terminal(+n));
+        });
+        modoAtivo="MANUAL";
+        render();
+      };
+    });
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
+      b.style.background = ativo ? "#00e676" : "#444";
+    });
+
+    const filtros =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo].filtros
+        : analises[modoAtivo].filtros;
+
+    const trios = triosSelecionados(filtros);
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
+    conjArea.style.display = modoConjuntos ? "block" : "none";
+    if(modoConjuntos){
+      const marcados=new Set();
+      filtrosConjuntos.forEach(t=>{
+        track.forEach(n=>{
+          if(terminal(n)===t){
+            vizinhosRace(n).forEach(v=>marcados.add(v));
+          }
+        });
+      });
+
+      conjArea.innerHTML = `
+        <div style="
+          display:grid;
+          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
+          gap:4px;
+        ">
+          ${timeline.map(n=>`
+            <div style="
+              height:26px;
+              display:flex;align-items:center;justify-content:center;
+              background:${marcados.has(n)?"#00e676":"#222"};
+              color:#fff;font-size:10px;font-weight:700;
+              border-radius:4px;border:1px solid #333;
+            ">${n}</div>
+          `).join("")}
+        </div>
+      `;
+    }
+  }
+
+  render();
 
 })();
