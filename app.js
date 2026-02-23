@@ -1,6 +1,5 @@
 (function () {
 
-  // ================= CONFIG BASE =================
   const track = [
     32,15,19,4,21,2,25,17,34,6,
     27,13,36,11,30,8,23,10,5,24,
@@ -9,14 +8,12 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= EIXOS =================
   const eixos = [
     { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
     { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
     { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
-  // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
   let modoAtivo = "MANUAL";
@@ -101,9 +98,16 @@
   }
 
   function registrar(n){
+
+    const filtrosAtuais =
+      modoAtivo==="AUTO"
+        ? analises.AUTO[autoTAtivo]?.filtros || new Set()
+        : analises[modoAtivo].filtros;
+
     analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
     analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
     analises.NUNUM.res.unshift(validar(n,analises.NUNUM.filtros)?"V":"X");
+
     [3,4,5,6,7].forEach(k=>{
       analises.AUTO[k].res.unshift(
         validar(n,analises.AUTO[k].filtros)?"V":"X"
@@ -112,6 +116,7 @@
   }
 
   // ================= UI =================
+
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -169,50 +174,6 @@
     </div>
   `;
 
-  // ================= EVENTOS =================
-  jan.onchange=e=>{ janela=+e.target.value; render(); };
-
-  document.querySelectorAll(".modo").forEach(b=>{
-    b.onclick=()=>{
-      modoAtivo=b.dataset.m;
-      render();
-    };
-  });
-
-  document.querySelectorAll(".auto").forEach(b=>{
-    b.onclick=()=>{
-      modoAtivo="AUTO";
-      autoTAtivo=+b.dataset.a;
-      calcularAutoT(autoTAtivo);
-      render();
-    };
-  });
-
-  btnConj.onclick=()=>{
-    modoConjuntos=!modoConjuntos;
-    btnConj.style.background = modoConjuntos?"#00e676":"#444";
-    modoAtivo="MANUAL";
-    render();
-  };
-
-  for(let t=0;t<=9;t++){
-    const b=document.createElement("button");
-    b.textContent="T"+t;
-    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
-    b.onclick=()=>{
-      analises.MANUAL.filtros.has(t)
-        ? analises.MANUAL.filtros.delete(t)
-        : analises.MANUAL.filtros.add(t);
-
-      filtrosConjuntos.has(t)
-        ? filtrosConjuntos.delete(t)
-        : filtrosConjuntos.add(t);
-
-      render();
-    };
-    btnT.appendChild(b);
-  }
-
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
@@ -221,10 +182,9 @@
     nums.appendChild(b);
   }
 
-  // 🔧 CORREÇÃO AQUI
   function add(n){
 
-    registrar(n); // valida antes
+    registrar(n); // valida antes de recalcular filtros
 
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
@@ -234,55 +194,6 @@
     [3,4,5,6,7].forEach(calcularAutoT);
 
     render();
-  }
-
-  col.onclick=()=>{
-    inp.value.split(/[\s,]+/)
-      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
-    inp.value="";
-  };
-
-  lim.onclick=()=>{
-    timeline=[];
-    filtrosConjuntos.clear();
-    Object.values(analises).forEach(a=>{
-      if(a.res) a.res=[];
-      if(a.filtros) a.filtros.clear();
-      if(a.motor) a.motor.clear();
-    });
-    modoAtivo="MANUAL";
-    autoTAtivo=null;
-    modoConjuntos=false;
-    btnConj.style.background="#444";
-    render();
-  };
-
-  function render(){
-
-    const res =
-      modoAtivo==="AUTO"
-        ? analises.AUTO[autoTAtivo]?.res || []
-        : analises[modoAtivo].res;
-
-    tl.innerHTML = timeline.map((n,i)=>{
-      const r=res[i];
-      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
-      return `<span style="color:${c}">${n}</span>`;
-    }).join(" · ");
-
-    const filtros =
-      modoAtivo==="AUTO"
-        ? analises.AUTO[autoTAtivo].filtros
-        : analises[modoAtivo].filtros;
-
-    const trios = triosSelecionados(filtros);
-    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
-    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
-    cZERO.innerHTML=por.ZERO.join("<div></div>");
-    cTIERS.innerHTML=por.TIERS.join("<div></div>");
-    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
-
-    conjArea.style.display = modoConjuntos ? "block" : "none";
   }
 
   render();
