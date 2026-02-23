@@ -9,34 +9,6 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= NOVA TABELA DE JOGADAS =================
-  const tabelaJogada = {
-    1:[3,5,9],
-    2:[3,5,9],
-    3:[5,6,9],
-    4:[0,4,8],
-    5:[0,5,7],
-    6:[0,6,7],
-    7:[0,7,9],
-    8:[3,5,9],
-    9:[3,5,9],
-    10:[0,5,7],
-    11:[0,5,7],
-    12:[3,5,7],
-    13:[3,5,9],
-    14:[0,2,7],
-    15:[3,5,9],
-    16:[1,2,9],
-    17:[1,5,7],
-    18:[1,5,8],
-    19:[0,4,8],
-    20:[2,3,7],
-    21:[1,6,9],
-    22:[2,3,7],
-    23:[2,3,8],
-    24:[4,5,7]
-  };
-
   // ================= EIXOS =================
   const eixos = [
     { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
@@ -197,6 +169,32 @@
     </div>
   `;
 
+  // ================= EVENTOS =================
+  jan.onchange=e=>{ janela=+e.target.value; render(); };
+
+  document.querySelectorAll(".modo").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo=b.dataset.m;
+      render();
+    };
+  });
+
+  document.querySelectorAll(".auto").forEach(b=>{
+    b.onclick=()=>{
+      modoAtivo="AUTO";
+      autoTAtivo=+b.dataset.a;
+      calcularAutoT(autoTAtivo);
+      render();
+    };
+  });
+
+  btnConj.onclick=()=>{
+    modoConjuntos=!modoConjuntos;
+    btnConj.style.background = modoConjuntos?"#00e676":"#444";
+    modoAtivo="MANUAL";
+    render();
+  };
+
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
     b.textContent="T"+t;
@@ -205,6 +203,11 @@
       analises.MANUAL.filtros.has(t)
         ? analises.MANUAL.filtros.delete(t)
         : analises.MANUAL.filtros.add(t);
+
+      filtrosConjuntos.has(t)
+        ? filtrosConjuntos.delete(t)
+        : filtrosConjuntos.add(t);
+
       render();
     };
     btnT.appendChild(b);
@@ -218,26 +221,41 @@
     nums.appendChild(b);
   }
 
+  // 🔧 CORREÇÃO AQUI
   function add(n){
+
+    registrar(n); // valida antes
 
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
 
-    // ===== ATIVA TERMINAIS AUTOMATICAMENTE =====
-    if(tabelaJogada[n]){
-      analises.MANUAL.filtros.clear();
-      tabelaJogada[n].forEach(t=>{
-        analises.MANUAL.filtros.add(t);
-      });
-    }
-
-    registrar(n);
     calcularVizinho();
     calcularNunum();
     [3,4,5,6,7].forEach(calcularAutoT);
 
     render();
   }
+
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoAtivo="MANUAL";
+    autoTAtivo=null;
+    modoConjuntos=false;
+    btnConj.style.background="#444";
+    render();
+  };
 
   function render(){
 
@@ -264,13 +282,7 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    document.querySelectorAll("#btnT button").forEach(b=>{
-      const t=+b.textContent.slice(1);
-      b.style.background =
-        analises.MANUAL.filtros.has(t)
-        ? "#00e676"
-        : "#444";
-    });
+    conjArea.style.display = modoConjuntos ? "block" : "none";
   }
 
   render();
