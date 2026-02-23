@@ -9,7 +9,7 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= TABELA AUTOMÁTICA =================
+  // ================= NOVA TABELA DE JOGADAS =================
   const tabelaJogada = {
     1:[3,5,9],
     2:[3,5,9],
@@ -20,7 +20,21 @@
     7:[0,7,9],
     8:[3,5,9],
     9:[3,5,9],
-    10:[0,5,7]
+    10:[0,5,7],
+    11:[0,5,7],
+    12:[3,5,7],
+    13:[3,5,9],
+    14:[0,2,7],
+    15:[3,5,9],
+    16:[1,2,9],
+    17:[1,5,7],
+    18:[1,5,8],
+    19:[0,4,8],
+    20:[2,3,7],
+    21:[1,6,9],
+    22:[2,3,7],
+    23:[2,3,8],
+    24:[4,5,7]
   };
 
   // ================= EIXOS =================
@@ -206,22 +220,22 @@
 
   function add(n){
 
-    // ========= AQUI ESTÁ A ÚNICA ADIÇÃO =========
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
+
+    // ===== ATIVA TERMINAIS AUTOMATICAMENTE =====
     if(tabelaJogada[n]){
       analises.MANUAL.filtros.clear();
       tabelaJogada[n].forEach(t=>{
         analises.MANUAL.filtros.add(t);
       });
-      modoAtivo="MANUAL";
     }
-    // ============================================
 
-    timeline.unshift(n);
-    if(timeline.length>14) timeline.pop();
     registrar(n);
     calcularVizinho();
     calcularNunum();
     [3,4,5,6,7].forEach(calcularAutoT);
+
     render();
   }
 
@@ -253,7 +267,9 @@
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       b.style.background =
-        analises.MANUAL.filtros.has(t) ? "#00e676" : "#444";
+        analises.MANUAL.filtros.has(t)
+        ? "#00e676"
+        : "#444";
     });
   }
 
