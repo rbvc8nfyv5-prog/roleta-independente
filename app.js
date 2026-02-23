@@ -1,20 +1,36 @@
 (function () {
 
+  // ================= CONFIG BASE =================
   const track = [
     32,15,19,4,21,2,25,17,34,6,
     27,13,36,11,30,8,23,10,5,24,
     16,33,1,20,14,31,9,22,18,29,
     7,28,12,35,3,26,0
   ];
-
   const terminal = n => n % 10;
 
+  // ================= NOVA ESTRATÉGIA =================
+  const estrategiaTerminais = {
+    1:[3,5,9],
+    2:[3,5,9],
+    3:[5,6,9],
+    4:[0,4,8],
+    5:[0,5,7],
+    6:[0,6,7],
+    7:[0,7,9],
+    8:[3,5,9],
+    9:[3,5,9],
+    10:[0,5,7]
+  };
+
+  // ================= EIXOS =================
   const eixos = [
     { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
     { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
     { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
+  // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
   let modoAtivo = "MANUAL";
@@ -41,22 +57,35 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  function triosSelecionados(filtros){
-    let lista=[];
-    eixos.forEach(e=>{
-      e.trios.forEach(trio=>{
-        const inter = trio.map(terminal)
-          .filter(t=>!filtros.size||filtros.has(t)).length;
-        if(inter>0) lista.push({eixo:e.nome,trio});
+  function pertenceGrupoVizinho(n, grupo){
+    return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
+  }
+
+  // ===== MELHOR TRIO =====
+  function melhorTrioGrupo(grupo){
+    const trios = [];
+    for(let i=0;i<grupo.length;i++)
+      for(let j=i+1;j<grupo.length;j++)
+        for(let k=j+1;k<grupo.length;k++)
+          trios.push([grupo[i],grupo[j],grupo[k]]);
+
+    const cont = {};
+    trios.forEach(trio=>{
+      const chave = trio.join("-");
+      cont[chave]=0;
+      timeline.forEach(n=>{
+        if(vizinhosRace(n).some(v=> trio.includes(terminal(v))))
+          cont[chave]++;
       });
     });
-    return lista.slice(0,9);
+
+    const ordenado = Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1]);
+
+    return ordenado.length ? ordenado[0][0] : null;
   }
 
-  function validar(n, filtros){
-    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
-  }
-
+  // ================= LÓGICAS ORIGINAIS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -98,6 +127,22 @@
     analises.NUNUM.filtros = set;
   }
 
+  function triosSelecionados(filtros){
+    let lista=[];
+    eixos.forEach(e=>{
+      e.trios.forEach(trio=>{
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio});
+      });
+    });
+    return lista.slice(0,9);
+  }
+
+  function validar(n, filtros){
+    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
+  }
+
   function registrar(n){
     analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
     analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
@@ -109,34 +154,41 @@
     });
   }
 
+  // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
 
   document.body.innerHTML = `
-  <div style="padding:10px;max-width:1000px;margin:auto">
-    <h3 style="text-align:center">CSM</h3>
+    <div style="padding:10px;max-width:1000px;margin:auto">
+      <h3 style="text-align:center">CSM</h3>
 
-    🕒 Timeline (14):
-    <span id="tl" style="font-size:18px;font-weight:600"></span>
+      <div style="border:1px solid #444;padding:8px">
+        Histórico:
+        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
+        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+          <button id="col">Colar</button>
+          <button id="lim">Limpar</button>
+          Janela:
+          <select id="jan">
+            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
+          </select>
+        </div>
+      </div>
 
-    <div style="margin-top:10px">
-      <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
-        CONJUNTOS
-      </button>
+      <div style="margin:10px 0">
+        🕒 Timeline (14):
+        <span id="tl" style="font-size:18px;font-weight:600"></span>
+      </div>
+
+      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
+        Terminais:
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
+
+      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
-
-    <div style="margin-top:8px">
-      Terminais:
-      <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
-    </div>
-
-    <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
-
-    <div id="nums"
-         style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px">
-    </div>
-  </div>
   `;
 
   for(let t=0;t<=9;t++){
@@ -152,7 +204,6 @@
         ? filtrosConjuntos.delete(t)
         : filtrosConjuntos.add(t);
 
-      modoConjuntos=true;
       render();
     };
     btnT.appendChild(b);
@@ -166,30 +217,24 @@
     nums.appendChild(b);
   }
 
-  btnConj.onclick=()=>{
-    modoConjuntos=!modoConjuntos;
-    btnConj.style.background = modoConjuntos?"#00e676":"#444";
-    render();
-  };
-
   function add(n){
 
-    timeline.unshift(n);
-    if(timeline.length>14) timeline.pop();
-
-    // ===== AUTO 395 se sair 1 =====
-    if(n === 1){
+    // === NOVA ESTRATÉGIA AUTOMÁTICA ===
+    if(estrategiaTerminais[n]){
       analises.MANUAL.filtros.clear();
       filtrosConjuntos.clear();
 
-      [3,9,5].forEach(t=>{
+      estrategiaTerminais[n].forEach(t=>{
         analises.MANUAL.filtros.add(t);
         filtrosConjuntos.add(t);
       });
 
-      modoConjuntos = true;
-      btnConj.style.background="#00e676";
+      modoConjuntos=true;
+      modoAtivo="MANUAL";
     }
+
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
 
     registrar(n);
     calcularVizinho();
@@ -199,22 +244,45 @@
     render();
   }
 
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
+  lim.onclick=()=>{
+    timeline=[];
+    filtrosConjuntos.clear();
+    Object.values(analises).forEach(a=>{
+      if(a.res) a.res=[];
+      if(a.filtros) a.filtros.clear();
+      if(a.motor) a.motor.clear();
+    });
+    modoConjuntos=false;
+    render();
+  };
+
   function render(){
 
-    tl.innerHTML = timeline.map(n=>{
-      return `<span style="color:#aaa">${n}</span>`;
+    const res = analises[modoAtivo].res;
+
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r=res[i];
+      const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
+      return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
-      const ativo = filtrosConjuntos.has(t);
+      const ativo =
+        analises.MANUAL.filtros.has(t) ||
+        filtrosConjuntos.has(t);
       b.style.background = ativo ? "#00e676" : "#444";
     });
 
     conjArea.style.display = modoConjuntos ? "block" : "none";
 
     if(modoConjuntos){
-
       const marcados=new Set();
       filtrosConjuntos.forEach(t=>{
         track.forEach(n=>{
