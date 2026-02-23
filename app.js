@@ -38,9 +38,27 @@
   let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
+  // ================= FUNÇÕES =================
+
   function vizinhosRace(n){
     const i = track.indexOf(n);
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
+  }
+
+  function validar(n, filtros){
+    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
+  }
+
+  function triosSelecionados(filtros){
+    let lista=[];
+    eixos.forEach(e=>{
+      e.trios.forEach(trio=>{
+        const inter = trio.map(terminal)
+          .filter(t=>!filtros.size||filtros.has(t)).length;
+        if(inter>0) lista.push({eixo:e.nome,trio});
+      });
+    });
+    return lista.slice(0,9);
   }
 
   function calcularAutoT(k){
@@ -84,22 +102,6 @@
     analises.NUNUM.filtros = set;
   }
 
-  function triosSelecionados(filtros){
-    let lista=[];
-    eixos.forEach(e=>{
-      e.trios.forEach(trio=>{
-        const inter = trio.map(terminal)
-          .filter(t=>!filtros.size||filtros.has(t)).length;
-        if(inter>0) lista.push({eixo:e.nome,trio});
-      });
-    });
-    return lista.slice(0,9);
-  }
-
-  function validar(n, filtros){
-    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
-  }
-
   function registrar(n){
     analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
     analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
@@ -112,6 +114,7 @@
   }
 
   // ================= UI =================
+
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -142,7 +145,8 @@
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
           <button class="modo" data-m="${m}"
             style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
-        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
+        <button id="btnConj"
+          style="padding:6px;background:#444;color:#fff;border:1px solid #666">
           CONJUNTOS
         </button>
       </div>
@@ -170,13 +174,11 @@
   `;
 
   // ================= EVENTOS =================
+
   jan.onchange=e=>{ janela=+e.target.value; render(); };
 
   document.querySelectorAll(".modo").forEach(b=>{
-    b.onclick=()=>{
-      modoAtivo=b.dataset.m;
-      render();
-    };
+    b.onclick=()=>{ modoAtivo=b.dataset.m; render(); };
   });
 
   document.querySelectorAll(".auto").forEach(b=>{
@@ -203,11 +205,6 @@
       analises.MANUAL.filtros.has(t)
         ? analises.MANUAL.filtros.delete(t)
         : analises.MANUAL.filtros.add(t);
-
-      filtrosConjuntos.has(t)
-        ? filtrosConjuntos.delete(t)
-        : filtrosConjuntos.add(t);
-
       render();
     };
     btnT.appendChild(b);
@@ -222,12 +219,22 @@
   }
 
   function add(n){
+
+    // === TESTE AUTOMÁTICO 395 QUANDO SAIR 1 ===
+    if(n === 1){
+      analises.MANUAL.filtros.clear();
+      [3,9,5].forEach(t => analises.MANUAL.filtros.add(t));
+      modoAtivo="MANUAL";
+    }
+
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
+
     registrar(n);
     calcularVizinho();
     calcularNunum();
     [3,4,5,6,7].forEach(calcularAutoT);
+
     render();
   }
 
@@ -239,7 +246,6 @@
 
   lim.onclick=()=>{
     timeline=[];
-    filtrosConjuntos.clear();
     Object.values(analises).forEach(a=>{
       if(a.res) a.res=[];
       if(a.filtros) a.filtros.clear();
@@ -276,8 +282,6 @@
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
-
-    conjArea.style.display = modoConjuntos ? "block" : "none";
   }
 
   render();
