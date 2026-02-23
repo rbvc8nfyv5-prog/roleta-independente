@@ -43,42 +43,6 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  function pertenceGrupoVizinho(n, grupo){
-    return vizinhosRace(n).some(v => grupo.includes(terminal(v)));
-  }
-
-  // ===== MELHOR TRIO INTERNO DO GRUPO =====
-  function melhorTrioGrupo(grupo){
-
-    const trios = [];
-    for(let i=0;i<grupo.length;i++){
-      for(let j=i+1;j<grupo.length;j++){
-        for(let k=j+1;k<grupo.length;k++){
-          trios.push([grupo[i],grupo[j],grupo[k]]);
-        }
-      }
-    }
-
-    const cont = {};
-
-    trios.forEach(trio=>{
-      const chave = trio.join("-");
-      cont[chave]=0;
-
-      timeline.forEach(n=>{
-        if(vizinhosRace(n).some(v=> trio.includes(terminal(v)))){
-          cont[chave]++;
-        }
-      });
-    });
-
-    const ordenado = Object.entries(cont)
-      .sort((a,b)=>b[1]-a[1]);
-
-    return ordenado.length ? ordenado[0][0] : null;
-  }
-
-  // ================= LÓGICAS ORIGINAIS =================
   function calcularAutoT(k){
     const set = new Set();
     for(const n of timeline.slice(0,janela)){
@@ -172,22 +136,6 @@
       <div style="margin:10px 0">
         🕒 Timeline (14):
         <span id="tl" style="font-size:18px;font-weight:600"></span>
-      </div>
-
-      <!-- QUADROS -->
-      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>1479</b>
-        <div id="tl1479"></div>
-      </div>
-
-      <div style="border:1px solid #555;padding:6px;margin-bottom:6px;cursor:pointer">
-        <b>2589</b>
-        <div id="tl2589"></div>
-      </div>
-
-      <div style="border:1px solid #555;padding:6px;margin-bottom:10px;cursor:pointer">
-        <b>0369</b>
-        <div id="tl0369"></div>
       </div>
 
       <div style="display:flex;gap:6px;margin-bottom:6px">
@@ -317,51 +265,6 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    const grupos = {
-      tl1479:[1,4,7,9],
-      tl2589:[2,5,8,9],
-      tl0369:[0,3,6,9]
-    };
-
-    Object.entries(grupos).forEach(([id,grupo])=>{
-      const melhor = melhorTrioGrupo(grupo);
-      const box = document.getElementById(id).parentElement;
-
-      document.getElementById(id).innerHTML = `
-        <div style="font-size:12px;margin-bottom:4px;color:#00e676">
-          Melhor Trio: ${melhor || "-"}
-        </div>
-        ${timeline.map(n=>`
-          <span style="
-            display:inline-block;
-            width:18px;
-            text-align:center;
-            background:${pertenceGrupoVizinho(n,grupo)?"#00e676":"transparent"};
-            border-radius:3px;
-            margin-right:2px;
-          ">${n}</span>
-        `).join("")}
-      `;
-
-      box.onclick=()=>{
-        if(!melhor) return;
-        analises.MANUAL.filtros.clear();
-        melhor.split("-").forEach(n=>{
-          analises.MANUAL.filtros.add(terminal(+n));
-        });
-        modoAtivo="MANUAL";
-        render();
-      };
-    });
-
-    document.querySelectorAll("#btnT button").forEach(b=>{
-      const t=+b.textContent.slice(1);
-      const ativo =
-        analises.MANUAL.filtros.has(t) ||
-        filtrosConjuntos.has(t);
-      b.style.background = ativo ? "#00e676" : "#444";
-    });
-
     const filtros =
       modoAtivo==="AUTO"
         ? analises.AUTO[autoTAtivo].filtros
@@ -375,34 +278,6 @@
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
     conjArea.style.display = modoConjuntos ? "block" : "none";
-    if(modoConjuntos){
-      const marcados=new Set();
-      filtrosConjuntos.forEach(t=>{
-        track.forEach(n=>{
-          if(terminal(n)===t){
-            vizinhosRace(n).forEach(v=>marcados.add(v));
-          }
-        });
-      });
-
-      conjArea.innerHTML = `
-        <div style="
-          display:grid;
-          grid-template-columns:repeat(auto-fit, minmax(26px, 1fr));
-          gap:4px;
-        ">
-          ${timeline.map(n=>`
-            <div style="
-              height:26px;
-              display:flex;align-items:center;justify-content:center;
-              background:${marcados.has(n)?"#00e676":"#222"};
-              color:#fff;font-size:10px;font-weight:700;
-              border-radius:4px;border:1px solid #333;
-            ">${n}</div>
-          `).join("")}
-        </div>
-      `;
-    }
   }
 
   render();
