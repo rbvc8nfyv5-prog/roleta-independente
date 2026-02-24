@@ -9,6 +9,19 @@
 
   const terminal = n => n % 10;
 
+  const coresTerminais = {
+    0:"#ff5252",
+    1:"#ff9800",
+    2:"#ffc107",
+    3:"#4caf50",
+    4:"#00e676",
+    5:"#00bcd4",
+    6:"#2196f3",
+    7:"#9c27b0",
+    8:"#e91e63",
+    9:"#ffffff"
+  };
+
   let rotacao = 0;
 
   function rotacionarNumero(n, offset){
@@ -72,15 +85,19 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;max-width:1000px;margin:auto">
-      <h3 style="text-align:center">CSM</h3>
 
       Rotação Trio:
       <input type="range" min="-5" max="5" value="0" id="rot">
       <span id="rotVal">0</span>
 
       <div style="margin:10px 0">
-        🕒 Timeline:
-        <span id="tl" style="font-size:18px;font-weight:600"></span>
+        🕒 Timeline Principal:
+        <div id="tl"></div>
+      </div>
+
+      <div style="margin:10px 0">
+        🟦 Timeline Conjuntos:
+        <div id="tlSec"></div>
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -145,7 +162,33 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
+    // 🔥 LINHA SECUNDÁRIA COLORIDA POR TERMINAL
     const filtros = analises.MANUAL.filtros;
+
+    const marcados = new Map();
+
+    filtros.forEach(t=>{
+      track.forEach(n=>{
+        if(terminal(n)===t){
+          vizinhosRace(n).forEach(v=>{
+            marcados.set(v, coresTerminais[t]);
+          });
+        }
+      });
+    });
+
+    tlSec.innerHTML = timeline.map(n=>{
+      const cor = marcados.get(n);
+      return `
+        <span style="
+          background:${cor || "transparent"};
+          color:${cor ? "#000" : "#aaa"};
+          padding:2px 6px;
+          border-radius:4px;
+          margin-right:3px;
+        ">${n}</span>
+      `;
+    }).join("");
 
     const trios = triosSelecionados(filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
@@ -157,7 +200,7 @@
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       b.style.background =
-        filtros.has(t) ? "#00e676" : "#444";
+        filtros.has(t) ? coresTerminais[t] : "#444";
     });
   }
 
