@@ -9,8 +9,9 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= NOVA TABELA DE JOGADAS =================
+  // ================= TABELA COMPLETA ATUALIZADA =================
   const tabelaJogada = {
+    0:[2,3,7],
     1:[3,5,9],
     2:[3,5,9],
     3:[5,6,9],
@@ -34,7 +35,19 @@
     21:[1,6,9],
     22:[2,3,7],
     23:[2,3,8],
-    24:[4,5,7]
+    24:[4,5,7],
+    25:[1,2,5],
+    26:[0,6,9],
+    27:[2,3,9],
+    28:[0,2,7],
+    29:[2,3,9],
+    30:[0,1,5],
+    31:[3,5,8],
+    32:[2,3,9],
+    33:[3,5,7],
+    34:[5,6,9],
+    35:[0,5,7],
+    36:[1,3,7]
   };
 
   // ================= EIXOS =================
@@ -62,9 +75,6 @@
       7:{ filtros:new Set(), res:[] }
     }
   };
-
-  let modoConjuntos = false;
-  let filtrosConjuntos = new Set();
 
   function vizinhosRace(n){
     const i = track.indexOf(n);
@@ -124,17 +134,17 @@
     return lista.slice(0,9);
   }
 
-  function validar(n, filtros){
+  function validarNumero(n, filtros){
     return triosSelecionados(filtros).some(x=>x.trio.includes(n));
   }
 
-  function registrar(n){
-    analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
+  function registrar(n, filtrosAtivos){
+    analises.MANUAL.res.unshift(validarNumero(n,filtrosAtivos)?"V":"X");
     analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
-    analises.NUNUM.res.unshift(validar(n,analises.NUNUM.filtros)?"V":"X");
+    analises.NUNUM.res.unshift(validarNumero(n,analises.NUNUM.filtros)?"V":"X");
     [3,4,5,6,7].forEach(k=>{
       analises.AUTO[k].res.unshift(
-        validar(n,analises.AUTO[k].filtros)?"V":"X"
+        validarNumero(n,analises.AUTO[k].filtros)?"V":"X"
       );
     });
   }
@@ -151,34 +161,12 @@
       <div style="border:1px solid #444;padding:8px">
         Histórico:
         <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
-          <button id="col">Colar</button>
-          <button id="lim">Limpar</button>
-          Janela:
-          <select id="jan">
-            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
-          </select>
-        </div>
+        <button id="col">Colar</button>
       </div>
 
       <div style="margin:10px 0">
         🕒 Timeline (14):
         <span id="tl" style="font-size:18px;font-weight:600"></span>
-      </div>
-
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
-          <button class="modo" data-m="${m}"
-            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
-        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
-          CONJUNTOS
-        </button>
-      </div>
-
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        ${[3,4,5,6,7].map(n=>`
-          <button class="auto" data-a="${n}"
-            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -192,7 +180,6 @@
         <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
 
-      <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
@@ -201,12 +188,6 @@
     const b=document.createElement("button");
     b.textContent="T"+t;
     b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
-    b.onclick=()=>{
-      analises.MANUAL.filtros.has(t)
-        ? analises.MANUAL.filtros.delete(t)
-        : analises.MANUAL.filtros.add(t);
-      render();
-    };
     btnT.appendChild(b);
   }
 
@@ -220,13 +201,14 @@
 
   function add(n){
 
-    // VALIDAR COM ESTADO ANTERIOR
-    registrar(n);
+    // ===== REGISTRA PRIMEIRO COM FILTRO ATUAL =====
+    const filtrosAntes = new Set(analises.MANUAL.filtros);
+    registrar(n,filtrosAntes);
 
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
 
-    // ATIVAR TERMINAIS AUTOMÁTICOS APÓS VALIDAR
+    // ===== ATUALIZA FILTROS AUTOMÁTICOS =====
     if(tabelaJogada[n]){
       analises.MANUAL.filtros.clear();
       tabelaJogada[n].forEach(t=>{
@@ -241,12 +223,15 @@
     render();
   }
 
+  col.onclick=()=>{
+    inp.value.split(/[\s,]+/)
+      .map(Number).filter(n=>n>=0&&n<=36).forEach(add);
+    inp.value="";
+  };
+
   function render(){
 
-    const res =
-      modoAtivo==="AUTO"
-        ? analises.AUTO[autoTAtivo]?.res || []
-        : analises[modoAtivo].res;
+    const res = analises.MANUAL.res;
 
     tl.innerHTML = timeline.map((n,i)=>{
       const r=res[i];
@@ -254,10 +239,7 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    const filtros =
-      modoAtivo==="AUTO"
-        ? analises.AUTO[autoTAtivo].filtros
-        : analises[modoAtivo].filtros;
+    const filtros = analises.MANUAL.filtros;
 
     const trios = triosSelecionados(filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
@@ -269,9 +251,7 @@
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       b.style.background =
-        analises.MANUAL.filtros.has(t)
-        ? "#00e676"
-        : "#444";
+        filtros.has(t) ? "#00e676" : "#444";
     });
   }
 
