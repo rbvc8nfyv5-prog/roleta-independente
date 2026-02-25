@@ -9,79 +9,38 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= EIXOS =================
+  // ===== CORES POR TERMINAL =====
+  const corTerminal = {
+    0:"#ff5252",
+    1:"#ff9800",
+    2:"#ffc107",
+    3:"#00e676",
+    4:"#00bcd4",
+    5:"#2196f3",
+    6:"#9c27b0",
+    7:"#e91e63",
+    8:"#8bc34a",
+    9:"#ffffff"
+  };
+
   const eixos = [
     { nome:"ZERO", trios:[[0,32,15],[19,4,21],[2,25,17],[34,6,27]] },
     { nome:"TIERS", trios:[[13,36,11],[30,8,23],[10,5,24],[16,33,1]] },
     { nome:"ORPHELINS", trios:[[20,14,31],[9,22,18],[7,29,28],[12,35,3]] }
   ];
 
-  // ================= ESTADO =================
   let timeline = [];
   let janela = 6;
-  let modoAtivo = "MANUAL";
-  let autoTAtivo = null;
 
   const analises = {
-    MANUAL: { filtros:new Set(), res:[] },
-    VIZINHO:{ filtros:new Set(), res:[], motor:new Set() },
-    NUNUM:  { filtros:new Set(), res:[] },
-    AUTO: {
-      3:{ filtros:new Set(), res:[] },
-      4:{ filtros:new Set(), res:[] },
-      5:{ filtros:new Set(), res:[] },
-      6:{ filtros:new Set(), res:[] },
-      7:{ filtros:new Set(), res:[] }
-    }
+    MANUAL: { filtros:new Set(), res:[] }
   };
 
-  let modoConjuntos = false;
   let filtrosConjuntos = new Set();
 
   function vizinhosRace(n){
     const i = track.indexOf(n);
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
-  }
-
-  function calcularAutoT(k){
-    const set = new Set();
-    for(const n of timeline.slice(0,janela)){
-      set.add(terminal(n));
-      if(set.size>=k) break;
-    }
-    analises.AUTO[k].filtros = set;
-  }
-
-  function melhorTrincaBase(){
-    const cont = {};
-    timeline.slice(0,janela).forEach(n=>{
-      const t = terminal(n);
-      cont[t] = (cont[t]||0)+1;
-    });
-    return Object.entries(cont)
-      .sort((a,b)=>b[1]-a[1])
-      .slice(0,3)
-      .map(x=>+x[0]);
-  }
-
-  function calcularVizinho(){
-    const base = melhorTrincaBase();
-    analises.VIZINHO.filtros = new Set(base);
-    analises.VIZINHO.motor.clear();
-    base.forEach(t=>{
-      track.filter(n=>terminal(n)===t)
-        .forEach(n=>vizinhosRace(n)
-          .forEach(v=>analises.VIZINHO.motor.add(v))
-        );
-    });
-  }
-
-  function calcularNunum(){
-    const set = new Set();
-    timeline.slice(0,2).forEach(n=>{
-      vizinhosRace(n).forEach(v=>set.add(terminal(v)));
-    });
-    analises.NUNUM.filtros = set;
   }
 
   function triosSelecionados(filtros){
@@ -101,14 +60,9 @@
   }
 
   function registrar(n){
-    analises.MANUAL.res.unshift(validar(n,analises.MANUAL.filtros)?"V":"X");
-    analises.VIZINHO.res.unshift(analises.VIZINHO.motor.has(n)?"V":"X");
-    analises.NUNUM.res.unshift(validar(n,analises.NUNUM.filtros)?"V":"X");
-    [3,4,5,6,7].forEach(k=>{
-      analises.AUTO[k].res.unshift(
-        validar(n,analises.AUTO[k].filtros)?"V":"X"
-      );
-    });
+    analises.MANUAL.res.unshift(
+      validar(n,analises.MANUAL.filtros)?"V":"X"
+    );
   }
 
   document.body.style.background="#111";
@@ -119,28 +73,9 @@
     <div style="padding:10px;max-width:1000px;margin:auto">
       <h3 style="text-align:center">CSM</h3>
 
-      <div style="border:1px solid #444;padding:8px">
-        Histórico:
-        <input id="inp" style="width:100%;padding:6px;background:#222;color:#fff"/>
-        <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
-          <button id="col">Colar</button>
-          <button id="lim">Limpar</button>
-          Janela:
-          <select id="jan">
-            ${Array.from({length:8},(_,i)=>`<option ${i+3===6?'selected':''}>${i+3}</option>`).join("")}
-          </select>
-        </div>
-      </div>
-
       <div style="margin:10px 0">
-        🕒 Timeline (14):
+        🕒 Timeline:
         <span id="tl" style="font-size:18px;font-weight:600"></span>
-      </div>
-
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
-          <button class="modo" data-m="${m}"
-            style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -191,9 +126,6 @@
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
     registrar(n);
-    calcularVizinho();
-    calcularNunum();
-    [3,4,5,6,7].forEach(calcularAutoT);
     render();
   }
 
@@ -212,7 +144,7 @@
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       b.style.background =
-        filtros.has(t) ? "#00e676" : "#444";
+        filtros.has(t) ? corTerminal[t] : "#444";
     });
 
     const trios = triosSelecionados(filtros);
@@ -222,16 +154,18 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ===== Linha Secundária automática quando T ligado =====
-
     if(filtros.size > 0){
 
-      const marcados=new Set();
+      const mapaCores = {};
 
       filtros.forEach(t=>{
         track.forEach(n=>{
           if(terminal(n)===t){
-            vizinhosRace(n).forEach(v=>marcados.add(v));
+            vizinhosRace(n).forEach(v=>{
+              if(!mapaCores[v]){
+                mapaCores[v] = corTerminal[t];
+              }
+            });
           }
         });
       });
@@ -248,7 +182,7 @@
             <div style="
               height:26px;
               display:flex;align-items:center;justify-content:center;
-              background:${marcados.has(n)?"#00e676":"#222"};
+              background:${mapaCores[n] || "#222"};
               color:#fff;font-size:10px;font-weight:700;
               border-radius:4px;border:1px solid #333;
             ">${n}</div>
