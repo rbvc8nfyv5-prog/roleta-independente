@@ -9,7 +9,7 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= TABELA COMPLETA ATUALIZADA =================
+  // ================= TABELA COMPLETA =================
   const tabelaJogada = {
     0:[2,3,7],1:[3,5,9],2:[3,5,9],3:[5,6,9],4:[0,4,8],
     5:[0,5,7],6:[0,6,7],7:[0,7,9],8:[3,5,9],9:[3,5,9],
@@ -39,29 +39,70 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  function rotacionarNumero(n){
-    const i = track.indexOf(n);
-    return track[(i + rotaçãoGlobal + 37) % 37];
+  function rotacionarTerminal(t){
+    return (t + rotaçãoGlobal + 10) % 10;
   }
 
+  // ================= TRIOS COM BALANCEAMENTO =================
   function triosSelecionados(filtros){
-    let lista=[];
+
+    let selecionados = [];
+    let todos = [];
+
+    const contagemPorEixo = {
+      ZERO:0,
+      TIERS:0,
+      ORPHELINS:0
+    };
+
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
+        const obj = {eixo:e.nome,trio};
+        todos.push(obj);
+
         const inter = trio.map(terminal)
           .filter(t=>!filtros.size||filtros.has(t)).length;
-        if(inter>0) lista.push({eixo:e.nome,trio});
+
+        if(inter>0){
+          selecionados.push(obj);
+          contagemPorEixo[e.nome]++;
+        }
       });
     });
-    return lista.slice(0,9);
+
+    // Se já tem 9, retorna
+    if(selecionados.length >= 9){
+      return selecionados.slice(0,9);
+    }
+
+    // Balanceamento
+    while(selecionados.length < 9){
+
+      // Ordena eixos por menor presença
+      const eixoMenosUsado = Object.entries(contagemPorEixo)
+        .sort((a,b)=>a[1]-b[1])[0][0];
+
+      const candidato = todos.find(t =>
+        t.eixo === eixoMenosUsado &&
+        !selecionados.some(s =>
+          s.trio.join("-") === t.trio.join("-")
+        )
+      );
+
+      if(candidato){
+        selecionados.push(candidato);
+        contagemPorEixo[candidato.eixo]++;
+      } else {
+        break;
+      }
+    }
+
+    return selecionados.slice(0,9);
   }
 
   function validarNumero(n, filtros){
-    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
-  }
-
-  function rotacionarTerminal(t){
-    return (t + rotaçãoGlobal + 10) % 10;
+    return triosSelecionados(filtros)
+      .some(x=>x.trio.includes(n));
   }
 
   function recalcularTudo(){
@@ -82,7 +123,9 @@
       if(tabelaJogada[n]){
         analises.MANUAL.filtros.clear();
         tabelaJogada[n].forEach(t=>{
-          analises.MANUAL.filtros.add(rotacionarTerminal(t));
+          analises.MANUAL.filtros.add(
+            rotacionarTerminal(t)
+          );
         });
       }
 
@@ -168,12 +211,9 @@
     const filtros = analises.MANUAL.filtros;
 
     const trios = triosSelecionados(filtros);
-    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
 
-    trios.forEach(x=>{
-      const trioRotacionado = x.trio.map(n=>rotacionarNumero(n));
-      por[x.eixo].push(trioRotacionado.join("-"));
-    });
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
 
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
