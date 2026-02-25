@@ -28,76 +28,54 @@
   ];
 
   let timeline = [];
-  let rotaçãoGlobal = 0;
+  let rotacaoGlobal = 0;
 
   let analises = {
     MANUAL: { filtros:new Set(), res:[] }
   };
 
+  // ================= UTIL =================
+
   function vizinhosRace(n){
     const i = track.indexOf(n);
-    return [ track[(i+36)%37], n, track[(i+1)%37] ];
+    return [
+      track[(i+36)%37],
+      n,
+      track[(i+1)%37]
+    ];
   }
 
   function rotacionarTerminal(t){
-    return (t + rotaçãoGlobal + 10) % 10;
+    return (t + rotacaoGlobal + 10) % 10;
   }
 
-  // ================= TRIOS COM BALANCEAMENTO =================
   function triosSelecionados(filtros){
 
-    let selecionados = [];
-    let todos = [];
-
-    const contagemPorEixo = {
-      ZERO:0,
-      TIERS:0,
-      ORPHELINS:0
-    };
+    let lista=[];
 
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
-        const obj = {eixo:e.nome,trio};
-        todos.push(obj);
-
         const inter = trio.map(terminal)
           .filter(t=>!filtros.size||filtros.has(t)).length;
 
         if(inter>0){
-          selecionados.push(obj);
-          contagemPorEixo[e.nome]++;
+          lista.push({eixo:e.nome,trio});
         }
       });
     });
 
-    // Se já tem 9, retorna
-    if(selecionados.length >= 9){
-      return selecionados.slice(0,9);
+    // ===== GARANTIR ATÉ 9 TRIOS =====
+    if(lista.length < 9){
+      eixos.forEach(e=>{
+        e.trios.forEach(trio=>{
+          if(!lista.find(x=>x.trio===trio)){
+            lista.push({eixo:e.nome,trio});
+          }
+        });
+      });
     }
 
-    // Balanceamento
-    while(selecionados.length < 9){
-
-      // Ordena eixos por menor presença
-      const eixoMenosUsado = Object.entries(contagemPorEixo)
-        .sort((a,b)=>a[1]-b[1])[0][0];
-
-      const candidato = todos.find(t =>
-        t.eixo === eixoMenosUsado &&
-        !selecionados.some(s =>
-          s.trio.join("-") === t.trio.join("-")
-        )
-      );
-
-      if(candidato){
-        selecionados.push(candidato);
-        contagemPorEixo[candidato.eixo]++;
-      } else {
-        break;
-      }
-    }
-
-    return selecionados.slice(0,9);
+    return lista.slice(0,9);
   }
 
   function validarNumero(n, filtros){
@@ -105,14 +83,16 @@
       .some(x=>x.trio.includes(n));
   }
 
+  // ================= MOTOR COMPLETO REPROCESSA TUDO =================
+
   function recalcularTudo(){
 
     analises.MANUAL.res = [];
     analises.MANUAL.filtros.clear();
 
-    const copiaTimeline = [...timeline].reverse();
+    const ordemCronologica = [...timeline].reverse();
 
-    copiaTimeline.forEach(n=>{
+    ordemCronologica.forEach(n=>{
 
       const filtrosAntes = new Set(analises.MANUAL.filtros);
 
@@ -122,6 +102,7 @@
 
       if(tabelaJogada[n]){
         analises.MANUAL.filtros.clear();
+
         tabelaJogada[n].forEach(t=>{
           analises.MANUAL.filtros.add(
             rotacionarTerminal(t)
@@ -133,6 +114,8 @@
 
     render();
   }
+
+  // ================= UI =================
 
   document.body.style.background="#111";
   document.body.style.color="#fff";
@@ -153,11 +136,6 @@
         <span id="tl" style="font-size:18px;font-weight:600"></span>
       </div>
 
-      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
-        Terminais:
-        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
-      </div>
-
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
         <div><b>ZERO</b><div id="cZERO"></div></div>
         <div><b>TIERS</b><div id="cTIERS"></div></div>
@@ -165,26 +143,22 @@
       </div>
 
       <div style="margin-top:15px;border:1px solid #444;padding:6px">
-        <b>Timeline Conjuntos (Vizinhos Race)</b>
+        <b>Timeline Conjuntos (Race)</b>
         <div id="tlConj"></div>
       </div>
 
-      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
+      <div id="nums"
+        style="display:grid;
+        grid-template-columns:repeat(9,1fr);
+        gap:6px;margin-top:12px"></div>
     </div>
   `;
 
   rotRange.oninput = function(){
-    rotaçãoGlobal = parseInt(this.value);
-    rotVal.innerText = rotaçãoGlobal;
+    rotacaoGlobal = parseInt(this.value);
+    rotVal.innerText = rotacaoGlobal;
     recalcularTudo();
   };
-
-  for(let t=0;t<=9;t++){
-    const b=document.createElement("button");
-    b.textContent="T"+t;
-    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
-    btnT.appendChild(b);
-  }
 
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
@@ -213,17 +187,14 @@
     const trios = triosSelecionados(filtros);
 
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
-    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+
+    trios.forEach(x=>{
+      por[x.eixo].push(x.trio.join("-"));
+    });
 
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
-
-    document.querySelectorAll("#btnT button").forEach(b=>{
-      const t=+b.textContent.slice(1);
-      b.style.background =
-        filtros.has(t) ? "#00e676" : "#444";
-    });
 
     const numerosMarcados = new Set();
 
