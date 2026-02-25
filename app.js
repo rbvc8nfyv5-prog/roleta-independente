@@ -9,15 +9,9 @@
   const terminal = n => n % 10;
 
   const corTerminal = {
-    0:"#ff5252",
-    1:"#ff9800",
-    2:"#ffc107",
-    3:"#00e676",
-    4:"#00bcd4",
-    5:"#2196f3",
-    6:"#9c27b0",
-    7:"#e91e63",
-    8:"#8bc34a",
+    0:"#ff5252",1:"#ff9800",2:"#ffc107",
+    3:"#00e676",4:"#00bcd4",5:"#2196f3",
+    6:"#9c27b0",7:"#e91e63",8:"#8bc34a",
     9:"#ffffff"
   };
 
@@ -65,13 +59,8 @@
   }
 
   function validarNumero(n, filtros){
-    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
-  }
-
-  function registrar(n, filtrosAtivos){
-    analises.MANUAL.res.unshift(
-      validarNumero(n,filtrosAtivos)?"V":"X"
-    );
+    return triosSelecionados(filtros)
+      .some(x=>x.trio.includes(n));
   }
 
   document.body.style.background="#111";
@@ -105,7 +94,7 @@
       </div>
 
       <div style="margin-top:15px;border:1px solid #444;padding:6px">
-        <b>Timeline Conjuntos (Colorido por Terminal)</b>
+        <b>Timeline Conjuntos</b>
         <div id="tlConj"></div>
       </div>
 
@@ -136,7 +125,7 @@
 
   function add(n){
 
-    // 🔹 PRIMEIRO atualiza filtros da tabela
+    // 1️⃣ Atualiza filtros primeiro
     if(tabelaJogada[n]){
       analises.MANUAL.filtros.clear();
       tabelaJogada[n].forEach(t=>{
@@ -144,11 +133,14 @@
       });
     }
 
-    // 🔹 DEPOIS registra validação (sem atraso)
-    registrar(n,new Set(analises.MANUAL.filtros));
-
+    // 2️⃣ Insere número
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
+
+    // 3️⃣ Recalcula TODA a timeline para evitar atraso
+    analises.MANUAL.res = timeline.map(num =>
+      validarNumero(num, analises.MANUAL.filtros) ? "V" : "X"
+    );
 
     render();
   }
@@ -167,8 +159,8 @@
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
 
     trios.forEach(x=>{
-      const trioRotacionado = x.trio.map(n=>rotacionarNumero(n,rotacaoTrios));
-      por[x.eixo].push(trioRotacionado.join("-"));
+      const trioRot = x.trio.map(n=>rotacionarNumero(n,rotacaoTrios));
+      por[x.eixo].push(trioRot.join("-"));
     });
 
     cZERO.innerHTML=por.ZERO.join("<div></div>");
