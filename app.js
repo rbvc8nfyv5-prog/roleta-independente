@@ -1,6 +1,5 @@
 (function () {
 
-  // ================= CONFIG BASE =================
   const track = [
     32,15,19,4,21,2,25,17,34,6,
     27,13,36,11,30,8,23,10,5,24,
@@ -9,7 +8,6 @@
   ];
   const terminal = n => n % 10;
 
-  // ================= CORES DOS TERMINAIS =================
   const corTerminal = {
     0:"#ff5252",
     1:"#ff9800",
@@ -23,7 +21,6 @@
     9:"#ffffff"
   };
 
-  // ================= TABELA COMPLETA =================
   const tabelaJogada = {
     0:[2,3,7],1:[3,5,9],2:[3,5,9],3:[5,6,9],4:[0,4,8],
     5:[0,5,7],6:[0,6,7],7:[0,7,9],8:[3,5,9],9:[3,5,9],
@@ -43,7 +40,6 @@
 
   let timeline = [];
   let analises = { MANUAL: { filtros:new Set(), res:[] } };
-
   let rotacaoTrios = 0;
 
   function vizinhosRace(n){
@@ -140,18 +136,19 @@
 
   function add(n){
 
-    const filtrosAntes = new Set(analises.MANUAL.filtros);
-    registrar(n,filtrosAntes);
-
-    timeline.unshift(n);
-    if(timeline.length>14) timeline.pop();
-
+    // 🔹 PRIMEIRO atualiza filtros da tabela
     if(tabelaJogada[n]){
       analises.MANUAL.filtros.clear();
       tabelaJogada[n].forEach(t=>{
         analises.MANUAL.filtros.add(t);
       });
     }
+
+    // 🔹 DEPOIS registra validação (sem atraso)
+    registrar(n,new Set(analises.MANUAL.filtros));
+
+    timeline.unshift(n);
+    if(timeline.length>14) timeline.pop();
 
     render();
   }
