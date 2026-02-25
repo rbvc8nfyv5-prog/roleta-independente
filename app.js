@@ -39,6 +39,11 @@
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
+  function rotacionarNumero(n){
+    const i = track.indexOf(n);
+    return track[(i + rotaçãoGlobal + 37) % 37];
+  }
+
   function triosSelecionados(filtros){
     let lista=[];
     eixos.forEach(e=>{
@@ -64,7 +69,7 @@
     analises.MANUAL.res = [];
     analises.MANUAL.filtros.clear();
 
-    const copiaTimeline = [...timeline].reverse(); // do mais antigo ao mais recente
+    const copiaTimeline = [...timeline].reverse();
 
     copiaTimeline.forEach(n=>{
 
@@ -164,7 +169,12 @@
 
     const trios = triosSelecionados(filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
-    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+
+    trios.forEach(x=>{
+      const trioRotacionado = x.trio.map(n=>rotacionarNumero(n));
+      por[x.eixo].push(trioRotacionado.join("-"));
+    });
+
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
