@@ -34,7 +34,6 @@
 
   let timeline = [];
   let rotacao = 0;
-  let melhorRotacao = 0;
 
   let analises = { MANUAL: { filtros:new Set(), res:[] } };
 
@@ -48,7 +47,7 @@
     return track[(i + offset + 37) % 37];
   }
 
-  function triosSelecionados(filtros, offset=rotacao){
+  function triosSelecionados(filtros){
 
     let selecionados=[];
     let restantes=[];
@@ -67,16 +66,17 @@
 
     const todos = [...selecionados, ...restantes].slice(0,9);
 
+    // aplica rotação
     return todos.map(x=>{
       return {
         eixo:x.eixo,
-        trio:x.trio.map(n=>rotacionarNumero(n,offset))
+        trio:x.trio.map(n=>rotacionarNumero(n,rotacao))
       };
     });
   }
 
-  function validarNumero(n, filtros, offset=rotacao){
-    return triosSelecionados(filtros,offset)
+  function validarNumero(n, filtros){
+    return triosSelecionados(filtros)
       .some(x=>x.trio.includes(n));
   }
 
@@ -98,14 +98,26 @@
       Rotação:
       <input type="range" min="-5" max="5" value="0" id="rot">
       <span id="rotVal">0</span>
-      <div style="margin-top:6px;color:#00e676">
-        Melhor Rotação Simulada:
-        <span id="bestRot">0</span>
-      </div>
 
       <div style="margin:10px 0">
         🕒 Timeline:
         <span id="tl" style="font-size:18px;font-weight:600"></span>
+      </div>
+
+      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
+        Terminais:
+        <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div><b>ZERO</b><div id="cZERO"></div></div>
+        <div><b>TIERS</b><div id="cTIERS"></div></div>
+        <div><b>ORPHELINS</b><div id="cORPH"></div></div>
+      </div>
+
+      <div style="margin-top:15px;border:1px solid #444;padding:6px">
+        <b>Timeline Conjuntos</b>
+        <div id="tlConj"></div>
       </div>
 
       <div id="nums"
@@ -121,6 +133,13 @@
     render();
   };
 
+  for(let t=0;t<=9;t++){
+    const b=document.createElement("button");
+    b.textContent="T"+t;
+    b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
+    btnT.appendChild(b);
+  }
+
   for(let n=0;n<=36;n++){
     const b=document.createElement("button");
     b.textContent=n;
@@ -129,27 +148,9 @@
     nums.appendChild(b);
   }
 
-  function simularMelhorRotacao(n,filtros){
-
-    let melhor = 0;
-
-    for(let r=-5;r<=5;r++){
-      if(validarNumero(n,filtros,r)){
-        melhor = r;
-        break;
-      }
-    }
-
-    return melhor;
-  }
-
   function add(n){
 
     const filtrosAntes = new Set(analises.MANUAL.filtros);
-
-    // simula antes de registrar
-    melhorRotacao = simularMelhorRotacao(n,filtrosAntes);
-
     registrar(n,filtrosAntes);
 
     timeline.unshift(n);
@@ -167,12 +168,48 @@
 
   function render(){
 
-    bestRot.innerText = melhorRotacao;
-
     tl.innerHTML = timeline.map((n,i)=>{
       const r=analises.MANUAL.res[i];
       const c=r==="V"?"#00e676":r==="X"?"#ff5252":"#aaa";
       return `<span style="color:${c}">${n}</span>`;
+    }).join(" · ");
+
+    const filtros = analises.MANUAL.filtros;
+
+    const trios = triosSelecionados(filtros);
+
+    const por={ZERO:[],TIERS:[],ORPHELINS:[]};
+    trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
+
+    cZERO.innerHTML=por.ZERO.join("<div></div>");
+    cTIERS.innerHTML=por.TIERS.join("<div></div>");
+    cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      b.style.background =
+        filtros.has(t) ? corTerminal[t] : "#444";
+    });
+
+    const mapaCores = {};
+
+    filtros.forEach(t=>{
+      track.forEach(n=>{
+        if(terminal(n)===t){
+          vizinhosRace(n).forEach(v=>{
+            if(!mapaCores[v])
+              mapaCores[v]=corTerminal[t];
+          });
+        }
+      });
+    });
+
+    tlConj.innerHTML = timeline.map(n=>{
+      const cor = mapaCores[n] || "#333";
+      return `<span style="
+        color:${cor};
+        font-weight:${mapaCores[n]?"700":"400"};
+      ">${n}</span>`;
     }).join(" · ");
   }
 
