@@ -111,7 +111,6 @@
     });
   }
 
-  // ================= UI =================
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -142,15 +141,6 @@
         ${["MANUAL","VIZINHO","NUNUM"].map(m=>`
           <button class="modo" data-m="${m}"
             style="padding:6px;background:#444;color:#fff;border:1px solid #666">${m}</button>`).join("")}
-        <button id="btnConj" style="padding:6px;background:#444;color:#fff;border:1px solid #666">
-          CONJUNTOS
-        </button>
-      </div>
-
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        ${[3,4,5,6,7].map(n=>`
-          <button class="auto" data-a="${n}"
-            style="padding:6px;background:#444;color:#fff;border:1px solid #666">A${n}</button>`).join("")}
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -164,51 +154,25 @@
         <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
 
-      <!-- LINHA SECUNDÁRIA -->
       <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
 
-  // ================= EVENTOS =================
-  jan.onchange=e=>{ janela=+e.target.value; render(); };
-
-  document.querySelectorAll(".modo").forEach(b=>{
-    b.onclick=()=>{
-      modoAtivo=b.dataset.m;
-      render();
-    };
-  });
-
-  document.querySelectorAll(".auto").forEach(b=>{
-    b.onclick=()=>{
-      modoAtivo="AUTO";
-      autoTAtivo=+b.dataset.a;
-      calcularAutoT(autoTAtivo);
-      render();
-    };
-  });
-
-  btnConj.onclick=()=>{
-    modoConjuntos=!modoConjuntos;
-    btnConj.style.background = modoConjuntos?"#00e676":"#444";
-    modoAtivo="MANUAL";
-    render();
-  };
-
   for(let t=0;t<=9;t++){
     const b=document.createElement("button");
     b.textContent="T"+t;
     b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
     b.onclick=()=>{
-      analises.MANUAL.filtros.has(t)
-        ? analises.MANUAL.filtros.delete(t)
-        : analises.MANUAL.filtros.add(t);
 
-      filtrosConjuntos.has(t)
-        ? filtrosConjuntos.delete(t)
-        : filtrosConjuntos.add(t);
+      if(analises.MANUAL.filtros.has(t)){
+        analises.MANUAL.filtros.delete(t);
+        filtrosConjuntos.delete(t);
+      } else {
+        analises.MANUAL.filtros.add(t);
+        filtrosConjuntos.add(t);
+      }
 
       render();
     };
@@ -235,10 +199,7 @@
 
   function render(){
 
-    const res =
-      modoAtivo==="AUTO"
-        ? analises.AUTO[autoTAtivo]?.res || []
-        : analises[modoAtivo].res;
+    const res = analises.MANUAL.res;
 
     tl.innerHTML = timeline.map((n,i)=>{
       const r=res[i];
@@ -246,10 +207,13 @@
       return `<span style="color:${c}">${n}</span>`;
     }).join(" · ");
 
-    const filtros =
-      modoAtivo==="AUTO"
-        ? analises.AUTO[autoTAtivo].filtros
-        : analises[modoAtivo].filtros;
+    const filtros = analises.MANUAL.filtros;
+
+    document.querySelectorAll("#btnT button").forEach(b=>{
+      const t=+b.textContent.slice(1);
+      b.style.background =
+        filtros.has(t) ? "#00e676" : "#444";
+    });
 
     const trios = triosSelecionados(filtros);
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
@@ -258,17 +222,21 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    conjArea.style.display = modoConjuntos ? "block" : "none";
+    // ===== Linha Secundária automática quando T ligado =====
 
-    if(modoConjuntos){
+    if(filtros.size > 0){
+
       const marcados=new Set();
-      filtrosConjuntos.forEach(t=>{
+
+      filtros.forEach(t=>{
         track.forEach(n=>{
           if(terminal(n)===t){
             vizinhosRace(n).forEach(v=>marcados.add(v));
           }
         });
       });
+
+      conjArea.style.display = "block";
 
       conjArea.innerHTML = `
         <div style="
@@ -287,6 +255,8 @@
           `).join("")}
         </div>
       `;
+    } else {
+      conjArea.style.display = "none";
     }
   }
 
