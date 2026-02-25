@@ -1,20 +1,15 @@
 (function () {
 
+  // ================= CONFIG BASE =================
   const track = [
     32,15,19,4,21,2,25,17,34,6,
     27,13,36,11,30,8,23,10,5,24,
     16,33,1,20,14,31,9,22,18,29,
     7,28,12,35,3,26,0
   ];
-
   const terminal = n => n % 10;
 
-  const corTerminal = {
-    0:"#ff5252",1:"#ff9800",2:"#ffc107",3:"#00e676",
-    4:"#00bcd4",5:"#2196f3",6:"#9c27b0",7:"#e91e63",
-    8:"#8bc34a",9:"#ffffff"
-  };
-
+  // ================= TABELA COMPLETA ATUALIZADA =================
   const tabelaJogada = {
     0:[2,3,7],1:[3,5,9],2:[3,5,9],3:[5,6,9],4:[0,4,8],
     5:[0,5,7],6:[0,6,7],7:[0,7,9],8:[3,5,9],9:[3,5,9],
@@ -33,57 +28,62 @@
   ];
 
   let timeline = [];
-  let rotacao = 0;
+  let rotaçãoGlobal = 0;
 
-  let analises = { MANUAL: { filtros:new Set(), res:[] } };
+  let analises = {
+    MANUAL: { filtros:new Set(), res:[] }
+  };
 
   function vizinhosRace(n){
     const i = track.indexOf(n);
     return [ track[(i+36)%37], n, track[(i+1)%37] ];
   }
 
-  function rotacionarNumero(n, offset){
-    const i = track.indexOf(n);
-    return track[(i + offset + 37) % 37];
-  }
-
   function triosSelecionados(filtros){
-
-    let selecionados=[];
-    let restantes=[];
-
+    let lista=[];
     eixos.forEach(e=>{
       e.trios.forEach(trio=>{
         const inter = trio.map(terminal)
           .filter(t=>!filtros.size||filtros.has(t)).length;
-
-        const obj = {eixo:e.nome,trio};
-
-        if(inter>0) selecionados.push(obj);
-        else restantes.push(obj);
+        if(inter>0) lista.push({eixo:e.nome,trio});
       });
     });
-
-    const todos = [...selecionados, ...restantes].slice(0,9);
-
-    // aplica rotação
-    return todos.map(x=>{
-      return {
-        eixo:x.eixo,
-        trio:x.trio.map(n=>rotacionarNumero(n,rotacao))
-      };
-    });
+    return lista.slice(0,9);
   }
 
   function validarNumero(n, filtros){
-    return triosSelecionados(filtros)
-      .some(x=>x.trio.includes(n));
+    return triosSelecionados(filtros).some(x=>x.trio.includes(n));
   }
 
-  function registrar(n, filtrosAtivos){
-    analises.MANUAL.res.unshift(
-      validarNumero(n,filtrosAtivos)?"V":"X"
-    );
+  function rotacionarTerminal(t){
+    return (t + rotaçãoGlobal + 10) % 10;
+  }
+
+  function recalcularTudo(){
+
+    analises.MANUAL.res = [];
+    analises.MANUAL.filtros.clear();
+
+    const copiaTimeline = [...timeline].reverse(); // do mais antigo ao mais recente
+
+    copiaTimeline.forEach(n=>{
+
+      const filtrosAntes = new Set(analises.MANUAL.filtros);
+
+      analises.MANUAL.res.unshift(
+        validarNumero(n,filtrosAntes)?"V":"X"
+      );
+
+      if(tabelaJogada[n]){
+        analises.MANUAL.filtros.clear();
+        tabelaJogada[n].forEach(t=>{
+          analises.MANUAL.filtros.add(rotacionarTerminal(t));
+        });
+      }
+
+    });
+
+    render();
   }
 
   document.body.style.background="#111";
@@ -92,12 +92,13 @@
 
   document.body.innerHTML = `
     <div style="padding:10px;max-width:1000px;margin:auto">
-
       <h3 style="text-align:center">CSM</h3>
 
-      Rotação:
-      <input type="range" min="-5" max="5" value="0" id="rot">
-      <span id="rotVal">0</span>
+      <div style="margin-bottom:10px">
+        Rotação:
+        <input type="range" min="-5" max="5" value="0" id="rotRange">
+        <span id="rotVal">0</span>
+      </div>
 
       <div style="margin:10px 0">
         🕒 Timeline:
@@ -116,21 +117,18 @@
       </div>
 
       <div style="margin-top:15px;border:1px solid #444;padding:6px">
-        <b>Timeline Conjuntos</b>
+        <b>Timeline Conjuntos (Vizinhos Race)</b>
         <div id="tlConj"></div>
       </div>
 
-      <div id="nums"
-        style="display:grid;grid-template-columns:repeat(9,1fr);
-        gap:6px;margin-top:12px"></div>
-
+      <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
   `;
 
-  rot.oninput = function(){
-    rotacao = +this.value;
-    rotVal.innerText = rotacao;
-    render();
+  rotRange.oninput = function(){
+    rotaçãoGlobal = parseInt(this.value);
+    rotVal.innerText = rotaçãoGlobal;
+    recalcularTudo();
   };
 
   for(let t=0;t<=9;t++){
@@ -149,21 +147,9 @@
   }
 
   function add(n){
-
-    const filtrosAntes = new Set(analises.MANUAL.filtros);
-    registrar(n,filtrosAntes);
-
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
-
-    if(tabelaJogada[n]){
-      analises.MANUAL.filtros.clear();
-      tabelaJogada[n].forEach(t=>{
-        analises.MANUAL.filtros.add(t);
-      });
-    }
-
-    render();
+    recalcularTudo();
   }
 
   function render(){
@@ -177,10 +163,8 @@
     const filtros = analises.MANUAL.filtros;
 
     const trios = triosSelecionados(filtros);
-
     const por={ZERO:[],TIERS:[],ORPHELINS:[]};
     trios.forEach(x=>por[x.eixo].push(x.trio.join("-")));
-
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
@@ -188,27 +172,26 @@
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.slice(1);
       b.style.background =
-        filtros.has(t) ? corTerminal[t] : "#444";
+        filtros.has(t) ? "#00e676" : "#444";
     });
 
-    const mapaCores = {};
+    const numerosMarcados = new Set();
 
     filtros.forEach(t=>{
       track.forEach(n=>{
         if(terminal(n)===t){
           vizinhosRace(n).forEach(v=>{
-            if(!mapaCores[v])
-              mapaCores[v]=corTerminal[t];
+            numerosMarcados.add(v);
           });
         }
       });
     });
 
     tlConj.innerHTML = timeline.map(n=>{
-      const cor = mapaCores[n] || "#333";
+      const ativo = numerosMarcados.has(n);
       return `<span style="
-        color:${cor};
-        font-weight:${mapaCores[n]?"700":"400"};
+        color:${ativo?"#00e676":"#555"};
+        font-weight:${ativo?"700":"400"};
       ">${n}</span>`;
     }).join(" · ");
   }
