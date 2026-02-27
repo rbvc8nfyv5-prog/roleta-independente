@@ -20,7 +20,7 @@
     6:"#9c27b0",
     7:"#e91e63",
     8:"#8bc34a",
-    9:"#ffffff"
+    9:"#ff00ff"
   };
 
   const eixos = [
@@ -89,6 +89,12 @@
         <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
 
+      <!-- ===== QUADRO ÍMPARES / PARES (ADICIONADO) ===== -->
+      <div style="margin-top:15px;border:1px solid #444;padding:8px">
+        <b>Ímpares / Pares (Últimos 14)</b>
+        <div id="parImparBox" style="margin-top:6px;font-weight:700;font-size:16px"></div>
+      </div>
+
       <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
@@ -100,7 +106,6 @@
     b.textContent="T"+t;
     b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
     b.onclick=()=>{
-
       if(analises.MANUAL.filtros.has(t)){
         analises.MANUAL.filtros.delete(t);
         filtrosConjuntos.delete(t);
@@ -108,7 +113,6 @@
         analises.MANUAL.filtros.add(t);
         filtrosConjuntos.add(t);
       }
-
       render();
     };
     btnT.appendChild(b);
@@ -153,6 +157,39 @@
     cZERO.innerHTML=por.ZERO.join("<div></div>");
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
+
+    // ===== CONTAGEM ÍMPARES / PARES =====
+
+    let pares = 0;
+    let impares = 0;
+
+    timeline.forEach(n=>{
+      if(n === 0) return;
+      if(n % 2 === 0) pares++;
+      else impares++;
+    });
+
+    const corMaior = "#ff6d00";     // Laranja fluorescente
+    const corMenor = "#00e5ff";     // Azul fluorescente
+
+    let corPar = "#fff";
+    let corImpar = "#fff";
+
+    if(pares > impares){
+      corPar = corMaior;
+      corImpar = corMenor;
+    } else if(impares > pares){
+      corImpar = corMaior;
+      corPar = corMenor;
+    }
+
+    parImparBox.innerHTML = `
+      <span style="color:${corImpar}">Ímpares: ${impares}</span>
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <span style="color:${corPar}">Pares: ${pares}</span>
+    `;
+
+    // ===== LINHA SECUNDÁRIA ORIGINAL =====
 
     if(filtros.size > 0){
 
