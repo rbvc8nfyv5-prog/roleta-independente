@@ -73,6 +73,10 @@
     <div style="padding:10px;max-width:1000px;margin:auto">
       <h3 style="text-align:center">CSM</h3>
 
+      <div style="display:flex;justify-content:center;margin-bottom:10px">
+        <canvas id="radar" width="260" height="260"></canvas>
+      </div>
+
       <div style="margin:10px 0">
         🕒 Timeline:
         <span id="tl" style="font-size:18px;font-weight:600"></span>
@@ -89,7 +93,6 @@
         <div><b>ORPHELINS</b><div id="cORPH"></div></div>
       </div>
 
-      <!-- ===== QUADRO ÍMPARES / PARES (ADICIONADO) ===== -->
       <div style="margin-top:15px;border:1px solid #444;padding:8px">
         <b>Ímpares / Pares (Últimos 14)</b>
         <div id="parImparBox" style="margin-top:6px;font-weight:700;font-size:16px"></div>
@@ -133,6 +136,58 @@
     render();
   }
 
+  function desenharRadar(){
+
+    const canvas = document.getElementById("radar");
+    const ctx = canvas.getContext("2d");
+
+    ctx.clearRect(0,0,260,260);
+
+    const cx = 130;
+    const cy = 130;
+    const r = 110;
+
+    const ang = (Math.PI*2)/track.length;
+
+    const ativos = new Set(timeline);
+
+    for(let i=0;i<track.length;i++){
+
+      const a1 = i*ang + Math.PI/2;
+      const a2 = a1 + ang;
+
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,a1,a2);
+      ctx.closePath();
+
+      ctx.fillStyle="#1c1c1c";
+      ctx.fill();
+
+      const meio = (a1+a2)/2;
+
+      const tx = cx + Math.cos(meio)*(r-25);
+      const ty = cy + Math.sin(meio)*(r-25);
+
+      let corNumero="#fff";
+
+      if(ativos.has(track[i])){
+        corNumero="#00e676";
+      }
+
+      ctx.fillStyle=corNumero;
+      ctx.font="9px Arial";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText(track[i],tx,ty);
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx,cy,45,0,Math.PI*2);
+    ctx.fillStyle="#111";
+    ctx.fill();
+  }
+
   function render(){
 
     const res = analises.MANUAL.res;
@@ -158,8 +213,6 @@
     cTIERS.innerHTML=por.TIERS.join("<div></div>");
     cORPH.innerHTML=por.ORPHELINS.join("<div></div>");
 
-    // ===== CONTAGEM ÍMPARES / PARES =====
-
     let pares = 0;
     let impares = 0;
 
@@ -169,8 +222,8 @@
       else impares++;
     });
 
-    const corMaior = "#ff6d00";     // Laranja fluorescente
-    const corMenor = "#00e5ff";     // Azul fluorescente
+    const corMaior = "#ff6d00";
+    const corMenor = "#00e5ff";
 
     let corPar = "#fff";
     let corImpar = "#fff";
@@ -188,8 +241,6 @@
       &nbsp;&nbsp;|&nbsp;&nbsp;
       <span style="color:${corPar}">Pares: ${pares}</span>
     `;
-
-    // ===== LINHA SECUNDÁRIA ORIGINAL =====
 
     if(filtros.size > 0){
 
@@ -229,6 +280,8 @@
     } else {
       conjArea.style.display = "none";
     }
+
+    desenharRadar();
   }
 
   render();
