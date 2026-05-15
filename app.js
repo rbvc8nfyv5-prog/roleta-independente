@@ -28,6 +28,7 @@
   let analise100Ativa = false;
   let analiseColunasAtiva = false;
   let colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
+  let validacoesColuna = [];
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] }
@@ -166,29 +167,67 @@
     atualizarModosPorOrdem();
   }
 
-  function analisarColunas(){
+  function calcularJogadasColunas(){
     const base = historicoCompleto.slice().reverse();
-    const colunas = 12;
-    let html = "";
+    const mapa = {};
 
-    for(let c=0;c<colunas;c++){
-      const cont = {};
-      for(let t=0;t<=9;t++) cont[t]=0;
+    colunasTopo.forEach(cId=>{
+      let melhor = null;
 
-      for(let t=0;t<=9;t++){
-        const cobertura = coberturaTerminal(t,1);
+      for(let t2=0;t2<=9;t2++){
+        for(let t1=0;t1<=9;t1++){
 
-        for(let i=c;i<base.length;i+=colunas){
-          if(cobertura.has(base[i])){
-            cont[t]++;
+          if(t1 === t2) continue;
+
+          const cov2 = coberturaTerminal(t2,2);
+          const cov1 = coberturaTerminal(t1,1);
+          const cobertura = new Set([...cov2, ...cov1]);
+
+          let green = 0;
+          let red = 0;
+
+          for(let i=0;i<base.length;i++){
+            const colunaDoNumero = colunasTopo[i % 12];
+
+            if(colunaDoNumero === cId){
+              if(cobertura.has(base[i])){
+                green++;
+              } else {
+                red++;
+              }
+            }
+          }
+
+          const total = green + red;
+          const taxa = total ? green / total : 0;
+
+          const teste = { cId, t2, t1, green, red, taxa };
+
+          if(
+            !melhor ||
+            teste.green > melhor.green ||
+            (teste.green === melhor.green && teste.red < melhor.red) ||
+            (teste.green === melhor.green && teste.red === melhor.red && teste.taxa > melhor.taxa)
+          ){
+            melhor = teste;
           }
         }
       }
 
-      const top = Object.entries(cont)
-        .sort((a,b)=>b[1]-a[1])
-        .slice(0,2)
-        .map(x=>Number(x[0]));
+      mapa[cId] = melhor;
+    });
+
+    return mapa;
+  }
+
+  function analisarColunas(){
+    const jogadas = calcularJogadasColunas();
+    let html = "";
+
+    colunasTopo.forEach(cId=>{
+      const j = jogadas[cId];
+
+      if(!j) return;
 
       html += `
         <span style="
@@ -201,14 +240,27 @@
           font-size:12px;
           color:#fff;
         ">
-          C${c+1}: 
-          <b style="color:${corTerminal[top[0]]}">T${top[0]}</b> /
-          <b style="color:${corTerminal[top[1]]}">T${top[1]}</b>
+          C${cId}: 
+          <b style="color:${corTerminal[j.t2]}">T${j.t2} 2v</b> /
+          <b style="color:${corTerminal[j.t1]}">T${j.t1} 1v</b>
         </span>
       `;
-    }
+    });
 
     return html;
+  }
+
+  function validarEntradaColuna(n, colunaId){
+    const jogadas = calcularJogadasColunas();
+    const j = jogadas[colunaId];
+
+    if(!j) return null;
+
+    const cov2 = coberturaTerminal(j.t2,2);
+    const cov1 = coberturaTerminal(j.t1,1);
+    const cobertura = new Set([...cov2, ...cov1]);
+
+    return cobertura.has(n) ? "V" : "X";
   }
 
   document.body.style.background="#111";
@@ -269,6 +321,7 @@
         .filter(n=>n>=0 && n<=36);
 
       timeline = historicoCompleto.slice(-14).reverse();
+      validacoesColuna = timeline.map(()=>null);
       colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
 
       inputHist.style.display="none";
@@ -331,6 +384,7 @@
   btnUndo.onclick = ()=>{
     if(!timeline.length) return;
     timeline.shift();
+    validacoesColuna.shift();
     historicoCompleto.pop();
 
     if(analiseColunasAtiva){
@@ -346,6 +400,7 @@
   btnClear.onclick = ()=>{
     timeline = [];
     historicoCompleto = [];
+    validacoesColuna = [];
     ordemSelecionados.length = 0;
     analises.MANUAL.filtros.clear();
     faixa10Ativa = false;
@@ -356,8 +411,19 @@
   };
 
   function add(n){
+    let resultadoColuna = null;
+    let colunaEntrada = null;
+
+    if(analiseColunasAtiva){
+      colunaEntrada = colunasTopo[colunasTopo.length - 1];
+      resultadoColuna = validarEntradaColuna(n, colunaEntrada);
+    }
+
     timeline.unshift(n);
+    validacoesColuna.unshift(resultadoColuna);
+
     if(timeline.length>14) timeline.pop();
+    if(validacoesColuna.length>14) validacoesColuna.pop();
 
     if(analiseColunasAtiva){
       const ultimo = colunasTopo.pop();
@@ -412,7 +478,15 @@
 
   function render(){
 
-    tl.innerHTML = timeline.join(" · ");
+    tl.innerHTML = timeline.map((n,i)=>{
+      const r = validacoesColuna[i];
+      const cor =
+        r === "V" ? "#00e676" :
+        r === "X" ? "#ff5252" :
+        "#fff";
+
+      return `<span style="color:${cor}">${n}</span>`;
+    }).join(" · ");
 
     btn10.style.background = faixa10Ativa ? "#ffc107" : "";
     btn10.style.color = faixa10Ativa ? "#000" : "";
