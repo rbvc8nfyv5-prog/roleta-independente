@@ -168,53 +168,130 @@
   }
 
   function calcularJogadasColunas(){
-    const base = historicoCompleto.slice().reverse();
+
+    const base = timeline.slice();
     const mapa = {};
 
     colunasTopo.forEach(cId=>{
-      let melhor = null;
 
-      for(let t2=0;t2<=9;t2++){
-        for(let t1=0;t1<=9;t1++){
+      const numerosColuna = [];
 
-          if(t1 === t2) continue;
+      for(let i=0;i<base.length;i++){
+        const colunaAtual = colunasTopo[i % 12];
 
-          const cov2 = coberturaTerminal(t2,2);
-          const cov1 = coberturaTerminal(t1,1);
-          const cobertura = new Set([...cov2, ...cov1]);
-
-          let green = 0;
-          let red = 0;
-
-          for(let i=0;i<base.length;i++){
-            const colunaDoNumero = colunasTopo[i % 12];
-
-            if(colunaDoNumero === cId){
-              if(cobertura.has(base[i])){
-                green++;
-              } else {
-                red++;
-              }
-            }
-          }
-
-          const total = green + red;
-          const taxa = total ? green / total : 0;
-
-          const teste = { cId, t2, t1, green, red, taxa };
-
-          if(
-            !melhor ||
-            teste.green > melhor.green ||
-            (teste.green === melhor.green && teste.red < melhor.red) ||
-            (teste.green === melhor.green && teste.red === melhor.red && teste.taxa > melhor.taxa)
-          ){
-            melhor = teste;
-          }
+        if(colunaAtual === cId){
+          numerosColuna.push(base[i]);
         }
       }
 
-      mapa[cId] = melhor;
+      if(!numerosColuna.length) return;
+
+      let melhorBase = null;
+
+      for(let t1=0;t1<=9;t1++){
+
+        const cov1 = coberturaTerminal(t1,1);
+
+        let green = 0;
+        let red = 0;
+        let score = 0;
+
+        numerosColuna.forEach((n,i)=>{
+
+          const peso =
+            i <= 1 ? 6 :
+            i <= 3 ? 4 :
+            i <= 6 ? 2 : 1;
+
+          if(cov1.has(n)){
+            green++;
+            score += peso * 3;
+          } else {
+            red++;
+            score -= peso * 4;
+          }
+        });
+
+        const teste = {
+          t1,
+          green,
+          red,
+          score
+        };
+
+        if(
+          !melhorBase ||
+          teste.score > melhorBase.score ||
+          (
+            teste.score === melhorBase.score &&
+            teste.red < melhorBase.red
+          )
+        ){
+          melhorBase = teste;
+        }
+      }
+
+      if(!melhorBase) return;
+
+      let melhorComplemento = null;
+
+      for(let t2=0;t2<=9;t2++){
+
+        if(t2 === melhorBase.t1) continue;
+
+        const cov1 = coberturaTerminal(melhorBase.t1,1);
+        const cov2 = coberturaTerminal(t2,2);
+
+        const cobertura = new Set([
+          ...cov1,
+          ...cov2
+        ]);
+
+        let green = 0;
+        let red = 0;
+        let score = 0;
+
+        numerosColuna.forEach((n,i)=>{
+
+          const peso =
+            i <= 1 ? 6 :
+            i <= 3 ? 4 :
+            i <= 6 ? 2 : 1;
+
+          if(cobertura.has(n)){
+            green++;
+            score += peso * 2;
+          } else {
+            red++;
+            score -= peso * 5;
+          }
+        });
+
+        if(t2 === 0 || t2 === 2){
+          score -= 8;
+        }
+
+        const teste = {
+          t1: melhorBase.t1,
+          t2,
+          green,
+          red,
+          score
+        };
+
+        if(
+          !melhorComplemento ||
+          teste.score > melhorComplemento.score ||
+          (
+            teste.score === melhorComplemento.score &&
+            teste.red < melhorComplemento.red
+          )
+        ){
+          melhorComplemento = teste;
+        }
+      }
+
+      mapa[cId] = melhorComplemento;
     });
 
     return mapa;
@@ -241,8 +318,8 @@
           color:#fff;
         ">
           C${cId}: 
-          <b style="color:${corTerminal[j.t2]}">T${j.t2} 2v</b> /
-          <b style="color:${corTerminal[j.t1]}">T${j.t1} 1v</b>
+          <b style="color:${corTerminal[j.t1]}">T${j.t1} 1v</b> /
+          <b style="color:${corTerminal[j.t2]}">T${j.t2} 2v</b>
         </span>
       `;
     });
@@ -256,9 +333,9 @@
 
     if(!j) return null;
 
-    const cov2 = coberturaTerminal(j.t2,2);
     const cov1 = coberturaTerminal(j.t1,1);
-    const cobertura = new Set([...cov2, ...cov1]);
+    const cov2 = coberturaTerminal(j.t2,2);
+    const cobertura = new Set([...cov1, ...cov2]);
 
     return cobertura.has(n) ? "V" : "X";
   }
