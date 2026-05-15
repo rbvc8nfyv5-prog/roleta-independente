@@ -27,6 +27,7 @@
   let faixa10Ativa = false;
   let analise100Ativa = false;
   let analiseColunasAtiva = false;
+  let colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] }
@@ -167,15 +168,21 @@
 
   function analisarColunas(){
     const base = historicoCompleto.slice().reverse();
-    const colunas = 14;
+    const colunas = 12;
     let html = "";
 
     for(let c=0;c<colunas;c++){
       const cont = {};
       for(let t=0;t<=9;t++) cont[t]=0;
 
-      for(let i=c;i<base.length;i+=colunas){
-        cont[terminal(base[i])]++;
+      for(let t=0;t<=9;t++){
+        const cobertura = coberturaTerminal(t,1);
+
+        for(let i=c;i<base.length;i+=colunas){
+          if(cobertura.has(base[i])){
+            cont[t]++;
+          }
+        }
       }
 
       const top = Object.entries(cont)
@@ -262,6 +269,8 @@
         .filter(n=>n>=0 && n<=36);
 
       timeline = historicoCompleto.slice(-14).reverse();
+      colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
+
       inputHist.style.display="none";
 
       if(analise100Ativa) aplicarAnalise100();
@@ -324,6 +333,11 @@
     timeline.shift();
     historicoCompleto.pop();
 
+    if(analiseColunasAtiva){
+      const primeiro = colunasTopo.shift();
+      colunasTopo.push(primeiro);
+    }
+
     if(analise100Ativa) aplicarAnalise100();
 
     render();
@@ -337,12 +351,19 @@
     faixa10Ativa = false;
     analise100Ativa = false;
     analiseColunasAtiva = false;
+    colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
     render();
   };
 
   function add(n){
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
+
+    if(analiseColunasAtiva){
+      const ultimo = colunasTopo.pop();
+      colunasTopo.unshift(ultimo);
+    }
+
     historicoCompleto.push(n);
 
     if(analise100Ativa) aplicarAnalise100();
@@ -455,7 +476,26 @@
       conjArea.style.display = "block";
 
       conjArea.innerHTML = `
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(26px,1fr));gap:4px">
+        ${analiseColunasAtiva ? `
+          <div style="
+            display:grid;
+            grid-template-columns:repeat(12,minmax(26px,1fr));
+            gap:4px;
+            margin-bottom:4px;
+            font-size:10px;
+            font-weight:700;
+            color:#ffc107;
+            text-align:center;
+          ">
+            ${colunasTopo.map(c=>`
+              <div style="border:1px solid #555;background:#111;border-radius:4px;padding:2px">
+                C${c}
+              </div>
+            `).join("")}
+          </div>
+        ` : ``}
+
+        <div style="display:grid;grid-template-columns:${analiseColunasAtiva ? 'repeat(12,minmax(26px,1fr))' : 'repeat(auto-fit,minmax(26px,1fr))'};gap:4px">
           ${base.map(n=>`
             <div style="
               height:26px;
