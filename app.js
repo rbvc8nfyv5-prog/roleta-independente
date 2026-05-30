@@ -227,6 +227,13 @@ Giros: ${c.total}`;
       if(!ok) return;
     }
 
+    timeline = [];
+    historicoCompleto = [];
+    expandido = false;
+    analises.MANUAL.filtros.clear();
+    ordemSelecionados.length = 0;
+    for(let t=0;t<=9;t++) modosTerminais[t] = 0;
+
     crupierAtivo = true;
     crupierNome = nome;
     crupierNumeros = [];
@@ -378,6 +385,8 @@ Giros: ${c.total}`;
     } else {
       iniciarNovoCrupier();
     }
+
+    if(analise100Ativa) aplicarAnalise100();
 
     render();
   };
