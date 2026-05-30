@@ -230,6 +230,10 @@ Giros: ${c.total}`;
     crupierAtivo = true;
     crupierNome = nome;
     crupierNumeros = [];
+
+    inputHist.value = "";
+    inputHist.placeholder = "Cole histórico deste crupiê aqui";
+    inputHist.style.display = "block";
   }
 
   function renderCrupierBox(){
@@ -334,10 +338,19 @@ Giros: ${c.total}`;
 
   inputHist.addEventListener("paste", ()=>{
     setTimeout(()=>{
-      historicoCompleto = inputHist.value
+      const numerosColados = inputHist.value
         .split(/[\s,;|]+/)
         .map(Number)
         .filter(n=>n>=0 && n<=36);
+
+      if(crupierAtivo){
+        numerosColados.forEach(n=>{
+          historicoCompleto.push(n);
+          crupierNumeros.push(n);
+        });
+      } else {
+        historicoCompleto = numerosColados;
+      }
 
       timeline = historicoCompleto.slice(-14).reverse();
       inputHist.style.display="none";
@@ -422,6 +435,9 @@ Giros: ${c.total}`;
     crupierNome = "";
     crupierNumeros = [];
     historicoCrupiers = [];
+    inputHist.value = "";
+    inputHist.placeholder = "Cole histórico aqui";
+    inputHist.style.display = "block";
     render();
   };
 
