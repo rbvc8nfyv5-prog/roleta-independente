@@ -21,14 +21,22 @@
     9:"#ff00ff"
   };
 
+  function corDuzia(n){
+    if(n >= 1 && n <= 12) return "#00e676";
+    if(n >= 13 && n <= 24) return "#ffc107";
+    if(n >= 25 && n <= 36) return "#ff5252";
+    return "#ffffff";
+  }
+
   let timeline = [];
   let historicoCompleto = [];
   let expandido = false;
-  let faixa10Ativa = false;
   let analise100Ativa = false;
-  let analiseColunasAtiva = false;
-  let colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
-  let validacoesColuna = [];
+
+  let crupierAtivo = false;
+  let crupierNome = "";
+  let crupierNumeros = [];
+  let historicoCrupiers = [];
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] }
@@ -101,8 +109,8 @@
     return set;
   }
 
-  function aplicarAnalise100(){
-    if(historicoCompleto.length < 3) return;
+  function melhorAnalise100(base){
+    if(base.length < 3) return null;
 
     let melhor = null;
 
@@ -119,10 +127,10 @@
         let green = 0;
         let red = 0;
 
-        const base = historicoCompleto.slice(-100);
+        const lista = base.slice(-100);
 
-        for(let i=0;i<base.length-1;i++){
-          const prox = base[i+1];
+        for(let i=0;i<lista.length-1;i++){
+          const prox = lista[i+1];
 
           if(cobertura.has(prox)){
             green++;
@@ -153,6 +161,12 @@
       }
     }
 
+    return melhor;
+  }
+
+  function aplicarAnalise100(){
+    const melhor = melhorAnalise100(historicoCompleto);
+
     if(!melhor) return;
 
     analises.MANUAL.filtros.clear();
@@ -167,177 +181,106 @@
     atualizarModosPorOrdem();
   }
 
-  function calcularJogadasColunas(){
+  function salvarCrupierAtual(){
+    if(!crupierAtivo) return;
 
-    const base = timeline.slice();
-    const mapa = {};
+    const melhor = melhorAnalise100(crupierNumeros);
 
-    colunasTopo.forEach(cId=>{
-
-      const numerosColuna = [];
-
-      for(let i=0;i<base.length;i++){
-        const colunaAtual = colunasTopo[i % 12];
-
-        if(colunaAtual === cId){
-          numerosColuna.push(base[i]);
-        }
-      }
-
-      if(!numerosColuna.length) return;
-
-      let melhorBase = null;
-
-      for(let t1=0;t1<=9;t1++){
-
-        const cov1 = coberturaTerminal(t1,1);
-
-        let green = 0;
-        let red = 0;
-        let score = 0;
-
-        numerosColuna.forEach((n,i)=>{
-
-          const peso =
-            i <= 1 ? 6 :
-            i <= 3 ? 4 :
-            i <= 6 ? 2 : 1;
-
-          if(cov1.has(n)){
-            green++;
-            score += peso * 3;
-          } else {
-            red++;
-            score -= peso * 4;
-          }
-        });
-
-        const teste = {
-          t1,
-          green,
-          red,
-          score
-        };
-
-        if(
-          !melhorBase ||
-          teste.score > melhorBase.score ||
-          (
-            teste.score === melhorBase.score &&
-            teste.red < melhorBase.red
-          )
-        ){
-          melhorBase = teste;
-        }
-      }
-
-      if(!melhorBase) return;
-
-      let melhorComplemento = null;
-
-      for(let t2=0;t2<=9;t2++){
-
-        if(t2 === melhorBase.t1) continue;
-
-        const cov1 = coberturaTerminal(melhorBase.t1,1);
-        const cov2 = coberturaTerminal(t2,2);
-
-        const cobertura = new Set([
-          ...cov1,
-          ...cov2
-        ]);
-
-        let green = 0;
-        let red = 0;
-        let score = 0;
-
-        numerosColuna.forEach((n,i)=>{
-
-          const peso =
-            i <= 1 ? 6 :
-            i <= 3 ? 4 :
-            i <= 6 ? 2 : 1;
-
-          if(cobertura.has(n)){
-            green++;
-            score += peso * 2;
-          } else {
-            red++;
-            score -= peso * 5;
-          }
-        });
-
-        if(t2 === 0 || t2 === 2){
-          score -= 8;
-        }
-
-        const teste = {
-          t1: melhorBase.t1,
-          t2,
-          green,
-          red,
-          score
-        };
-
-        if(
-          !melhorComplemento ||
-          teste.score > melhorComplemento.score ||
-          (
-            teste.score === melhorComplemento.score &&
-            teste.red < melhorComplemento.red
-          )
-        ){
-          melhorComplemento = teste;
-        }
-      }
-
-      mapa[cId] = melhorComplemento;
+    historicoCrupiers.push({
+      nome: crupierNome,
+      total: crupierNumeros.length,
+      numeros: crupierNumeros.slice(),
+      melhor
     });
 
-    return mapa;
+    crupierAtivo = false;
+    crupierNome = "";
+    crupierNumeros = [];
   }
 
-  function analisarColunas(){
-    const jogadas = calcularJogadasColunas();
+  function resumoUltimoCrupier(nome){
+    const sessoes = historicoCrupiers.filter(c => c.nome.toLowerCase() === nome.toLowerCase());
+    if(!sessoes.length) return "";
+
+    const c = sessoes[sessoes.length - 1];
+
+    if(!c.melhor){
+      return `${nome}\nÚltima sessão: sem dados suficientes\nGiros: ${c.total}`;
+    }
+
+    return `${nome}
+Última sessão:
+T${c.melhor.t2} 2v / T${c.melhor.t1} 1v
+Green: ${c.melhor.green}
+Red: ${c.melhor.red}
+Taxa: ${(c.melhor.taxa*100).toFixed(1)}%
+Giros: ${c.total}`;
+  }
+
+  function iniciarNovoCrupier(){
+    const nome = prompt("Nome do crupiê:");
+    if(!nome) return;
+
+    const resumo = resumoUltimoCrupier(nome);
+    if(resumo){
+      const ok = confirm(resumo + "\n\nIniciar nova sessão para esse crupiê?");
+      if(!ok) return;
+    }
+
+    crupierAtivo = true;
+    crupierNome = nome;
+    crupierNumeros = [];
+  }
+
+  function renderCrupierBox(){
+    if(!historicoCrupiers.length && !crupierAtivo){
+      return "";
+    }
+
     let html = "";
 
-    colunasTopo.forEach(cId=>{
-      const j = jogadas[cId];
-
-      if(!j) return;
-
+    if(crupierAtivo){
       html += `
-        <span style="
-          display:inline-block;
-          margin:2px;
-          padding:4px 6px;
-          background:#222;
-          border:1px solid #555;
-          border-radius:4px;
-          font-size:12px;
+        <div style="
+          margin-top:8px;
+          padding:6px;
+          border:1px solid #00e676;
+          background:#102015;
           color:#fff;
+          font-size:12px;
+          border-radius:4px;
         ">
-          C${cId}: 
-          <b style="color:${corTerminal[j.t1]}">T${j.t1} 1v</b> /
-          <b style="color:${corTerminal[j.t2]}">T${j.t2} 2v</b>
-        </span>
+          Crupiê ativo: <b style="color:#00e676">${crupierNome}</b>
+          | Giros: <b>${crupierNumeros.length}</b>
+        </div>
+      `;
+    }
+
+    historicoCrupiers.slice().reverse().forEach((c,i)=>{
+      html += `
+        <div style="
+          margin-top:6px;
+          padding:6px;
+          border:1px solid #555;
+          background:#222;
+          color:#fff;
+          font-size:12px;
+          border-radius:4px;
+        ">
+          <b>${c.nome}</b> — Sessão ${historicoCrupiers.length - i}
+          ${c.melhor 
+            ? `<br><span style="color:${corTerminal[c.melhor.t2]}">T${c.melhor.t2} 2v</span> /
+               <span style="color:${corTerminal[c.melhor.t1]}">T${c.melhor.t1} 1v</span>
+               | Green: ${c.melhor.green}
+               | Red: ${c.melhor.red}
+               | Taxa: ${(c.melhor.taxa*100).toFixed(1)}%`
+            : `<br>Sem dados suficientes`}
+          | Giros: ${c.total}
+        </div>
       `;
     });
 
     return html;
-  }
-
-  function validarEntradaColuna(n, colunaId){
-    const jogadas = calcularJogadasColunas();
-    const j = jogadas[colunaId];
-
-    if(!j) return null;
-
-    const cov1 = coberturaTerminal(j.t1,1);
-    const cov2 = coberturaTerminal(j.t2,2);
-    const cobertura = new Set([...cov1, ...cov2]);
-
-    return cobertura.has(n) ? "V" : "X";
   }
 
   document.body.style.background="#111";
@@ -372,19 +315,18 @@
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <button id="btnUndo">Apagar último</button>
         <button id="btnClear">Apagar tudo</button>
-        <button id="btn10">10</button>
         <button id="btnAnalise100">Análise 100</button>
-        <button id="btnAnaliseColunas">Análise Colunas</button>
+        <button id="btnCrupier">Análise Crupiê</button>
       </div>
 
-      <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
+      <div id="crupierBox"></div>
+
+      <div style="border:1px solid #555;padding:8px;margin-bottom:10px;margin-top:10px">
         Terminais:
         <div id="btnT" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
 
       <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
-
-      <div id="analiseColunasBox" style="display:none;margin-top:10px"></div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
@@ -398,9 +340,6 @@
         .filter(n=>n>=0 && n<=36);
 
       timeline = historicoCompleto.slice(-14).reverse();
-      validacoesColuna = timeline.map(()=>null);
-      colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
-
       inputHist.style.display="none";
 
       if(analise100Ativa) aplicarAnalise100();
@@ -408,11 +347,6 @@
       render();
     },0);
   });
-
-  btn10.onclick = ()=>{
-    faixa10Ativa = !faixa10Ativa;
-    render();
-  };
 
   btnAnalise100.onclick = ()=>{
     analise100Ativa = !analise100Ativa;
@@ -424,8 +358,14 @@
     render();
   };
 
-  btnAnaliseColunas.onclick = ()=>{
-    analiseColunasAtiva = !analiseColunasAtiva;
+  btnCrupier.onclick = ()=>{
+    if(crupierAtivo){
+      salvarCrupierAtual();
+      iniciarNovoCrupier();
+    } else {
+      iniciarNovoCrupier();
+    }
+
     render();
   };
 
@@ -444,246 +384,4 @@
         analises.MANUAL.filtros.add(t);
         ordemSelecionados.push(t);
       }
-      atualizarModosPorOrdem();
-      render();
-    };
-    btnT.appendChild(b);
-  }
-
-  for(let n=0;n<=36;n++){
-    const b=document.createElement("button");
-    b.textContent=n;
-    b.style="padding:8px;background:#333;color:#fff";
-    b.onclick=()=>add(n);
-    nums.appendChild(b);
-  }
-
-  btnUndo.onclick = ()=>{
-    if(!timeline.length) return;
-    timeline.shift();
-    validacoesColuna.shift();
-    historicoCompleto.pop();
-
-    if(analiseColunasAtiva){
-      const primeiro = colunasTopo.shift();
-      colunasTopo.push(primeiro);
-    }
-
-    if(analise100Ativa) aplicarAnalise100();
-
-    render();
-  };
-
-  btnClear.onclick = ()=>{
-    timeline = [];
-    historicoCompleto = [];
-    validacoesColuna = [];
-    ordemSelecionados.length = 0;
-    analises.MANUAL.filtros.clear();
-    faixa10Ativa = false;
-    analise100Ativa = false;
-    analiseColunasAtiva = false;
-    colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
-    render();
-  };
-
-  function add(n){
-    let resultadoColuna = null;
-    let colunaEntrada = null;
-
-    if(analiseColunasAtiva){
-      colunaEntrada = colunasTopo[colunasTopo.length - 1];
-      resultadoColuna = validarEntradaColuna(n, colunaEntrada);
-    }
-
-    timeline.unshift(n);
-    validacoesColuna.unshift(resultadoColuna);
-
-    if(timeline.length>14) timeline.pop();
-    if(validacoesColuna.length>14) validacoesColuna.pop();
-
-    if(analiseColunasAtiva){
-      const ultimo = colunasTopo.pop();
-      colunasTopo.unshift(ultimo);
-    }
-
-    historicoCompleto.push(n);
-
-    if(analise100Ativa) aplicarAnalise100();
-
-    render();
-  }
-
-  function desenharRadar(){
-
-    const canvas = document.getElementById("radar");
-    const ctx = canvas.getContext("2d");
-
-    ctx.clearRect(0,0,260,260);
-
-    const cx = 130;
-    const cy = 130;
-    const r = 110;
-    const ang = (Math.PI*2)/track.length;
-
-    const ativos = new Set(timeline);
-
-    for(let i=0;i<track.length;i++){
-      const a1 = i*ang + Math.PI/2;
-      const a2 = a1 + ang;
-
-      ctx.beginPath();
-      ctx.moveTo(cx,cy);
-      ctx.arc(cx,cy,r,a1,a2);
-      ctx.closePath();
-
-      ctx.fillStyle="#1c1c1c";
-      ctx.fill();
-
-      const meio = (a1+a2)/2;
-
-      const tx = cx + Math.cos(meio)*(r-25);
-      const ty = cy + Math.sin(meio)*(r-25);
-
-      let corNumero="#fff";
-      if(ativos.has(track[i])) corNumero="#00e676";
-
-      ctx.fillStyle=corNumero;
-      ctx.fillText(track[i],tx,ty);
-    }
-  }
-
-  function render(){
-
-    tl.innerHTML = timeline.map((n,i)=>{
-      const r = validacoesColuna[i];
-      const cor =
-        r === "V" ? "#00e676" :
-        r === "X" ? "#ff5252" :
-        "#fff";
-
-      return `<span style="color:${cor}">${n}</span>`;
-    }).join(" · ");
-
-    btn10.style.background = faixa10Ativa ? "#ffc107" : "";
-    btn10.style.color = faixa10Ativa ? "#000" : "";
-
-    btnAnalise100.style.background = analise100Ativa ? "#00e676" : "";
-    btnAnalise100.style.color = analise100Ativa ? "#000" : "";
-
-    btnAnaliseColunas.style.background = analiseColunasAtiva ? "#00bcd4" : "";
-    btnAnaliseColunas.style.color = analiseColunasAtiva ? "#000" : "";
-
-    document.querySelectorAll("#btnT button").forEach(b=>{
-      const t=+b.textContent.match(/\d+/)[0];
-      const ativo = analises.MANUAL.filtros.has(t);
-
-      b.style.background = ativo ? corTerminal[t] : "#444";
-
-      if(modosTerminais[t] === 2){
-        b.style.border = "3px solid #fff";
-        b.style.boxShadow = `0 0 10px ${corTerminal[t]}`;
-        b.textContent = `T${t} 2v`;
-      }
-      else if(modosTerminais[t] === 1){
-        b.style.border = "2px solid #999";
-        b.style.boxShadow = "none";
-        b.textContent = `T${t} 1v`;
-      }
-      else{
-        b.style.border = "1px solid #666";
-        b.style.boxShadow = "none";
-        b.textContent = `T${t}`;
-      }
-    });
-
-    if(analises.MANUAL.filtros.size > 0){
-
-      const mapaCores = {};
-      const base = expandido ? historicoCompleto.slice().reverse() : timeline;
-      const ultimoNumero = timeline[0];
-
-      analises.MANUAL.filtros.forEach(t=>{
-        track.forEach(n=>{
-          if(terminal(n)===t){
-
-            if(modosTerminais[t] === 2){
-              vizinhos2(n).forEach(v=>mapaCores[v] = corTerminal[t]);
-
-              segundoVizinho(n).forEach(v=>{
-                mapaCores[v] = clarearCor(corTerminal[t]);
-              });
-
-            } else if(modosTerminais[t] === 1){
-              vizinhos1(n).forEach(v=>{
-                if(!mapaCores[v]) mapaCores[v] = corTerminal[t];
-              });
-            }
-
-          }
-        });
-      });
-
-      conjArea.style.display = "block";
-
-      conjArea.innerHTML = `
-        ${analiseColunasAtiva ? `
-          <div style="
-            display:grid;
-            grid-template-columns:repeat(12,minmax(26px,1fr));
-            gap:4px;
-            margin-bottom:4px;
-            font-size:10px;
-            font-weight:700;
-            color:#ffc107;
-            text-align:center;
-          ">
-            ${colunasTopo.map(c=>`
-              <div style="border:1px solid #555;background:#111;border-radius:4px;padding:2px">
-                C${c}
-              </div>
-            `).join("")}
-          </div>
-        ` : ``}
-
-        <div style="display:grid;grid-template-columns:${analiseColunasAtiva ? 'repeat(12,minmax(26px,1fr))' : 'repeat(auto-fit,minmax(26px,1fr))'};gap:4px">
-          ${base.map(n=>`
-            <div style="
-              height:26px;
-              display:flex;
-              align-items:center;
-              justify-content:center;
-              background:${mapaCores[n] || "#222"};
-              color:#fff;
-              font-size:10px;
-              border-radius:4px;
-              border:${faixa10Ativa && n>=10 && n<=19 ? "3px solid #ffc107" : (n===ultimoNumero ? `3px solid ${mapaCores[n] || '#fff'}` : '1px solid #333')};
-              box-shadow:${n===ultimoNumero ? `0 0 10px ${mapaCores[n] || '#fff'}` : 'none'};
-              animation:${n===ultimoNumero ? 'piscaStrong 0.8s infinite' : 'none'};
-            ">${n}</div>
-          `).join("")}
-        </div>
-      `;
-    } else {
-      conjArea.style.display = "none";
-    }
-
-    if(analiseColunasAtiva && historicoCompleto.length){
-      analiseColunasBox.style.display = "block";
-      analiseColunasBox.innerHTML = analisarColunas();
-    } else {
-      analiseColunasBox.style.display = "none";
-      analiseColunasBox.innerHTML = "";
-    }
-
-    desenharRadar();
-  }
-
-  conjArea.onclick = ()=>{
-    expandido = !expandido;
-    render();
-  };
-
-  render();
-
-})();
+     
