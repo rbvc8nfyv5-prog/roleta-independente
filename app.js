@@ -9,16 +9,8 @@
   const terminal = n => n % 10;
 
   const corTerminal = {
-    0:"#ff5252",
-    1:"#ff9800",
-    2:"#ffc107",
-    3:"#00e676",
-    4:"#00bcd4",
-    5:"#2196f3",
-    6:"#9c27b0",
-    7:"#e91e63",
-    8:"#8bc34a",
-    9:"#ff00ff"
+    0:"#ff5252",1:"#ff9800",2:"#ffc107",3:"#00e676",4:"#00bcd4",
+    5:"#2196f3",6:"#9c27b0",7:"#e91e63",8:"#8bc34a",9:"#ff00ff"
   };
 
   function corDuzia(n){
@@ -38,10 +30,7 @@
   let crupierNumeros = [];
   let historicoCrupiers = [];
 
-  const analises = {
-    MANUAL: { filtros:new Set(), res:[] }
-  };
-
+  const analises = { MANUAL: { filtros:new Set(), res:[] } };
   const modosTerminais = {};
   const ordemSelecionados = [];
   for (let t = 0; t <= 9; t++) modosTerminais[t] = 0;
@@ -51,22 +40,16 @@
     let r = parseInt(hex.substring(0,2),16);
     let g = parseInt(hex.substring(2,4),16);
     let b = parseInt(hex.substring(4,6),16);
-
     r = Math.min(255, Math.floor(r + (255-r)*0.45));
     g = Math.min(255, Math.floor(g + (255-g)*0.45));
     b = Math.min(255, Math.floor(b + (255-b)*0.45));
-
     return "#" + [r,g,b].map(x=>x.toString(16).padStart(2,"0")).join("");
   }
 
   function atualizarModosPorOrdem(){
     for(let t=0;t<=9;t++) modosTerminais[t] = 0;
-    if(ordemSelecionados.length > 0){
-      modosTerminais[ordemSelecionados[0]] = 2;
-    }
-    for(let i=1;i<ordemSelecionados.length;i++){
-      modosTerminais[ordemSelecionados[i]] = 1;
-    }
+    if(ordemSelecionados.length > 0) modosTerminais[ordemSelecionados[0]] = 2;
+    for(let i=1;i<ordemSelecionados.length;i++) modosTerminais[ordemSelecionados[i]] = 1;
   }
 
   function vizinhos1(n){
@@ -76,79 +59,89 @@
 
   function vizinhos2(n){
     const i = track.indexOf(n);
-    return [
-      track[(i+35)%37],
-      track[(i+36)%37],
-      n,
-      track[(i+1)%37],
-      track[(i+2)%37]
-    ];
+    return [ track[(i+35)%37], track[(i+36)%37], n, track[(i+1)%37], track[(i+2)%37] ];
   }
 
   function segundoVizinho(n){
     const i = track.indexOf(n);
-    return [
-      track[(i+35)%37],
-      track[(i+2)%37]
-    ];
+    return [ track[(i+35)%37], track[(i+2)%37] ];
   }
 
   function coberturaTerminal(t, qtd){
     const set = new Set();
-
     track.forEach(n=>{
       if(terminal(n) === t){
-        if(qtd === 2){
-          vizinhos2(n).forEach(v=>set.add(v));
-        } else {
-          vizinhos1(n).forEach(v=>set.add(v));
-        }
+        if(qtd === 2) vizinhos2(n).forEach(v=>set.add(v));
+        else vizinhos1(n).forEach(v=>set.add(v));
       }
     });
-
     return set;
+  }
+
+  function top6Quentes(base){
+    const cont = {};
+    track.forEach(n=>cont[n]=0);
+    base.forEach(n=>{
+      if(cont[n] !== undefined) cont[n]++;
+    });
+
+    return Object.entries(cont)
+      .sort((a,b)=>b[1]-a[1])
+      .filter(x=>x[1] > 0)
+      .slice(0,6)
+      .map(x=>Number(x[0]));
+  }
+
+  function renderTop6(base){
+    const tops = top6Quentes(base);
+    if(!tops.length) return "";
+
+    return `
+      <div style="margin-top:6px;font-size:12px;color:#fff">
+        <b style="color:#ffc107">Top quente 1v:</b>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+          ${tops.map(n=>`
+            <span style="
+              display:inline-block;
+              padding:3px 6px;
+              border:1px solid #ffc107;
+              background:#111;
+              border-radius:4px;
+              color:#fff;
+              font-weight:700;
+            ">
+              ${n} <small style="color:#aaa">(${vizinhos1(n).join("-")})</small>
+            </span>
+          `).join("")}
+        </div>
+      </div>
+    `;
   }
 
   function melhorAnalise100(base){
     if(base.length < 3) return null;
-
     let melhor = null;
 
     for(let t2=0;t2<=9;t2++){
       for(let t1=0;t1<=9;t1++){
-
         if(t1 === t2) continue;
 
         const cov2 = coberturaTerminal(t2,2);
         const cov1 = coberturaTerminal(t1,1);
-
         const cobertura = new Set([...cov2, ...cov1]);
 
-        let green = 0;
-        let red = 0;
-
+        let green = 0, red = 0;
         const lista = base.slice(-100);
 
         for(let i=0;i<lista.length-1;i++){
           const prox = lista[i+1];
-
-          if(cobertura.has(prox)){
-            green++;
-          } else {
-            red++;
-          }
+          if(cobertura.has(prox)) green++;
+          else red++;
         }
 
         const total = green + red;
         const taxa = total ? green / total : 0;
-
-        const teste = {
-          t2,
-          t1,
-          green,
-          red,
-          taxa
-        };
+        const teste = { t2, t1, green, red, taxa };
 
         if(
           !melhor ||
@@ -160,13 +153,11 @@
         }
       }
     }
-
     return melhor;
   }
 
   function aplicarAnalise100(){
     const melhor = melhorAnalise100(historicoCompleto);
-
     if(!melhor) return;
 
     analises.MANUAL.filtros.clear();
@@ -190,6 +181,7 @@
       nome: crupierNome,
       total: crupierNumeros.length,
       numeros: crupierNumeros.slice(),
+      top6: top6Quentes(crupierNumeros),
       melhor
     });
 
@@ -214,6 +206,7 @@ T${c.melhor.t2} 2v / T${c.melhor.t1} 1v
 Green: ${c.melhor.green}
 Red: ${c.melhor.red}
 Taxa: ${(c.melhor.taxa*100).toFixed(1)}%
+Top quente: ${(c.top6 || []).join(" - ")}
 Giros: ${c.total}`;
   }
 
@@ -244,9 +237,7 @@ Giros: ${c.total}`;
   }
 
   function renderCrupierBox(){
-    if(!historicoCrupiers.length && !crupierAtivo){
-      return "";
-    }
+    if(!historicoCrupiers.length && !crupierAtivo) return "";
 
     let html = "";
 
@@ -263,6 +254,7 @@ Giros: ${c.total}`;
         ">
           Crupiê ativo: <b style="color:#00e676">${crupierNome}</b>
           | Giros: <b>${crupierNumeros.length}</b>
+          ${renderTop6(crupierNumeros)}
         </div>
       `;
     }
@@ -287,6 +279,7 @@ Giros: ${c.total}`;
                | Taxa: ${(c.melhor.taxa*100).toFixed(1)}%`
             : `<br>Sem dados suficientes`}
           | Giros: ${c.total}
+          ${renderTop6(c.numeros || [])}
         </div>
       `;
     });
@@ -370,11 +363,7 @@ Giros: ${c.total}`;
 
   btnAnalise100.onclick = ()=>{
     analise100Ativa = !analise100Ativa;
-
-    if(analise100Ativa){
-      aplicarAnalise100();
-    }
-
+    if(analise100Ativa) aplicarAnalise100();
     render();
   };
 
@@ -387,7 +376,6 @@ Giros: ${c.total}`;
     }
 
     if(analise100Ativa) aplicarAnalise100();
-
     render();
   };
 
@@ -430,7 +418,6 @@ Giros: ${c.total}`;
     }
 
     if(analise100Ativa) aplicarAnalise100();
-
     render();
   };
 
@@ -460,22 +447,17 @@ Giros: ${c.total}`;
     }
 
     if(analise100Ativa) aplicarAnalise100();
-
     render();
   }
 
   function desenharRadar(){
-
     const canvas = document.getElementById("radar");
     const ctx = canvas.getContext("2d");
 
     ctx.clearRect(0,0,260,260);
 
-    const cx = 130;
-    const cy = 130;
-    const r = 110;
+    const cx = 130, cy = 130, r = 110;
     const ang = (Math.PI*2)/track.length;
-
     const ativos = new Set(timeline);
 
     for(let i=0;i<track.length;i++){
@@ -486,25 +468,19 @@ Giros: ${c.total}`;
       ctx.moveTo(cx,cy);
       ctx.arc(cx,cy,r,a1,a2);
       ctx.closePath();
-
       ctx.fillStyle="#1c1c1c";
       ctx.fill();
 
       const meio = (a1+a2)/2;
-
       const tx = cx + Math.cos(meio)*(r-25);
       const ty = cy + Math.sin(meio)*(r-25);
 
-      let corNumero="#fff";
-      if(ativos.has(track[i])) corNumero="#00e676";
-
-      ctx.fillStyle=corNumero;
+      ctx.fillStyle = ativos.has(track[i]) ? "#00e676" : "#fff";
       ctx.fillText(track[i],tx,ty);
     }
   }
 
   function render(){
-
     tl.innerHTML = timeline.map(n=>{
       return `<span style="color:${corDuzia(n)}">${n}</span>`;
     }).join(" · ");
@@ -542,7 +518,6 @@ Giros: ${c.total}`;
     });
 
     if(analises.MANUAL.filtros.size > 0){
-
       const mapaCores = {};
       const base = expandido ? historicoCompleto.slice().reverse() : timeline;
       const ultimoNumero = timeline[0];
@@ -550,26 +525,19 @@ Giros: ${c.total}`;
       analises.MANUAL.filtros.forEach(t=>{
         track.forEach(n=>{
           if(terminal(n)===t){
-
             if(modosTerminais[t] === 2){
               vizinhos2(n).forEach(v=>mapaCores[v] = corTerminal[t]);
-
-              segundoVizinho(n).forEach(v=>{
-                mapaCores[v] = clarearCor(corTerminal[t]);
-              });
-
+              segundoVizinho(n).forEach(v=>mapaCores[v] = clarearCor(corTerminal[t]));
             } else if(modosTerminais[t] === 1){
               vizinhos1(n).forEach(v=>{
                 if(!mapaCores[v]) mapaCores[v] = corTerminal[t];
               });
             }
-
           }
         });
       });
 
       conjArea.style.display = "block";
-
       conjArea.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(26px,1fr));gap:4px">
           ${base.map(n=>`
