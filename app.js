@@ -60,7 +60,9 @@
   const complexosFixos = [
     { nome:"C3/9", t2:3, t1:9 },
     { nome:"C2/3", t2:2, t1:3 },
-    { nome:"C4/8", t2:4, t1:8 }
+    { nome:"C4/8", t2:4, t1:8 },
+    { nome:"C6/2", t2:6, t1:2 },
+    { nome:"C5/1", t2:5, t1:1 }
   ];
 
   function clarearCor(hex){
@@ -368,14 +370,19 @@ Giros: ${c.total}`;
     return coberturaComplexo(melhor).has(n);
   }
 
-  function estaDentroTop5(n, base){
-    if(!base || !base.length) return false;
+  function dadosTop5(base){
+    if(!base || !base.length) return { tops:[], cobertura:new Set() };
     const tops = top5Quentes2VMelhorado(base);
-    return coberturaCentrais2V(tops).has(n);
+    return {
+      tops,
+      cobertura: coberturaCentrais2V(tops)
+    };
   }
 
   function renderHistoricoNumeros(numeros, melhor){
     if(!numeros || !numeros.length) return "";
+
+    const top5Info = dadosTop5(numeros);
 
     return `
       <div style="
@@ -392,8 +399,7 @@ Giros: ${c.total}`;
       ">
         <b style="color:#ffc107">Histórico:</b><br>
         ${numeros.map(n=>{
-          const dentroComplexo = estaDentroComplexo(n, melhor);
-          const dentroTop5 = estaDentroTop5(n, numeros);
+          const dentroTop5 = top5Info.cobertura.has(n);
           const cor = corNumeroAnalise(n, melhor);
 
           return `
@@ -403,11 +409,11 @@ Giros: ${c.total}`;
               display:inline-flex;
               align-items:center;
               justify-content:center;
-              width:${dentroTop5 ? "24px" : (dentroComplexo ? "22px" : "auto")};
-              height:${dentroTop5 ? "24px" : (dentroComplexo ? "22px" : "auto")};
-              border-radius:${(dentroTop5 || dentroComplexo) ? "50%" : "0"};
-              border:${dentroTop5 ? "2px solid #00e676" : (dentroComplexo ? `2px solid ${cor}` : "0")};
-              background:${dentroTop5 ? "#062d16" : (dentroComplexo ? "#000" : "transparent")};
+              width:${dentroTop5 ? "24px" : "auto"};
+              height:${dentroTop5 ? "24px" : "auto"};
+              border-radius:${dentroTop5 ? "50%" : "0"};
+              border:${dentroTop5 ? "2px solid #00e676" : "0"};
+              background:${dentroTop5 ? "#062d16" : "transparent"};
               margin:2px 3px;
             ">${n}</span>
           `;
