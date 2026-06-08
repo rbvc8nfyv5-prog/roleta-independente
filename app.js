@@ -25,6 +25,8 @@
   let historicoCompleto = [];
   let expandido = false;
   let analise100Ativa = false;
+  let analiseTerminalAtiva = false;
+  let resultadoAnaliseTerminal = null;
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] }
@@ -146,7 +148,6 @@
 
         const cov2 = coberturaTerminal(t2,2);
         const cov1 = coberturaTerminal(t1,1);
-
         const cobertura = new Set([...cov2, ...cov1]);
 
         let green = 0;
@@ -156,24 +157,14 @@
 
         for(let i=0;i<base.length-1;i++){
           const prox = base[i+1];
-
-          if(cobertura.has(prox)){
-            green++;
-          } else {
-            red++;
-          }
+          if(cobertura.has(prox)) green++;
+          else red++;
         }
 
         const total = green + red;
         const taxa = total ? green / total : 0;
 
-        const teste = {
-          t2,
-          t1,
-          green,
-          red,
-          taxa
-        };
+        const teste = { t2, t1, green, red, taxa };
 
         if(
           !melhor ||
@@ -187,6 +178,87 @@
     }
 
     if(!melhor) return;
+
+    analises.MANUAL.filtros.clear();
+    ordemSelecionados.length = 0;
+
+    analises.MANUAL.filtros.add(melhor.t2);
+    ordemSelecionados.push(melhor.t2);
+
+    analises.MANUAL.filtros.add(melhor.t1);
+    ordemSelecionados.push(melhor.t1);
+
+    atualizarModosPorOrdem();
+  }
+
+  function aplicarAnaliseTerminal(){
+    resultadoAnaliseTerminal = null;
+
+    if(historicoCompleto.length < 3) return;
+
+    const gatilho = terminal(historicoCompleto[historicoCompleto.length - 1]);
+    const base = historicoCompleto.slice(-100);
+
+    let melhor = null;
+
+    for(let t2=0;t2<=9;t2++){
+      for(let t1=0;t1<=9;t1++){
+
+        if(t1 === t2) continue;
+
+        const cov2 = coberturaTerminal(t2,2);
+        const cov1 = coberturaTerminal(t1,1);
+        const cobertura = new Set([...cov2, ...cov1]);
+
+        let green = 0;
+        let red = 0;
+        let ocorrencias = 0;
+
+        for(let i=0;i<base.length-1;i++){
+          const atual = base[i];
+          const prox = base[i+1];
+
+          if(terminal(atual) === gatilho){
+            ocorrencias++;
+
+            if(cobertura.has(prox)){
+              green++;
+            } else {
+              red++;
+            }
+          }
+        }
+
+        const total = green + red;
+        const taxa = total ? green / total : 0;
+
+        const teste = {
+          gatilho,
+          t2,
+          t1,
+          green,
+          red,
+          taxa,
+          ocorrencias
+        };
+
+        if(
+          ocorrencias > 0 &&
+          (
+            !melhor ||
+            teste.red < melhor.red ||
+            (teste.red === melhor.red && teste.green > melhor.green) ||
+            (teste.red === melhor.red && teste.green === melhor.green && teste.taxa > melhor.taxa)
+          )
+        ){
+          melhor = teste;
+        }
+      }
+    }
+
+    if(!melhor) return;
+
+    resultadoAnaliseTerminal = melhor;
 
     analises.MANUAL.filtros.clear();
     ordemSelecionados.length = 0;
@@ -228,6 +300,8 @@
 
       <div id="ladoBox" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0"></div>
 
+      <div id="analiseTerminalBox" style="display:none;border:1px solid #555;background:#181818;padding:8px;border-radius:6px;margin:10px 0"></div>
+
       <div style="margin:10px 0">
         🕒 Timeline:
         <span id="tl" style="font-size:18px;font-weight:600"></span>
@@ -237,6 +311,7 @@
         <button id="btnUndo">Apagar último</button>
         <button id="btnClear">Apagar tudo</button>
         <button id="btnAnalise100">Análise 100</button>
+        <button id="btnAnaliseTerminal">Análise Terminal</button>
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -262,6 +337,7 @@
       inputHist.style.display="none";
 
       if(analise100Ativa) aplicarAnalise100();
+      if(analiseTerminalAtiva) aplicarAnaliseTerminal();
 
       render();
     },0);
@@ -269,9 +345,24 @@
 
   btnAnalise100.onclick = ()=>{
     analise100Ativa = !analise100Ativa;
+    analiseTerminalAtiva = false;
+    resultadoAnaliseTerminal = null;
 
     if(analise100Ativa){
       aplicarAnalise100();
+    }
+
+    render();
+  };
+
+  btnAnaliseTerminal.onclick = ()=>{
+    analiseTerminalAtiva = !analiseTerminalAtiva;
+    analise100Ativa = false;
+
+    if(analiseTerminalAtiva){
+      aplicarAnaliseTerminal();
+    } else {
+      resultadoAnaliseTerminal = null;
     }
 
     render();
@@ -283,6 +374,8 @@
     b.style="padding:6px;background:#444;color:#fff;border:1px solid #666";
     b.onclick=()=>{
       analise100Ativa = false;
+      analiseTerminalAtiva = false;
+      resultadoAnaliseTerminal = null;
 
       if(analises.MANUAL.filtros.has(t)){
         analises.MANUAL.filtros.delete(t);
@@ -312,6 +405,7 @@
     historicoCompleto.pop();
 
     if(analise100Ativa) aplicarAnalise100();
+    if(analiseTerminalAtiva) aplicarAnaliseTerminal();
 
     render();
   };
@@ -322,6 +416,8 @@
     ordemSelecionados.length = 0;
     analises.MANUAL.filtros.clear();
     analise100Ativa = false;
+    analiseTerminalAtiva = false;
+    resultadoAnaliseTerminal = null;
     render();
   };
 
@@ -332,6 +428,7 @@
     historicoCompleto.push(n);
 
     if(analise100Ativa) aplicarAnalise100();
+    if(analiseTerminalAtiva) aplicarAnaliseTerminal();
 
     render();
   }
@@ -383,14 +480,63 @@
     `;
   }
 
+  function renderAnaliseTerminal(){
+    if(!analiseTerminalAtiva){
+      analiseTerminalBox.style.display = "none";
+      analiseTerminalBox.innerHTML = "";
+      return;
+    }
+
+    analiseTerminalBox.style.display = "block";
+
+    if(!resultadoAnaliseTerminal){
+      analiseTerminalBox.innerHTML = `
+        <div style="font-weight:700;color:#ffc107;text-align:center">ANÁLISE TERMINAL</div>
+        <div style="font-size:12px;text-align:center;margin-top:4px">
+          Histórico insuficiente para calcular.
+        </div>
+      `;
+      return;
+    }
+
+    const r = resultadoAnaliseTerminal;
+
+    analiseTerminalBox.innerHTML = `
+      <div style="font-weight:700;color:#ffc107;text-align:center">ANÁLISE TERMINAL</div>
+
+      <div style="font-size:13px;text-align:center;margin-top:5px">
+        Gatilho atual:
+        <b style="color:${corTerminal[r.gatilho]}">T${r.gatilho}</b>
+      </div>
+
+      <div style="font-size:13px;text-align:center;margin-top:5px">
+        Melhor jogada:
+        <b style="color:${corTerminal[r.t2]}">T${r.t2} com 2 vizinhos</b>
+        +
+        <b style="color:${corTerminal[r.t1]}">T${r.t1} com 1 vizinho</b>
+      </div>
+
+      <div style="font-size:12px;text-align:center;margin-top:5px;color:#ccc">
+        Ocorrências do gatilho: ${r.ocorrencias}
+        · Green: ${r.green}
+        · Red: ${r.red}
+        · Taxa: ${(r.taxa*100).toFixed(1)}%
+      </div>
+    `;
+  }
+
   function render(){
 
     tl.innerHTML = timeline.join(" · ");
 
     renderLados();
+    renderAnaliseTerminal();
 
     btnAnalise100.style.background = analise100Ativa ? "#00e676" : "";
     btnAnalise100.style.color = analise100Ativa ? "#000" : "";
+
+    btnAnaliseTerminal.style.background = analiseTerminalAtiva ? "#ffc107" : "";
+    btnAnaliseTerminal.style.color = analiseTerminalAtiva ? "#000" : "";
 
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.match(/\d+/)[0];
