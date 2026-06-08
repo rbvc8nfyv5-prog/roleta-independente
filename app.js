@@ -81,6 +81,43 @@
     ];
   }
 
+  function vizinhos9(n){
+    const i = track.indexOf(n);
+    const arr = [];
+    for(let d=-9; d<=9; d++){
+      arr.push(track[(i+d+37)%37]);
+    }
+    return arr;
+  }
+
+  const lado0 = new Set(vizinhos9(0));
+  const lado10 = new Set(vizinhos9(10));
+
+  function sequenciaAtual(setor){
+    let seq = 0;
+    for(let i=historicoCompleto.length-1;i>=0;i--){
+      if(setor.has(historicoCompleto[i])) seq++;
+      else break;
+    }
+    return seq;
+  }
+
+  function sequenciaMaxima(setor){
+    let atual = 0;
+    let max = 0;
+
+    historicoCompleto.forEach(n=>{
+      if(setor.has(n)){
+        atual++;
+        if(atual > max) max = atual;
+      } else {
+        atual = 0;
+      }
+    });
+
+    return max;
+  }
+
   function coberturaTerminal(t, qtd){
     const set = new Set();
 
@@ -174,6 +211,12 @@
         50% { transform:scale(1.2); }
         100% { transform:scale(1); }
       }
+
+      @keyframes piscaQuadro {
+        0% { box-shadow:0 0 4px #fff; transform:scale(1); }
+        50% { box-shadow:0 0 22px #00e676; transform:scale(1.04); }
+        100% { box-shadow:0 0 4px #fff; transform:scale(1); }
+      }
     </style>
 
     <div style="padding:10px;max-width:1000px;margin:auto">
@@ -182,6 +225,8 @@
       style="width:100%;margin-bottom:10px;background:#222;color:#fff;border:1px solid #555;padding:6px"></textarea>
 
       <h3 style="text-align:center">CSM</h3>
+
+      <div id="ladoBox" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0"></div>
 
       <div style="margin:10px 0">
         🕒 Timeline:
@@ -291,9 +336,58 @@
     render();
   }
 
+  function renderLados(){
+    const atual0 = sequenciaAtual(lado0);
+    const max0 = sequenciaMaxima(lado0);
+
+    const atual10 = sequenciaAtual(lado10);
+    const max10 = sequenciaMaxima(lado10);
+
+    const pisca0 = atual0 > 0 && atual0 === max0 && max0 > 0;
+    const pisca10 = atual10 > 0 && atual10 === max10 && max10 > 0;
+
+    ladoBox.innerHTML = `
+      <div style="
+        border:2px solid ${pisca10 ? "#00e676" : "#555"};
+        border-radius:6px;
+        padding:8px;
+        background:#181818;
+        animation:${pisca10 ? "piscaQuadro 0.8s infinite" : "none"};
+      ">
+        <div style="font-weight:700;text-align:center;color:#ffc107;margin-bottom:5px">LADO 10</div>
+        <div style="font-size:11px;text-align:center;margin-bottom:5px">
+          ${vizinhos9(10).join(" · ")}
+        </div>
+        <div style="display:flex;justify-content:space-around;font-size:13px">
+          <span>Atual: <b style="color:#00e676">${atual10}</b></span>
+          <span>Máxima: <b style="color:#ff5252">${max10}</b></span>
+        </div>
+      </div>
+
+      <div style="
+        border:2px solid ${pisca0 ? "#00e676" : "#555"};
+        border-radius:6px;
+        padding:8px;
+        background:#181818;
+        animation:${pisca0 ? "piscaQuadro 0.8s infinite" : "none"};
+      ">
+        <div style="font-weight:700;text-align:center;color:#00bcd4;margin-bottom:5px">LADO 0</div>
+        <div style="font-size:11px;text-align:center;margin-bottom:5px">
+          ${vizinhos9(0).join(" · ")}
+        </div>
+        <div style="display:flex;justify-content:space-around;font-size:13px">
+          <span>Atual: <b style="color:#00e676">${atual0}</b></span>
+          <span>Máxima: <b style="color:#ff5252">${max0}</b></span>
+        </div>
+      </div>
+    `;
+  }
+
   function render(){
 
     tl.innerHTML = timeline.join(" · ");
+
+    renderLados();
 
     btnAnalise100.style.background = analise100Ativa ? "#00e676" : "";
     btnAnalise100.style.color = analise100Ativa ? "#000" : "";
