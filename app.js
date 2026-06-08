@@ -23,10 +23,12 @@
 
   let timeline = [];
   let historicoCompleto = [];
+  let resultadosTimeline = [];
   let expandido = false;
   let analise100Ativa = false;
   let analiseTerminalAtiva = false;
   let resultadoAnaliseTerminal = null;
+  let resultadoAnalise100 = null;
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] }
@@ -83,43 +85,6 @@
     ];
   }
 
-  function vizinhos9(n){
-    const i = track.indexOf(n);
-    const arr = [];
-    for(let d=-9; d<=9; d++){
-      arr.push(track[(i+d+37)%37]);
-    }
-    return arr;
-  }
-
-  const lado0 = new Set(vizinhos9(0));
-  const lado10 = new Set(vizinhos9(10));
-
-  function sequenciaAtual(setor){
-    let seq = 0;
-    for(let i=historicoCompleto.length-1;i>=0;i--){
-      if(setor.has(historicoCompleto[i])) seq++;
-      else break;
-    }
-    return seq;
-  }
-
-  function sequenciaMaxima(setor){
-    let atual = 0;
-    let max = 0;
-
-    historicoCompleto.forEach(n=>{
-      if(setor.has(n)){
-        atual++;
-        if(atual > max) max = atual;
-      } else {
-        atual = 0;
-      }
-    });
-
-    return max;
-  }
-
   function coberturaTerminal(t, qtd){
     const set = new Set();
 
@@ -136,8 +101,96 @@
     return set;
   }
 
-  function aplicarAnalise100(){
-    if(historicoCompleto.length < 3) return;
+  function contarTerminalNaLista(t, lista){
+    let qtd = 0;
+    lista.forEach(n=>{
+      if(terminal(n) === t) qtd++;
+    });
+    return qtd;
+  }
+
+  function contarCoberturaNaLista(t, lista, qtdVizinho){
+    const cobertura = coberturaTerminal(t, qtdVizinho);
+    let qtd = 0;
+    lista.forEach(n=>{
+      if(cobertura.has(n)) qtd++;
+    });
+    return qtd;
+  }
+
+  function distanciaTerminal(a,b){
+    const d = Math.abs(a-b);
+    return Math.min(d, 10-d);
+  }
+
+  function coberturaDupla(t2,t1){
+    const cov2 = coberturaTerminal(t2,2);
+    const cov1 = coberturaTerminal(t1,1);
+    return new Set([...cov2, ...cov1]);
+  }
+
+  function contarIntersecao(a,b){
+    let qtd = 0;
+    a.forEach(v=>{
+      if(b.has(v)) qtd++;
+    });
+    return qtd;
+  }
+
+  function proximidadeZonaMae(t2,t1,zona){
+    if(!zona) return { perto:true, score:0, intersecao:0, distMin:0 };
+
+    const zonaCobertura = coberturaDupla(zona.t2,zona.t1);
+    const testeCobertura = coberturaDupla(t2,t1);
+
+    const intersecao = contarIntersecao(zonaCobertura, testeCobertura);
+
+    const distMin = Math.min(
+      distanciaTerminal(t2,zona.t2),
+      distanciaTerminal(t2,zona.t1),
+      distanciaTerminal(t1,zona.t2),
+      distanciaTerminal(t1,zona.t1)
+    );
+
+    const perto =
+      t2 === zona.t2 ||
+      t2 === zona.t1 ||
+      t1 === zona.t2 ||
+      t1 === zona.t1 ||
+      distMin <= 1 ||
+      intersecao >= 8;
+
+    const score =
+      (intersecao * 2) +
+      (distMin === 0 ? 30 : 0) +
+      (distMin === 1 ? 18 : 0) +
+      (distMin === 2 ? 6 : 0);
+
+    return { perto, score, intersecao, distMin };
+  }
+
+  function validarNumeroNaJogada(n, r){
+    if(!r) return null;
+
+    const cobertura = coberturaDupla(r.t2,r.t1);
+
+    if(cobertura.has(n)){
+      return {
+        tipo:"GREEN",
+        cor:"#00e676",
+        detalhe:`Green | T${r.t2} 2v + T${r.t1} 1v`
+      };
+    }
+
+    return {
+      tipo:"LOSS",
+      cor:"#ff5252",
+      detalhe:`Loss | T${r.t2} 2v + T${r.t1} 1v`
+    };
+  }
+
+  function calcularAnalise100(){
+    if(historicoCompleto.length < 3) return null;
 
     let melhor = null;
 
@@ -146,9 +199,7 @@
 
         if(t1 === t2) continue;
 
-        const cov2 = coberturaTerminal(t2,2);
-        const cov1 = coberturaTerminal(t1,1);
-        const cobertura = new Set([...cov2, ...cov1]);
+        const cobertura = coberturaDupla(t2,t1);
 
         let green = 0;
         let red = 0;
@@ -177,38 +228,47 @@
       }
     }
 
-    if(!melhor) return;
+    return melhor;
+  }
+
+  function aplicarAnalise100(){
+    resultadoAnalise100 = calcularAnalise100();
+    if(!resultadoAnalise100) return;
 
     analises.MANUAL.filtros.clear();
     ordemSelecionados.length = 0;
 
-    analises.MANUAL.filtros.add(melhor.t2);
-    ordemSelecionados.push(melhor.t2);
+    analises.MANUAL.filtros.add(resultadoAnalise100.t2);
+    ordemSelecionados.push(resultadoAnalise100.t2);
 
-    analises.MANUAL.filtros.add(melhor.t1);
-    ordemSelecionados.push(melhor.t1);
+    analises.MANUAL.filtros.add(resultadoAnalise100.t1);
+    ordemSelecionados.push(resultadoAnalise100.t1);
 
     atualizarModosPorOrdem();
   }
 
-  function aplicarAnaliseTerminal(){
-    resultadoAnaliseTerminal = null;
+  function calcularAnaliseTerminal(hist){
+    if(hist.length < 3) return null;
 
-    if(historicoCompleto.length < 3) return;
+    const histOriginal = historicoCompleto;
+    historicoCompleto = hist.slice();
 
-    const gatilho = terminal(historicoCompleto[historicoCompleto.length - 1]);
-    const base = historicoCompleto.slice(-100);
+    const zonaMae = calcularAnalise100();
+
+    const gatilho = terminal(hist[hist.length - 1]);
+    const base = hist.slice(-100);
+    const ultimos14 = hist.slice(-14);
+    const ultimos6 = hist.slice(-6);
 
     let melhor = null;
+    let melhorFora = null;
 
     for(let t2=0;t2<=9;t2++){
       for(let t1=0;t1<=9;t1++){
 
         if(t1 === t2) continue;
 
-        const cov2 = coberturaTerminal(t2,2);
-        const cov1 = coberturaTerminal(t1,1);
-        const cobertura = new Set([...cov2, ...cov1]);
+        const cobertura = coberturaDupla(t2,t1);
 
         let green = 0;
         let red = 0;
@@ -232,6 +292,36 @@
         const total = green + red;
         const taxa = total ? green / total : 0;
 
+        const forcaT2Timeline = contarTerminalNaLista(t2, ultimos14);
+        const forcaT1Timeline = contarTerminalNaLista(t1, ultimos14);
+
+        const forcaT2Vizinho1_6 = contarCoberturaNaLista(t2, ultimos6, 1);
+        const forcaT1Vizinho1_6 = contarCoberturaNaLista(t1, ultimos6, 1);
+
+        const forcaT2Vizinho2_6 = contarCoberturaNaLista(t2, ultimos6, 2);
+        const forcaT1Vizinho2_6 = contarCoberturaNaLista(t1, ultimos6, 2);
+
+        const forcaT2Crua6 = contarTerminalNaLista(t2, ultimos6);
+        const forcaT1Crua6 = contarTerminalNaLista(t1, ultimos6);
+
+        const zona = proximidadeZonaMae(t2,t1,zonaMae);
+
+        const scoreHistorico = (green * 4) - (red * 3) + (taxa * 10);
+        const scoreTimeline = (forcaT2Timeline * 4) + (forcaT1Timeline * 2);
+        const scoreUltimos6 =
+          (forcaT2Vizinho2_6 * 6) +
+          (forcaT1Vizinho2_6 * 4) +
+          (forcaT2Vizinho1_6 * 4) +
+          (forcaT1Vizinho1_6 * 2) +
+          (forcaT2Crua6 * 3) +
+          (forcaT1Crua6 * 2);
+
+        let score = scoreHistorico + scoreTimeline + scoreUltimos6 + zona.score;
+
+        if(!zona.perto){
+          score -= 999;
+        }
+
         const teste = {
           gatilho,
           t2,
@@ -239,37 +329,84 @@
           green,
           red,
           taxa,
-          ocorrencias
+          ocorrencias,
+          zonaMae,
+          zonaPerto:zona.perto,
+          zonaIntersecao:zona.intersecao,
+          zonaDistancia:zona.distMin,
+          forcaT2Timeline,
+          forcaT1Timeline,
+          forcaT2Vizinho1_6,
+          forcaT1Vizinho1_6,
+          forcaT2Vizinho2_6,
+          forcaT1Vizinho2_6,
+          forcaT2Crua6,
+          forcaT1Crua6,
+          score
         };
 
-        if(
-          ocorrencias > 0 &&
-          (
-            !melhor ||
-            teste.red < melhor.red ||
-            (teste.red === melhor.red && teste.green > melhor.green) ||
-            (teste.red === melhor.red && teste.green === melhor.green && teste.taxa > melhor.taxa)
-          )
-        ){
-          melhor = teste;
+        if(ocorrencias > 0){
+          if(
+            !melhorFora ||
+            teste.score > melhorFora.score ||
+            (teste.score === melhorFora.score && teste.green > melhorFora.green) ||
+            (teste.score === melhorFora.score && teste.green === melhorFora.green && teste.red < melhorFora.red)
+          ){
+            melhorFora = teste;
+          }
+
+          if(
+            teste.zonaPerto &&
+            (
+              !melhor ||
+              teste.score > melhor.score ||
+              (teste.score === melhor.score && teste.green > melhor.green) ||
+              (teste.score === melhor.score && teste.green === melhor.green && teste.red < melhor.red) ||
+              (teste.score === melhor.score && teste.green === melhor.green && teste.red === melhor.red && teste.taxa > melhor.taxa)
+            )
+          ){
+            melhor = teste;
+          }
         }
       }
     }
 
-    if(!melhor) return;
+    historicoCompleto = histOriginal;
 
-    resultadoAnaliseTerminal = melhor;
+    return melhor || melhorFora;
+  }
+
+  function aplicarAnaliseTerminal(){
+    resultadoAnaliseTerminal = calcularAnaliseTerminal(historicoCompleto);
+
+    if(!resultadoAnaliseTerminal) return;
 
     analises.MANUAL.filtros.clear();
     ordemSelecionados.length = 0;
 
-    analises.MANUAL.filtros.add(melhor.t2);
-    ordemSelecionados.push(melhor.t2);
+    analises.MANUAL.filtros.add(resultadoAnaliseTerminal.t2);
+    ordemSelecionados.push(resultadoAnaliseTerminal.t2);
 
-    analises.MANUAL.filtros.add(melhor.t1);
-    ordemSelecionados.push(melhor.t1);
+    analises.MANUAL.filtros.add(resultadoAnaliseTerminal.t1);
+    ordemSelecionados.push(resultadoAnaliseTerminal.t1);
 
     atualizarModosPorOrdem();
+  }
+
+  function recalcularTimelineRetroativa(){
+    resultadosTimeline = historicoCompleto.map(()=>null);
+
+    if(!analiseTerminalAtiva) return;
+
+    for(let i=0;i<historicoCompleto.length-1;i++){
+      const histAteAqui = historicoCompleto.slice(0,i+1);
+      const analise = calcularAnaliseTerminal(histAteAqui);
+      const prox = historicoCompleto[i+1];
+
+      if(analise){
+        resultadosTimeline[i+1] = validarNumeroNaJogada(prox, analise);
+      }
+    }
   }
 
   document.body.style.background="#111";
@@ -283,12 +420,6 @@
         50% { transform:scale(1.2); }
         100% { transform:scale(1); }
       }
-
-      @keyframes piscaQuadro {
-        0% { box-shadow:0 0 4px #fff; transform:scale(1); }
-        50% { box-shadow:0 0 22px #00e676; transform:scale(1.04); }
-        100% { box-shadow:0 0 4px #fff; transform:scale(1); }
-      }
     </style>
 
     <div style="padding:10px;max-width:1000px;margin:auto">
@@ -297,8 +428,6 @@
       style="width:100%;margin-bottom:10px;background:#222;color:#fff;border:1px solid #555;padding:6px"></textarea>
 
       <h3 style="text-align:center">CSM</h3>
-
-      <div id="ladoBox" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0"></div>
 
       <div id="analiseTerminalBox" style="display:none;border:1px solid #555;background:#181818;padding:8px;border-radius:6px;margin:10px 0"></div>
 
@@ -339,6 +468,8 @@
       if(analise100Ativa) aplicarAnalise100();
       if(analiseTerminalAtiva) aplicarAnaliseTerminal();
 
+      recalcularTimelineRetroativa();
+
       render();
     },0);
   });
@@ -347,6 +478,7 @@
     analise100Ativa = !analise100Ativa;
     analiseTerminalAtiva = false;
     resultadoAnaliseTerminal = null;
+    resultadosTimeline = historicoCompleto.map(()=>null);
 
     if(analise100Ativa){
       aplicarAnalise100();
@@ -361,8 +493,10 @@
 
     if(analiseTerminalAtiva){
       aplicarAnaliseTerminal();
+      recalcularTimelineRetroativa();
     } else {
       resultadoAnaliseTerminal = null;
+      resultadosTimeline = historicoCompleto.map(()=>null);
     }
 
     render();
@@ -376,6 +510,7 @@
       analise100Ativa = false;
       analiseTerminalAtiva = false;
       resultadoAnaliseTerminal = null;
+      resultadosTimeline = historicoCompleto.map(()=>null);
 
       if(analises.MANUAL.filtros.has(t)){
         analises.MANUAL.filtros.delete(t);
@@ -401,11 +536,14 @@
 
   btnUndo.onclick = ()=>{
     if(!timeline.length) return;
+
     timeline.shift();
     historicoCompleto.pop();
 
     if(analise100Ativa) aplicarAnalise100();
     if(analiseTerminalAtiva) aplicarAnaliseTerminal();
+
+    recalcularTimelineRetroativa();
 
     render();
   };
@@ -413,71 +551,33 @@
   btnClear.onclick = ()=>{
     timeline = [];
     historicoCompleto = [];
+    resultadosTimeline = [];
     ordemSelecionados.length = 0;
     analises.MANUAL.filtros.clear();
     analise100Ativa = false;
     analiseTerminalAtiva = false;
     resultadoAnaliseTerminal = null;
+    resultadoAnalise100 = null;
     render();
   };
 
   function add(n){
+    let validacao = null;
+
+    if(analiseTerminalAtiva && resultadoAnaliseTerminal){
+      validacao = validarNumeroNaJogada(n, resultadoAnaliseTerminal);
+    }
+
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
 
     historicoCompleto.push(n);
+    resultadosTimeline.push(validacao);
 
     if(analise100Ativa) aplicarAnalise100();
     if(analiseTerminalAtiva) aplicarAnaliseTerminal();
 
     render();
-  }
-
-  function renderLados(){
-    const atual0 = sequenciaAtual(lado0);
-    const max0 = sequenciaMaxima(lado0);
-
-    const atual10 = sequenciaAtual(lado10);
-    const max10 = sequenciaMaxima(lado10);
-
-    const pisca0 = atual0 > 0 && atual0 === max0 && max0 > 0;
-    const pisca10 = atual10 > 0 && atual10 === max10 && max10 > 0;
-
-    ladoBox.innerHTML = `
-      <div style="
-        border:2px solid ${pisca10 ? "#00e676" : "#555"};
-        border-radius:6px;
-        padding:8px;
-        background:#181818;
-        animation:${pisca10 ? "piscaQuadro 0.8s infinite" : "none"};
-      ">
-        <div style="font-weight:700;text-align:center;color:#ffc107;margin-bottom:5px">LADO 10</div>
-        <div style="font-size:11px;text-align:center;margin-bottom:5px">
-          ${vizinhos9(10).join(" · ")}
-        </div>
-        <div style="display:flex;justify-content:space-around;font-size:13px">
-          <span>Atual: <b style="color:#00e676">${atual10}</b></span>
-          <span>Máxima: <b style="color:#ff5252">${max10}</b></span>
-        </div>
-      </div>
-
-      <div style="
-        border:2px solid ${pisca0 ? "#00e676" : "#555"};
-        border-radius:6px;
-        padding:8px;
-        background:#181818;
-        animation:${pisca0 ? "piscaQuadro 0.8s infinite" : "none"};
-      ">
-        <div style="font-weight:700;text-align:center;color:#00bcd4;margin-bottom:5px">LADO 0</div>
-        <div style="font-size:11px;text-align:center;margin-bottom:5px">
-          ${vizinhos9(0).join(" · ")}
-        </div>
-        <div style="display:flex;justify-content:space-around;font-size:13px">
-          <span>Atual: <b style="color:#00e676">${atual0}</b></span>
-          <span>Máxima: <b style="color:#ff5252">${max0}</b></span>
-        </div>
-      </div>
-    `;
   }
 
   function renderAnaliseTerminal(){
@@ -500,6 +600,7 @@
     }
 
     const r = resultadoAnaliseTerminal;
+    const zona = r.zonaMae;
 
     analiseTerminalBox.innerHTML = `
       <div style="font-weight:700;color:#ffc107;text-align:center">ANÁLISE TERMINAL</div>
@@ -509,27 +610,92 @@
         <b style="color:${corTerminal[r.gatilho]}">T${r.gatilho}</b>
       </div>
 
+      ${zona ? `
+        <div style="font-size:12px;text-align:center;margin-top:5px;color:#ccc">
+          Zona-mãe Análise 100:
+          <b style="color:${corTerminal[zona.t2]}">T${zona.t2}</b>
+          +
+          <b style="color:${corTerminal[zona.t1]}">T${zona.t1}</b>
+          · ${zona.green}G/${zona.red}L
+          · ${(zona.taxa*100).toFixed(1)}%
+        </div>
+      ` : ``}
+
       <div style="font-size:13px;text-align:center;margin-top:5px">
-        Melhor jogada:
+        Melhor jogada próxima:
         <b style="color:${corTerminal[r.t2]}">T${r.t2} com 2 vizinhos</b>
         +
         <b style="color:${corTerminal[r.t1]}">T${r.t1} com 1 vizinho</b>
       </div>
 
       <div style="font-size:12px;text-align:center;margin-top:5px;color:#ccc">
-        Ocorrências do gatilho: ${r.ocorrencias}
+        Histórico gatilho: ${r.ocorrencias}
         · Green: ${r.green}
         · Red: ${r.red}
         · Taxa: ${(r.taxa*100).toFixed(1)}%
       </div>
+
+      <div style="font-size:12px;text-align:center;margin-top:5px;color:#ccc">
+        Timeline 14:
+        T${r.t2}=<b style="color:${corTerminal[r.t2]}">${r.forcaT2Timeline}</b>
+        · T${r.t1}=<b style="color:${corTerminal[r.t1]}">${r.forcaT1Timeline}</b>
+      </div>
+
+      <div style="font-size:12px;text-align:center;margin-top:5px;color:#ccc">
+        Últimos 6 com 1 vizinho:
+        T${r.t2}=<b style="color:${corTerminal[r.t2]}">${r.forcaT2Vizinho1_6}</b>
+        · T${r.t1}=<b style="color:${corTerminal[r.t1]}">${r.forcaT1Vizinho1_6}</b>
+      </div>
+
+      <div style="font-size:12px;text-align:center;margin-top:5px;color:#ccc">
+        Últimos 6 com 2 vizinhos:
+        T${r.t2}=<b style="color:${corTerminal[r.t2]}">${r.forcaT2Vizinho2_6}</b>
+        · T${r.t1}=<b style="color:${corTerminal[r.t1]}">${r.forcaT1Vizinho2_6}</b>
+      </div>
+
+      <div style="font-size:12px;text-align:center;margin-top:5px;color:#ccc">
+        Conexão com zona-mãe:
+        Interseção: <b style="color:#fff">${r.zonaIntersecao}</b>
+        · Distância: <b style="color:#fff">${r.zonaDistancia}</b>
+        · Score: <b style="color:#fff">${r.score.toFixed(1)}</b>
+      </div>
     `;
+  }
+
+  function renderTimeline(){
+    const ultimos = historicoCompleto.slice(-14).reverse();
+    const indices = [];
+
+    for(let i=historicoCompleto.length-1;i>=Math.max(0,historicoCompleto.length-14);i--){
+      indices.push(i);
+    }
+
+    tl.innerHTML = ultimos.map((n,idx)=>{
+      const res = resultadosTimeline[indices[idx]];
+
+      if(!res){
+        return `<span style="display:inline-block;margin:2px;padding:3px 5px;border-radius:4px;background:#222;border:1px solid #444;color:#fff">${n}</span>`;
+      }
+
+      return `
+        <span title="${res.detalhe}" style="
+          display:inline-block;
+          margin:2px;
+          padding:3px 5px;
+          border-radius:4px;
+          background:${res.cor};
+          border:1px solid ${res.cor};
+          color:#000;
+          font-weight:800;
+        ">${n}</span>
+      `;
+    }).join("");
   }
 
   function render(){
 
-    tl.innerHTML = timeline.join(" · ");
+    renderTimeline();
 
-    renderLados();
     renderAnaliseTerminal();
 
     btnAnalise100.style.background = analise100Ativa ? "#00e676" : "";
