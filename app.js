@@ -24,10 +24,7 @@
   let timeline = [];
   let historicoCompleto = [];
   let expandido = false;
-  let faixa10Ativa = false;
   let analise100Ativa = false;
-  let analiseColunasAtiva = false;
-  let colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
 
   const analises = {
     MANUAL: { filtros:new Set(), res:[] }
@@ -166,45 +163,6 @@
     atualizarModosPorOrdem();
   }
 
-  function analisarColunas(){
-    const base = historicoCompleto.slice().reverse();
-    const colunas = 12;
-    let html = "";
-
-    for(let c=0;c<colunas;c++){
-      const cont = {};
-      for(let t=0;t<=9;t++) cont[t]=0;
-
-      for(let i=c;i<base.length;i+=colunas){
-        cont[terminal(base[i])]++;
-      }
-
-      const top = Object.entries(cont)
-        .sort((a,b)=>b[1]-a[1])
-        .slice(0,2)
-        .map(x=>Number(x[0]));
-
-      html += `
-        <span style="
-          display:inline-block;
-          margin:2px;
-          padding:4px 6px;
-          background:#222;
-          border:1px solid #555;
-          border-radius:4px;
-          font-size:12px;
-          color:#fff;
-        ">
-          C${c+1}: 
-          <b style="color:${corTerminal[top[0]]}">T${top[0]}</b> /
-          <b style="color:${corTerminal[top[1]]}">T${top[1]}</b>
-        </span>
-      `;
-    }
-
-    return html;
-  }
-
   document.body.style.background="#111";
   document.body.style.color="#fff";
   document.body.style.fontFamily="sans-serif";
@@ -225,10 +183,6 @@
 
       <h3 style="text-align:center">CSM</h3>
 
-      <div style="display:flex;justify-content:center;margin-bottom:10px">
-        <canvas id="radar" width="260" height="260"></canvas>
-      </div>
-
       <div style="margin:10px 0">
         🕒 Timeline:
         <span id="tl" style="font-size:18px;font-weight:600"></span>
@@ -237,9 +191,7 @@
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <button id="btnUndo">Apagar último</button>
         <button id="btnClear">Apagar tudo</button>
-        <button id="btn10">10</button>
         <button id="btnAnalise100">Análise 100</button>
-        <button id="btnAnaliseColunas">Análise Colunas</button>
       </div>
 
       <div style="border:1px solid #555;padding:8px;margin-bottom:10px">
@@ -248,8 +200,6 @@
       </div>
 
       <div id="conjArea" style="display:none;margin-top:12px;overflow-x:auto"></div>
-
-      <div id="analiseColunasBox" style="display:none;margin-top:10px"></div>
 
       <div id="nums" style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin-top:12px"></div>
     </div>
@@ -263,7 +213,6 @@
         .filter(n=>n>=0 && n<=36);
 
       timeline = historicoCompleto.slice(-14).reverse();
-      colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
 
       inputHist.style.display="none";
 
@@ -273,11 +222,6 @@
     },0);
   });
 
-  btn10.onclick = ()=>{
-    faixa10Ativa = !faixa10Ativa;
-    render();
-  };
-
   btnAnalise100.onclick = ()=>{
     analise100Ativa = !analise100Ativa;
 
@@ -285,11 +229,6 @@
       aplicarAnalise100();
     }
 
-    render();
-  };
-
-  btnAnaliseColunas.onclick = ()=>{
-    analiseColunasAtiva = !analiseColunasAtiva;
     render();
   };
 
@@ -327,11 +266,6 @@
     timeline.shift();
     historicoCompleto.pop();
 
-    if(analiseColunasAtiva){
-      const primeiro = colunasTopo.shift();
-      colunasTopo.push(primeiro);
-    }
-
     if(analise100Ativa) aplicarAnalise100();
 
     render();
@@ -342,21 +276,13 @@
     historicoCompleto = [];
     ordemSelecionados.length = 0;
     analises.MANUAL.filtros.clear();
-    faixa10Ativa = false;
     analise100Ativa = false;
-    analiseColunasAtiva = false;
-    colunasTopo = [1,2,3,4,5,6,7,8,9,10,11,12];
     render();
   };
 
   function add(n){
     timeline.unshift(n);
     if(timeline.length>14) timeline.pop();
-
-    if(analiseColunasAtiva){
-      const ultimo = colunasTopo.pop();
-      colunasTopo.unshift(ultimo);
-    }
 
     historicoCompleto.push(n);
 
@@ -365,57 +291,12 @@
     render();
   }
 
-  function desenharRadar(){
-
-    const canvas = document.getElementById("radar");
-    const ctx = canvas.getContext("2d");
-
-    ctx.clearRect(0,0,260,260);
-
-    const cx = 130;
-    const cy = 130;
-    const r = 110;
-    const ang = (Math.PI*2)/track.length;
-
-    const ativos = new Set(timeline);
-
-    for(let i=0;i<track.length;i++){
-      const a1 = i*ang + Math.PI/2;
-      const a2 = a1 + ang;
-
-      ctx.beginPath();
-      ctx.moveTo(cx,cy);
-      ctx.arc(cx,cy,r,a1,a2);
-      ctx.closePath();
-
-      ctx.fillStyle="#1c1c1c";
-      ctx.fill();
-
-      const meio = (a1+a2)/2;
-
-      const tx = cx + Math.cos(meio)*(r-25);
-      const ty = cy + Math.sin(meio)*(r-25);
-
-      let corNumero="#fff";
-      if(ativos.has(track[i])) corNumero="#00e676";
-
-      ctx.fillStyle=corNumero;
-      ctx.fillText(track[i],tx,ty);
-    }
-  }
-
   function render(){
 
     tl.innerHTML = timeline.join(" · ");
 
-    btn10.style.background = faixa10Ativa ? "#ffc107" : "";
-    btn10.style.color = faixa10Ativa ? "#000" : "";
-
     btnAnalise100.style.background = analise100Ativa ? "#00e676" : "";
     btnAnalise100.style.color = analise100Ativa ? "#000" : "";
-
-    btnAnaliseColunas.style.background = analiseColunasAtiva ? "#00bcd4" : "";
-    btnAnaliseColunas.style.color = analiseColunasAtiva ? "#000" : "";
 
     document.querySelectorAll("#btnT button").forEach(b=>{
       const t=+b.textContent.match(/\d+/)[0];
@@ -470,26 +351,7 @@
       conjArea.style.display = "block";
 
       conjArea.innerHTML = `
-        ${analiseColunasAtiva ? `
-          <div style="
-            display:grid;
-            grid-template-columns:repeat(12,minmax(26px,1fr));
-            gap:4px;
-            margin-bottom:4px;
-            font-size:10px;
-            font-weight:700;
-            color:#ffc107;
-            text-align:center;
-          ">
-            ${colunasTopo.map(c=>`
-              <div style="border:1px solid #555;background:#111;border-radius:4px;padding:2px">
-                C${c}
-              </div>
-            `).join("")}
-          </div>
-        ` : ``}
-
-        <div style="display:grid;grid-template-columns:${analiseColunasAtiva ? 'repeat(12,minmax(26px,1fr))' : 'repeat(auto-fit,minmax(26px,1fr))'};gap:4px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(26px,1fr));gap:4px">
           ${base.map(n=>`
             <div style="
               height:26px;
@@ -500,7 +362,7 @@
               color:#fff;
               font-size:10px;
               border-radius:4px;
-              border:${faixa10Ativa && n>=10 && n<=19 ? "3px solid #ffc107" : (n===ultimoNumero ? `3px solid ${mapaCores[n] || '#fff'}` : '1px solid #333')};
+              border:${n===ultimoNumero ? `3px solid ${mapaCores[n] || '#fff'}` : '1px solid #333'};
               box-shadow:${n===ultimoNumero ? `0 0 10px ${mapaCores[n] || '#fff'}` : 'none'};
               animation:${n===ultimoNumero ? 'piscaStrong 0.8s infinite' : 'none'};
             ">${n}</div>
@@ -510,16 +372,6 @@
     } else {
       conjArea.style.display = "none";
     }
-
-    if(analiseColunasAtiva && historicoCompleto.length){
-      analiseColunasBox.style.display = "block";
-      analiseColunasBox.innerHTML = analisarColunas();
-    } else {
-      analiseColunasBox.style.display = "none";
-      analiseColunasBox.innerHTML = "";
-    }
-
-    desenharRadar();
   }
 
   conjArea.onclick = ()=>{
