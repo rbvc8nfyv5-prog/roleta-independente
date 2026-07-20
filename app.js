@@ -1,5 +1,7 @@
 (function () {
 
+  // ================= CONFIGURAÇÃO =================
+
   const track = [
     32,15,19,4,21,2,25,17,34,6,
     27,13,36,11,30,8,23,10,5,24,
@@ -8,6 +10,19 @@
   ];
 
   const terminal = n => n % 10;
+
+  const STORAGE_KEY = "CSM_MELHOR_PAR_HISTORICO_V2";
+
+  // ================= PARES FIXOS =================
+
+  const paresFixos = [
+    [1,5],
+    [3,9],
+    [4,8],
+    [0,7],
+    [6,2],
+    [3,2]
+  ];
 
   const corTerminal = {
     0:"#ff5252",
@@ -22,538 +37,1273 @@
     9:"#ff00ff"
   };
 
-  const coresNumerosFortes = [
-    "#00e676",
-    "#ffc107",
-    "#2196f3",
-    "#e91e63",
-    "#ff9800"
-  ];
+  const numerosVermelhos = new Set([
+    1,3,5,7,9,12,14,16,18,
+    19,21,23,25,27,30,32,34,36
+  ]);
 
-  let timeline = [];
-  let historicoCompleto = [];
-  let expandido = false;
-  let analiseNumeroAtiva = false;
-  let numerosFortes = [];
+  // ================= ESTADO =================
 
-  const analises = {
-    MANUAL: { filtros:new Set(), res:[] }
-  };
+  let historico = carregarHistorico();
+  let proximoHorario = calcularProximoHorario();
 
-  const modosTerminais = {};
-  const ordemSelecionados = [];
+  // ================= HORÁRIO =================
 
-  for(let t=0; t<=9; t++){
-    modosTerminais[t] = 0;
+  function doisDigitos(valor){
+    return String(valor).padStart(2,"0");
   }
 
-  function clarearCor(hex){
-    hex = hex.replace("#","");
+  function horarioAtual(){
+    const agora = new Date();
 
-    let r = parseInt(hex.substring(0,2),16);
-    let g = parseInt(hex.substring(2,4),16);
-    let b = parseInt(hex.substring(4,6),16);
-
-    r = Math.min(255, Math.floor(r + (255-r)*0.45));
-    g = Math.min(255, Math.floor(g + (255-g)*0.45));
-    b = Math.min(255, Math.floor(b + (255-b)*0.45));
-
-    return "#" + [r,g,b]
-      .map(x => x.toString(16).padStart(2,"0"))
-      .join("");
+    return {
+      horas: agora.getHours(),
+      minutos: agora.getMinutes()
+    };
   }
 
-  function atualizarModosPorOrdem(){
-    for(let t=0; t<=9; t++){
-      modosTerminais[t] = 0;
+  function horarioParaMinutos(horario){
+
+    if(!horario || !/^\d{2}:\d{2}$/.test(horario)){
+
+      const atual = horarioAtual();
+
+      return atual.horas * 60 + atual.minutos;
     }
 
-    if(ordemSelecionados.length > 0){
-      modosTerminais[ordemSelecionados[0]] = 2;
+    const partes = horario
+      .split(":")
+      .map(Number);
+
+    return partes[0] * 60 + partes[1];
+  }
+
+  function minutosParaHorario(total){
+
+    total = ((total % 1440) + 1440) % 1440;
+
+    const horas = Math.floor(total / 60);
+    const minutos = total % 60;
+
+    return `${doisDigitos(horas)}:${doisDigitos(minutos)}`;
+  }
+
+  function somarMinutos(horario, quantidade){
+
+    return minutosParaHorario(
+      horarioParaMinutos(horario) + quantidade
+    );
+  }
+
+  function calcularProximoHorario(){
+
+    if(historico.length > 0){
+
+      return somarMinutos(
+        historico[0].horario,
+        1
+      );
     }
 
-    for(let i=1; i<ordemSelecionados.length; i++){
-      modosTerminais[ordemSelecionados[i]] = 2;
+    const atual = horarioAtual();
+
+    return `${doisDigitos(atual.horas)}:${doisDigitos(atual.minutos)}`;
+  }
+
+  // ================= ARMAZENAMENTO =================
+
+  function carregarHistorico(){
+
+    try{
+
+      const salvo =
+        localStorage.getItem(STORAGE_KEY);
+
+      if(!salvo){
+        return [];
+      }
+
+      const dados =
+        JSON.parse(salvo);
+
+      if(!Array.isArray(dados)){
+        return [];
+      }
+
+      return dados.filter(item =>
+        item &&
+        Number.isInteger(item.numero) &&
+        item.numero >= 0 &&
+        item.numero <= 36 &&
+        typeof item.horario === "string"
+      );
+
+    }catch(erro){
+
+      return [];
     }
   }
 
-  function vizinhos2(n){
-    const i = track.indexOf(n);
+  function salvarHistorico(){
+
+    try{
+
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(historico)
+      );
+
+    }catch(erro){
+
+      console.error(
+        "Não foi possível salvar o histórico.",
+        erro
+      );
+    }
+  }
+
+  // ================= VIZINHOS =================
+
+  function vizinhos1(numero){
+
+    const indice =
+      track.indexOf(numero);
 
     return [
-      track[(i+35)%37],
-      track[(i+36)%37],
-      n,
-      track[(i+1)%37],
-      track[(i+2)%37]
+      track[(indice + 36) % 37],
+      numero,
+      track[(indice + 1) % 37]
     ];
   }
 
-  function calcularAnaliseNumero(){
+  function coberturaDoPar(par){
 
-    numerosFortes = [];
+    const cobertura =
+      new Set();
 
-    if(!analiseNumeroAtiva) return;
+    par.forEach(t => {
 
-    const selecionados = ordemSelecionados.slice(0,2);
+      track.forEach(numero => {
 
-    if(selecionados.length !== 2) return;
+        if(terminal(numero) === t){
 
-    const candidatos = [];
+          vizinhos1(numero)
+            .forEach(vizinho => {
+              cobertura.add(vizinho);
+            });
+        }
+      });
+    });
 
-    selecionados.forEach(t=>{
+    return cobertura;
+  }
 
-      for(let n=0;n<=36;n++){
+  // ================= ANÁLISE =================
 
-        if(terminal(n) !== t) continue;
+  function analisarPar(par){
 
-        const cobertura = new Set(vizinhos2(n));
+    const cobertura =
+      coberturaDoPar(par);
 
-        let score = 0;
+    const acertos = [];
+    const quebras = [];
 
-        timeline.forEach(x=>{
-          if(cobertura.has(x)){
-            score++;
-          }
-        });
+    historico.forEach(item => {
 
-        candidatos.push({
-          numero:n,
-          score
-        });
+      if(cobertura.has(item.numero)){
+
+        acertos.push(item);
+
+      }else{
+
+        quebras.push(item);
+
       }
     });
 
-    numerosFortes = candidatos
-      .sort((a,b)=>{
-        if(b.score !== a.score){
-          return b.score - a.score;
-        }
+    const total =
+      historico.length;
 
-        return a.numero - b.numero;
-      })
-      .slice(0,5)
-      .map(x=>x.numero);
-  }  document.body.style.background = "#111";
+    const percentual =
+      total > 0
+        ? (acertos.length / total) * 100
+        : 0;
+
+    return {
+      par,
+      cobertura,
+      acertos,
+      quebras,
+      total,
+      percentual
+    };
+  }
+
+  // ================= MELHOR ENTRE OS PARES FIXOS =================
+
+  function encontrarMelhorPar(){
+
+    let melhor = null;
+
+    paresFixos.forEach(par => {
+
+      const analise =
+        analisarPar(par);
+
+      if(
+        !melhor ||
+
+        analise.percentual >
+        melhor.percentual ||
+
+        (
+          analise.percentual ===
+          melhor.percentual &&
+
+          analise.acertos.length >
+          melhor.acertos.length
+        ) ||
+
+        (
+          analise.percentual ===
+          melhor.percentual &&
+
+          analise.acertos.length ===
+          melhor.acertos.length &&
+
+          analise.quebras.length <
+          melhor.quebras.length
+        )
+      ){
+
+        melhor = analise;
+      }
+    });
+
+    return melhor ||
+      analisarPar(paresFixos[0]);
+  }
+
+  // ================= INSERÇÃO =================
+
+  function adicionarNumero(numero){
+
+    historico.unshift({
+      numero:numero,
+      horario:proximoHorario
+    });
+
+    proximoHorario =
+      somarMinutos(
+        proximoHorario,
+        1
+      );
+
+    salvarHistorico();
+
+    render();
+  }
+
+  function apagarUltimo(){
+
+    if(!historico.length){
+      return;
+    }
+
+    historico.shift();
+
+    proximoHorario =
+      calcularProximoHorario();
+
+    salvarHistorico();
+
+    render();
+  }
+
+  function apagarTudo(){
+
+    const confirmar =
+      window.confirm(
+        "Apagar todo o histórico armazenado?"
+      );
+
+    if(!confirmar){
+      return;
+    }
+
+    historico = [];
+
+    proximoHorario =
+      calcularProximoHorario();
+
+    salvarHistorico();
+
+    render();
+  }
+
+  // ================= COR ROLETA =================
+
+  function corNumeroRoleta(numero){
+
+    if(numero === 0){
+
+      return {
+        fundo:"#f5f5f5",
+        texto:"#8d1431"
+      };
+    }
+
+    if(numerosVermelhos.has(numero)){
+
+      return {
+        fundo:"#ef3852",
+        texto:"#ffffff"
+      };
+    }
+
+    return {
+      fundo:"#262223",
+      texto:"#ffffff"
+    };
+  }
+
+  // ================= INTERFACE =================
+
+  document.body.style.margin = "0";
+  document.body.style.background = "#111";
   document.body.style.color = "#fff";
-  document.body.style.fontFamily = "sans-serif";
+  document.body.style.fontFamily = "Arial, sans-serif";
 
   document.body.innerHTML = `
+
     <style>
-      @keyframes piscaStrong {
-        0% { transform:scale(1); }
-        50% { transform:scale(1.2); }
-        100% { transform:scale(1); }
+
+      *{
+        box-sizing:border-box;
       }
+
+      button,
+      input{
+        font-family:Arial,sans-serif;
+      }
+
+      button{
+        cursor:pointer;
+        touch-action:manipulation;
+      }
+
+      .csm-container{
+        width:100%;
+        max-width:1100px;
+        margin:auto;
+        padding:12px;
+      }
+
+      .csm-painel{
+        background:#1d1d1f;
+        border:1px solid #444;
+        border-radius:10px;
+        padding:10px;
+        margin-bottom:10px;
+      }
+
+      .csm-resumo{
+        display:grid;
+        grid-template-columns:repeat(4,1fr);
+        gap:8px;
+      }
+
+      .csm-card{
+        min-height:90px;
+        background:#272729;
+        border:1px solid #414145;
+        border-radius:9px;
+        padding:9px;
+      }
+
+      .csm-label{
+        color:#aaa;
+        font-size:12px;
+        margin-bottom:6px;
+      }
+
+      .csm-valor{
+        font-size:22px;
+        font-weight:900;
+      }
+
+      .csm-terminal{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-width:50px;
+        height:42px;
+        margin-right:6px;
+        border-radius:8px;
+        color:#fff;
+        font-size:20px;
+        font-weight:900;
+        border:2px solid rgba(255,255,255,.6);
+      }
+
+      .csm-barra{
+        height:12px;
+        border-radius:8px;
+        background:#3a3a3a;
+        overflow:hidden;
+        margin-top:8px;
+      }
+
+      .csm-barra-interna{
+        height:100%;
+        width:0;
+        background:linear-gradient(
+          90deg,
+          #00e5ff,
+          #00e676
+        );
+      }
+
+      .csm-horario{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        flex-wrap:wrap;
+      }
+
+      .csm-horario-atual{
+        font-size:30px;
+        font-weight:900;
+        color:#00e5ff;
+      }
+
+      .csm-time-input{
+        padding:8px;
+        background:#222;
+        color:#fff;
+        border:1px solid #555;
+        border-radius:7px;
+        font-size:18px;
+        font-weight:900;
+      }
+
+      .csm-btn{
+        padding:9px 12px;
+        border:1px solid #555;
+        border-radius:7px;
+        background:#333;
+        color:#fff;
+        font-weight:800;
+      }
+
+      .csm-btn-vermelho{
+        background:#70242d;
+      }
+
+      .csm-pares-fixos{
+        display:flex;
+        flex-wrap:wrap;
+        gap:7px;
+      }
+
+      .csm-par-fixo{
+        padding:6px 9px;
+        border-radius:7px;
+        background:#292929;
+        border:1px solid #555;
+        font-weight:900;
+      }
+
+      .csm-par-fixo-ativo{
+        border:2px solid #00e676;
+        box-shadow:0 0 10px rgba(0,230,118,.55);
+      }
+
+      .csm-teclado{
+        display:grid;
+        grid-template-columns:repeat(9,1fr);
+        gap:6px;
+      }
+
+      .csm-numero-btn{
+        min-height:42px;
+        border:1px solid #555;
+        border-radius:7px;
+        color:#fff;
+        font-size:16px;
+        font-weight:900;
+      }
+
+      .csm-timeline{
+        font-size:18px;
+        font-weight:800;
+        line-height:1.9;
+        word-break:break-word;
+      }
+
+      .csm-historico{
+        display:grid;
+        grid-template-columns:repeat(6,1fr);
+        gap:10px;
+      }
+
+      .csm-historico-item{
+        text-align:center;
+      }
+
+      .csm-historico-numero{
+        height:76px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        position:relative;
+        border-radius:9px;
+        font-size:22px;
+        font-weight:900;
+        border:2px solid #555;
+      }
+
+      .csm-historico-numero:after{
+        content:"";
+        position:absolute;
+        width:42px;
+        height:42px;
+        border-radius:50%;
+        border:4px solid currentColor;
+      }
+
+      .csm-historico-numero span{
+        position:relative;
+        z-index:2;
+      }
+
+      .csm-acerto{
+        box-shadow:
+          0 0 0 3px #00e676,
+          0 0 15px rgba(0,230,118,.6);
+      }
+
+      .csm-quebra{
+        box-shadow:
+          0 0 0 3px #ff5252,
+          0 0 15px rgba(255,82,82,.55);
+      }
+
+      .csm-historico-hora{
+        margin-top:5px;
+        font-size:13px;
+        font-weight:800;
+      }
+
+      .csm-quebras{
+        display:flex;
+        flex-wrap:wrap;
+        gap:6px;
+        margin-top:8px;
+      }
+
+      .csm-quebra-chip{
+        padding:6px 8px;
+        background:#5d222b;
+        border:1px solid #a84d5a;
+        border-radius:7px;
+        font-size:13px;
+        font-weight:900;
+      }
+
+      @media(max-width:750px){
+
+        .csm-resumo{
+          grid-template-columns:repeat(2,1fr);
+        }
+
+        .csm-historico{
+          grid-template-columns:repeat(4,1fr);
+        }
+
+        .csm-teclado{
+          grid-template-columns:repeat(6,1fr);
+        }
+
+        .csm-historico-numero{
+          height:65px;
+        }
+
+      }
+
     </style>
 
-    <div style="padding:10px;max-width:1000px;margin:auto">
+    <div class="csm-container">
 
-      <textarea
-        id="inputHist"
-        placeholder="Cole histórico aqui"
-        style="
-          width:100%;
-          margin-bottom:10px;
-          background:#222;
-          color:#fff;
-          border:1px solid #555;
-          padding:6px
-        ">
-      </textarea>
+      <h2 style="
+        text-align:center;
+        margin:4px 0 12px">
+        CSM — Pares Fixos + 1 Vizinho
+      </h2>
 
-      <h3 style="text-align:center">CSM</h3>
+      <div class="csm-painel">
 
-      <div style="margin:10px 0">
-        🕒 Timeline:
-        <span id="tl" style="font-size:18px;font-weight:600"></span>
-      </div>
+        <div class="csm-horario">
 
-      <div style="
-        display:flex;
-        gap:8px;
-        margin-bottom:10px;
-        flex-wrap:wrap">
+          <div>
 
-        <button id="btnUndo">Apagar último</button>
+            <div class="csm-label">
+              Horário do próximo número
+            </div>
 
-        <button id="btnClear">Apagar tudo</button>
+            <div
+              id="csmProximoHorario"
+              class="csm-horario-atual">
+              --:--
+            </div>
 
-        <button id="btnAnaliseNumero">
-          Análise Número
-        </button>
+          </div>
 
-      </div>
+          <div>
 
-      <div style="
-        border:1px solid #555;
-        padding:8px;
-        margin-bottom:10px">
+            <div class="csm-label">
+              Ajustar horário
+            </div>
 
-        <div style="margin-bottom:8px">
-          Terminais:
+            <input
+              id="csmHorarioInput"
+              class="csm-time-input"
+              type="time"
+              step="60">
+
+          </div>
+
+          <button
+            id="csmMenosMinuto"
+            class="csm-btn">
+            −1 minuto
+          </button>
+
+          <button
+            id="csmMaisMinuto"
+            class="csm-btn">
+            +1 minuto
+          </button>
+
+          <button
+            id="csmApagarUltimo"
+            class="csm-btn">
+            Apagar último
+          </button>
+
+          <button
+            id="csmApagarTudo"
+            class="csm-btn csm-btn-vermelho">
+            Apagar tudo
+          </button>
+
         </div>
 
-        <div id="btnT"
-          style="
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            margin-bottom:8px">
-        </div>
+      </div>
 
-        <div id="numerosFortesBox"
-          style="
-            display:none;
-            gap:6px;
-            flex-wrap:wrap">
+      <div class="csm-painel">
+
+        <b>Pares fixos analisados</b>
+
+        <div
+          id="csmParesFixos"
+          class="csm-pares-fixos"
+          style="margin-top:8px">
         </div>
 
       </div>
 
-      <div id="conjArea"
-        style="
-          display:none;
-          margin-top:12px;
-          overflow-x:auto">
+      <div class="csm-painel">
+
+        <div class="csm-resumo">
+
+          <div class="csm-card">
+
+            <div class="csm-label">
+              Melhor par fixo
+            </div>
+
+            <div id="csmMelhorPar"></div>
+
+          </div>
+
+          <div class="csm-card">
+
+            <div class="csm-label">
+              Percentual com 1 vizinho
+            </div>
+
+            <div
+              id="csmPercentual"
+              class="csm-valor">
+              0%
+            </div>
+
+            <div class="csm-barra">
+
+              <div
+                id="csmBarra"
+                class="csm-barra-interna">
+              </div>
+
+            </div>
+
+          </div>
+
+          <div class="csm-card">
+
+            <div class="csm-label">
+              Acertos
+            </div>
+
+            <div
+              id="csmAcertos"
+              class="csm-valor">
+              0 / 0
+            </div>
+
+          </div>
+
+          <div class="csm-card">
+
+            <div class="csm-label">
+              Última quebra
+            </div>
+
+            <div
+              id="csmUltimaQuebra"
+              class="csm-valor">
+              —
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
 
-      <div id="nums"
-        style="
-          display:grid;
-          grid-template-columns:repeat(9,1fr);
-          gap:6px;
-          margin-top:12px">
+      <div class="csm-painel">
+
+        <b>
+          Onde aconteceram as quebras
+        </b>
+
+        <div
+          id="csmListaQuebras"
+          class="csm-quebras">
+        </div>
+
+      </div>
+
+      <div class="csm-painel">
+
+        <b>
+          Timeline analisada
+        </b>
+
+        <div
+          id="csmTimeline"
+          class="csm-timeline">
+        </div>
+
+      </div>
+
+      <div class="csm-painel">
+
+        <b>
+          Teclado 0–36
+        </b>
+
+        <div style="
+          color:#aaa;
+          font-size:12px;
+          margin:5px 0 9px">
+
+          Clique no número.
+          Ele será armazenado com o horário acima.
+
+        </div>
+
+        <div
+          id="csmTeclado"
+          class="csm-teclado">
+        </div>
+
+      </div>
+
+      <div class="csm-painel">
+
+        <b>
+          Histórico armazenado
+        </b>
+
+        <div
+          id="csmHistorico"
+          class="csm-historico"
+          style="margin-top:10px">
+        </div>
+
       </div>
 
     </div>
   `;
 
-  inputHist.addEventListener("paste", ()=>{
-    setTimeout(()=>{
+  // ================= ELEMENTOS =================
 
-      historicoCompleto = inputHist.value
-        .split(/[\s,;|]+/)
-        .map(Number)
-        .filter(n => n >= 0 && n <= 36);
+  const elementoProximoHorario =
+    document.getElementById(
+      "csmProximoHorario"
+    );
 
-      timeline = historicoCompleto
-        .slice(-14)
-        .reverse();
+  const elementoHorarioInput =
+    document.getElementById(
+      "csmHorarioInput"
+    );
 
-      inputHist.style.display = "none";
+  const elementoParesFixos =
+    document.getElementById(
+      "csmParesFixos"
+    );
 
-      calcularAnaliseNumero();
+  const elementoMelhorPar =
+    document.getElementById(
+      "csmMelhorPar"
+    );
 
-      render();
+  const elementoPercentual =
+    document.getElementById(
+      "csmPercentual"
+    );
 
-    },0);
-  });
+  const elementoBarra =
+    document.getElementById(
+      "csmBarra"
+    );
 
-  btnAnaliseNumero.onclick = ()=>{
+  const elementoAcertos =
+    document.getElementById(
+      "csmAcertos"
+    );
 
-    analiseNumeroAtiva = !analiseNumeroAtiva;
+  const elementoUltimaQuebra =
+    document.getElementById(
+      "csmUltimaQuebra"
+    );
 
-    if(!analiseNumeroAtiva){
-      numerosFortes = [];
-    }
+  const elementoListaQuebras =
+    document.getElementById(
+      "csmListaQuebras"
+    );
 
-    calcularAnaliseNumero();
+  const elementoTimeline =
+    document.getElementById(
+      "csmTimeline"
+    );
 
-    render();
-  };
+  const elementoHistorico =
+    document.getElementById(
+      "csmHistorico"
+    );
 
-  for(let t=0;t<=9;t++){
+  const elementoTeclado =
+    document.getElementById(
+      "csmTeclado"
+    );
 
-    const b = document.createElement("button");
+  // ================= TECLADO =================
 
-    b.textContent = "T" + t;
+  for(
+    let numero = 0;
+    numero <= 36;
+    numero++
+  ){
 
-    b.style = `
-      padding:6px;
-      background:#444;
-      color:#fff;
-      border:1px solid #666
-    `;
+    const cores =
+      corNumeroRoleta(numero);
 
-    b.onclick = ()=>{
+    const botao =
+      document.createElement(
+        "button"
+      );
 
-      if(analises.MANUAL.filtros.has(t)){
+    botao.className =
+      "csm-numero-btn";
 
-        analises.MANUAL.filtros.delete(t);
+    botao.textContent =
+      numero;
 
-        const idx = ordemSelecionados.indexOf(t);
+    botao.style.background =
+      cores.fundo;
 
-        if(idx !== -1){
-          ordemSelecionados.splice(idx,1);
-        }
+    botao.style.color =
+      cores.texto;
 
-      } else {
+    botao.onclick = () => {
 
-        if(ordemSelecionados.length >= 2){
+      adicionarNumero(
+        numero
+      );
 
-          const removido = ordemSelecionados.shift();
-
-          analises.MANUAL.filtros.delete(removido);
-        }
-
-        analises.MANUAL.filtros.add(t);
-        ordemSelecionados.push(t);
-      }
-
-      atualizarModosPorOrdem();
-
-      calcularAnaliseNumero();
-
-      render();
     };
 
-    btnT.appendChild(b);
-  }  for(let n=0; n<=36; n++){
-
-    const b = document.createElement("button");
-
-    b.textContent = n;
-
-    b.style = `
-      padding:8px;
-      background:#333;
-      color:#fff
-    `;
-
-    b.onclick = ()=>add(n);
-
-    nums.appendChild(b);
+    elementoTeclado
+      .appendChild(botao);
   }
 
-  btnUndo.onclick = ()=>{
+  // ================= EVENTOS =================
 
-    if(!timeline.length) return;
+  document
+    .getElementById(
+      "csmMenosMinuto"
+    )
+    .onclick = () => {
 
-    historicoCompleto.pop();
+      proximoHorario =
+        somarMinutos(
+          proximoHorario,
+          -1
+        );
 
-    timeline = historicoCompleto
-      .slice(-14)
-      .reverse();
+      render();
 
-    calcularAnaliseNumero();
+    };
 
-    render();
-  };
+  document
+    .getElementById(
+      "csmMaisMinuto"
+    )
+    .onclick = () => {
 
-  btnClear.onclick = ()=>{
+      proximoHorario =
+        somarMinutos(
+          proximoHorario,
+          1
+        );
 
-    timeline = [];
-    historicoCompleto = [];
-    numerosFortes = [];
-    expandido = false;
-    analiseNumeroAtiva = false;
+      render();
 
-    ordemSelecionados.length = 0;
+    };
 
-    analises.MANUAL.filtros.clear();
+  document
+    .getElementById(
+      "csmApagarUltimo"
+    )
+    .onclick =
+      apagarUltimo;
 
-    for(let t=0; t<=9; t++){
-      modosTerminais[t] = 0;
-    }
+  document
+    .getElementById(
+      "csmApagarTudo"
+    )
+    .onclick =
+      apagarTudo;
 
-    render();
-  };
+  elementoHorarioInput
+    .onchange =
+      event => {
 
-  function add(n){
+        if(
+          event.target.value
+        ){
 
-    historicoCompleto.push(n);
+          proximoHorario =
+            event.target.value;
 
-    timeline = historicoCompleto
-      .slice(-14)
-      .reverse();
-
-    calcularAnaliseNumero();
-
-    render();
-  }
-
-  function renderTimelinePrincipal(){
-
-    tl.innerHTML = timeline.map(n=>`
-      <span style="
-        display:inline-block;
-        margin:2px;
-        padding:3px 5px;
-        border-radius:4px;
-        background:#222;
-        border:1px solid #444;
-        color:#fff;
-      ">${n}</span>
-    `).join("");
-  }
-
-  function renderNumerosFortes(){
-
-    if(!analiseNumeroAtiva || numerosFortes.length === 0){
-
-      numerosFortesBox.style.display = "none";
-      numerosFortesBox.innerHTML = "";
-
-      return;
-    }
-
-    numerosFortesBox.style.display = "flex";
-
-    numerosFortesBox.innerHTML = numerosFortes
-      .map((n,i)=>`
-        <div style="
-          padding:4px 8px;
-          border-radius:4px;
-          background:${coresNumerosFortes[i]};
-          color:#000;
-          font-weight:800;
-          font-size:13px;
-        ">
-          ${n}
-        </div>
-      `)
-      .join("");
-  }
-
-  function mapaNumerosFortes(){
-
-    const mapa = {};
-
-    numerosFortes.forEach((n,i)=>{
-
-      vizinhos2(n).forEach(v=>{
-
-        if(!mapa[v]){
-          mapa[v] = coresNumerosFortes[i];
+          render();
         }
 
-      });
+      };
 
-    });
+  // ================= RENDER =================
 
-    return mapa;
-  }  function render(){
+  function render(){
 
-    renderTimelinePrincipal();
+    const melhor =
+      encontrarMelhorPar();
 
-    calcularAnaliseNumero();
+    elementoProximoHorario
+      .textContent =
+        proximoHorario;
 
-    renderNumerosFortes();
+    elementoHorarioInput
+      .value =
+        proximoHorario;
 
-    btnAnaliseNumero.style.background =
-      analiseNumeroAtiva ? "#00e676" : "";
+    // ===== PARES FIXOS =====
 
-    btnAnaliseNumero.style.color =
-      analiseNumeroAtiva ? "#000" : "";
+    elementoParesFixos
+      .innerHTML =
+        paresFixos
+          .map(par => {
 
-    document.querySelectorAll("#btnT button")
-      .forEach(b=>{
+            const analise =
+              analisarPar(par);
 
-        const t = +b.textContent.match(/\d+/)[0];
+            const ativo =
+              par[0] ===
+                melhor.par[0] &&
+              par[1] ===
+                melhor.par[1];
 
-        const ativo =
-          analises.MANUAL.filtros.has(t);
+            return `
+              <div
+                class="
+                  csm-par-fixo
+                  ${
+                    ativo
+                      ? "csm-par-fixo-ativo"
+                      : ""
+                  }
+                "
+              >
 
-        b.style.background =
-          ativo ? corTerminal[t] : "#444";
+                <span style="
+                  color:${corTerminal[par[0]]}
+                ">
+                  T${par[0]}
+                </span>
 
-        if(ativo){
+                +
 
-          b.style.border =
-            "3px solid #fff";
+                <span style="
+                  color:${corTerminal[par[1]]}
+                ">
+                  T${par[1]}
+                </span>
 
-          b.style.boxShadow =
-            `0 0 10px ${corTerminal[t]}`;
+                &nbsp;
 
-          b.textContent = `T${t} 2v`;
+                ${Math.round(
+                  analise.percentual
+                )}%
 
-        } else {
+              </div>
+            `;
 
-          b.style.border =
-            "1px solid #666";
+          })
+          .join("");
 
-          b.style.boxShadow = "none";
+    // ===== MELHOR PAR =====
 
-          b.textContent = `T${t}`;
-        }
+    elementoMelhorPar
+      .innerHTML =
+        melhor.par
+          .map(t => `
+            <span
+              class="csm-terminal"
+              style="
+                background:
+                ${corTerminal[t]}
+              "
+            >
+              T${t}
+            </span>
+          `)
+          .join("");
 
-      });
+    const percentualArredondado =
+      Math.round(
+        melhor.percentual
+      );
+
+    elementoPercentual
+      .textContent =
+        percentualArredondado +
+        "%";
+
+    elementoBarra
+      .style.width =
+        percentualArredondado +
+        "%";
+
+    elementoAcertos
+      .textContent =
+        `${
+          melhor.acertos.length
+        } / ${
+          melhor.total
+        }`;
+
+    // ===== ÚLTIMA QUEBRA =====
 
     if(
-      analiseNumeroAtiva &&
-      numerosFortes.length > 0
+      melhor.quebras.length >
+      0
     ){
 
-      const mapaCores =
-        mapaNumerosFortes();
+      const ultimaQuebra =
+        melhor.quebras[0];
 
-      const base =
-        expandido
-          ? historicoCompleto.slice().reverse()
-          : timeline;
+      elementoUltimaQuebra
+        .innerHTML = `
 
-      const ultimoNumero =
-        timeline[0];
+          ${ultimaQuebra.numero}
 
-      conjArea.style.display =
-        "block";
+          <div style="
+            font-size:12px;
+            color:#aaa;
+            margin-top:3px
+          ">
+            ${ultimaQuebra.horario}
+          </div>
+        `;
 
-      conjArea.innerHTML = `
-        <div style="
-          display:grid;
-          grid-template-columns:
-            repeat(auto-fit,minmax(26px,1fr));
-          gap:4px">
+    }else{
 
-          ${base.map(n=>`
-            <div style="
-              height:26px;
-              display:flex;
-              align-items:center;
-              justify-content:center;
-              background:${mapaCores[n] || "#222"};
-              color:${mapaCores[n] ? "#000" : "#fff"};
-              font-size:10px;
-              font-weight:
-                ${mapaCores[n] ? "800" : "400"};
-              border-radius:4px;
-              border:
-                ${n===ultimoNumero
-                  ? `3px solid ${mapaCores[n] || "#fff"}`
-                  : "1px solid #333"};
-              box-shadow:
-                ${n===ultimoNumero
-                  ? `0 0 10px ${mapaCores[n] || "#fff"}`
-                  : "none"};
-              animation:
-                ${n===ultimoNumero
-                  ? "piscaStrong 0.8s infinite"
-                  : "none"};
-            ">
-              ${n}
-            </div>
-          `).join("")}
+      elementoUltimaQuebra
+        .textContent =
+          "—";
 
-        </div>
-      `;
-
-    } else {
-
-      conjArea.style.display =
-        "none";
-
-      conjArea.innerHTML = "";
     }
 
+    // ===== LISTA QUEBRAS =====
+
+    if(
+      melhor.quebras.length >
+      0
+    ){
+
+      elementoListaQuebras
+        .innerHTML =
+          melhor.quebras
+            .map(item => `
+
+              <span
+                class="csm-quebra-chip"
+              >
+
+                ${item.numero}
+                ·
+                ${item.horario}
+
+              </span>
+
+            `)
+            .join("");
+
+    }else{
+
+      elementoListaQuebras
+        .innerHTML = `
+
+          <span style="
+            color:#00e676;
+            font-weight:900
+          ">
+
+            Sem quebra no
+            histórico atual
+
+          </span>
+
+        `;
+
+    }
+
+    // ===== TIMELINE =====
+
+    elementoTimeline
+      .innerHTML =
+        historico
+          .map(item => {
+
+            const acertou =
+              melhor
+                .cobertura
+                .has(
+                  item.numero
+                );
+
+            return `
+
+              <span style="
+                display:inline-block;
+                margin-right:5px;
+                color:${
+                  acertou
+                    ? "#00e676"
+                    : "#ff5252"
+                }
+              ">
+
+                ${item.numero}
+
+              </span>
+
+            `;
+
+          })
+          .join("");
+
+    // ===== HISTÓRICO =====
+
+    elementoHistorico
+      .innerHTML =
+        historico
+          .map(item => {
+
+            const cores =
+              corNumeroRoleta(
+                item.numero
+              );
+
+            const acertou =
+              melhor
+                .cobertura
+                .has(
+                  item.numero
+                );
+
+            return `
+
+              <div
+                class="
+                  csm-historico-item
+                "
+              >
+
+                <div
+                  class="
+                    csm-historico-numero
+                    ${
+                      acertou
+                        ? "csm-acerto"
+                        : "csm-quebra"
+                    }
+                  "
+                  style="
+                    background:
+                    ${cores.fundo};
+
+                    color:
+                    ${cores.texto};
+                  "
+                >
+
+                  <span>
+                    ${item.numero}
+                  </span>
+
+                </div>
+
+                <div
+                  class="
+                    csm-historico-hora
+                  "
+                >
+
+                  ${item.horario}
+
+                </div>
+
+              </div>
+
+            `;
+
+          })
+          .join("");
+
   }
-
-  conjArea.onclick = ()=>{
-
-    expandido = !expandido;
-
-    render();
-  };
 
   render();
 
