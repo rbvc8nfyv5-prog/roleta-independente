@@ -1,116 +1,64 @@
 (function () {
 
+  "use strict";
+
   // ================= CONFIGURAÇÃO =================
 
-  const track = [
-    32,15,19,4,21,2,25,17,34,6,
-    27,13,36,11,30,8,23,10,5,24,
-    16,33,1,20,14,31,9,22,18,29,
-    7,28,12,35,3,26,0
-  ];
-
-  const terminal = n => n % 10;
-
-  const STORAGE_KEY = "CSM_MELHOR_PAR_HISTORICO_V2";
-
-  // ================= PARES FIXOS =================
-
-  const paresFixos = [
-    [1,5],
-    [3,9],
-    [4,8],
-    [0,7],
-    [6,2],
-    [3,2]
-  ];
-
-  const corTerminal = {
-    0:"#ff5252",
-    1:"#ff9800",
-    2:"#ffc107",
-    3:"#00e676",
-    4:"#00bcd4",
-    5:"#2196f3",
-    6:"#9c27b0",
-    7:"#e91e63",
-    8:"#8bc34a",
-    9:"#ff00ff"
-  };
+  const STORAGE_KEY =
+    "ANALISADOR_VISUAL_TERMINAIS_V1";
 
   const numerosVermelhos = new Set([
-    1,3,5,7,9,12,14,16,18,
-    19,21,23,25,27,30,32,34,36
+    1,3,5,7,9,
+    12,14,16,18,
+    19,21,23,25,27,
+    30,32,34,36
   ]);
 
-  // ================= ESTADO =================
+  const formacoes = [
+    {
+      nome: "Coluna esquerda",
+      terminais: [7,4,1]
+    },
+    {
+      nome: "Coluna central",
+      terminais: [8,5,2]
+    },
+    {
+      nome: "Coluna direita",
+      terminais: [9,6,3]
+    },
+    {
+      nome: "Linha superior",
+      terminais: [7,8,9]
+    },
+    {
+      nome: "Linha central",
+      terminais: [4,5,6]
+    },
+    {
+      nome: "Linha inferior",
+      terminais: [1,2,3]
+    },
+    {
+      nome: "Diagonal 7–5–3",
+      terminais: [7,5,3]
+    },
+    {
+      nome: "Diagonal 9–5–1",
+      terminais: [9,5,1]
+    }
+  ];
 
   let historico = carregarHistorico();
-  let proximoHorario = calcularProximoHorario();
 
-  // ================= HORÁRIO =================
+  // ================= FUNÇÕES BÁSICAS =================
 
-  function doisDigitos(valor){
-    return String(valor).padStart(2,"0");
+  function terminal(numero){
+
+    return numero === 0
+      ? 0
+      : numero % 10;
   }
-
-  function horarioAtual(){
-    const agora = new Date();
-
-    return {
-      horas: agora.getHours(),
-      minutos: agora.getMinutes()
-    };
-  }
-
-  function horarioParaMinutos(horario){
-
-    if(!horario || !/^\d{2}:\d{2}$/.test(horario)){
-
-      const atual = horarioAtual();
-
-      return atual.horas * 60 + atual.minutos;
-    }
-
-    const partes = horario
-      .split(":")
-      .map(Number);
-
-    return partes[0] * 60 + partes[1];
-  }
-
-  function minutosParaHorario(total){
-
-    total = ((total % 1440) + 1440) % 1440;
-
-    const horas = Math.floor(total / 60);
-    const minutos = total % 60;
-
-    return `${doisDigitos(horas)}:${doisDigitos(minutos)}`;
-  }
-
-  function somarMinutos(horario, quantidade){
-
-    return minutosParaHorario(
-      horarioParaMinutos(horario) + quantidade
-    );
-  }
-
-  function calcularProximoHorario(){
-
-    if(historico.length > 0){
-
-      return somarMinutos(
-        historico[0].horario,
-        1
-      );
-    }
-
-    const atual = horarioAtual();
-
-    return `${doisDigitos(atual.horas)}:${doisDigitos(atual.minutos)}`;
-  }
-
-  // ================= ARMAZENAMENTO =================
 
   function carregarHistorico(){
 
@@ -130,13 +78,14 @@
         return [];
       }
 
-      return dados.filter(item =>
-        item &&
-        Number.isInteger(item.numero) &&
-        item.numero >= 0 &&
-        item.numero <= 36 &&
-        typeof item.horario === "string"
-      );
+      return dados
+        .map(Number)
+        .filter(numero =>
+          Number.isInteger(numero) &&
+          numero >= 0 &&
+          numero <= 36
+        )
+        .slice(-300);
 
     }catch(erro){
 
@@ -162,145 +111,252 @@
     }
   }
 
-  // ================= VIZINHOS =================
+  function corNumeroRoleta(numero){
 
-  function vizinhos1(numero){
+    if(numero === 0){
 
-    const indice =
-      track.indexOf(numero);
+      return {
+        fundo:"#07874b",
+        texto:"#ffffff"
+      };
+    }
 
-    return [
-      track[(indice + 36) % 37],
-      numero,
-      track[(indice + 1) % 37]
-    ];
+    if(numerosVermelhos.has(numero)){
+
+      return {
+        fundo:"#c6283d",
+        texto:"#ffffff"
+      };
+    }
+
+    return {
+      fundo:"#171717",
+      texto:"#ffffff"
+    };
   }
 
-  function coberturaDoPar(par){
+  function contarTerminais(terminais){
 
-    const cobertura =
-      new Set();
+    const contagens = {};
 
-    par.forEach(t => {
+    terminais.forEach(item => {
 
-      track.forEach(numero => {
-
-        if(terminal(numero) === t){
-
-          vizinhos1(numero)
-            .forEach(vizinho => {
-              cobertura.add(vizinho);
-            });
-        }
-      });
+      contagens[item] =
+        (contagens[item] || 0) + 1;
     });
 
-    return cobertura;
+    return contagens;
+  }
+
+  function numerosDosTerminais(
+    terminaisAlvo
+  ){
+
+    const numeros = [];
+
+    for(
+      let numero = 0;
+      numero <= 36;
+      numero++
+    ){
+
+      if(
+        terminaisAlvo.includes(
+          terminal(numero)
+        )
+      ){
+
+        numeros.push(numero);
+      }
+    }
+
+    return numeros;
   }
 
   // ================= ANÁLISE =================
 
-  function analisarPar(par){
+  function encontrarFormacoesCompletas(
+    terminaisUnicos
+  ){
 
-    const cobertura =
-      coberturaDoPar(par);
+    return formacoes.filter(formacao =>
 
-    const acertos = [];
-    const quebras = [];
+      formacao.terminais.every(item =>
+        terminaisUnicos.includes(item)
+      )
+    );
+  }
 
-    historico.forEach(item => {
+  function encontrarFormacoesParciais(
+    terminaisUnicos,
+    contagens
+  ){
 
-      if(cobertura.has(item.numero)){
+    return formacoes
+      .map(formacao => {
 
-        acertos.push(item);
+        const encontrados =
+          formacao.terminais.filter(item =>
+            terminaisUnicos.includes(item)
+          );
 
-      }else{
+        const faltantes =
+          formacao.terminais.filter(item =>
+            !terminaisUnicos.includes(item)
+          );
 
-        quebras.push(item);
+        const forca =
+          encontrados.reduce(
+            (total,item) =>
+              total +
+              (contagens[item] || 0),
+            0
+          );
 
-      }
-    });
+        return {
+          nome:formacao.nome,
+          terminais:formacao.terminais,
+          encontrados,
+          faltantes,
+          forca
+        };
+      })
+      .filter(resultado =>
+        resultado.encontrados.length === 2 &&
+        resultado.faltantes.length === 1
+      )
+      .sort((a,b) => {
 
-    const total =
-      historico.length;
+        if(b.forca !== a.forca){
+          return b.forca - a.forca;
+        }
 
-    const percentual =
-      total > 0
-        ? (acertos.length / total) * 100
-        : 0;
+        return (
+          formacoes.indexOf(
+            formacoes.find(item =>
+              item.nome === a.nome
+            )
+          ) -
+          formacoes.indexOf(
+            formacoes.find(item =>
+              item.nome === b.nome
+            )
+          )
+        );
+      });
+  }
+
+  function analisarUltimosQuatro(){
+
+    const numeros =
+      historico.slice(-4);
+
+    const terminais =
+      numeros.map(terminal);
+
+    const contagens =
+      contarTerminais(terminais);
+
+    const terminaisUnicos =
+      [...new Set(terminais)];
+
+    const completas =
+      encontrarFormacoesCompletas(
+        terminaisUnicos
+      );
+
+    if(completas.length){
+
+      const formacao =
+        completas[0];
+
+      return {
+        tipo:"completa",
+        numeros,
+        terminais,
+        contagens,
+        formacao,
+        terminaisAlvo:
+          formacao.terminais,
+        numerosAlvo:
+          numerosDosTerminais(
+            formacao.terminais
+          )
+      };
+    }
+
+    const parciais =
+      encontrarFormacoesParciais(
+        terminaisUnicos,
+        contagens
+      );
+
+    if(parciais.length){
+
+      const formacao =
+        parciais[0];
+
+      const terminalFaltante =
+        formacao.faltantes[0];
+
+      return {
+        tipo:"parcial",
+        numeros,
+        terminais,
+        contagens,
+        formacao,
+        terminalFaltante,
+        numerosConfirmacao:
+          numerosDosTerminais([
+            terminalFaltante
+          ])
+      };
+    }
+
+    const repetidos =
+      Object.entries(contagens)
+        .filter(([,quantidade]) =>
+          quantidade > 1
+        )
+        .map(([item,quantidade]) => ({
+          terminal:Number(item),
+          quantidade
+        }))
+        .sort((a,b) =>
+          b.quantidade -
+          a.quantidade
+        );
+
+    if(repetidos.length){
+
+      return {
+        tipo:"repeticao",
+        numeros,
+        terminais,
+        contagens,
+        repetidos
+      };
+    }
 
     return {
-      par,
-      cobertura,
-      acertos,
-      quebras,
-      total,
-      percentual
+      tipo:"nenhuma",
+      numeros,
+      terminais,
+      contagens
     };
   }
 
-  // ================= MELHOR ENTRE OS PARES FIXOS =================
-
-  function encontrarMelhorPar(){
-
-    let melhor = null;
-
-    paresFixos.forEach(par => {
-
-      const analise =
-        analisarPar(par);
-
-      if(
-        !melhor ||
-
-        analise.percentual >
-        melhor.percentual ||
-
-        (
-          analise.percentual ===
-          melhor.percentual &&
-
-          analise.acertos.length >
-          melhor.acertos.length
-        ) ||
-
-        (
-          analise.percentual ===
-          melhor.percentual &&
-
-          analise.acertos.length ===
-          melhor.acertos.length &&
-
-          analise.quebras.length <
-          melhor.quebras.length
-        )
-      ){
-
-        melhor = analise;
-      }
-    });
-
-    return melhor ||
-      analisarPar(paresFixos[0]);
-  }
-
-  // ================= INSERÇÃO =================
+  // ================= HISTÓRICO =================
 
   function adicionarNumero(numero){
 
-    historico.unshift({
-      numero:numero,
-      horario:proximoHorario
-    });
+    historico.push(numero);
 
-    proximoHorario =
-      somarMinutos(
-        proximoHorario,
-        1
-      );
+    if(historico.length > 300){
+      historico.shift();
+    }
 
     salvarHistorico();
-
     render();
   }
 
@@ -310,13 +366,9 @@
       return;
     }
 
-    historico.shift();
-
-    proximoHorario =
-      calcularProximoHorario();
+    historico.pop();
 
     salvarHistorico();
-
     render();
   }
 
@@ -324,7 +376,7 @@
 
     const confirmar =
       window.confirm(
-        "Apagar todo o histórico armazenado?"
+        "Apagar todo o histórico?"
       );
 
     if(!confirmar){
@@ -333,46 +385,17 @@
 
     historico = [];
 
-    proximoHorario =
-      calcularProximoHorario();
-
     salvarHistorico();
-
     render();
-  }
-
-  // ================= COR ROLETA =================
-
-  function corNumeroRoleta(numero){
-
-    if(numero === 0){
-
-      return {
-        fundo:"#f5f5f5",
-        texto:"#8d1431"
-      };
-    }
-
-    if(numerosVermelhos.has(numero)){
-
-      return {
-        fundo:"#ef3852",
-        texto:"#ffffff"
-      };
-    }
-
-    return {
-      fundo:"#262223",
-      texto:"#ffffff"
-    };
   }
 
   // ================= INTERFACE =================
 
   document.body.style.margin = "0";
-  document.body.style.background = "#111";
-  document.body.style.color = "#fff";
-  document.body.style.fontFamily = "Arial, sans-serif";
+  document.body.style.background = "#101010";
+  document.body.style.color = "#ffffff";
+  document.body.style.fontFamily =
+    "Arial, sans-serif";
 
   document.body.innerHTML = `
 
@@ -382,538 +405,436 @@
         box-sizing:border-box;
       }
 
-      button,
-      input{
-        font-family:Arial,sans-serif;
-      }
-
       button{
+        font-family:Arial,sans-serif;
         cursor:pointer;
         touch-action:manipulation;
       }
 
-      .csm-container{
+      .app{
         width:100%;
-        max-width:1100px;
+        max-width:760px;
         margin:auto;
-        padding:12px;
-      }
-
-      .csm-painel{
-        background:#1d1d1f;
-        border:1px solid #444;
-        border-radius:10px;
         padding:10px;
-        margin-bottom:10px;
       }
 
-      .csm-resumo{
-        display:grid;
-        grid-template-columns:repeat(4,1fr);
-        gap:8px;
+      .titulo{
+        margin:3px 0 10px;
+        text-align:center;
+        font-size:21px;
       }
 
-      .csm-card{
-        min-height:90px;
-        background:#272729;
-        border:1px solid #414145;
-        border-radius:9px;
+      .painel{
+        margin-bottom:9px;
         padding:9px;
+        background:#1d1d1f;
+        border:1px solid #414141;
+        border-radius:10px;
       }
 
-      .csm-label{
-        color:#aaa;
-        font-size:12px;
-        margin-bottom:6px;
-      }
-
-      .csm-valor{
-        font-size:22px;
+      .painel-titulo{
+        margin-bottom:7px;
+        color:#d3d3d3;
+        font-size:13px;
         font-weight:900;
       }
 
-      .csm-terminal{
-        display:inline-flex;
+      .linha-botoes{
+        display:flex;
+        gap:7px;
+        flex-wrap:wrap;
+      }
+
+      .btn{
+        padding:8px 12px;
+        background:#343434;
+        color:#ffffff;
+        border:1px solid #555;
+        border-radius:7px;
+        font-weight:900;
+      }
+
+      .btn-vermelho{
+        background:#762832;
+      }
+
+      .historico{
+        display:flex;
+        min-height:39px;
+        gap:5px;
+        align-items:center;
+        overflow-x:auto;
+      }
+
+      .historico-numero{
+        min-width:36px;
+        height:36px;
+        display:flex;
         align-items:center;
         justify-content:center;
-        min-width:50px;
-        height:42px;
-        margin-right:6px;
-        border-radius:8px;
-        color:#fff;
-        font-size:20px;
-        font-weight:900;
-        border:2px solid rgba(255,255,255,.6);
-      }
-
-      .csm-barra{
-        height:12px;
-        border-radius:8px;
-        background:#3a3a3a;
-        overflow:hidden;
-        margin-top:8px;
-      }
-
-      .csm-barra-interna{
-        height:100%;
-        width:0;
-        background:linear-gradient(
-          90deg,
-          #00e5ff,
-          #00e676
-        );
-      }
-
-      .csm-horario{
-        display:flex;
-        align-items:center;
-        gap:10px;
-        flex-wrap:wrap;
-      }
-
-      .csm-horario-atual{
-        font-size:30px;
-        font-weight:900;
-        color:#00e5ff;
-      }
-
-      .csm-time-input{
-        padding:8px;
-        background:#222;
-        color:#fff;
-        border:1px solid #555;
-        border-radius:7px;
-        font-size:18px;
+        border-radius:50%;
+        border:2px solid #666;
+        font-size:15px;
         font-weight:900;
       }
 
-      .csm-btn{
-        padding:9px 12px;
-        border:1px solid #555;
-        border-radius:7px;
-        background:#333;
-        color:#fff;
-        font-weight:800;
+      .historico-numero.ultimo{
+        border-color:#00e5ff;
+        box-shadow:0 0 8px #00e5ff;
       }
 
-      .csm-btn-vermelho{
-        background:#70242d;
-      }
-
-      .csm-pares-fixos{
-        display:flex;
-        flex-wrap:wrap;
-        gap:7px;
-      }
-
-      .csm-par-fixo{
-        padding:6px 9px;
-        border-radius:7px;
-        background:#292929;
-        border:1px solid #555;
-        font-weight:900;
-      }
-
-      .csm-par-fixo-ativo{
-        border:2px solid #00e676;
-        box-shadow:0 0 10px rgba(0,230,118,.55);
-      }
-
-      .csm-teclado{
+      .teclado-roleta{
         display:grid;
-        grid-template-columns:repeat(9,1fr);
-        gap:6px;
+        grid-template-columns:repeat(6,1fr);
+        gap:5px;
       }
 
-      .csm-numero-btn{
+      .numero-btn{
         min-height:42px;
-        border:1px solid #555;
+        border:1px solid #666;
         border-radius:7px;
         color:#fff;
         font-size:16px;
         font-weight:900;
       }
 
-      .csm-timeline{
-        font-size:18px;
-        font-weight:800;
-        line-height:1.9;
-        word-break:break-word;
+      .numero-btn:active{
+        transform:scale(.96);
       }
 
-      .csm-historico{
-        display:grid;
-        grid-template-columns:repeat(6,1fr);
-        gap:10px;
+      .zero-btn{
+        grid-column:span 6;
       }
 
-      .csm-historico-item{
-        text-align:center;
+      .terminais-resumo{
+        display:flex;
+        min-height:30px;
+        gap:5px;
+        align-items:center;
+        justify-content:center;
+        flex-wrap:wrap;
       }
 
-      .csm-historico-numero{
-        height:76px;
+      .terminal-chip{
+        min-width:30px;
+        height:30px;
         display:flex;
         align-items:center;
         justify-content:center;
-        position:relative;
-        border-radius:9px;
-        font-size:22px;
+        border:1px solid #666;
+        border-radius:7px;
+        background:#111;
         font-weight:900;
-        border:2px solid #555;
       }
 
-      .csm-historico-numero:after{
-        content:"";
-        position:absolute;
-        width:42px;
-        height:42px;
-        border-radius:50%;
-        border:4px solid currentColor;
+      .terminal-chip.repetido{
+        border-color:#ffc107;
+        color:#ffc107;
       }
 
-      .csm-historico-numero span{
-        position:relative;
-        z-index:2;
+      .seta{
+        color:#777;
       }
 
-      .csm-acerto{
-        box-shadow:
-          0 0 0 3px #00e676,
-          0 0 15px rgba(0,230,118,.6);
-      }
-
-      .csm-quebra{
-        box-shadow:
-          0 0 0 3px #ff5252,
-          0 0 15px rgba(255,82,82,.55);
-      }
-
-      .csm-historico-hora{
-        margin-top:5px;
-        font-size:13px;
-        font-weight:800;
-      }
-
-      .csm-quebras{
-        display:flex;
-        flex-wrap:wrap;
+      .teclado-terminal{
+        display:grid;
+        grid-template-columns:repeat(3,57px);
         gap:6px;
+        justify-content:center;
         margin-top:8px;
       }
 
-      .csm-quebra-chip{
-        padding:6px 8px;
-        background:#5d222b;
-        border:1px solid #a84d5a;
-        border-radius:7px;
-        font-size:13px;
+      .terminal-key{
+        position:relative;
+        height:45px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background:#101010;
+        border:2px solid #555;
+        border-radius:9px;
+        font-size:20px;
         font-weight:900;
       }
 
-      @media(max-width:750px){
+      .terminal-key.zero{
+        grid-column:2;
+      }
 
-        .csm-resumo{
-          grid-template-columns:repeat(2,1fr);
+      .terminal-key.ativo{
+        background:#164dcc;
+        border-color:#61a4ff;
+      }
+
+      .terminal-key.completo{
+        background:#16763d;
+        border-color:#4cff8a;
+      }
+
+      .terminal-key.faltante{
+        color:#ffd740;
+        border-color:#ffd740;
+      }
+
+      .contador{
+        position:absolute;
+        top:2px;
+        right:3px;
+        min-width:18px;
+        height:18px;
+        padding:0 4px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        border-radius:10px;
+        background:#dc263b;
+        color:#fff;
+        font-size:10px;
+      }
+
+      .resultado{
+        padding:10px;
+        background:#101010;
+        border-left:5px solid #777;
+        border-radius:8px;
+        line-height:1.45;
+      }
+
+      .resultado.completo{
+        border-left-color:#00e676;
+      }
+
+      .resultado.parcial{
+        border-left-color:#ffc107;
+      }
+
+      .resultado.nenhuma{
+        border-left-color:#ff5252;
+      }
+
+      .resultado-titulo{
+        margin-bottom:4px;
+        font-size:17px;
+        font-weight:900;
+      }
+
+      .alvos{
+        margin-top:6px;
+        font-size:14px;
+        line-height:1.55;
+        word-break:break-word;
+      }
+
+      .muted{
+        color:#999;
+        font-size:12px;
+      }
+
+      @media(max-width:520px){
+
+        .app{
+          padding:6px;
         }
 
-        .csm-historico{
-          grid-template-columns:repeat(4,1fr);
+        .painel{
+          padding:7px;
         }
 
-        .csm-teclado{
-          grid-template-columns:repeat(6,1fr);
+        .teclado-roleta{
+          gap:4px;
         }
 
-        .csm-historico-numero{
-          height:65px;
+        .numero-btn{
+          min-height:39px;
+          font-size:14px;
         }
-
       }
 
     </style>
 
-    <div class="csm-container">
+    <main class="app">
 
-      <h2 style="
-        text-align:center;
-        margin:4px 0 12px">
-        CSM — Pares Fixos + 1 Vizinho
+      <h2 class="titulo">
+        Analisador Visual de Terminais
       </h2>
 
-      <div class="csm-painel">
+      <section class="painel">
 
-        <div class="csm-horario">
-
-          <div>
-
-            <div class="csm-label">
-              Horário do próximo número
-            </div>
-
-            <div
-              id="csmProximoHorario"
-              class="csm-horario-atual">
-              --:--
-            </div>
-
-          </div>
-
-          <div>
-
-            <div class="csm-label">
-              Ajustar horário
-            </div>
-
-            <input
-              id="csmHorarioInput"
-              class="csm-time-input"
-              type="time"
-              step="60">
-
-          </div>
+        <div class="linha-botoes">
 
           <button
-            id="csmMenosMinuto"
-            class="csm-btn">
-            −1 minuto
-          </button>
-
-          <button
-            id="csmMaisMinuto"
-            class="csm-btn">
-            +1 minuto
-          </button>
-
-          <button
-            id="csmApagarUltimo"
-            class="csm-btn">
+            id="btnApagarUltimo"
+            class="btn"
+          >
             Apagar último
           </button>
 
           <button
-            id="csmApagarTudo"
-            class="csm-btn csm-btn-vermelho">
+            id="btnApagarTudo"
+            class="btn btn-vermelho"
+          >
             Apagar tudo
           </button>
 
         </div>
 
-      </div>
+      </section>
 
-      <div class="csm-painel">
+      <section class="painel">
 
-        <b>Pares fixos analisados</b>
+        <div class="painel-titulo">
+          Histórico
+        </div>
 
         <div
-          id="csmParesFixos"
-          class="csm-pares-fixos"
-          style="margin-top:8px">
-        </div>
+          id="historico"
+          class="historico"
+        ></div>
 
-      </div>
+      </section>
 
-      <div class="csm-painel">
+      <section class="painel">
 
-        <div class="csm-resumo">
-
-          <div class="csm-card">
-
-            <div class="csm-label">
-              Melhor par fixo
-            </div>
-
-            <div id="csmMelhorPar"></div>
-
-          </div>
-
-          <div class="csm-card">
-
-            <div class="csm-label">
-              Percentual com 1 vizinho
-            </div>
-
-            <div
-              id="csmPercentual"
-              class="csm-valor">
-              0%
-            </div>
-
-            <div class="csm-barra">
-
-              <div
-                id="csmBarra"
-                class="csm-barra-interna">
-              </div>
-
-            </div>
-
-          </div>
-
-          <div class="csm-card">
-
-            <div class="csm-label">
-              Acertos
-            </div>
-
-            <div
-              id="csmAcertos"
-              class="csm-valor">
-              0 / 0
-            </div>
-
-          </div>
-
-          <div class="csm-card">
-
-            <div class="csm-label">
-              Última quebra
-            </div>
-
-            <div
-              id="csmUltimaQuebra"
-              class="csm-valor">
-              —
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <div class="csm-painel">
-
-        <b>
-          Onde aconteceram as quebras
-        </b>
-
-        <div
-          id="csmListaQuebras"
-          class="csm-quebras">
-        </div>
-
-      </div>
-
-      <div class="csm-painel">
-
-        <b>
-          Timeline analisada
-        </b>
-
-        <div
-          id="csmTimeline"
-          class="csm-timeline">
-        </div>
-
-      </div>
-
-      <div class="csm-painel">
-
-        <b>
+        <div class="painel-titulo">
           Teclado 0–36
-        </b>
-
-        <div style="
-          color:#aaa;
-          font-size:12px;
-          margin:5px 0 9px">
-
-          Clique no número.
-          Ele será armazenado com o horário acima.
-
         </div>
 
         <div
-          id="csmTeclado"
-          class="csm-teclado">
+          id="tecladoRoleta"
+          class="teclado-roleta"
+        ></div>
+
+      </section>
+
+      <section class="painel">
+
+        <div class="painel-titulo">
+          Últimos 4 terminais
         </div>
-
-      </div>
-
-      <div class="csm-painel">
-
-        <b>
-          Histórico armazenado
-        </b>
 
         <div
-          id="csmHistorico"
-          class="csm-historico"
-          style="margin-top:10px">
+          id="resumoTerminais"
+          class="terminais-resumo"
+        ></div>
+
+        <div
+          id="tecladoTerminal"
+          class="teclado-terminal"
+        >
+
+          <div
+            class="terminal-key"
+            data-terminal="7"
+          >
+            7
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="8"
+          >
+            8
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="9"
+          >
+            9
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="4"
+          >
+            4
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="5"
+          >
+            5
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="6"
+          >
+            6
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="1"
+          >
+            1
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="2"
+          >
+            2
+          </div>
+
+          <div
+            class="terminal-key"
+            data-terminal="3"
+          >
+            3
+          </div>
+
+          <div
+            class="terminal-key zero"
+            data-terminal="0"
+          >
+            0
+          </div>
+
         </div>
 
-      </div>
+      </section>
 
-    </div>
+      <section class="painel">
+
+        <div class="painel-titulo">
+          Análise
+        </div>
+
+        <div id="resultado"></div>
+
+      </section>
+
+    </main>
   `;
 
   // ================= ELEMENTOS =================
 
-  const elementoProximoHorario =
-    document.getElementById(
-      "csmProximoHorario"
-    );
-
-  const elementoHorarioInput =
-    document.getElementById(
-      "csmHorarioInput"
-    );
-
-  const elementoParesFixos =
-    document.getElementById(
-      "csmParesFixos"
-    );
-
-  const elementoMelhorPar =
-    document.getElementById(
-      "csmMelhorPar"
-    );
-
-  const elementoPercentual =
-    document.getElementById(
-      "csmPercentual"
-    );
-
-  const elementoBarra =
-    document.getElementById(
-      "csmBarra"
-    );
-
-  const elementoAcertos =
-    document.getElementById(
-      "csmAcertos"
-    );
-
-  const elementoUltimaQuebra =
-    document.getElementById(
-      "csmUltimaQuebra"
-    );
-
-  const elementoListaQuebras =
-    document.getElementById(
-      "csmListaQuebras"
-    );
-
-  const elementoTimeline =
-    document.getElementById(
-      "csmTimeline"
-    );
-
   const elementoHistorico =
     document.getElementById(
-      "csmHistorico"
+      "historico"
     );
 
-  const elementoTeclado =
+  const elementoTecladoRoleta =
     document.getElementById(
-      "csmTeclado"
+      "tecladoRoleta"
     );
 
-  // ================= TECLADO =================
+  const elementoResumoTerminais =
+    document.getElementById(
+      "resumoTerminais"
+    );
+
+  const elementoResultado =
+    document.getElementById(
+      "resultado"
+    );
+
+  // ================= TECLADO 0–36 =================
 
   for(
-    let numero = 0;
+    let numero = 1;
     numero <= 36;
     numero++
   ){
@@ -922,15 +843,11 @@
       corNumeroRoleta(numero);
 
     const botao =
-      document.createElement(
-        "button"
-      );
+      document.createElement("button");
 
-    botao.className =
-      "csm-numero-btn";
-
-    botao.textContent =
-      numero;
+    botao.type = "button";
+    botao.className = "numero-btn";
+    botao.textContent = numero;
 
     botao.style.background =
       cores.fundo;
@@ -939,370 +856,428 @@
       cores.texto;
 
     botao.onclick = () => {
-
-      adicionarNumero(
-        numero
-      );
-
+      adicionarNumero(numero);
     };
 
-    elementoTeclado
+    elementoTecladoRoleta
       .appendChild(botao);
   }
+
+  const botaoZero =
+    document.createElement("button");
+
+  botaoZero.type = "button";
+  botaoZero.className =
+    "numero-btn zero-btn";
+
+  botaoZero.textContent = "0";
+  botaoZero.style.background = "#07874b";
+  botaoZero.style.color = "#ffffff";
+
+  botaoZero.onclick = () => {
+    adicionarNumero(0);
+  };
+
+  elementoTecladoRoleta
+    .appendChild(botaoZero);
 
   // ================= EVENTOS =================
 
   document
-    .getElementById(
-      "csmMenosMinuto"
-    )
-    .onclick = () => {
+    .getElementById("btnApagarUltimo")
+    .onclick = apagarUltimo;
 
-      proximoHorario =
-        somarMinutos(
-          proximoHorario,
-          -1
+  document
+    .getElementById("btnApagarTudo")
+    .onclick = apagarTudo;
+
+  // ================= RENDERIZAÇÃO =================
+
+  function limparTecladoTerminal(){
+
+    document
+      .querySelectorAll(".terminal-key")
+      .forEach(elemento => {
+
+        elemento.classList.remove(
+          "ativo",
+          "completo",
+          "faltante"
         );
 
-      render();
+        const contador =
+          elemento.querySelector(
+            ".contador"
+          );
 
-    };
+        if(contador){
+          contador.remove();
+        }
+      });
+  }
 
-  document
-    .getElementById(
-      "csmMaisMinuto"
-    )
-    .onclick = () => {
+  function pintarTerminaisAtivos(
+    contagens
+  ){
 
-      proximoHorario =
-        somarMinutos(
-          proximoHorario,
-          1
-        );
+    Object.entries(contagens)
+      .forEach(([item,quantidade]) => {
 
-      render();
+        const elemento =
+          document.querySelector(
+            `.terminal-key[data-terminal="${item}"]`
+          );
 
-    };
-
-  document
-    .getElementById(
-      "csmApagarUltimo"
-    )
-    .onclick =
-      apagarUltimo;
-
-  document
-    .getElementById(
-      "csmApagarTudo"
-    )
-    .onclick =
-      apagarTudo;
-
-  elementoHorarioInput
-    .onchange =
-      event => {
-
-        if(
-          event.target.value
-        ){
-
-          proximoHorario =
-            event.target.value;
-
-          render();
+        if(!elemento){
+          return;
         }
 
-      };
+        elemento.classList.add("ativo");
 
-  // ================= RENDER =================
+        if(quantidade > 1){
+
+          const contador =
+            document.createElement("span");
+
+          contador.className =
+            "contador";
+
+          contador.textContent =
+            quantidade;
+
+          elemento.appendChild(contador);
+        }
+      });
+  }
+
+  function pintarFormacaoCompleta(
+    formacao
+  ){
+
+    formacao.terminais
+      .forEach(item => {
+
+        const elemento =
+          document.querySelector(
+            `.terminal-key[data-terminal="${item}"]`
+          );
+
+        if(elemento){
+          elemento.classList.add(
+            "completo"
+          );
+        }
+      });
+  }
+
+  function pintarTerminalFaltante(
+    item
+  ){
+
+    const elemento =
+      document.querySelector(
+        `.terminal-key[data-terminal="${item}"]`
+      );
+
+    if(elemento){
+      elemento.classList.add(
+        "faltante"
+      );
+    }
+  }
+
+  function renderHistorico(){
+
+    elementoHistorico.innerHTML = "";
+
+    if(!historico.length){
+
+      elementoHistorico.innerHTML = `
+        <span class="muted">
+          Clique nos números abaixo.
+        </span>
+      `;
+
+      return;
+    }
+
+    const visiveis =
+      historico.slice(-20);
+
+    visiveis.forEach((numero,index) => {
+
+      const cores =
+        corNumeroRoleta(numero);
+
+      const item =
+        document.createElement("div");
+
+      item.className =
+        "historico-numero";
+
+      if(index === visiveis.length - 1){
+        item.classList.add("ultimo");
+      }
+
+      item.style.background =
+        cores.fundo;
+
+      item.style.color =
+        cores.texto;
+
+      item.textContent =
+        numero;
+
+      elementoHistorico
+        .appendChild(item);
+    });
+
+    elementoHistorico.scrollLeft =
+      elementoHistorico.scrollWidth;
+  }
+
+  function renderResumoTerminais(
+    analise
+  ){
+
+    elementoResumoTerminais.innerHTML = "";
+
+    if(!analise.terminais.length){
+
+      elementoResumoTerminais.innerHTML = `
+        <span class="muted">
+          Nenhum número inserido.
+        </span>
+      `;
+
+      return;
+    }
+
+    analise.terminais
+      .forEach((item,index) => {
+
+        const chip =
+          document.createElement("div");
+
+        chip.className =
+          "terminal-chip";
+
+        if(
+          analise.contagens[item] > 1
+        ){
+
+          chip.classList.add(
+            "repetido"
+          );
+        }
+
+        chip.textContent =
+          item;
+
+        elementoResumoTerminais
+          .appendChild(chip);
+
+        if(
+          index <
+          analise.terminais.length - 1
+        ){
+
+          const seta =
+            document.createElement("span");
+
+          seta.className = "seta";
+          seta.textContent = "→";
+
+          elementoResumoTerminais
+            .appendChild(seta);
+        }
+      });
+  }
+
+  function renderResultado(
+    analise
+  ){
+
+    if(!analise.numeros.length){
+
+      elementoResultado.innerHTML = `
+
+        <div class="resultado nenhuma">
+
+          <div class="resultado-titulo">
+            Insira os números
+          </div>
+
+          <div class="muted">
+            A análise utiliza os quatro últimos resultados.
+          </div>
+
+        </div>
+      `;
+
+      return;
+    }
+
+    if(analise.tipo === "completa"){
+
+      elementoResultado.innerHTML = `
+
+        <div class="resultado completo">
+
+          <div class="resultado-titulo">
+            Formação completa:
+            ${analise.formacao.terminais.join("–")}
+          </div>
+
+          <div>
+            ${analise.formacao.nome}
+          </div>
+
+          <div class="alvos">
+
+            <strong>
+              Terminais do alvo:
+            </strong>
+
+            ${analise.terminaisAlvo.join(", ")}
+
+            <br>
+
+            <strong>
+              Números:
+            </strong>
+
+            ${analise.numerosAlvo.join(", ")}
+
+          </div>
+
+        </div>
+      `;
+
+      return;
+    }
+
+    if(analise.tipo === "parcial"){
+
+      elementoResultado.innerHTML = `
+
+        <div class="resultado parcial">
+
+          <div class="resultado-titulo">
+            Quase formada:
+            ${analise.formacao.terminais.join("–")}
+          </div>
+
+          <div>
+            ${analise.formacao.nome}
+          </div>
+
+          <div class="alvos">
+
+            Falta o terminal
+
+            <strong>
+              ${analise.terminalFaltante}
+            </strong>
+
+            <br>
+
+            <strong>
+              Confirma com:
+            </strong>
+
+            ${analise.numerosConfirmacao.join(", ")}
+
+          </div>
+
+        </div>
+      `;
+
+      return;
+    }
+
+    if(analise.tipo === "repeticao"){
+
+      const texto =
+        analise.repetidos
+          .map(item =>
+            `T${item.terminal} repetiu ` +
+            `${item.quantidade}x`
+          )
+          .join(" | ");
+
+      elementoResultado.innerHTML = `
+
+        <div class="resultado parcial">
+
+          <div class="resultado-titulo">
+            Terminal repetido
+          </div>
+
+          <div>
+            ${texto}
+          </div>
+
+          <div class="muted">
+            Ainda não fechou uma linha.
+          </div>
+
+        </div>
+      `;
+
+      return;
+    }
+
+    elementoResultado.innerHTML = `
+
+      <div class="resultado nenhuma">
+
+        <div class="resultado-titulo">
+          Sem formação
+        </div>
+
+        <div class="muted">
+          Os terminais estão espalhados.
+        </div>
+
+      </div>
+    `;
+  }
 
   function render(){
 
-    const melhor =
-      encontrarMelhorPar();
+    const analise =
+      analisarUltimosQuatro();
 
-    elementoProximoHorario
-      .textContent =
-        proximoHorario;
+    renderHistorico();
 
-    elementoHorarioInput
-      .value =
-        proximoHorario;
+    limparTecladoTerminal();
 
-    // ===== PARES FIXOS =====
+    pintarTerminaisAtivos(
+      analise.contagens
+    );
 
-    elementoParesFixos
-      .innerHTML =
-        paresFixos
-          .map(par => {
+    renderResumoTerminais(
+      analise
+    );
 
-            const analise =
-              analisarPar(par);
+    if(analise.tipo === "completa"){
 
-            const ativo =
-              par[0] ===
-                melhor.par[0] &&
-              par[1] ===
-                melhor.par[1];
-
-            return `
-              <div
-                class="
-                  csm-par-fixo
-                  ${
-                    ativo
-                      ? "csm-par-fixo-ativo"
-                      : ""
-                  }
-                "
-              >
-
-                <span style="
-                  color:${corTerminal[par[0]]}
-                ">
-                  T${par[0]}
-                </span>
-
-                +
-
-                <span style="
-                  color:${corTerminal[par[1]]}
-                ">
-                  T${par[1]}
-                </span>
-
-                &nbsp;
-
-                ${Math.round(
-                  analise.percentual
-                )}%
-
-              </div>
-            `;
-
-          })
-          .join("");
-
-    // ===== MELHOR PAR =====
-
-    elementoMelhorPar
-      .innerHTML =
-        melhor.par
-          .map(t => `
-            <span
-              class="csm-terminal"
-              style="
-                background:
-                ${corTerminal[t]}
-              "
-            >
-              T${t}
-            </span>
-          `)
-          .join("");
-
-    const percentualArredondado =
-      Math.round(
-        melhor.percentual
+      pintarFormacaoCompleta(
+        analise.formacao
       );
-
-    elementoPercentual
-      .textContent =
-        percentualArredondado +
-        "%";
-
-    elementoBarra
-      .style.width =
-        percentualArredondado +
-        "%";
-
-    elementoAcertos
-      .textContent =
-        `${
-          melhor.acertos.length
-        } / ${
-          melhor.total
-        }`;
-
-    // ===== ÚLTIMA QUEBRA =====
-
-    if(
-      melhor.quebras.length >
-      0
-    ){
-
-      const ultimaQuebra =
-        melhor.quebras[0];
-
-      elementoUltimaQuebra
-        .innerHTML = `
-
-          ${ultimaQuebra.numero}
-
-          <div style="
-            font-size:12px;
-            color:#aaa;
-            margin-top:3px
-          ">
-            ${ultimaQuebra.horario}
-          </div>
-        `;
-
-    }else{
-
-      elementoUltimaQuebra
-        .textContent =
-          "—";
-
     }
 
-    // ===== LISTA QUEBRAS =====
+    if(analise.tipo === "parcial"){
 
-    if(
-      melhor.quebras.length >
-      0
-    ){
-
-      elementoListaQuebras
-        .innerHTML =
-          melhor.quebras
-            .map(item => `
-
-              <span
-                class="csm-quebra-chip"
-              >
-
-                ${item.numero}
-                ·
-                ${item.horario}
-
-              </span>
-
-            `)
-            .join("");
-
-    }else{
-
-      elementoListaQuebras
-        .innerHTML = `
-
-          <span style="
-            color:#00e676;
-            font-weight:900
-          ">
-
-            Sem quebra no
-            histórico atual
-
-          </span>
-
-        `;
-
+      pintarTerminalFaltante(
+        analise.terminalFaltante
+      );
     }
 
-    // ===== TIMELINE =====
-
-    elementoTimeline
-      .innerHTML =
-        historico
-          .map(item => {
-
-            const acertou =
-              melhor
-                .cobertura
-                .has(
-                  item.numero
-                );
-
-            return `
-
-              <span style="
-                display:inline-block;
-                margin-right:5px;
-                color:${
-                  acertou
-                    ? "#00e676"
-                    : "#ff5252"
-                }
-              ">
-
-                ${item.numero}
-
-              </span>
-
-            `;
-
-          })
-          .join("");
-
-    // ===== HISTÓRICO =====
-
-    elementoHistorico
-      .innerHTML =
-        historico
-          .map(item => {
-
-            const cores =
-              corNumeroRoleta(
-                item.numero
-              );
-
-            const acertou =
-              melhor
-                .cobertura
-                .has(
-                  item.numero
-                );
-
-            return `
-
-              <div
-                class="
-                  csm-historico-item
-                "
-              >
-
-                <div
-                  class="
-                    csm-historico-numero
-                    ${
-                      acertou
-                        ? "csm-acerto"
-                        : "csm-quebra"
-                    }
-                  "
-                  style="
-                    background:
-                    ${cores.fundo};
-
-                    color:
-                    ${cores.texto};
-                  "
-                >
-
-                  <span>
-                    ${item.numero}
-                  </span>
-
-                </div>
-
-                <div
-                  class="
-                    csm-historico-hora
-                  "
-                >
-
-                  ${item.horario}
-
-                </div>
-
-              </div>
-
-            `;
-
-          })
-          .join("");
-
+    renderResultado(
+      analise
+    );
   }
 
   render();
