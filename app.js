@@ -2,10 +2,25 @@
 
   "use strict";
 
-  // ================= CONFIGURAÇÃO =================
+  // =========================================================
+  // CONFIGURAÇÃO
+  // =========================================================
+
+  const track = [
+    32,15,19,4,21,2,25,17,34,6,
+    27,13,36,11,30,8,23,10,5,24,
+    16,33,1,20,14,31,9,22,18,29,
+    7,28,12,35,3,26,0
+  ];
+
+  const TAMANHO_JANELA = 14;
 
   const STORAGE_KEY =
-    "ANALISADOR_VISUAL_TERMINAIS_V1";
+    "ANALISADOR_EXCLUSIVO_069_1V_V1";
+
+  const TERMINAIS_ANALISADOS = [
+    0,6,9
+  ];
 
   const numerosVermelhos = new Set([
     1,3,5,7,9,
@@ -14,69 +29,102 @@
     30,32,34,36
   ]);
 
-  const formacoes = [
-    {
-      nome: "Coluna esquerda",
-      terminais: [7,4,1]
-    },
-    {
-      nome: "Coluna central",
-      terminais: [8,5,2]
-    },
-    {
-      nome: "Coluna direita",
-      terminais: [9,6,3]
-    },
-    {
-      nome: "Linha superior",
-      terminais: [7,8,9]
-    },
-    {
-      nome: "Linha central",
-      terminais: [4,5,6]
-    },
-    {
-      nome: "Linha inferior",
-      terminais: [1,2,3]
-    },
-    {
-      nome: "Diagonal 7–5–3",
-      terminais: [7,5,3]
-    },
-    {
-      nome: "Diagonal 9–5–1",
-      terminais: [9,5,1]
-    }
-  ];
 
-  let historico = carregarHistorico();
+  // =========================================================
+  // REGIÕES
+  // =========================================================
 
-  // ================= FUNÇÕES BÁSICAS =================
+  const regioesRoleta = {
+
+    ZERO: new Set([
+      0,32,15,26,3,35,12
+    ]),
+
+    VOISINS: new Set([
+      19,4,21,2,25,
+      28,7,29,18,22
+    ]),
+
+    ORPHELINS: new Set([
+      9,31,14,20,1,17,6,34
+    ]),
+
+    TIERS: new Set([
+      27,13,36,11,30,8,
+      23,10,5,24,16,33
+    ])
+
+  };
+
+
+  const coresRegioes = {
+
+    ZERO:"#9bea2c",
+
+    VOISINS:"#8a20d4",
+
+    ORPHELINS:"#176436",
+
+    TIERS:"#29499b"
+
+  };
+
+
+  // =========================================================
+  // CORES DOS TERMINAIS 0 / 6 / 9
+  // =========================================================
+
+  const coresTerminais = {
+
+    0:"#00c853",
+
+    6:"#ffc107",
+
+    9:"#2196f3"
+
+  };
+
+
+  let historico =
+    carregarHistorico();
+
+
+  // =========================================================
+  // TERMINAL
+  // =========================================================
 
   function terminal(numero){
 
-    return numero === 0
-      ? 0
-      : numero % 10;
+    return numero % 10;
   }
+
+
+  // =========================================================
+  // STORAGE
+  // =========================================================
 
   function carregarHistorico(){
 
     try{
 
       const salvo =
-        localStorage.getItem(STORAGE_KEY);
+        localStorage.getItem(
+          STORAGE_KEY
+        );
 
       if(!salvo){
         return [];
       }
 
+
       const dados =
         JSON.parse(salvo);
+
 
       if(!Array.isArray(dados)){
         return [];
       }
+
 
       return dados
         .map(Number)
@@ -93,6 +141,7 @@
     }
   }
 
+
   function salvarHistorico(){
 
     try{
@@ -105,260 +154,394 @@
     }catch(erro){
 
       console.error(
-        "Não foi possível salvar o histórico.",
+        "Erro ao salvar histórico.",
         erro
       );
     }
   }
 
-  function corNumeroRoleta(numero){
 
-    if(numero === 0){
+  // =========================================================
+  // VIZINHOS NA RACE
+  // =========================================================
 
-      return {
-        fundo:"#07874b",
-        texto:"#ffffff"
-      };
-    }
-
-    if(numerosVermelhos.has(numero)){
-
-      return {
-        fundo:"#c6283d",
-        texto:"#ffffff"
-      };
-    }
-
-    return {
-      fundo:"#171717",
-      texto:"#ffffff"
-    };
-  }
-
-  function contarTerminais(terminais){
-
-    const contagens = {};
-
-    terminais.forEach(item => {
-
-      contagens[item] =
-        (contagens[item] || 0) + 1;
-    });
-
-    return contagens;
-  }
-
-  function numerosDosTerminais(
-    terminaisAlvo
+  function vizinhos(
+    numero,
+    quantidade = 1
   ){
 
-    const numeros = [];
+    const indice =
+      track.indexOf(numero);
+
+
+    if(indice === -1){
+      return [];
+    }
+
+
+    const resultado =
+      [numero];
+
 
     for(
-      let numero = 0;
-      numero <= 36;
-      numero++
+      let distancia = 1;
+      distancia <= quantidade;
+      distancia++
     ){
 
+      resultado.push(
+
+        track[
+          (
+            indice -
+            distancia +
+            track.length
+          ) %
+          track.length
+        ]
+
+      );
+
+
+      resultado.push(
+
+        track[
+          (
+            indice +
+            distancia
+          ) %
+          track.length
+        ]
+
+      );
+
+    }
+
+
+    return resultado;
+  }
+
+
+  // =========================================================
+  // COBERTURA DE UM TERMINAL COM 1 VIZINHO
+  // =========================================================
+
+  function coberturaTerminal1V(
+    numeroTerminal
+  ){
+
+    const cobertura =
+      new Set();
+
+
+    track.forEach(numero => {
+
       if(
-        terminaisAlvo.includes(
-          terminal(numero)
-        )
+        terminal(numero) ===
+        numeroTerminal
       ){
 
-        numeros.push(numero);
+        vizinhos(numero,1)
+          .forEach(numeroCoberto => {
+
+            cobertura.add(
+              numeroCoberto
+            );
+
+          });
+
       }
-    }
 
-    return numeros;
+    });
+
+
+    return cobertura;
   }
 
-  // ================= ANÁLISE =================
 
-  function encontrarFormacoesCompletas(
-    terminaisUnicos
+  // =========================================================
+  // COBERTURAS FIXAS 0 / 6 / 9
+  // =========================================================
+
+  const coberturas069 = {
+
+    0:coberturaTerminal1V(0),
+
+    6:coberturaTerminal1V(6),
+
+    9:coberturaTerminal1V(9)
+
+  };
+
+
+  // =========================================================
+  // QUAL TERMINAL O NÚMERO BATE
+  // =========================================================
+
+  function terminaisQueBatem(
+    numero
   ){
 
-    return formacoes.filter(formacao =>
+    const resultado = [];
 
-      formacao.terminais.every(item =>
-        terminaisUnicos.includes(item)
-      )
-    );
-  }
 
-  function encontrarFormacoesParciais(
-    terminaisUnicos,
-    contagens
-  ){
+    TERMINAIS_ANALISADOS
+      .forEach(t => {
 
-    return formacoes
-      .map(formacao => {
+        if(
+          coberturas069[t]
+            .has(numero)
+        ){
 
-        const encontrados =
-          formacao.terminais.filter(item =>
-            terminaisUnicos.includes(item)
-          );
+          resultado.push(t);
 
-        const faltantes =
-          formacao.terminais.filter(item =>
-            !terminaisUnicos.includes(item)
-          );
-
-        const forca =
-          encontrados.reduce(
-            (total,item) =>
-              total +
-              (contagens[item] || 0),
-            0
-          );
-
-        return {
-          nome:formacao.nome,
-          terminais:formacao.terminais,
-          encontrados,
-          faltantes,
-          forca
-        };
-      })
-      .filter(resultado =>
-        resultado.encontrados.length === 2 &&
-        resultado.faltantes.length === 1
-      )
-      .sort((a,b) => {
-
-        if(b.forca !== a.forca){
-          return b.forca - a.forca;
         }
 
-        return (
-          formacoes.indexOf(
-            formacoes.find(item =>
-              item.nome === a.nome
-            )
-          ) -
-          formacoes.indexOf(
-            formacoes.find(item =>
-              item.nome === b.nome
-            )
-          )
-        );
       });
+
+
+    return resultado;
   }
 
-  function analisarUltimosQuatro(){
 
-    const numeros =
-      historico.slice(-4);
+  // =========================================================
+  // REGIÃO
+  // =========================================================
 
-    const terminais =
-      numeros.map(terminal);
+  function regiaoDoNumero(
+    numero
+  ){
 
-    const contagens =
-      contarTerminais(terminais);
-
-    const terminaisUnicos =
-      [...new Set(terminais)];
-
-    const completas =
-      encontrarFormacoesCompletas(
-        terminaisUnicos
-      );
-
-    if(completas.length){
-
-      const formacao =
-        completas[0];
-
-      return {
-        tipo:"completa",
-        numeros,
-        terminais,
-        contagens,
-        formacao,
-        terminaisAlvo:
-          formacao.terminais,
-        numerosAlvo:
-          numerosDosTerminais(
-            formacao.terminais
-          )
-      };
+    if(
+      regioesRoleta.ZERO.has(numero)
+    ){
+      return "ZERO";
     }
 
-    const parciais =
-      encontrarFormacoesParciais(
-        terminaisUnicos,
-        contagens
-      );
 
-    if(parciais.length){
-
-      const formacao =
-        parciais[0];
-
-      const terminalFaltante =
-        formacao.faltantes[0];
-
-      return {
-        tipo:"parcial",
-        numeros,
-        terminais,
-        contagens,
-        formacao,
-        terminalFaltante,
-        numerosConfirmacao:
-          numerosDosTerminais([
-            terminalFaltante
-          ])
-      };
+    if(
+      regioesRoleta.VOISINS.has(numero)
+    ){
+      return "VOISINS";
     }
 
-    const repetidos =
-      Object.entries(contagens)
-        .filter(([,quantidade]) =>
-          quantidade > 1
+
+    if(
+      regioesRoleta.ORPHELINS.has(numero)
+    ){
+      return "ORPHELINS";
+    }
+
+
+    if(
+      regioesRoleta.TIERS.has(numero)
+    ){
+      return "TIERS";
+    }
+
+
+    return null;
+  }
+
+
+  // =========================================================
+  // ANÁLISE DOS ÚLTIMOS 14
+  // =========================================================
+
+  function analisarJanela14(){
+
+    const janela =
+      historico.slice(
+        -TAMANHO_JANELA
+      );
+
+
+    const sequenciaBatidas =
+      janela.map(numero => {
+
+        return {
+
+          numero,
+
+          terminais:
+            terminaisQueBatem(
+              numero
+            )
+
+        };
+
+      });
+
+
+    const contagem = {
+
+      0:0,
+      6:0,
+      9:0
+
+    };
+
+
+    sequenciaBatidas
+      .forEach(item => {
+
+        item.terminais
+          .forEach(t => {
+
+            contagem[t]++;
+
+          });
+
+      });
+
+
+    const numerosSemBatida =
+      sequenciaBatidas
+        .filter(item =>
+          item.terminais.length === 0
         )
-        .map(([item,quantidade]) => ({
-          terminal:Number(item),
-          quantidade
-        }))
-        .sort((a,b) =>
-          b.quantidade -
-          a.quantidade
-        );
+        .length;
 
-    if(repetidos.length){
 
-      return {
-        tipo:"repeticao",
-        numeros,
-        terminais,
-        contagens,
-        repetidos
-      };
-    }
+    const numerosComBatida =
+      sequenciaBatidas.length -
+      numerosSemBatida;
+
 
     return {
-      tipo:"nenhuma",
-      numeros,
-      terminais,
-      contagens
+
+      janela,
+
+      sequenciaBatidas,
+
+      contagem,
+
+      numerosComBatida,
+
+      numerosSemBatida
+
     };
   }
 
-  // ================= HISTÓRICO =================
 
-  function adicionarNumero(numero){
+  // =========================================================
+  // EXTRAÇÃO DO HISTÓRICO
+  // =========================================================
+
+  function extrairNumeros(
+    texto
+  ){
+
+    const encontrados =
+      texto.match(
+        /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
+      );
+
+
+    if(!encontrados){
+      return [];
+    }
+
+
+    return encontrados
+      .map(Number)
+      .filter(numero =>
+        numero >= 0 &&
+        numero <= 36
+      )
+      .slice(-300);
+  }
+
+
+  // =========================================================
+  // INSERIR HISTÓRICO
+  // =========================================================
+
+  function inserirHistorico(){
+
+    const entrada =
+      document.getElementById(
+        "entradaHistorico"
+      );
+
+
+    const numeros =
+      extrairNumeros(
+        entrada.value
+      );
+
+
+    if(!numeros.length){
+
+      statusArea.textContent =
+        "Nenhum número válido encontrado.";
+
+      statusArea.style.color =
+        "#ff5252";
+
+      return;
+    }
+
+
+    historico =
+      numeros.slice(-300);
+
+
+    salvarHistorico();
+
+
+    entrada.value = "";
+
+
+    statusArea.textContent =
+      `${historico.length} números carregados.`;
+
+
+    statusArea.style.color =
+      "#00e676";
+
+
+    render();
+  }
+
+
+  // =========================================================
+  // ADICIONAR NÚMERO
+  // =========================================================
+
+  function adicionarNumero(
+    numero
+  ){
 
     historico.push(numero);
 
-    if(historico.length > 300){
+
+    if(
+      historico.length > 300
+    ){
+
       historico.shift();
     }
 
+
     salvarHistorico();
+
+
+    statusArea.textContent =
+      `Número ${numero} inserido.`;
+
+
+    statusArea.style.color =
+      "#00e5ff";
+
+
     render();
   }
+
+
+  // =========================================================
+  // APAGAR ÚLTIMO
+  // =========================================================
 
   function apagarUltimo(){
 
@@ -366,11 +549,29 @@
       return;
     }
 
-    historico.pop();
+
+    const apagado =
+      historico.pop();
+
 
     salvarHistorico();
+
+
+    statusArea.textContent =
+      `Número ${apagado} apagado.`;
+
+
+    statusArea.style.color =
+      "#ffc107";
+
+
     render();
   }
+
+
+  // =========================================================
+  // APAGAR TUDO
+  // =========================================================
 
   function apagarTudo(){
 
@@ -379,459 +580,888 @@
         "Apagar todo o histórico?"
       );
 
+
     if(!confirmar){
       return;
     }
 
+
     historico = [];
 
+
     salvarHistorico();
+
+
+    statusArea.textContent =
+      "Histórico apagado.";
+
+
+    statusArea.style.color =
+      "#ff5252";
+
+
     render();
   }
 
-  // ================= INTERFACE =================
 
-  document.body.style.margin = "0";
-  document.body.style.background = "#101010";
-  document.body.style.color = "#ffffff";
+  // =========================================================
+  // COR NORMAL DA ROLETA
+  // =========================================================
+
+  function corNumeroRoleta(
+    numero
+  ){
+
+    if(numero === 0){
+
+      return {
+
+        fundo:"#087c48",
+        texto:"#ffffff"
+
+      };
+    }
+
+
+    if(
+      numerosVermelhos.has(
+        numero
+      )
+    ){
+
+      return {
+
+        fundo:"#c6283d",
+        texto:"#ffffff"
+
+      };
+    }
+
+
+    return {
+
+      fundo:"#181818",
+      texto:"#ffffff"
+
+    };
+  }
+
+
+  // =========================================================
+  // INTERFACE
+  // =========================================================
+
+  document.body.style.margin =
+    "0";
+
+  document.body.style.background =
+    "#101010";
+
+  document.body.style.color =
+    "#ffffff";
+
   document.body.style.fontFamily =
-    "Arial, sans-serif";
+    "Arial,sans-serif";
+
 
   document.body.innerHTML = `
 
-    <style>
+  <style>
 
-      *{
-        box-sizing:border-box;
-      }
+    *{
+      box-sizing:border-box;
+    }
 
-      button{
-        font-family:Arial,sans-serif;
-        cursor:pointer;
-        touch-action:manipulation;
-      }
+    button,
+    textarea{
+      font-family:Arial,sans-serif;
+    }
+
+    button{
+      cursor:pointer;
+      touch-action:manipulation;
+    }
+
+
+    .app{
+      width:100%;
+      max-width:850px;
+      margin:auto;
+      padding:8px;
+    }
+
+
+    h2{
+      text-align:center;
+      margin:5px 0 10px;
+      font-size:22px;
+    }
+
+
+    .painel{
+      background:#1d1d1f;
+      border:1px solid #444;
+      border-radius:10px;
+      padding:9px;
+      margin-bottom:8px;
+    }
+
+
+    .tituloPainel{
+      color:#aaa;
+      font-size:12px;
+      font-weight:900;
+      margin-bottom:7px;
+    }
+
+
+    textarea{
+      width:100%;
+      min-height:72px;
+      padding:8px;
+      background:#111;
+      color:#fff;
+      border:1px solid #555;
+      border-radius:7px;
+      font-size:14px;
+    }
+
+
+    .acoes{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      margin-top:7px;
+    }
+
+
+    .btn{
+      padding:8px 11px;
+      background:#333;
+      color:#fff;
+      border:1px solid #555;
+      border-radius:7px;
+      font-weight:900;
+    }
+
+
+    .verde{
+      background:#146238;
+    }
+
+
+    .vermelho{
+      background:#762832;
+    }
+
+
+    .status{
+      margin-top:7px;
+      color:#aaa;
+      font-size:12px;
+      font-weight:900;
+    }
+
+
+    /* =====================================================
+       RESUMO 0 6 9
+    ===================================================== */
+
+
+    .resumo069{
+      display:grid;
+      grid-template-columns:
+        repeat(3,1fr);
+      gap:6px;
+    }
+
+
+    .card069{
+      padding:8px;
+      border:1px solid #444;
+      border-radius:8px;
+      background:#111;
+      text-align:center;
+    }
+
+
+    .titulo069{
+      font-size:18px;
+      font-weight:900;
+    }
+
+
+    .valor069{
+      margin-top:3px;
+      font-size:14px;
+      font-weight:900;
+    }
+
+
+    /* =====================================================
+       JANELA 14
+    ===================================================== */
+
+
+    .janelaBloco{
+      display:flex;
+      flex-direction:column;
+      gap:7px;
+    }
+
+
+    .linhaJanela{
+      display:grid;
+      grid-template-columns:
+        90px minmax(0,1fr);
+      gap:6px;
+      align-items:center;
+    }
+
+
+    .rotuloLinha{
+      color:#bbb;
+      font-size:10px;
+      font-weight:900;
+      line-height:1.25;
+    }
+
+
+    .janelaScroll{
+      display:flex;
+      gap:5px;
+      overflow-x:auto;
+      padding-bottom:2px;
+    }
+
+
+    .numeroJanela{
+      min-width:37px;
+      height:37px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:50%;
+      border:2px solid rgba(
+        255,
+        255,
+        255,
+        .75
+      );
+      color:#fff;
+      font-size:14px;
+      font-weight:900;
+    }
+
+
+    .numeroRegiao{
+      min-width:37px;
+      height:37px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:8px;
+      border:2px solid rgba(
+        255,
+        255,
+        255,
+        .65
+      );
+      color:#fff;
+      font-size:14px;
+      font-weight:900;
+    }
+
+
+    /* =====================================================
+       LINHA DE BATIDAS 0 / 6 / 9
+    ===================================================== */
+
+
+    .batidaBox{
+      min-width:37px;
+      height:37px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:2px;
+      border-radius:8px;
+      background:#111;
+      border:1px solid #555;
+      padding:2px;
+    }
+
+
+    .batidaVazia{
+      color:#555;
+      font-size:15px;
+      font-weight:900;
+    }
+
+
+    .tagTerminal{
+      min-width:24px;
+      height:28px;
+      padding:0 4px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:6px;
+      color:#fff;
+      font-size:13px;
+      font-weight:900;
+    }
+
+
+    .batidaDupla{
+      border-color:#ffffff;
+      box-shadow:
+        0 0 7px rgba(
+          255,
+          255,
+          255,
+          .45
+        );
+    }
+
+
+    /* =====================================================
+       LEGENDAS
+    ===================================================== */
+
+
+    .legendaRegioes{
+      display:flex;
+      justify-content:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:8px;
+      color:#aaa;
+      font-size:10px;
+    }
+
+
+    .legendaItem{
+      display:flex;
+      align-items:center;
+      gap:4px;
+    }
+
+
+    .legendaCor{
+      width:11px;
+      height:11px;
+      border-radius:3px;
+    }
+
+
+    /* =====================================================
+       TECLADO
+    ===================================================== */
+
+
+    .teclado{
+      display:grid;
+      grid-template-columns:
+        repeat(6,1fr);
+      gap:4px;
+    }
+
+
+    .numeroBtn{
+      min-height:40px;
+      border:1px solid #666;
+      border-radius:7px;
+      color:#fff;
+      font-size:15px;
+      font-weight:900;
+    }
+
+
+    .numeroBtn:active{
+      transform:scale(.96);
+    }
+
+
+    .zeroBtn{
+      grid-column:span 6;
+    }
+
+
+    /* =====================================================
+       HISTÓRICO
+    ===================================================== */
+
+
+    .historico{
+      display:flex;
+      gap:4px;
+      overflow-x:auto;
+      min-height:34px;
+    }
+
+
+    .histNumero{
+      min-width:31px;
+      height:31px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:6px;
+      border:1px solid #555;
+      font-size:13px;
+      font-weight:900;
+    }
+
+
+    .histNumero.janelaAtual{
+      border:2px solid #00e5ff;
+    }
+
+
+    .histNumero.ultimo{
+      box-shadow:
+        0 0 8px #00e5ff;
+    }
+
+
+    @media(
+      max-width:600px
+    ){
 
       .app{
-        width:100%;
-        max-width:760px;
-        margin:auto;
-        padding:10px;
+        padding:5px;
       }
 
-      .titulo{
-        margin:3px 0 10px;
-        text-align:center;
-        font-size:21px;
-      }
 
       .painel{
-        margin-bottom:9px;
-        padding:9px;
-        background:#1d1d1f;
-        border:1px solid #414141;
-        border-radius:10px;
+        padding:7px;
       }
 
-      .painel-titulo{
-        margin-bottom:7px;
-        color:#d3d3d3;
-        font-size:13px;
-        font-weight:900;
+
+      .linhaJanela{
+        grid-template-columns:
+          64px minmax(0,1fr);
       }
 
-      .linha-botoes{
-        display:flex;
-        gap:7px;
-        flex-wrap:wrap;
+
+      .rotuloLinha{
+        font-size:9px;
       }
 
-      .btn{
-        padding:8px 12px;
-        background:#343434;
-        color:#ffffff;
-        border:1px solid #555;
-        border-radius:7px;
-        font-weight:900;
+
+      .numeroJanela,
+      .numeroRegiao,
+      .batidaBox{
+        min-width:34px;
+        height:34px;
       }
 
-      .btn-vermelho{
-        background:#762832;
+
+      .tagTerminal{
+        min-width:21px;
+        height:25px;
+        font-size:11px;
       }
 
-      .historico{
-        display:flex;
-        min-height:39px;
-        gap:5px;
-        align-items:center;
-        overflow-x:auto;
+
+      .teclado{
+        gap:3px;
       }
 
-      .historico-numero{
-        min-width:36px;
-        height:36px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        border-radius:50%;
-        border:2px solid #666;
-        font-size:15px;
-        font-weight:900;
+
+      .numeroBtn{
+        min-height:38px;
       }
 
-      .historico-numero.ultimo{
-        border-color:#00e5ff;
-        box-shadow:0 0 8px #00e5ff;
-      }
+    }
 
-      .teclado-roleta{
-        display:grid;
-        grid-template-columns:repeat(6,1fr);
-        gap:5px;
-      }
+  </style>
 
-      .numero-btn{
-        min-height:42px;
-        border:1px solid #666;
-        border-radius:7px;
-        color:#fff;
-        font-size:16px;
-        font-weight:900;
-      }
 
-      .numero-btn:active{
-        transform:scale(.96);
-      }
+  <main class="app">
 
-      .zero-btn{
-        grid-column:span 6;
-      }
+    <h2>
+      Análise 0 • 6 • 9
+    </h2>
 
-      .terminais-resumo{
-        display:flex;
-        min-height:30px;
-        gap:5px;
-        align-items:center;
-        justify-content:center;
-        flex-wrap:wrap;
-      }
 
-      .terminal-chip{
-        min-width:30px;
-        height:30px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        border:1px solid #666;
-        border-radius:7px;
-        background:#111;
-        font-weight:900;
-      }
+    <!-- ENTRADA -->
 
-      .terminal-chip.repetido{
-        border-color:#ffc107;
-        color:#ffc107;
-      }
+    <section class="painel">
 
-      .seta{
-        color:#777;
-      }
+      <textarea
+        id="entradaHistorico"
+        placeholder="Cole o histórico do mais antigo para o mais recente..."
+      ></textarea>
 
-      .teclado-terminal{
-        display:grid;
-        grid-template-columns:repeat(3,57px);
-        gap:6px;
-        justify-content:center;
-        margin-top:8px;
-      }
 
-      .terminal-key{
-        position:relative;
-        height:45px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        background:#101010;
-        border:2px solid #555;
-        border-radius:9px;
-        font-size:20px;
-        font-weight:900;
-      }
+      <div class="acoes">
 
-      .terminal-key.zero{
-        grid-column:2;
-      }
+        <button
+          id="btnInserir"
+          class="btn verde"
+        >
+          Inserir histórico
+        </button>
 
-      .terminal-key.ativo{
-        background:#164dcc;
-        border-color:#61a4ff;
-      }
 
-      .terminal-key.completo{
-        background:#16763d;
-        border-color:#4cff8a;
-      }
+        <button
+          id="btnApagarUltimo"
+          class="btn"
+        >
+          Apagar último
+        </button>
 
-      .terminal-key.faltante{
-        color:#ffd740;
-        border-color:#ffd740;
-      }
 
-      .contador{
-        position:absolute;
-        top:2px;
-        right:3px;
-        min-width:18px;
-        height:18px;
-        padding:0 4px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        border-radius:10px;
-        background:#dc263b;
-        color:#fff;
-        font-size:10px;
-      }
+        <button
+          id="btnApagarTudo"
+          class="btn vermelho"
+        >
+          Apagar tudo
+        </button>
 
-      .resultado{
-        padding:10px;
-        background:#101010;
-        border-left:5px solid #777;
-        border-radius:8px;
-        line-height:1.45;
-      }
+      </div>
 
-      .resultado.completo{
-        border-left-color:#00e676;
-      }
 
-      .resultado.parcial{
-        border-left-color:#ffc107;
-      }
+      <div
+        id="statusArea"
+        class="status"
+      >
+        Cole o histórico ou use o teclado.
+      </div>
 
-      .resultado.nenhuma{
-        border-left-color:#ff5252;
-      }
+    </section>
 
-      .resultado-titulo{
-        margin-bottom:4px;
-        font-size:17px;
-        font-weight:900;
-      }
 
-      .alvos{
-        margin-top:6px;
-        font-size:14px;
-        line-height:1.55;
-        word-break:break-word;
-      }
+    <!-- RESUMO EXCLUSIVO 069 -->
 
-      .muted{
-        color:#999;
-        font-size:12px;
-      }
+    <section class="painel">
 
-      @media(max-width:520px){
+      <div class="tituloPainel">
+        0 • 6 • 9 — 1 VIZINHO / ÚLTIMOS 14
+      </div>
 
-        .app{
-          padding:6px;
-        }
 
-        .painel{
-          padding:7px;
-        }
-
-        .teclado-roleta{
-          gap:4px;
-        }
-
-        .numero-btn{
-          min-height:39px;
-          font-size:14px;
-        }
-      }
-
-    </style>
-
-    <main class="app">
-
-      <h2 class="titulo">
-        Analisador Visual de Terminais
-      </h2>
-
-      <section class="painel">
-
-        <div class="linha-botoes">
-
-          <button
-            id="btnApagarUltimo"
-            class="btn"
-          >
-            Apagar último
-          </button>
-
-          <button
-            id="btnApagarTudo"
-            class="btn btn-vermelho"
-          >
-            Apagar tudo
-          </button>
-
-        </div>
-
-      </section>
-
-      <section class="painel">
-
-        <div class="painel-titulo">
-          Histórico
-        </div>
+      <div class="resumo069">
 
         <div
-          id="historico"
-          class="historico"
-        ></div>
-
-      </section>
-
-      <section class="painel">
-
-        <div class="painel-titulo">
-          Teclado 0–36
-        </div>
-
-        <div
-          id="tecladoRoleta"
-          class="teclado-roleta"
-        ></div>
-
-      </section>
-
-      <section class="painel">
-
-        <div class="painel-titulo">
-          Últimos 4 terminais
-        </div>
-
-        <div
-          id="resumoTerminais"
-          class="terminais-resumo"
-        ></div>
-
-        <div
-          id="tecladoTerminal"
-          class="teclado-terminal"
+          class="card069"
+          style="
+            border-color:#00c853
+          "
         >
 
-          <div
-            class="terminal-key"
-            data-terminal="7"
-          >
-            7
+          <div class="titulo069">
+            T0
           </div>
 
           <div
-            class="terminal-key"
-            data-terminal="8"
-          >
-            8
-          </div>
-
-          <div
-            class="terminal-key"
-            data-terminal="9"
-          >
-            9
-          </div>
-
-          <div
-            class="terminal-key"
-            data-terminal="4"
-          >
-            4
-          </div>
-
-          <div
-            class="terminal-key"
-            data-terminal="5"
-          >
-            5
-          </div>
-
-          <div
-            class="terminal-key"
-            data-terminal="6"
-          >
-            6
-          </div>
-
-          <div
-            class="terminal-key"
-            data-terminal="1"
-          >
-            1
-          </div>
-
-          <div
-            class="terminal-key"
-            data-terminal="2"
-          >
-            2
-          </div>
-
-          <div
-            class="terminal-key"
-            data-terminal="3"
-          >
-            3
-          </div>
-
-          <div
-            class="terminal-key zero"
-            data-terminal="0"
+            id="qtdT0"
+            class="valor069"
           >
             0
           </div>
 
         </div>
 
-      </section>
 
-      <section class="painel">
+        <div
+          class="card069"
+          style="
+            border-color:#ffc107
+          "
+        >
 
-        <div class="painel-titulo">
-          Análise
+          <div class="titulo069">
+            T6
+          </div>
+
+          <div
+            id="qtdT6"
+            class="valor069"
+          >
+            0
+          </div>
+
         </div>
 
-        <div id="resultado"></div>
 
-      </section>
+        <div
+          class="card069"
+          style="
+            border-color:#2196f3
+          "
+        >
 
-    </main>
+          <div class="titulo069">
+            T9
+          </div>
+
+          <div
+            id="qtdT9"
+            class="valor069"
+          >
+            0
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ÚLTIMOS 14 -->
+
+    <section class="painel">
+
+      <div class="tituloPainel">
+
+        ÚLTIMOS
+        <span id="qtdJanela">
+          0
+        </span>
+        /14
+
+      </div>
+
+
+      <div class="janelaBloco">
+
+
+        <!-- LINHA 1 -->
+
+        <div class="linhaJanela">
+
+          <div class="rotuloLinha">
+            PRETO /<br>
+            VERMELHO
+          </div>
+
+
+          <div
+            id="linhaCores"
+            class="janelaScroll"
+          ></div>
+
+        </div>
+
+
+        <!-- LINHA 2 -->
+
+        <div class="linhaJanela">
+
+          <div class="rotuloLinha">
+            REGIÕES
+          </div>
+
+
+          <div
+            id="linhaRegioes"
+            class="janelaScroll"
+          ></div>
+
+        </div>
+
+
+        <!-- LINHA 3 -->
+
+        <div class="linhaJanela">
+
+          <div class="rotuloLinha">
+            BATIDA<br>
+            0 • 6 • 9
+          </div>
+
+
+          <div
+            id="linhaBatidas"
+            class="janelaScroll"
+          ></div>
+
+        </div>
+
+      </div>
+
+
+      <div class="legendaRegioes">
+
+        <div class="legendaItem">
+
+          <span
+            class="legendaCor"
+            style="
+              background:#9bea2c
+            "
+          ></span>
+
+          Zero
+
+        </div>
+
+
+        <div class="legendaItem">
+
+          <span
+            class="legendaCor"
+            style="
+              background:#8a20d4
+            "
+          ></span>
+
+          Voisins
+
+        </div>
+
+
+        <div class="legendaItem">
+
+          <span
+            class="legendaCor"
+            style="
+              background:#176436
+            "
+          ></span>
+
+          Orphelins
+
+        </div>
+
+
+        <div class="legendaItem">
+
+          <span
+            class="legendaCor"
+            style="
+              background:#29499b
+            "
+          ></span>
+
+          Tiers
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- TECLADO -->
+
+    <section class="painel">
+
+      <div class="tituloPainel">
+        TECLADO 0–36
+      </div>
+
+
+      <div
+        id="teclado"
+        class="teclado"
+      ></div>
+
+    </section>
+
+
+    <!-- HISTÓRICO -->
+
+    <section class="painel">
+
+      <div class="tituloPainel">
+
+        HISTÓRICO —
+        <span id="qtdHistorico">
+          0
+        </span>
+
+      </div>
+
+
+      <div
+        id="historico"
+        class="historico"
+      ></div>
+
+    </section>
+
+  </main>
   `;
 
-  // ================= ELEMENTOS =================
+
+  // =========================================================
+  // ELEMENTOS
+  // =========================================================
+
+  const statusArea =
+    document.getElementById(
+      "statusArea"
+    );
+
+
+  const elementoQtdJanela =
+    document.getElementById(
+      "qtdJanela"
+    );
+
+
+  const elementoLinhaCores =
+    document.getElementById(
+      "linhaCores"
+    );
+
+
+  const elementoLinhaRegioes =
+    document.getElementById(
+      "linhaRegioes"
+    );
+
+
+  const elementoLinhaBatidas =
+    document.getElementById(
+      "linhaBatidas"
+    );
+
+
+  const elementoTeclado =
+    document.getElementById(
+      "teclado"
+    );
+
 
   const elementoHistorico =
     document.getElementById(
       "historico"
     );
 
-  const elementoTecladoRoleta =
+
+  const elementoQtdHistorico =
     document.getElementById(
-      "tecladoRoleta"
+      "qtdHistorico"
     );
 
-  const elementoResumoTerminais =
+
+  const elementoQtdT0 =
     document.getElementById(
-      "resumoTerminais"
+      "qtdT0"
     );
 
-  const elementoResultado =
+
+  const elementoQtdT6 =
     document.getElementById(
-      "resultado"
+      "qtdT6"
     );
 
-  // ================= TECLADO 0–36 =================
+
+  const elementoQtdT9 =
+    document.getElementById(
+      "qtdT9"
+    );
+
+
+  // =========================================================
+  // TECLADO
+  // =========================================================
 
   for(
     let numero = 1;
@@ -840,445 +1470,435 @@
   ){
 
     const cores =
-      corNumeroRoleta(numero);
+      corNumeroRoleta(
+        numero
+      );
+
 
     const botao =
-      document.createElement("button");
+      document.createElement(
+        "button"
+      );
 
-    botao.type = "button";
-    botao.className = "numero-btn";
-    botao.textContent = numero;
+
+    botao.className =
+      "numeroBtn";
+
+
+    botao.textContent =
+      numero;
+
 
     botao.style.background =
       cores.fundo;
 
+
     botao.style.color =
       cores.texto;
 
+
     botao.onclick = () => {
-      adicionarNumero(numero);
+
+      adicionarNumero(
+        numero
+      );
+
     };
 
-    elementoTecladoRoleta
-      .appendChild(botao);
+
+    elementoTeclado
+      .appendChild(
+        botao
+      );
+
   }
+
 
   const botaoZero =
-    document.createElement("button");
+    document.createElement(
+      "button"
+    );
 
-  botaoZero.type = "button";
+
   botaoZero.className =
-    "numero-btn zero-btn";
+    "numeroBtn zeroBtn";
 
-  botaoZero.textContent = "0";
-  botaoZero.style.background = "#07874b";
-  botaoZero.style.color = "#ffffff";
+
+  botaoZero.textContent =
+    "0";
+
+
+  botaoZero.style.background =
+    "#087c48";
+
+
+  botaoZero.style.color =
+    "#ffffff";
+
 
   botaoZero.onclick = () => {
+
     adicionarNumero(0);
+
   };
 
-  elementoTecladoRoleta
-    .appendChild(botaoZero);
 
-  // ================= EVENTOS =================
+  elementoTeclado
+    .appendChild(
+      botaoZero
+    );
+
+
+  // =========================================================
+  // EVENTOS
+  // =========================================================
 
   document
-    .getElementById("btnApagarUltimo")
-    .onclick = apagarUltimo;
+    .getElementById(
+      "btnInserir"
+    )
+    .onclick =
+      inserirHistorico;
+
 
   document
-    .getElementById("btnApagarTudo")
-    .onclick = apagarTudo;
+    .getElementById(
+      "btnApagarUltimo"
+    )
+    .onclick =
+      apagarUltimo;
 
-  // ================= RENDERIZAÇÃO =================
 
-  function limparTecladoTerminal(){
+  document
+    .getElementById(
+      "btnApagarTudo"
+    )
+    .onclick =
+      apagarTudo;
 
-    document
-      .querySelectorAll(".terminal-key")
-      .forEach(elemento => {
 
-        elemento.classList.remove(
-          "ativo",
-          "completo",
-          "faltante"
-        );
+  // =========================================================
+  // RENDER JANELA 14
+  // =========================================================
 
-        const contador =
-          elemento.querySelector(
-            ".contador"
-          );
-
-        if(contador){
-          contador.remove();
-        }
-      });
-  }
-
-  function pintarTerminaisAtivos(
-    contagens
+  function renderJanela(
+    analise
   ){
 
-    Object.entries(contagens)
-      .forEach(([item,quantidade]) => {
+    elementoQtdJanela.textContent =
+      analise.janela.length;
 
-        const elemento =
-          document.querySelector(
-            `.terminal-key[data-terminal="${item}"]`
-          );
 
-        if(!elemento){
-          return;
-        }
+    elementoQtdT0.textContent =
+      analise.contagem[0] +
+      "/" +
+      analise.janela.length;
 
-        elemento.classList.add("ativo");
 
-        if(quantidade > 1){
+    elementoQtdT6.textContent =
+      analise.contagem[6] +
+      "/" +
+      analise.janela.length;
 
-          const contador =
-            document.createElement("span");
 
-          contador.className =
-            "contador";
+    elementoQtdT9.textContent =
+      analise.contagem[9] +
+      "/" +
+      analise.janela.length;
 
-          contador.textContent =
-            quantidade;
 
-          elemento.appendChild(contador);
-        }
-      });
-  }
+    if(
+      !analise.janela.length
+    ){
 
-  function pintarFormacaoCompleta(
-    formacao
-  ){
+      elementoLinhaCores.innerHTML =
+        "Sem números.";
 
-    formacao.terminais
-      .forEach(item => {
+      elementoLinhaRegioes.innerHTML =
+        "Sem números.";
 
-        const elemento =
-          document.querySelector(
-            `.terminal-key[data-terminal="${item}"]`
-          );
-
-        if(elemento){
-          elemento.classList.add(
-            "completo"
-          );
-        }
-      });
-  }
-
-  function pintarTerminalFaltante(
-    item
-  ){
-
-    const elemento =
-      document.querySelector(
-        `.terminal-key[data-terminal="${item}"]`
-      );
-
-    if(elemento){
-      elemento.classList.add(
-        "faltante"
-      );
-    }
-  }
-
-  function renderHistorico(){
-
-    elementoHistorico.innerHTML = "";
-
-    if(!historico.length){
-
-      elementoHistorico.innerHTML = `
-        <span class="muted">
-          Clique nos números abaixo.
-        </span>
-      `;
+      elementoLinhaBatidas.innerHTML =
+        "Sem números.";
 
       return;
     }
 
+
+    // =====================================================
+    // LINHA 1 — COR NORMAL
+    // =====================================================
+
+    elementoLinhaCores.innerHTML =
+      analise.janela
+        .map(numero => {
+
+          const cores =
+            corNumeroRoleta(
+              numero
+            );
+
+
+          return `
+
+            <div
+              class="numeroJanela"
+              style="
+                background:${cores.fundo};
+                color:${cores.texto};
+              "
+            >
+
+              ${numero}
+
+            </div>
+
+          `;
+
+        })
+        .join("");
+
+
+    // =====================================================
+    // LINHA 2 — REGIÕES
+    // =====================================================
+
+    elementoLinhaRegioes.innerHTML =
+      analise.janela
+        .map(numero => {
+
+          const regiao =
+            regiaoDoNumero(
+              numero
+            );
+
+
+          const cor =
+            regiao
+              ? coresRegioes[regiao]
+              : "#555";
+
+
+          return `
+
+            <div
+              class="numeroRegiao"
+              style="
+                background:${cor};
+              "
+              title="${regiao || ""}"
+            >
+
+              ${numero}
+
+            </div>
+
+          `;
+
+        })
+        .join("");
+
+
+    // =====================================================
+    // LINHA 3 — BATIDA 0 / 6 / 9
+    // =====================================================
+
+    elementoLinhaBatidas.innerHTML =
+      analise.sequenciaBatidas
+        .map(item => {
+
+
+          if(
+            !item.terminais.length
+          ){
+
+            return `
+
+              <div
+                class="batidaBox"
+              >
+
+                <span
+                  class="batidaVazia"
+                >
+                  —
+                </span>
+
+              </div>
+
+            `;
+          }
+
+
+          const tags =
+            item.terminais
+              .map(t => `
+
+                <span
+                  class="tagTerminal"
+                  style="
+                    background:
+                    ${coresTerminais[t]};
+                  "
+                >
+                  ${t}
+                </span>
+
+              `)
+              .join("");
+
+
+          return `
+
+            <div
+              class="
+                batidaBox
+                ${
+                  item.terminais.length > 1
+                    ? "batidaDupla"
+                    : ""
+                }
+              "
+            >
+
+              ${tags}
+
+            </div>
+
+          `;
+
+        })
+        .join("");
+  }
+
+
+  // =========================================================
+  // HISTÓRICO
+  // =========================================================
+
+  function renderHistorico(){
+
+    elementoQtdHistorico.textContent =
+      historico.length;
+
+
+    if(!historico.length){
+
+      elementoHistorico.innerHTML =
+        "Histórico vazio.";
+
+      return;
+    }
+
+
+    const inicioJanela =
+      Math.max(
+        0,
+        historico.length -
+        TAMANHO_JANELA
+      );
+
+
     const visiveis =
-      historico.slice(-20);
+      historico.slice(-60);
 
-    visiveis.forEach((numero,index) => {
 
-      const cores =
-        corNumeroRoleta(numero);
+    const offset =
+      historico.length -
+      visiveis.length;
 
-      const item =
-        document.createElement("div");
 
-      item.className =
-        "historico-numero";
+    elementoHistorico.innerHTML =
+      visiveis
+        .map(
+          (
+            numero,
+            index
+          ) => {
 
-      if(index === visiveis.length - 1){
-        item.classList.add("ultimo");
-      }
 
-      item.style.background =
-        cores.fundo;
+            const indiceReal =
+              offset + index;
 
-      item.style.color =
-        cores.texto;
 
-      item.textContent =
-        numero;
+            const cores =
+              corNumeroRoleta(
+                numero
+              );
 
-      elementoHistorico
-        .appendChild(item);
-    });
+
+            const dentroJanela =
+              indiceReal >=
+              inicioJanela;
+
+
+            const ultimo =
+              indiceReal ===
+              historico.length - 1;
+
+
+            return `
+
+              <div
+                class="
+                  histNumero
+                  ${
+                    dentroJanela
+                      ? "janelaAtual"
+                      : ""
+                  }
+                  ${
+                    ultimo
+                      ? "ultimo"
+                      : ""
+                  }
+                "
+                style="
+                  background:
+                  ${cores.fundo};
+                  color:
+                  ${cores.texto};
+                "
+              >
+
+                ${numero}
+
+              </div>
+
+            `;
+
+          }
+        )
+        .join("");
+
 
     elementoHistorico.scrollLeft =
       elementoHistorico.scrollWidth;
   }
 
-  function renderResumoTerminais(
-    analise
-  ){
 
-    elementoResumoTerminais.innerHTML = "";
-
-    if(!analise.terminais.length){
-
-      elementoResumoTerminais.innerHTML = `
-        <span class="muted">
-          Nenhum número inserido.
-        </span>
-      `;
-
-      return;
-    }
-
-    analise.terminais
-      .forEach((item,index) => {
-
-        const chip =
-          document.createElement("div");
-
-        chip.className =
-          "terminal-chip";
-
-        if(
-          analise.contagens[item] > 1
-        ){
-
-          chip.classList.add(
-            "repetido"
-          );
-        }
-
-        chip.textContent =
-          item;
-
-        elementoResumoTerminais
-          .appendChild(chip);
-
-        if(
-          index <
-          analise.terminais.length - 1
-        ){
-
-          const seta =
-            document.createElement("span");
-
-          seta.className = "seta";
-          seta.textContent = "→";
-
-          elementoResumoTerminais
-            .appendChild(seta);
-        }
-      });
-  }
-
-  function renderResultado(
-    analise
-  ){
-
-    if(!analise.numeros.length){
-
-      elementoResultado.innerHTML = `
-
-        <div class="resultado nenhuma">
-
-          <div class="resultado-titulo">
-            Insira os números
-          </div>
-
-          <div class="muted">
-            A análise utiliza os quatro últimos resultados.
-          </div>
-
-        </div>
-      `;
-
-      return;
-    }
-
-    if(analise.tipo === "completa"){
-
-      elementoResultado.innerHTML = `
-
-        <div class="resultado completo">
-
-          <div class="resultado-titulo">
-            Formação completa:
-            ${analise.formacao.terminais.join("–")}
-          </div>
-
-          <div>
-            ${analise.formacao.nome}
-          </div>
-
-          <div class="alvos">
-
-            <strong>
-              Terminais do alvo:
-            </strong>
-
-            ${analise.terminaisAlvo.join(", ")}
-
-            <br>
-
-            <strong>
-              Números:
-            </strong>
-
-            ${analise.numerosAlvo.join(", ")}
-
-          </div>
-
-        </div>
-      `;
-
-      return;
-    }
-
-    if(analise.tipo === "parcial"){
-
-      elementoResultado.innerHTML = `
-
-        <div class="resultado parcial">
-
-          <div class="resultado-titulo">
-            Quase formada:
-            ${analise.formacao.terminais.join("–")}
-          </div>
-
-          <div>
-            ${analise.formacao.nome}
-          </div>
-
-          <div class="alvos">
-
-            Falta o terminal
-
-            <strong>
-              ${analise.terminalFaltante}
-            </strong>
-
-            <br>
-
-            <strong>
-              Confirma com:
-            </strong>
-
-            ${analise.numerosConfirmacao.join(", ")}
-
-          </div>
-
-        </div>
-      `;
-
-      return;
-    }
-
-    if(analise.tipo === "repeticao"){
-
-      const texto =
-        analise.repetidos
-          .map(item =>
-            `T${item.terminal} repetiu ` +
-            `${item.quantidade}x`
-          )
-          .join(" | ");
-
-      elementoResultado.innerHTML = `
-
-        <div class="resultado parcial">
-
-          <div class="resultado-titulo">
-            Terminal repetido
-          </div>
-
-          <div>
-            ${texto}
-          </div>
-
-          <div class="muted">
-            Ainda não fechou uma linha.
-          </div>
-
-        </div>
-      `;
-
-      return;
-    }
-
-    elementoResultado.innerHTML = `
-
-      <div class="resultado nenhuma">
-
-        <div class="resultado-titulo">
-          Sem formação
-        </div>
-
-        <div class="muted">
-          Os terminais estão espalhados.
-        </div>
-
-      </div>
-    `;
-  }
+  // =========================================================
+  // RENDER PRINCIPAL
+  // =========================================================
 
   function render(){
 
     const analise =
-      analisarUltimosQuatro();
+      analisarJanela14();
+
+
+    renderJanela(
+      analise
+    );
+
 
     renderHistorico();
 
-    limparTecladoTerminal();
-
-    pintarTerminaisAtivos(
-      analise.contagens
-    );
-
-    renderResumoTerminais(
-      analise
-    );
-
-    if(analise.tipo === "completa"){
-
-      pintarFormacaoCompleta(
-        analise.formacao
-      );
-    }
-
-    if(analise.tipo === "parcial"){
-
-      pintarTerminalFaltante(
-        analise.terminalFaltante
-      );
-    }
-
-    renderResultado(
-      analise
-    );
   }
+
+
+  // =========================================================
+  // INICIAR
+  // =========================================================
 
   render();
 
