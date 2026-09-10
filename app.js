@@ -19,10 +19,10 @@ const COR_T6 = "#ffc107";
 const COR_T9 = "#2196f3";
 
 
-/*
-  Raio X curto:
-  4, 5 ou 6 resultados.
-*/
+/* =========================================================
+   TAMANHO DO RAIO X
+========================================================= */
+
 let TAMANHO_RX = 6;
 
 try{
@@ -48,15 +48,15 @@ salvoRX;
 }catch(erro){}
 
 
-/*
-  NOVA LÓGICA DAS RÉPLICAS
+/* =========================================================
+   CONFIGURAÇÃO DE RÉPLICAS
 
-  Não trava numa única réplica perfeita.
+   NÃO PARA NUM ÚNICO 100%.
 
-  O sistema vai descendo os níveis
-  de similaridade até formar um grupo
-  útil para leitura.
-*/
+   Vai descendo os níveis até formar
+   um grupo útil de desenhos próximos.
+========================================================= */
+
 const NIVEIS_RX = [
 100,
 98,
@@ -72,18 +72,8 @@ const NIVEIS_RX = [
 75
 ];
 
-
-/*
-  Queremos pelo menos esse número
-  de réplicas antes de parar a busca.
-*/
 const MIN_REPLICAS_RX = 8;
 
-
-/*
-  Máximo usado para não deixar
-  padrões muito distantes dominarem.
-*/
 const MAX_REPLICAS_RX = 25;
 
 
@@ -112,8 +102,8 @@ const numerosVermelhos = new Set([
 
 
 /* =========================================================
-   REGIÕES
-   SOMENTE VISUAL
+   REGIÕES DA ROLETA
+   SOMENTE PARA VISUALIZAÇÃO
 ========================================================= */
 
 const regioesRoleta = {
@@ -165,7 +155,26 @@ const BASES_069 = [
 
 
 /* =========================================================
+   TODOS OS IDS POSSÍVEIS DO TOP 8
+========================================================= */
+
+const TODOS_IDS_RX = [
+
+0,10,20,30,
+
+6,16,26,36,
+
+9,19,29,39
+
+];
+
+
+/* =========================================================
    IDS ESPECIAIS
+
+   25 = ID 39
+   17 = ID 9
+   2  = ID 9
 ========================================================= */
 
 const IDS_ESPECIAIS = {
@@ -189,7 +198,9 @@ id === 10 ||
 id === 20 ||
 id === 30
 ){
+
 return 0;
+
 }
 
 if(
@@ -198,7 +209,9 @@ id === 16 ||
 id === 26 ||
 id === 36
 ){
+
 return 6;
+
 }
 
 if(
@@ -207,7 +220,9 @@ id === 19 ||
 id === 29 ||
 id === 39
 ){
+
 return 9;
+
 }
 
 return null;
@@ -224,16 +239,28 @@ function corDoId(id){
 const familia =
 familiaDoId(id);
 
-if(familia === 0){
+if(
+familia === 0
+){
+
 return COR_T0;
+
 }
 
-if(familia === 6){
+if(
+familia === 6
+){
+
 return COR_T6;
+
 }
 
-if(familia === 9){
+if(
+familia === 9
+){
+
 return COR_T9;
+
 }
 
 return "#555";
@@ -242,16 +269,45 @@ return "#555";
 
 
 /* =========================================================
+   COR DA FAMÍLIA
+========================================================= */
+
+function corFamilia(familia){
+
+if(
+familia === 0
+){
+
+return COR_T0;
+
+}
+
+if(
+familia === 6
+){
+
+return COR_T6;
+
+}
+
+if(
+familia === 9
+){
+
+return COR_T9;
+
+}
+
+return "#aaa";
+
+}
+
+
+/* =========================================================
    VIZINHOS
 ========================================================= */
 
-function vizinhos(numero,quantidade){
-
-if(
-quantidade === undefined
-){
-quantidade = 1;
-}
+function vizinhos(numero,quantidade = 1){
 
 const indice =
 track.indexOf(numero);
@@ -259,7 +315,9 @@ track.indexOf(numero);
 if(
 indice === -1
 ){
+
 return [];
+
 }
 
 const resultado = [numero];
@@ -271,6 +329,7 @@ distancia++
 ){
 
 resultado.push(
+
 track[
 (
 indice -
@@ -280,9 +339,11 @@ track.length
 %
 track.length
 ]
+
 );
 
 resultado.push(
+
 track[
 (
 indice +
@@ -291,6 +352,7 @@ distancia
 %
 track.length
 ]
+
 );
 
 }
@@ -326,6 +388,7 @@ base,
 function idsQueBatem(numero){
 
 const ids = [];
+
 
 BASES_069.forEach(function(base){
 
@@ -376,32 +439,27 @@ return ids;
 
 function familiasQueBatem(numero){
 
-const familias =
-new Set();
+return new Set(
 
 idsQueBatem(numero)
-.forEach(function(id){
 
-const familia =
-familiaDoId(id);
+.map(
+familiaDoId
+)
 
-if(
-familia !== null
-){
+.filter(function(familia){
 
-familias.add(familia);
+return familia !== null;
 
-}
+})
 
-});
-
-return familias;
+);
 
 }
 
 
 /* =========================================================
-   REGIÃO
+   REGIÃO DA ROLETA
 ========================================================= */
 
 function regiaoDoNumero(numero){
@@ -409,25 +467,33 @@ function regiaoDoNumero(numero){
 if(
 regioesRoleta.ZERO.has(numero)
 ){
+
 return "ZERO";
+
 }
 
 if(
 regioesRoleta.VOISINS.has(numero)
 ){
+
 return "VOISINS";
+
 }
 
 if(
 regioesRoleta.ORPHELINS.has(numero)
 ){
+
 return "ORPHELINS";
+
 }
 
 if(
 regioesRoleta.TIERS.has(numero)
 ){
+
 return "TIERS";
+
 }
 
 return null;
@@ -446,8 +512,10 @@ numero === 0
 ){
 
 return {
+
 fundo:"#087c48",
 texto:"#ffffff"
+
 };
 
 }
@@ -457,15 +525,19 @@ numerosVermelhos.has(numero)
 ){
 
 return {
+
 fundo:"#c6283d",
 texto:"#ffffff"
+
 };
 
 }
 
 return {
+
 fundo:"#181818",
 texto:"#ffffff"
+
 };
 
 }
@@ -487,7 +559,9 @@ STORAGE_KEY
 if(
 !salvo
 ){
+
 return [];
+
 }
 
 const dados =
@@ -496,20 +570,27 @@ JSON.parse(salvo);
 if(
 !Array.isArray(dados)
 ){
+
 return [];
+
 }
 
 return dados
+
 .map(Number)
+
 .filter(function(numero){
 
 return (
+
 Number.isInteger(numero) &&
 numero >= 0 &&
 numero <= 36
+
 );
 
 })
+
 .slice(-5000);
 
 }catch(erro){
@@ -530,10 +611,13 @@ function salvarHistorico(){
 try{
 
 localStorage.setItem(
+
 STORAGE_KEY,
+
 JSON.stringify(
 historico
 )
+
 );
 
 }catch(erro){
@@ -549,7 +633,7 @@ erro
 
 
 /* =========================================================
-   EXTRAIR HISTÓRICO
+   EXTRAIR NÚMEROS
 ========================================================= */
 
 function extrairNumeros(texto){
@@ -562,19 +646,26 @@ texto.match(
 if(
 !encontrados
 ){
+
 return [];
+
 }
 
 return encontrados
+
 .map(Number)
+
 .filter(function(numero){
 
 return (
+
 numero >= 0 &&
 numero <= 36
+
 );
 
 })
+
 .slice(-5000);
 
 }
@@ -596,14 +687,13 @@ return {
 janela:janela,
 
 sequencia:
+
 janela.map(function(numero){
 
 return {
 
 numero:numero,
-
-ids:
-idsQueBatem(numero)
+ids:idsQueBatem(numero)
 
 };
 
@@ -624,48 +714,50 @@ let t0 = 0;
 let t6 = 0;
 let t9 = 0;
 
-const eventos = [];
 const pontos = [];
+const eventos = [];
+
 
 janela.forEach(function(numero,index){
 
 const familias =
 familiasQueBatem(numero);
 
-const evento = {
-
-t0:
+const bate0 =
 familias.has(0)
 ? 1
-: 0,
+: 0;
 
-t6:
+const bate6 =
 familias.has(6)
 ? 1
-: 0,
+: 0;
 
-t9:
+const bate9 =
 familias.has(9)
 ? 1
-: 0
+: 0;
 
-};
 
-t0 += evento.t0;
-t6 += evento.t6;
-t9 += evento.t9;
+t0 += bate0;
+t6 += bate6;
+t9 += bate9;
 
-eventos.push(
-evento
-);
+
+eventos.push({
+
+t0:bate0,
+t6:bate6,
+t9:bate9
+
+});
+
 
 pontos.push({
 
-posicao:
-index + 1,
+posicao:index + 1,
 
-numero:
-numero,
+numero:numero,
 
 t0:t0,
 t6:t6,
@@ -675,11 +767,12 @@ t9:t9
 
 });
 
+
 return {
 
-eventos:eventos,
-
 pontos:pontos,
+
+eventos:eventos,
 
 total0:t0,
 total6:t6,
@@ -701,25 +794,33 @@ let chave = "";
 if(
 evento.t0
 ){
+
 chave += "0";
+
 }
 
 if(
 evento.t6
 ){
+
 chave += "6";
+
 }
 
 if(
 evento.t9
 ){
+
 chave += "9";
+
 }
 
 if(
 !chave
 ){
+
 chave = "-";
+
 }
 
 return chave;
@@ -740,13 +841,14 @@ const tamanho =
 janelaAtual.length;
 
 if(
-tamanho === 0 ||
+!tamanho ||
 janelaAntiga.length !== tamanho
 ){
 
 return 0;
 
 }
+
 
 const atual =
 gerarTrajetoria(
@@ -759,9 +861,9 @@ janelaAntiga
 );
 
 
-/* ---------------------------------------------------------
-   1. EVENTOS POSIÇÃO POR POSIÇÃO
---------------------------------------------------------- */
+/* =====================================================
+   EVENTOS IGUAIS
+===================================================== */
 
 let eventosIguais = 0;
 
@@ -787,18 +889,20 @@ eventosIguais++;
 
 }
 
+
 const scoreEventos =
+
 (
 eventosIguais /
 tamanho
 )
-*
-100;
+
+* 100;
 
 
-/* ---------------------------------------------------------
-   2. DESENHO / TRAJETÓRIA
---------------------------------------------------------- */
+/* =====================================================
+   FORMATO DAS LINHAS
+===================================================== */
 
 let erro = 0;
 
@@ -810,35 +914,45 @@ i++
 
 erro +=
 Math.abs(
+
 atual.pontos[i].t0 -
 antiga.pontos[i].t0
+
 );
 
 erro +=
 Math.abs(
+
 atual.pontos[i].t6 -
 antiga.pontos[i].t6
+
 );
 
 erro +=
 Math.abs(
+
 atual.pontos[i].t9 -
 antiga.pontos[i].t9
+
 );
 
 }
+
 
 const maxErro =
 tamanho *
 tamanho *
 3;
 
+
 let scoreForma =
+
 1 -
 (
 erro /
 maxErro
 );
+
 
 scoreForma =
 Math.max(
@@ -849,17 +963,22 @@ scoreForma
 )
 );
 
+
 scoreForma *= 100;
 
 
 /*
-  Mantém a sequência como principal,
-  mas aceita desenhos muito próximos.
+  Sequência manda.
+  Desenho complementa.
 */
 return (
+
 scoreEventos * 0.80
+
 +
+
 scoreForma * 0.20
+
 );
 
 }
@@ -876,6 +995,7 @@ TAMANHO_RX;
 
 const total =
 historico.length;
+
 
 if(
 total <
@@ -894,9 +1014,15 @@ replicas:[]
 
 }
 
+
+/* =====================================================
+   DESENHO ATUAL
+===================================================== */
+
 const inicioAtual =
 total -
 tamanho;
+
 
 const janelaAtual =
 historico.slice(
@@ -904,7 +1030,13 @@ inicioAtual,
 total
 );
 
+
 const todas = [];
+
+
+/* =====================================================
+   PROCURA NO HISTÓRICO
+===================================================== */
 
 for(
 let inicio = 0;
@@ -916,77 +1048,94 @@ const fim =
 inicio +
 tamanho;
 
+
 const janelaAntiga =
 historico.slice(
 inicio,
 fim
 );
 
+
 const proximo =
 historico[fim];
+
 
 if(
 proximo === undefined
 ){
+
 continue;
+
 }
+
 
 const similaridade =
 calcularSimilaridade(
+
 janelaAtual,
+
 janelaAntiga
+
 );
+
 
 const distancia =
 inicioAtual -
 fim;
 
+
 todas.push({
 
 inicio:inicio,
+
 fim:fim,
 
-similaridade:
-similaridade,
+similaridade:similaridade,
 
-distancia:
-distancia,
+distancia:distancia,
 
-proximo:
-proximo
+proximo:proximo
 
 });
 
 }
 
 
-/*
-  Primeiro similaridade.
-  Empate = mais recente.
-*/
+/* =====================================================
+   ORDENAÇÃO
+===================================================== */
+
 todas.sort(function(a,b){
 
 if(
+
 Math.abs(
+
 b.similaridade -
 a.similaridade
-)
-> 0.0001
+
+) > 0.0001
+
 ){
 
 return (
+
 b.similaridade -
 a.similaridade
+
 );
 
 }
 
 return (
+
 a.distancia -
 b.distancia
+
 );
 
 });
+
 
 return {
 
@@ -999,25 +1148,19 @@ replicas:todas
 
 
 /* =========================================================
-   NOVA SELEÇÃO DAS RÉPLICAS
+   SELECIONAR GRUPO DE RÉPLICAS
 
-   ESSA É A CORREÇÃO PRINCIPAL.
+   NÃO TRAVA NUMA ÚNICA 100%.
 
-   NÃO PARA NUMA ÚNICA RÉPLICA 100%.
-
-   DESCE:
-   100
-   98
-   96
-   94
-   92...
-   ATÉ CONSEGUIR UM GRUPO ÚTIL.
+   Vai descendo a similaridade até formar
+   quantidade suficiente para leitura.
 ========================================================= */
 
 function selecionarReplicas(){
 
 const busca =
 procurarReplicas();
+
 
 if(
 !busca.suficiente
@@ -1037,6 +1180,7 @@ melhor:0
 
 }
 
+
 if(
 !busca.replicas.length
 ){
@@ -1055,19 +1199,20 @@ melhor:0
 
 }
 
+
 const melhor =
 busca.replicas[0]
 .similaridade;
 
 
-/*
-  O sistema vai descendo os níveis
-  até conseguir pelo menos
-  MIN_REPLICAS_RX ocorrências.
-*/
 let grupoEscolhido = [];
+
 let nivelEscolhido = 0;
 
+
+/* =====================================================
+   DESCE OS NÍVEIS
+===================================================== */
 
 for(
 let i = 0;
@@ -1084,7 +1229,10 @@ busca.replicas
 .filter(function(item){
 
 return (
-item.similaridade >= nivel
+
+item.similaridade >=
+nivel
+
 );
 
 });
@@ -1108,13 +1256,12 @@ break;
 }
 
 
-/*
-  Se mesmo no último nível
-  ainda não chegar em 8,
-  usa as melhores disponíveis.
+/* =====================================================
+   SE NÃO CHEGAR EM 8 RÉPLICAS
 
-  Assim o Raio X não fica vazio.
-*/
+   USA AS MELHORES DISPONÍVEIS.
+===================================================== */
+
 if(
 !grupoEscolhido.length
 ){
@@ -1125,11 +1272,13 @@ busca.replicas.slice(
 MIN_REPLICAS_RX
 );
 
+
 if(
 grupoEscolhido.length
 ){
 
 nivelEscolhido =
+
 grupoEscolhido[
 grupoEscolhido.length - 1
 ]
@@ -1140,9 +1289,10 @@ grupoEscolhido.length - 1
 }
 
 
-/*
-  Limita o grupo final.
-*/
+/* =====================================================
+   LIMITE
+===================================================== */
+
 grupoEscolhido =
 grupoEscolhido.slice(
 0,
@@ -1173,10 +1323,6 @@ melhor
 
 /* =========================================================
    RAIO X FINAL
-
-   SEM PESO.
-
-   CONTAGEM SIMPLES.
 ========================================================= */
 
 function analisarRaioX(){
@@ -1184,6 +1330,42 @@ function analisarRaioX(){
 const selecao =
 selecionarReplicas();
 
+
+/* =====================================================
+   CRIA OS 12 IDS UMA ÚNICA VEZ
+
+   ISSO IMPEDE DUPLICAÇÃO.
+===================================================== */
+
+const rankingIds =
+new Map();
+
+
+TODOS_IDS_RX.forEach(function(id){
+
+rankingIds.set(
+id,
+{
+
+id:id,
+
+ocorrencias:0,
+
+melhorSimilaridade:0,
+
+maisRecente:Infinity
+
+}
+);
+
+});
+
+
+/* =====================================================
+   SEM DADOS SUFICIENTES
+
+   AINDA MANTÉM 8 REGIÕES ÚNICAS.
+===================================================== */
 
 if(
 selecao.estado !==
@@ -1203,6 +1385,8 @@ replicas:0,
 similaridade:
 selecao.melhor || 0,
 
+nivel:0,
+
 familias:{
 
 0:0,
@@ -1213,12 +1397,37 @@ familias:{
 
 lider:null,
 
-ranking:[]
+ranking:
+
+TODOS_IDS_RX
+.slice(
+0,
+8
+)
+.map(function(id){
+
+return {
+
+id:id,
+
+ocorrencias:0,
+
+melhorSimilaridade:0,
+
+maisRecente:Infinity
+
+};
+
+})
 
 };
 
 }
 
+
+/* =====================================================
+   RÉPLICAS SELECIONADAS
+===================================================== */
 
 const replicas =
 selecao.replicas;
@@ -1226,16 +1435,18 @@ selecao.replicas;
 
 let somaSimilaridade = 0;
 
+
 let cont0 = 0;
 let cont6 = 0;
 let cont9 = 0;
 
+
 let totalFamilias = 0;
 
 
-const rankingMap =
-new Map();
-
+/* =====================================================
+   ANALISA O QUE VEIO LOGO DEPOIS
+===================================================== */
 
 replicas.forEach(function(item){
 
@@ -1243,89 +1454,29 @@ somaSimilaridade +=
 item.similaridade;
 
 
-/* ---------------------------------------------------------
-   FAMÍLIA DO RESULTADO POSTERIOR
---------------------------------------------------------- */
+/* =================================================
+   IDS ATINGIDOS PELO RESULTADO POSTERIOR
+================================================= */
 
-const familias =
-Array.from(
-familiasQueBatem(
+const ids =
+idsQueBatem(
 item.proximo
-)
 );
 
 
-if(
-familias.length
-){
-
-const fracao =
-1 /
-familias.length;
-
-
-familias.forEach(function(familia){
+ids.forEach(function(id){
 
 if(
-familia === 0
-){
-cont0 += fracao;
-}
-
-if(
-familia === 6
-){
-cont6 += fracao;
-}
-
-if(
-familia === 9
-){
-cont9 += fracao;
-}
-
-});
-
-
-totalFamilias += 1;
-
-}
-
-
-/* ---------------------------------------------------------
-   RANKING DO NÚMERO POSTERIOR
---------------------------------------------------------- */
-
-if(
-!rankingMap.has(
-item.proximo
-)
+!rankingIds.has(id)
 ){
 
-rankingMap.set(
-item.proximo,
-{
-
-numero:
-item.proximo,
-
-ocorrencias:0,
-
-melhorSimilaridade:0,
-
-maisRecente:
-Infinity
-
-}
-);
+return;
 
 }
 
 
 const registro =
-rankingMap.get(
-item.proximo
-);
+rankingIds.get(id);
 
 
 registro.ocorrencias++;
@@ -1353,17 +1504,81 @@ item.distancia
 });
 
 
+/* =================================================
+   FAMÍLIAS 0 / 6 / 9
+================================================= */
+
+const familias =
+Array.from(
+
+familiasQueBatem(
+item.proximo
+)
+
+);
+
+
+if(
+familias.length
+){
+
+const fracao =
+1 /
+familias.length;
+
+
+familias.forEach(function(familia){
+
+if(
+familia === 0
+){
+
+cont0 += fracao;
+
+}
+
+if(
+familia === 6
+){
+
+cont6 += fracao;
+
+}
+
+if(
+familia === 9
+){
+
+cont9 += fracao;
+
+}
+
+});
+
+
+totalFamilias++;
+
+}
+
+});
+
+
 /* =====================================================
    SIMILARIDADE MÉDIA
 ===================================================== */
 
 const mediaSimilaridade =
+
+replicas.length
+?
 somaSimilaridade /
-replicas.length;
+replicas.length
+:
+0;
 
 
 /* =====================================================
-   PERCENTUAIS
+   PERCENTUAIS DAS FAMÍLIAS
 ===================================================== */
 
 let percentual0 = 0;
@@ -1376,16 +1591,21 @@ totalFamilias > 0
 ){
 
 percentual0 =
+
 cont0 /
 totalFamilias *
 100;
 
+
 percentual6 =
+
 cont6 /
 totalFamilias *
 100;
 
+
 percentual9 =
+
 cont9 /
 totalFamilias *
 100;
@@ -1394,7 +1614,7 @@ totalFamilias *
 
 
 /* =====================================================
-   LÍDER
+   SINAL
 ===================================================== */
 
 const familiasOrdenadas = [
@@ -1420,8 +1640,10 @@ valor:percentual9
 familiasOrdenadas.sort(function(a,b){
 
 return (
+
 b.valor -
 a.valor
+
 );
 
 });
@@ -1448,20 +1670,41 @@ familiasOrdenadas[0].valor
 
 
 /* =====================================================
-   TOP 8 NÚMEROS
+   ORDEM FIXA DOS 12 IDS
 
-   1º frequência
-   2º melhor similaridade
-   3º mais recente
+   Usada somente se houver empate total.
+===================================================== */
+
+const ordemOriginal =
+new Map();
+
+
+TODOS_IDS_RX.forEach(function(id,index){
+
+ordemOriginal.set(
+id,
+index
+);
+
+});
+
+
+/* =====================================================
+   RANKING DAS 12 REGIÕES
 ===================================================== */
 
 const ranking =
 Array.from(
-rankingMap.values()
+rankingIds.values()
 );
 
 
 ranking.sort(function(a,b){
+
+
+/* -------------------------------------------------
+   1. MAIS OCORRÊNCIAS
+------------------------------------------------- */
 
 if(
 b.ocorrencias !==
@@ -1469,40 +1712,88 @@ a.ocorrencias
 ){
 
 return (
+
 b.ocorrencias -
 a.ocorrencias
+
 );
 
 }
 
 
+/* -------------------------------------------------
+   2. MELHOR SIMILARIDADE
+------------------------------------------------- */
+
 if(
+
 Math.abs(
+
 b.melhorSimilaridade -
 a.melhorSimilaridade
-)
-> 0.0001
+
+) > 0.0001
+
 ){
 
 return (
+
 b.melhorSimilaridade -
 a.melhorSimilaridade
+
 );
 
 }
 
 
+/* -------------------------------------------------
+   3. MAIS RECENTE
+------------------------------------------------- */
+
+if(
+a.maisRecente !==
+b.maisRecente
+){
+
 return (
+
 a.maisRecente -
 b.maisRecente
+
+);
+
+}
+
+
+/* -------------------------------------------------
+   4. ORDEM FIXA
+------------------------------------------------- */
+
+return (
+
+ordemOriginal.get(a.id) -
+ordemOriginal.get(b.id)
+
 );
 
 });
 
 
+/* =====================================================
+   EXATAMENTE 8 IDS ÚNICOS
+===================================================== */
+
+const top8 =
+ranking.slice(
+0,
+8
+);
+
+
 return {
 
 estado:
+
 lider
 ?
 "SINAL " +
@@ -1539,10 +1830,7 @@ lider:
 lider,
 
 ranking:
-ranking.slice(
-0,
-8
-)
+top8
 
 };
 
@@ -1565,6 +1853,7 @@ return;
 
 }
 
+
 TAMANHO_RX =
 tamanho;
 
@@ -1572,10 +1861,13 @@ tamanho;
 try{
 
 localStorage.setItem(
+
 STORAGE_RX,
+
 String(
 TAMANHO_RX
 )
+
 );
 
 }catch(erro){}
@@ -1599,10 +1891,12 @@ document.getElementById(
 "entradaHistorico"
 );
 
+
 const numeros =
 extrairNumeros(
 campo.value
 );
+
 
 if(
 !numeros.length
@@ -1618,21 +1912,28 @@ return;
 
 }
 
+
 historico =
 numeros.slice(
 -5000
 );
 
+
 salvarHistorico();
+
 
 campo.value = "";
 
+
 statusArea.textContent =
+
 historico.length +
 " números carregados.";
 
+
 statusArea.style.color =
 "#00e676";
+
 
 render();
 
@@ -1649,6 +1950,7 @@ historico.push(
 numero
 );
 
+
 if(
 historico.length >
 5000
@@ -1658,15 +1960,20 @@ historico.shift();
 
 }
 
+
 salvarHistorico();
 
+
 statusArea.textContent =
+
 "Número " +
 numero +
 " inserido.";
 
+
 statusArea.style.color =
 "#00e5ff";
+
 
 render();
 
@@ -1682,21 +1989,29 @@ function apagarUltimo(){
 if(
 !historico.length
 ){
+
 return;
+
 }
+
 
 const apagado =
 historico.pop();
 
+
 salvarHistorico();
 
+
 statusArea.textContent =
+
 "Número " +
 apagado +
 " apagado.";
 
+
 statusArea.style.color =
 "#ffc107";
+
 
 render();
 
@@ -1719,15 +2034,20 @@ return;
 
 }
 
+
 historico = [];
 
+
 salvarHistorico();
+
 
 statusArea.textContent =
 "Histórico apagado.";
 
+
 statusArea.style.color =
 "#ff5252";
+
 
 render();
 
@@ -1740,8 +2060,7 @@ render();
 
 document.body.innerHTML = "";
 
-document.body.style.margin =
-"0";
+document.body.style.margin = "0";
 
 document.body.style.background =
 "#101010";
@@ -2783,7 +3102,6 @@ const aberto =
 conteudo.style.display ===
 "block";
 
-
 if(
 aberto
 ){
@@ -2801,7 +3119,6 @@ conteudo.style.display =
 
 botao.textContent =
 "Ocultar";
-
 
 if(
 callback
@@ -2822,28 +3139,40 @@ callback,
 
 
 configurarPainelOculto(
+
 "btnMostrarGrafico",
+
 "conteudoGrafico",
+
 renderGrafico
+
 );
 
 
 configurarPainelOculto(
+
 "btnMostrarRaioX",
+
 "conteudoRaioX",
+
 renderRaioX
+
 );
 
 
 configurarPainelOculto(
+
 "btnMostrarHistorico",
+
 "conteudoHistorico",
+
 function(){
 
 elementoHistorico.scrollLeft =
 elementoHistorico.scrollWidth;
 
 }
+
 );
 
 
@@ -2919,7 +3248,7 @@ zero
 
 
 /* =========================================================
-   BOTÕES
+   BOTÕES PRINCIPAIS
 ========================================================= */
 
 document
@@ -2947,7 +3276,7 @@ apagarTudo;
 
 
 /* =========================================================
-   RENDER JANELA
+   RENDER DOS 14
 ========================================================= */
 
 function renderJanela(){
@@ -3022,11 +3351,13 @@ numero
 );
 
 const cor =
+
 regiao
 ?
 coresRegioes[regiao]
 :
 "#555";
+
 
 return (
 
@@ -3069,6 +3400,7 @@ return (
 
 
 const tags =
+
 item.ids
 
 .map(function(id){
@@ -3076,11 +3408,15 @@ item.ids
 return (
 
 '<span ' +
+
 'class="tagID" ' +
+
 'style="background:' +
 corDoId(id) +
 '">' +
+
 id +
+
 '</span>'
 
 );
@@ -3106,7 +3442,7 @@ tags +
 
 
 /* =========================================================
-   GRÁFICO
+   GRÁFICO DOS 14
 ========================================================= */
 
 function renderGrafico(){
@@ -3115,6 +3451,7 @@ const janela =
 historico.slice(
 -TAMANHO_JANELA
 );
+
 
 const traj =
 gerarTrajetoria(
@@ -3137,6 +3474,7 @@ document.getElementById(
 "conteudoGrafico"
 );
 
+
 if(
 conteudo.style.display !==
 "block"
@@ -3152,8 +3490,10 @@ document.getElementById(
 "grafico069"
 );
 
+
 const container =
 canvas.parentElement;
+
 
 const largura =
 Math.max(
@@ -3161,11 +3501,13 @@ Math.max(
 container.clientWidth
 );
 
+
 const altura =
 Math.max(
 170,
 container.clientHeight
 );
+
 
 const dpr =
 window.devicePixelRatio ||
@@ -3176,13 +3518,16 @@ canvas.width =
 largura *
 dpr;
 
+
 canvas.height =
 altura *
 dpr;
 
+
 canvas.style.width =
 largura +
 "px";
+
 
 canvas.style.height =
 altura +
@@ -3194,6 +3539,7 @@ canvas.getContext(
 "2d"
 );
 
+
 ctx.setTransform(
 dpr,
 0,
@@ -3203,6 +3549,7 @@ dpr,
 0
 );
 
+
 ctx.clearRect(
 0,
 0,
@@ -3210,8 +3557,10 @@ largura,
 altura
 );
 
+
 ctx.fillStyle =
 "#111";
+
 
 ctx.fillRect(
 0,
@@ -3242,12 +3591,14 @@ const margemInferior = 28;
 
 
 const larguraUtil =
+
 largura -
 margemEsquerda -
 margemDireita;
 
 
 const alturaUtil =
+
 altura -
 margemSuperior -
 margemInferior;
@@ -3296,8 +3647,10 @@ alturaUtil
 ctx.font =
 "9px Arial";
 
+
 ctx.textAlign =
 "right";
+
 
 ctx.textBaseline =
 "middle";
@@ -3312,12 +3665,15 @@ valor += 2
 const py =
 y(valor);
 
+
 ctx.beginPath();
+
 
 ctx.moveTo(
 margemEsquerda,
 py
 );
+
 
 ctx.lineTo(
 largura -
@@ -3325,19 +3681,25 @@ margemDireita,
 py
 );
 
+
 ctx.strokeStyle =
+
 valor === 0
 ?
 "#555"
 :
 "#282828";
 
+
 ctx.lineWidth = 1;
+
 
 ctx.stroke();
 
+
 ctx.fillStyle =
 "#777";
+
 
 ctx.fillText(
 String(valor),
@@ -3350,6 +3712,7 @@ py
 
 ctx.textAlign =
 "center";
+
 
 ctx.textBaseline =
 "top";
@@ -3364,8 +3727,10 @@ i++
 const px =
 x(i);
 
+
 ctx.fillStyle =
 "#666";
+
 
 ctx.fillText(
 String(i),
@@ -3385,6 +3750,7 @@ cor
 
 ctx.beginPath();
 
+
 dados.forEach(function(ponto,index){
 
 const px =
@@ -3392,10 +3758,12 @@ x(
 ponto.posicao
 );
 
+
 const py =
 y(
 ponto[chave]
 );
+
 
 if(
 index === 0
@@ -3417,17 +3785,22 @@ py
 
 });
 
+
 ctx.strokeStyle =
 cor;
+
 
 ctx.lineWidth =
 3;
 
+
 ctx.lineJoin =
 "round";
 
+
 ctx.lineCap =
 "round";
+
 
 ctx.stroke();
 
@@ -3437,6 +3810,7 @@ dados
 .forEach(function(ponto){
 
 ctx.beginPath();
+
 
 ctx.arc(
 
@@ -3456,8 +3830,10 @@ Math.PI * 2
 
 );
 
+
 ctx.fillStyle =
 cor;
+
 
 ctx.fill();
 
@@ -3471,44 +3847,17 @@ desenharLinha(
 COR_T0
 );
 
+
 desenharLinha(
 "t6",
 COR_T6
 );
 
+
 desenharLinha(
 "t9",
 COR_T9
 );
-
-}
-
-
-/* =========================================================
-   COR DA FAMÍLIA
-========================================================= */
-
-function corFamilia(familia){
-
-if(
-familia === 0
-){
-return COR_T0;
-}
-
-if(
-familia === 6
-){
-return COR_T6;
-}
-
-if(
-familia === 9
-){
-return COR_T9;
-}
-
-return "#aaa";
 
 }
 
@@ -3526,26 +3875,66 @@ analisarRaioX();
 let rankingHTML = "";
 
 
+/* =====================================================
+   SEMPRE 8 IDS ÚNICOS
+===================================================== */
+
 rx.ranking
-.forEach(function(item){
+.forEach(function(item,index){
+
+const familia =
+familiaDoId(
+item.id
+);
+
+
+const cor =
+corFamilia(
+familia
+);
+
 
 rankingHTML +=
 
-'<div class="rxNumero">' +
+'<div class="rxNumero" ' +
 
-'<strong>' +
-item.numero +
-'</strong>' +
+'style="border-color:' +
+cor +
+'">' +
+
 
 '<small>' +
+'#' +
+(index + 1) +
+'</small>' +
+
+
+'<strong style="color:' +
+cor +
+'">' +
+
+item.id +
+
+'</strong>' +
+
+
+'<small>' +
+
 item.ocorrencias +
 'x' +
+
 '</small>' +
+
 
 '</div>';
 
 });
 
+
+/* =====================================================
+   SEGURANÇA VISUAL:
+   SE POR QUALQUER MOTIVO VIER MENOS QUE 8
+===================================================== */
 
 for(
 let i =
@@ -3565,6 +3954,10 @@ rankingHTML +=
 }
 
 
+/* =====================================================
+   SINAL
+===================================================== */
+
 let sinalHTML = "";
 
 
@@ -3576,6 +3969,7 @@ const cor =
 corFamilia(
 rx.lider.familia
 );
+
 
 sinalHTML =
 
@@ -3615,9 +4009,14 @@ sinalHTML =
 }
 
 
+/* =====================================================
+   PAINEL
+===================================================== */
+
 raioX.innerHTML =
 
 '<div class="rxTopo">' +
+
 
 '<div class="rxCard">' +
 
@@ -3628,6 +4027,7 @@ rx.replicas +
 '</strong>' +
 
 '</div>' +
+
 
 '<div class="rxCard">' +
 
@@ -3640,10 +4040,12 @@ rx.similaridade.toFixed(1) +
 
 '</div>' +
 
+
 '</div>' +
 
 
 '<div class="rxFamilias">' +
+
 
 '<div class="rxFamilia">' +
 
@@ -3692,6 +4094,7 @@ rx.familias[9].toFixed(0) +
 
 '</div>' +
 
+
 '</div>' +
 
 
@@ -3701,7 +4104,8 @@ sinalHTML +
 '<div class="tituloPainel" ' +
 'style="margin-bottom:5px">' +
 
-'8 PRÓXIMOS' +
+'8 REGIÕES — RAIO X ' +
+rx.tamanho +
 
 '</div>' +
 
@@ -3774,11 +4178,13 @@ numero
 
 
 const dentroJanela =
+
 indiceReal >=
 inicioJanela;
 
 
 const ultimo =
+
 indiceReal ===
 historico.length - 1;
 
