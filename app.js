@@ -20,14 +20,10 @@ const COR_T9 = "#2196f3";
 
 
 /*
-  RAIO X:
-  Pode analisar somente os últimos
+  Raio X curto:
   4, 5 ou 6 resultados.
-
-  Padrão inicial = 6.
 */
 let TAMANHO_RX = 6;
-
 
 try{
 
@@ -53,22 +49,42 @@ salvoRX;
 
 
 /*
-  Réplica forte.
+  NOVA LÓGICA DAS RÉPLICAS
+
+  Não trava numa única réplica perfeita.
+
+  O sistema vai descendo os níveis
+  de similaridade até formar um grupo
+  útil para leitura.
 */
-const SIMILARIDADE_MINIMA_FORTE = 88;
+const NIVEIS_RX = [
+100,
+98,
+96,
+94,
+92,
+90,
+88,
+85,
+82,
+80,
+78,
+75
+];
 
 
 /*
-  Quantos pontos abaixo da melhor réplica
-  ainda entram no grupo forte.
+  Queremos pelo menos esse número
+  de réplicas antes de parar a busca.
 */
-const FAIXA_DO_TOPO = 5;
+const MIN_REPLICAS_RX = 8;
 
 
 /*
-  Máximo de réplicas utilizadas.
+  Máximo usado para não deixar
+  padrões muito distantes dominarem.
 */
-const MAX_REPLICAS = 20;
+const MAX_REPLICAS_RX = 25;
 
 
 /* =========================================================
@@ -97,7 +113,7 @@ const numerosVermelhos = new Set([
 
 /* =========================================================
    REGIÕES
-   SOMENTE LEITURA VISUAL DO MOMENTO ATUAL
+   SOMENTE VISUAL
 ========================================================= */
 
 const regioesRoleta = {
@@ -246,10 +262,7 @@ indice === -1
 return [];
 }
 
-const resultado = [
-numero
-];
-
+const resultado = [numero];
 
 for(
 let distancia = 1;
@@ -258,7 +271,6 @@ distancia++
 ){
 
 resultado.push(
-
 track[
 (
 indice -
@@ -268,12 +280,9 @@ track.length
 %
 track.length
 ]
-
 );
 
-
 resultado.push(
-
 track[
 (
 indice +
@@ -282,7 +291,6 @@ distancia
 %
 track.length
 ]
-
 );
 
 }
@@ -297,7 +305,6 @@ return resultado;
 ========================================================= */
 
 const coberturaDasBases = {};
-
 
 BASES_069.forEach(function(base){
 
@@ -319,7 +326,6 @@ base,
 function idsQueBatem(numero){
 
 const ids = [];
-
 
 BASES_069.forEach(function(base){
 
@@ -373,7 +379,6 @@ function familiasQueBatem(numero){
 const familias =
 new Set();
 
-
 idsQueBatem(numero)
 .forEach(function(id){
 
@@ -389,7 +394,6 @@ familias.add(familia);
 }
 
 });
-
 
 return familias;
 
@@ -442,34 +446,26 @@ numero === 0
 ){
 
 return {
-
 fundo:"#087c48",
 texto:"#ffffff"
-
 };
 
 }
-
 
 if(
 numerosVermelhos.has(numero)
 ){
 
 return {
-
 fundo:"#c6283d",
 texto:"#ffffff"
-
 };
 
 }
 
-
 return {
-
 fundo:"#181818",
 texto:"#ffffff"
-
 };
 
 }
@@ -488,17 +484,14 @@ localStorage.getItem(
 STORAGE_KEY
 );
 
-
 if(
 !salvo
 ){
 return [];
 }
 
-
 const dados =
 JSON.parse(salvo);
-
 
 if(
 !Array.isArray(dados)
@@ -506,25 +499,18 @@ if(
 return [];
 }
 
-
 return dados
-
 .map(Number)
-
 .filter(function(numero){
 
 return (
-
 Number.isInteger(numero) &&
 numero >= 0 &&
 numero <= 36
-
 );
 
 })
-
 .slice(-5000);
-
 
 }catch(erro){
 
@@ -544,13 +530,10 @@ function salvarHistorico(){
 try{
 
 localStorage.setItem(
-
 STORAGE_KEY,
-
 JSON.stringify(
 historico
 )
-
 );
 
 }catch(erro){
@@ -576,29 +559,22 @@ texto.match(
 /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
 );
 
-
 if(
 !encontrados
 ){
 return [];
 }
 
-
 return encontrados
-
 .map(Number)
-
 .filter(function(numero){
 
 return (
-
 numero >= 0 &&
 numero <= 36
-
 );
 
 })
-
 .slice(-5000);
 
 }
@@ -615,13 +591,11 @@ historico.slice(
 -TAMANHO_JANELA
 );
 
-
 return {
 
 janela:janela,
 
 sequencia:
-
 janela.map(function(numero){
 
 return {
@@ -653,12 +627,10 @@ let t9 = 0;
 const eventos = [];
 const pontos = [];
 
-
 janela.forEach(function(numero,index){
 
 const familias =
 familiasQueBatem(numero);
-
 
 const evento = {
 
@@ -679,16 +651,13 @@ familias.has(9)
 
 };
 
-
 t0 += evento.t0;
 t6 += evento.t6;
 t9 += evento.t9;
 
-
 eventos.push(
 evento
 );
-
 
 pontos.push({
 
@@ -705,7 +674,6 @@ t9:t9
 });
 
 });
-
 
 return {
 
@@ -730,13 +698,11 @@ function chaveEvento(evento){
 
 let chave = "";
 
-
 if(
 evento.t0
 ){
 chave += "0";
 }
-
 
 if(
 evento.t6
@@ -744,20 +710,17 @@ evento.t6
 chave += "6";
 }
 
-
 if(
 evento.t9
 ){
 chave += "9";
 }
 
-
 if(
 !chave
 ){
 chave = "-";
 }
-
 
 return chave;
 
@@ -766,13 +729,6 @@ return chave;
 
 /* =========================================================
    SIMILARIDADE DO RAIO X
-
-   IMPORTANTE:
-
-   NÃO usa 14.
-
-   Usa somente TAMANHO_RX:
-   6, 5 ou 4 resultados.
 ========================================================= */
 
 function calcularSimilaridade(
@@ -783,7 +739,6 @@ janelaAntiga
 const tamanho =
 janelaAtual.length;
 
-
 if(
 tamanho === 0 ||
 janelaAntiga.length !== tamanho
@@ -793,12 +748,10 @@ return 0;
 
 }
 
-
 const atual =
 gerarTrajetoria(
 janelaAtual
 );
-
 
 const antiga =
 gerarTrajetoria(
@@ -807,11 +760,10 @@ janelaAntiga
 
 
 /* ---------------------------------------------------------
-   1. EVENTOS EXATOS
+   1. EVENTOS POSIÇÃO POR POSIÇÃO
 --------------------------------------------------------- */
 
 let eventosIguais = 0;
-
 
 for(
 let i = 0;
@@ -820,17 +772,13 @@ i++
 ){
 
 if(
-
 chaveEvento(
 atual.eventos[i]
 )
-
 ===
-
 chaveEvento(
 antiga.eventos[i]
 )
-
 ){
 
 eventosIguais++;
@@ -839,23 +787,20 @@ eventosIguais++;
 
 }
 
-
 const scoreEventos =
-
 (
 eventosIguais /
 tamanho
 )
-
-* 100;
+*
+100;
 
 
 /* ---------------------------------------------------------
-   2. FORMATO DAS TRÊS LINHAS
+   2. DESENHO / TRAJETÓRIA
 --------------------------------------------------------- */
 
 let erro = 0;
-
 
 for(
 let i = 0;
@@ -869,13 +814,11 @@ atual.pontos[i].t0 -
 antiga.pontos[i].t0
 );
 
-
 erro +=
 Math.abs(
 atual.pontos[i].t6 -
 antiga.pontos[i].t6
 );
-
 
 erro +=
 Math.abs(
@@ -885,25 +828,17 @@ antiga.pontos[i].t9
 
 }
 
-
-/*
-  Normalização ajustada ao tamanho
-  escolhido: 4, 5 ou 6.
-*/
 const maxErro =
 tamanho *
 tamanho *
 3;
 
-
 let scoreForma =
-
 1 -
 (
 erro /
 maxErro
 );
-
 
 scoreForma =
 Math.max(
@@ -914,33 +849,24 @@ scoreForma
 )
 );
 
-
 scoreForma *= 100;
 
 
 /*
-  A sequência exata manda.
-
-  A forma acumulada complementa.
+  Mantém a sequência como principal,
+  mas aceita desenhos muito próximos.
 */
 return (
-
-scoreEventos * 0.85
-
+scoreEventos * 0.80
 +
-
-scoreForma * 0.15
-
+scoreForma * 0.20
 );
 
 }
 
 
 /* =========================================================
-   PROCURAR RÉPLICAS DO RAIO X
-
-   Aqui usa somente:
-   últimos 4 / 5 / 6.
+   PROCURAR TODAS AS RÉPLICAS
 ========================================================= */
 
 function procurarReplicas(){
@@ -948,22 +874,13 @@ function procurarReplicas(){
 const tamanho =
 TAMANHO_RX;
 
-
 const total =
 historico.length;
 
-
-/*
-  Precisamos ter:
-  um desenho antigo,
-  um próximo número
-  e o desenho atual.
-*/
 if(
 total <
 (
-tamanho * 2
-+
+tamanho * 2 +
 1
 )
 ){
@@ -971,44 +888,24 @@ tamanho * 2
 return {
 
 suficiente:false,
-
 replicas:[]
 
 };
 
 }
 
-
-/*
-  COMEÇO DO DESENHO ATUAL
-*/
 const inicioAtual =
 total -
 tamanho;
 
-
-/*
-  SOMENTE A PONTA ATUAL
-*/
 const janelaAtual =
 historico.slice(
 inicioAtual,
 total
 );
 
-
 const todas = [];
 
-
-/*
-  Percorre todo o passado.
-
-  A janela antiga precisa terminar
-  antes da janela atual.
-
-  E precisamos conhecer o número
-  imediatamente posterior a ela.
-*/
 for(
 let inicio = 0;
 inicio + tamanho < inicioAtual;
@@ -1019,17 +916,14 @@ const fim =
 inicio +
 tamanho;
 
-
 const janelaAntiga =
 historico.slice(
 inicio,
 fim
 );
 
-
 const proximo =
 historico[fim];
-
 
 if(
 proximo === undefined
@@ -1037,30 +931,19 @@ proximo === undefined
 continue;
 }
 
-
 const similaridade =
 calcularSimilaridade(
-
 janelaAtual,
-
 janelaAntiga
-
 );
 
-
-/*
-  Quantos resultados existem entre
-  aquela réplica e o desenho atual.
-*/
 const distancia =
 inicioAtual -
 fim;
 
-
 todas.push({
 
 inicio:inicio,
-
 fim:fim,
 
 similaridade:
@@ -1077,48 +960,38 @@ proximo
 }
 
 
-/* ---------------------------------------------------------
-   ORDENAÇÃO
-
-   Similaridade manda.
-
-   Quando são praticamente iguais,
-   a réplica mais recente sobe.
---------------------------------------------------------- */
-
+/*
+  Primeiro similaridade.
+  Empate = mais recente.
+*/
 todas.sort(function(a,b){
 
-const diferenca =
-
-b.similaridade -
-a.similaridade;
-
-
 if(
-Math.abs(diferenca) > 0.5
+Math.abs(
+b.similaridade -
+a.similaridade
+)
+> 0.0001
 ){
 
-return diferenca;
+return (
+b.similaridade -
+a.similaridade
+);
 
 }
 
-
 return (
-
 a.distancia -
 b.distancia
-
 );
 
 });
 
-
 return {
 
 suficiente:true,
-
-replicas:
-todas
+replicas:todas
 
 };
 
@@ -1126,14 +999,25 @@ todas
 
 
 /* =========================================================
-   SELECIONAR RÉPLICAS FORTES
+   NOVA SELEÇÃO DAS RÉPLICAS
+
+   ESSA É A CORREÇÃO PRINCIPAL.
+
+   NÃO PARA NUMA ÚNICA RÉPLICA 100%.
+
+   DESCE:
+   100
+   98
+   96
+   94
+   92...
+   ATÉ CONSEGUIR UM GRUPO ÚTIL.
 ========================================================= */
 
-function selecionarReplicasFortes(){
+function selecionarReplicas(){
 
 const busca =
 procurarReplicas();
-
 
 if(
 !busca.suficiente
@@ -1145,12 +1029,13 @@ estado:"AGUARDANDO",
 
 replicas:[],
 
+nivel:0,
+
 melhor:0
 
 };
 
 }
-
 
 if(
 !busca.replicas.length
@@ -1158,9 +1043,11 @@ if(
 
 return {
 
-estado:"SEM SINAL",
+estado:"SEM DADOS",
 
 replicas:[],
+
+nivel:0,
 
 melhor:0
 
@@ -1168,127 +1055,113 @@ melhor:0
 
 }
 
-
-/*
-  MELHOR RÉPLICA ENCONTRADA
-*/
 const melhor =
 busca.replicas[0]
 .similaridade;
 
 
 /*
-  Nem a melhor chegou em 88%.
+  O sistema vai descendo os níveis
+  até conseguir pelo menos
+  MIN_REPLICAS_RX ocorrências.
 */
-if(
-melhor <
-SIMILARIDADE_MINIMA_FORTE
+let grupoEscolhido = [];
+let nivelEscolhido = 0;
+
+
+for(
+let i = 0;
+i < NIVEIS_RX.length;
+i++
 ){
 
-return {
-
-estado:"SEM SINAL",
-
-replicas:[],
-
-melhor:
-melhor
-
-};
-
-}
+const nivel =
+NIVEIS_RX[i];
 
 
-/*
-  Só mantém o bloco do topo.
-
-  Exemplo:
-
-  melhor = 98%
-  entram 98, 97, 96, 95, 94, 93...
-
-  não joga 80% no meio.
-*/
-const minimoDoGrupo =
-Math.max(
-
-SIMILARIDADE_MINIMA_FORTE,
-
-melhor -
-FAIXA_DO_TOPO
-
-);
-
-
-let grupo =
-
+const grupo =
 busca.replicas
-
 .filter(function(item){
 
 return (
-
-item.similaridade >=
-minimoDoGrupo
-
+item.similaridade >= nivel
 );
 
 });
 
 
-/*
-  Dentro do grupo muito parecido,
-  favorecemos o mais recente.
-*/
-grupo.sort(function(a,b){
-
 if(
-
-Math.abs(
-
-b.similaridade -
-a.similaridade
-
-) <= 2
-
+grupo.length >=
+MIN_REPLICAS_RX
 ){
 
-return (
+grupoEscolhido =
+grupo;
 
-a.distancia -
-b.distancia
+nivelEscolhido =
+nivel;
 
-);
+break;
+
+}
 
 }
 
 
-return (
+/*
+  Se mesmo no último nível
+  ainda não chegar em 8,
+  usa as melhores disponíveis.
 
-b.similaridade -
-a.similaridade
+  Assim o Raio X não fica vazio.
+*/
+if(
+!grupoEscolhido.length
+){
 
+grupoEscolhido =
+busca.replicas.slice(
+0,
+MIN_REPLICAS_RX
 );
 
-});
+if(
+grupoEscolhido.length
+){
+
+nivelEscolhido =
+grupoEscolhido[
+grupoEscolhido.length - 1
+]
+.similaridade;
+
+}
+
+}
 
 
-grupo =
-grupo.slice(
+/*
+  Limita o grupo final.
+*/
+grupoEscolhido =
+grupoEscolhido.slice(
 0,
-MAX_REPLICAS
+MAX_REPLICAS_RX
 );
 
 
 return {
 
 estado:
-grupo.length
+grupoEscolhido.length
 ? "OK"
-: "SEM SINAL",
+: "SEM DADOS",
 
 replicas:
-grupo,
+grupoEscolhido,
+
+nivel:
+nivelEscolhido,
 
 melhor:
 melhor
@@ -1300,12 +1173,16 @@ melhor
 
 /* =========================================================
    RAIO X FINAL
+
+   SEM PESO.
+
+   CONTAGEM SIMPLES.
 ========================================================= */
 
 function analisarRaioX(){
 
 const selecao =
-selecionarReplicasFortes();
+selecionarReplicas();
 
 
 if(
@@ -1349,13 +1226,11 @@ selecao.replicas;
 
 let somaSimilaridade = 0;
 
+let cont0 = 0;
+let cont6 = 0;
+let cont9 = 0;
 
-let peso0 = 0;
-let peso6 = 0;
-let peso9 = 0;
-
-
-let pesoFamiliasTotal = 0;
+let totalFamilias = 0;
 
 
 const rankingMap =
@@ -1369,67 +1244,23 @@ item.similaridade;
 
 
 /* ---------------------------------------------------------
-   PESO DA RÉPLICA
-
-   1. desenho parecido
-   2. desenho recente
---------------------------------------------------------- */
-
-const pesoSimilaridade =
-
-Math.pow(
-
-item.similaridade /
-100,
-
-4
-
-);
-
-
-const pesoRecencia =
-
-1 /
-
-(
-1 +
-item.distancia / 100
-);
-
-
-const peso =
-
-pesoSimilaridade *
-pesoRecencia;
-
-
-/* ---------------------------------------------------------
-   O QUE VEIO DEPOIS DA RÉPLICA?
+   FAMÍLIA DO RESULTADO POSTERIOR
 --------------------------------------------------------- */
 
 const familias =
-
 Array.from(
-
 familiasQueBatem(
 item.proximo
 )
-
 );
 
 
-/*
-  Para o percentual das linhas,
-  usamos apenas resultados que pertencem
-  ao 0 / 6 / 9.
-*/
 if(
 familias.length
 ){
 
-const pesoDividido =
-
-peso /
+const fracao =
+1 /
 familias.length;
 
 
@@ -1438,46 +1269,31 @@ familias.forEach(function(familia){
 if(
 familia === 0
 ){
-
-peso0 +=
-pesoDividido;
-
+cont0 += fracao;
 }
-
 
 if(
 familia === 6
 ){
-
-peso6 +=
-pesoDividido;
-
+cont6 += fracao;
 }
-
 
 if(
 familia === 9
 ){
-
-peso9 +=
-pesoDividido;
-
+cont9 += fracao;
 }
 
 });
 
 
-pesoFamiliasTotal +=
-peso;
+totalFamilias += 1;
 
 }
 
 
 /* ---------------------------------------------------------
-   RANKING DOS PRÓXIMOS NÚMEROS
-
-   Aqui entram TODOS os números 0–36
-   que vieram depois das réplicas.
+   RANKING DO NÚMERO POSTERIOR
 --------------------------------------------------------- */
 
 if(
@@ -1487,9 +1303,7 @@ item.proximo
 ){
 
 rankingMap.set(
-
 item.proximo,
-
 {
 
 numero:
@@ -1497,13 +1311,12 @@ item.proximo,
 
 ocorrencias:0,
 
-peso:0,
+melhorSimilaridade:0,
 
 maisRecente:
 Infinity
 
 }
-
 );
 
 }
@@ -1518,8 +1331,14 @@ item.proximo
 registro.ocorrencias++;
 
 
-registro.peso +=
-peso;
+registro.melhorSimilaridade =
+Math.max(
+
+registro.melhorSimilaridade,
+
+item.similaridade
+
+);
 
 
 registro.maisRecente =
@@ -1535,17 +1354,16 @@ item.distancia
 
 
 /* =====================================================
-   SIMILARIDADE MÉDIA DAS RÉPLICAS USADAS
+   SIMILARIDADE MÉDIA
 ===================================================== */
 
 const mediaSimilaridade =
-
 somaSimilaridade /
 replicas.length;
 
 
 /* =====================================================
-   PERCENTUAIS 0 / 6 / 9
+   PERCENTUAIS
 ===================================================== */
 
 let percentual0 = 0;
@@ -1554,34 +1372,29 @@ let percentual9 = 0;
 
 
 if(
-pesoFamiliasTotal > 0
+totalFamilias > 0
 ){
 
 percentual0 =
-
-peso0 /
-pesoFamiliasTotal *
+cont0 /
+totalFamilias *
 100;
-
 
 percentual6 =
-
-peso6 /
-pesoFamiliasTotal *
+cont6 /
+totalFamilias *
 100;
 
-
 percentual9 =
-
-peso9 /
-pesoFamiliasTotal *
+cont9 /
+totalFamilias *
 100;
 
 }
 
 
 /* =====================================================
-   LINHA LÍDER
+   LÍDER
 ===================================================== */
 
 const familiasOrdenadas = [
@@ -1607,10 +1420,8 @@ valor:percentual9
 familiasOrdenadas.sort(function(a,b){
 
 return (
-
 b.valor -
 a.valor
-
 );
 
 });
@@ -1637,7 +1448,11 @@ familiasOrdenadas[0].valor
 
 
 /* =====================================================
-   8 PRÓXIMOS MAIS RECORRENTES
+   TOP 8 NÚMEROS
+
+   1º frequência
+   2º melhor similaridade
+   3º mais recente
 ===================================================== */
 
 const ranking =
@@ -1648,58 +1463,38 @@ rankingMap.values()
 
 ranking.sort(function(a,b){
 
-/*
-  Primeiro:
-  quantidade de vezes que veio depois
-  do mesmo desenho.
-*/
 if(
 b.ocorrencias !==
 a.ocorrencias
 ){
 
 return (
-
 b.ocorrencias -
 a.ocorrencias
-
 );
 
 }
 
 
-/*
-  Empate:
-  maior qualidade/recência das réplicas.
-*/
 if(
-
 Math.abs(
-b.peso -
-a.peso
-) > 0.000001
-
+b.melhorSimilaridade -
+a.melhorSimilaridade
+)
+> 0.0001
 ){
 
 return (
-
-b.peso -
-a.peso
-
+b.melhorSimilaridade -
+a.melhorSimilaridade
 );
 
 }
 
 
-/*
-  Novo empate:
-  resultado mais recente.
-*/
 return (
-
 a.maisRecente -
 b.maisRecente
-
 );
 
 });
@@ -1708,10 +1503,12 @@ b.maisRecente
 return {
 
 estado:
-
 lider
-? "SINAL " + lider.familia
-: "SEM SINAL",
+?
+"SINAL " +
+lider.familia
+:
+"SEM SINAL",
 
 tamanho:
 TAMANHO_RX,
@@ -1721,6 +1518,9 @@ replicas.length,
 
 similaridade:
 mediaSimilaridade,
+
+nivel:
+selecao.nivel,
 
 familias:{
 
@@ -1756,17 +1556,14 @@ ranking.slice(
 function alterarTamanhoRaioX(tamanho){
 
 if(
-
 tamanho !== 4 &&
 tamanho !== 5 &&
 tamanho !== 6
-
 ){
 
 return;
 
 }
-
 
 TAMANHO_RX =
 tamanho;
@@ -1775,20 +1572,16 @@ tamanho;
 try{
 
 localStorage.setItem(
-
 STORAGE_RX,
-
 String(
 TAMANHO_RX
 )
-
 );
 
 }catch(erro){}
 
 
 atualizarBotoesRX();
-
 
 renderRaioX();
 
@@ -1806,12 +1599,10 @@ document.getElementById(
 "entradaHistorico"
 );
 
-
 const numeros =
 extrairNumeros(
 campo.value
 );
-
 
 if(
 !numeros.length
@@ -1827,28 +1618,21 @@ return;
 
 }
 
-
 historico =
 numeros.slice(
 -5000
 );
 
-
 salvarHistorico();
-
 
 campo.value = "";
 
-
 statusArea.textContent =
-
 historico.length +
 " números carregados.";
 
-
 statusArea.style.color =
 "#00e676";
-
 
 render();
 
@@ -1861,8 +1645,9 @@ render();
 
 function adicionarNumero(numero){
 
-historico.push(numero);
-
+historico.push(
+numero
+);
 
 if(
 historico.length >
@@ -1873,20 +1658,15 @@ historico.shift();
 
 }
 
-
 salvarHistorico();
 
-
 statusArea.textContent =
-
 "Número " +
 numero +
 " inserido.";
 
-
 statusArea.style.color =
 "#00e5ff";
-
 
 render();
 
@@ -1905,24 +1685,18 @@ if(
 return;
 }
 
-
 const apagado =
 historico.pop();
 
-
 salvarHistorico();
 
-
 statusArea.textContent =
-
 "Número " +
 apagado +
 " apagado.";
 
-
 statusArea.style.color =
 "#ffc107";
-
 
 render();
 
@@ -1936,31 +1710,24 @@ render();
 function apagarTudo(){
 
 if(
-
 !window.confirm(
 "Apagar todo o histórico?"
 )
-
 ){
 
 return;
 
 }
 
-
 historico = [];
 
-
 salvarHistorico();
-
 
 statusArea.textContent =
 "Histórico apagado.";
 
-
 statusArea.style.color =
 "#ff5252";
-
 
 render();
 
@@ -1973,7 +1740,8 @@ render();
 
 document.body.innerHTML = "";
 
-document.body.style.margin = "0";
+document.body.style.margin =
+"0";
 
 document.body.style.background =
 "#101010";
@@ -2065,7 +1833,7 @@ margin-top:8px;
 
 
 /* =====================================================
-   SELETOR DO RAIO X
+   SELETOR RX
 ===================================================== */
 
 .seletorRX{
@@ -2236,7 +2004,7 @@ border-radius:3px;
 
 
 /* =====================================================
-   GRÁFICO DE 14
+   GRÁFICO
 ===================================================== */
 
 .resumoGrafico{
@@ -2498,8 +2266,6 @@ Análise 0 • 6 • 9
 </h2>
 
 
-<!-- ENTRADA -->
-
 <section class="painel">
 
 <textarea
@@ -2541,8 +2307,6 @@ Cole o histórico ou use o teclado.
 
 </section>
 
-
-<!-- ÚLTIMOS 14 -->
 
 <section class="painel">
 
@@ -2635,8 +2399,6 @@ Tiers
 </section>
 
 
-<!-- GRÁFICO 14 -->
-
 <section class="painel">
 
 <div class="cabecalhoPainel">
@@ -2725,8 +2487,6 @@ id="grafico069"
 </section>
 
 
-<!-- RAIO X -->
-
 <section class="painel">
 
 <div class="cabecalhoPainel">
@@ -2791,8 +2551,6 @@ class="raiox"
 </section>
 
 
-<!-- TECLADO -->
-
 <section class="painel">
 
 <div class="tituloPainel">
@@ -2806,8 +2564,6 @@ class="teclado"
 
 </section>
 
-
-<!-- HISTÓRICO -->
 
 <section class="painel">
 
@@ -2939,7 +2695,6 @@ document.getElementById(
 "rx" + numero
 );
 
-
 if(
 numero ===
 TAMANHO_RX
@@ -3002,7 +2757,7 @@ atualizarBotoesRX();
 
 
 /* =========================================================
-   PAINÉIS MOSTRAR / OCULTAR
+   PAINÉIS
 ========================================================= */
 
 function configurarPainelOculto(
@@ -3016,18 +2771,15 @@ document.getElementById(
 botaoId
 );
 
-
 const conteudo =
 document.getElementById(
 conteudoId
 );
 
-
 botao.onclick =
 function(){
 
 const aberto =
-
 conteudo.style.display ===
 "block";
 
@@ -3039,7 +2791,6 @@ aberto
 conteudo.style.display =
 "none";
 
-
 botao.textContent =
 "Mostrar";
 
@@ -3047,7 +2798,6 @@ botao.textContent =
 
 conteudo.style.display =
 "block";
-
 
 botao.textContent =
 "Ocultar";
@@ -3072,40 +2822,28 @@ callback,
 
 
 configurarPainelOculto(
-
 "btnMostrarGrafico",
-
 "conteudoGrafico",
-
 renderGrafico
-
 );
 
 
 configurarPainelOculto(
-
 "btnMostrarRaioX",
-
 "conteudoRaioX",
-
 renderRaioX
-
 );
 
 
 configurarPainelOculto(
-
 "btnMostrarHistorico",
-
 "conteudoHistorico",
-
 function(){
 
 elementoHistorico.scrollLeft =
 elementoHistorico.scrollWidth;
 
 }
-
 );
 
 
@@ -3124,24 +2862,19 @@ document.createElement(
 "button"
 );
 
-
 const cor =
 corNumeroRoleta(
 numero
 );
 
-
 botao.className =
 "numeroBtn";
-
 
 botao.textContent =
 numero;
 
-
 botao.style.background =
 cor.fundo;
-
 
 botao.onclick =
 function(){
@@ -3151,7 +2884,6 @@ numero
 );
 
 };
-
 
 teclado.appendChild(
 botao
@@ -3165,18 +2897,14 @@ document.createElement(
 "button"
 );
 
-
 zero.className =
 "numeroBtn zeroBtn";
-
 
 zero.textContent =
 "0";
 
-
 zero.style.background =
 "#087c48";
-
 
 zero.onclick =
 function(){
@@ -3185,14 +2913,13 @@ adicionarNumero(0);
 
 };
 
-
 teclado.appendChild(
 zero
 );
 
 
 /* =========================================================
-   BOTÕES PRINCIPAIS
+   BOTÕES
 ========================================================= */
 
 document
@@ -3220,7 +2947,7 @@ apagarTudo;
 
 
 /* =========================================================
-   RENDER DOS 14
+   RENDER JANELA
 ========================================================= */
 
 function renderJanela(){
@@ -3262,7 +2989,6 @@ corNumeroRoleta(
 numero
 );
 
-
 return (
 
 '<div class="numeroRoleta" ' +
@@ -3295,15 +3021,12 @@ regiaoDoNumero(
 numero
 );
 
-
 const cor =
-
 regiao
 ?
 coresRegioes[regiao]
 :
 "#555";
-
 
 return (
 
@@ -3346,7 +3069,6 @@ return (
 
 
 const tags =
-
 item.ids
 
 .map(function(id){
@@ -3354,15 +3076,11 @@ item.ids
 return (
 
 '<span ' +
-
 'class="tagID" ' +
-
 'style="background:' +
 corDoId(id) +
 '">' +
-
 id +
-
 '</span>'
 
 );
@@ -3388,7 +3106,7 @@ tags +
 
 
 /* =========================================================
-   GRÁFICO DE 14
+   GRÁFICO
 ========================================================= */
 
 function renderGrafico(){
@@ -3397,7 +3115,6 @@ const janela =
 historico.slice(
 -TAMANHO_JANELA
 );
-
 
 const traj =
 gerarTrajetoria(
@@ -3420,12 +3137,9 @@ document.getElementById(
 "conteudoGrafico"
 );
 
-
 if(
-
 conteudo.style.display !==
 "block"
-
 ){
 
 return;
@@ -3438,10 +3152,8 @@ document.getElementById(
 "grafico069"
 );
 
-
 const container =
 canvas.parentElement;
-
 
 const largura =
 Math.max(
@@ -3449,13 +3161,11 @@ Math.max(
 container.clientWidth
 );
 
-
 const altura =
 Math.max(
 170,
 container.clientHeight
 );
-
 
 const dpr =
 window.devicePixelRatio ||
@@ -3466,16 +3176,13 @@ canvas.width =
 largura *
 dpr;
 
-
 canvas.height =
 altura *
 dpr;
 
-
 canvas.style.width =
 largura +
 "px";
-
 
 canvas.style.height =
 altura +
@@ -3487,7 +3194,6 @@ canvas.getContext(
 "2d"
 );
 
-
 ctx.setTransform(
 dpr,
 0,
@@ -3497,7 +3203,6 @@ dpr,
 0
 );
 
-
 ctx.clearRect(
 0,
 0,
@@ -3505,10 +3210,8 @@ largura,
 altura
 );
 
-
 ctx.fillStyle =
 "#111";
-
 
 ctx.fillRect(
 0,
@@ -3539,14 +3242,12 @@ const margemInferior = 28;
 
 
 const larguraUtil =
-
 largura -
 margemEsquerda -
 margemDireita;
 
 
 const alturaUtil =
-
 altura -
 margemSuperior -
 margemInferior;
@@ -3595,10 +3296,8 @@ alturaUtil
 ctx.font =
 "9px Arial";
 
-
 ctx.textAlign =
 "right";
-
 
 ctx.textBaseline =
 "middle";
@@ -3613,15 +3312,12 @@ valor += 2
 const py =
 y(valor);
 
-
 ctx.beginPath();
-
 
 ctx.moveTo(
 margemEsquerda,
 py
 );
-
 
 ctx.lineTo(
 largura -
@@ -3629,25 +3325,19 @@ margemDireita,
 py
 );
 
-
 ctx.strokeStyle =
-
 valor === 0
 ?
 "#555"
 :
 "#282828";
 
-
 ctx.lineWidth = 1;
-
 
 ctx.stroke();
 
-
 ctx.fillStyle =
 "#777";
-
 
 ctx.fillText(
 String(valor),
@@ -3660,7 +3350,6 @@ py
 
 ctx.textAlign =
 "center";
-
 
 ctx.textBaseline =
 "top";
@@ -3675,10 +3364,8 @@ i++
 const px =
 x(i);
 
-
 ctx.fillStyle =
 "#666";
-
 
 ctx.fillText(
 String(i),
@@ -3698,7 +3385,6 @@ cor
 
 ctx.beginPath();
 
-
 dados.forEach(function(ponto,index){
 
 const px =
@@ -3706,12 +3392,10 @@ x(
 ponto.posicao
 );
 
-
 const py =
 y(
 ponto[chave]
 );
-
 
 if(
 index === 0
@@ -3733,22 +3417,17 @@ py
 
 });
 
-
 ctx.strokeStyle =
 cor;
-
 
 ctx.lineWidth =
 3;
 
-
 ctx.lineJoin =
 "round";
 
-
 ctx.lineCap =
 "round";
-
 
 ctx.stroke();
 
@@ -3758,7 +3437,6 @@ dados
 .forEach(function(ponto){
 
 ctx.beginPath();
-
 
 ctx.arc(
 
@@ -3778,10 +3456,8 @@ Math.PI * 2
 
 );
 
-
 ctx.fillStyle =
 cor;
-
 
 ctx.fill();
 
@@ -3795,12 +3471,10 @@ desenharLinha(
 COR_T0
 );
 
-
 desenharLinha(
 "t6",
 COR_T6
 );
-
 
 desenharLinha(
 "t9",
@@ -3873,9 +3547,6 @@ item.ocorrencias +
 });
 
 
-/*
-  Completa visualmente até 8 posições.
-*/
 for(
 let i =
 rx.ranking.length;
@@ -3905,7 +3576,6 @@ const cor =
 corFamilia(
 rx.lider.familia
 );
-
 
 sinalHTML =
 
@@ -3949,7 +3619,6 @@ raioX.innerHTML =
 
 '<div class="rxTopo">' +
 
-
 '<div class="rxCard">' +
 
 '<small>RÉPLICAS</small>' +
@@ -3959,7 +3628,6 @@ rx.replicas +
 '</strong>' +
 
 '</div>' +
-
 
 '<div class="rxCard">' +
 
@@ -3972,12 +3640,10 @@ rx.similaridade.toFixed(1) +
 
 '</div>' +
 
-
 '</div>' +
 
 
 '<div class="rxFamilias">' +
-
 
 '<div class="rxFamilia">' +
 
@@ -4025,7 +3691,6 @@ rx.familias[9].toFixed(0) +
 '<small>9</small>' +
 
 '</div>' +
-
 
 '</div>' +
 
@@ -4109,13 +3774,11 @@ numero
 
 
 const dentroJanela =
-
 indiceReal >=
 inicioJanela;
 
 
 const ultimo =
-
 indiceReal ===
 historico.length - 1;
 
@@ -4218,10 +3881,8 @@ document.getElementById(
 
 
 if(
-
 conteudo.style.display ===
 "block"
-
 ){
 
 renderGrafico();
