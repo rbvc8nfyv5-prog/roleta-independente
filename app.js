@@ -1,2325 +1,2877 @@
-(function () {
+(function(){
 
-  "use strict";
+"use strict";
 
-  // =========================================================
-  // CONFIGURAÇÃO PRINCIPAL
-  // =========================================================
+const track=[
+32,15,19,4,21,2,25,17,34,6,
+27,13,36,11,30,8,23,10,5,24,
+16,33,1,20,14,31,9,22,18,29,
+7,28,12,35,3,26,0
+];
 
-  const track = [
-    32,15,19,4,21,2,25,17,34,6,
-    27,13,36,11,30,8,23,10,5,24,
-    16,33,1,20,14,31,9,22,18,29,
-    7,28,12,35,3,26,0
-  ];
+const TAMANHO_JANELA=14;
+const LIMIAR_SIMILARIDADE=76;
+const MAX_ENCAIXES=30;
 
-  const TAMANHO_JANELA = 14;
+const STORAGE_KEY="ANALISADOR_069_IDS_CORRESPONDENTES_V1";
 
-  const STORAGE_KEY =
-    "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
+const COR_T0="#00c853";
+const COR_T6="#ffc107";
+const COR_T9="#2196f3";
 
-  const numerosVermelhos = new Set([
-    1,3,5,7,9,
-    12,14,16,18,
-    19,21,23,25,27,
-    30,32,34,36
-  ]);
+const numerosVermelhos=new Set([
+1,3,5,7,9,
+12,14,16,18,
+19,21,23,25,27,
+30,32,34,36
+]);
 
 
-  // =========================================================
-  // REGIÕES DA ROLETA
-  // =========================================================
+/* =========================================================
+   REGIÕES
+========================================================= */
 
-  const regioesRoleta = {
+const regioesRoleta={
 
-    ZERO: new Set([
-      0,32,15,26,3,35,12
-    ]),
+ZERO:new Set([
+0,32,15,26,3,35,12
+]),
 
-    VOISINS: new Set([
-      19,4,21,2,25,
-      28,7,29,18,22
-    ]),
+VOISINS:new Set([
+19,4,21,2,25,
+28,7,29,18,22
+]),
 
-    ORPHELINS: new Set([
-      9,31,14,20,1,17,6,34
-    ]),
+ORPHELINS:new Set([
+9,31,14,20,1,17,6,34
+]),
 
-    TIERS: new Set([
-      27,13,36,11,30,8,
-      23,10,5,24,16,33
-    ])
+TIERS:new Set([
+27,13,36,11,30,8,
+23,10,5,24,16,33
+])
 
-  };
+};
 
 
-  const coresRegioes = {
+const coresRegioes={
+ZERO:"#9bea2c",
+VOISINS:"#8a20d4",
+ORPHELINS:"#176436",
+TIERS:"#29499b"
+};
 
-    ZERO:"#9bea2c",
-    VOISINS:"#8a20d4",
-    ORPHELINS:"#176436",
-    TIERS:"#29499b"
 
-  };
+/* =========================================================
+   BASES
+========================================================= */
 
+const BASES_069=[
 
-  // =========================================================
-  // BASES 0 / 6 / 9
-  // =========================================================
+0,10,20,30,
 
-  const BASES_069 = [
-    0,10,20,30,
-    6,16,26,36,
-    9,19,29
-  ];
+6,16,26,36,
 
+9,19,29
 
-  // =========================================================
-  // IDs ESPECIAIS
-  //
-  // 39 É UM ID DA ANÁLISE.
-  // NÃO É NÚMERO DA ROLETA.
-  //
-  // 25 -> 39
-  // 17 -> 9
-  // 2  -> 9
-  // =========================================================
+];
 
-  const IDS_ESPECIAIS = {
 
-    25:[39],
+/* =========================================================
+   ID ESPECIAL 39
 
-    17:[9],
+   2 / 25 / 17 => 39
+   39 pertence à linha do 9
+========================================================= */
 
-    2:[9]
+const IDS_ESPECIAIS={
 
-  };
+2:[39],
+25:[39],
+17:[39]
 
+};
 
-  // =========================================================
-  // CORES DOS IDs / TERMINAIS
-  // =========================================================
-
-  const COR_T0 = "#00c853";
-  const COR_T6 = "#ffc107";
-  const COR_T9 = "#2196f3";
-
-
-  function corDoId(id){
-
-    if(
-      id === 0 ||
-      id === 10 ||
-      id === 20 ||
-      id === 30
-    ){
-      return COR_T0;
-    }
-
-    if(
-      id === 6 ||
-      id === 16 ||
-      id === 26 ||
-      id === 36
-    ){
-      return COR_T6;
-    }
-
-    if(
-      id === 9 ||
-      id === 19 ||
-      id === 29 ||
-      id === 39
-    ){
-      return COR_T9;
-    }
-
-    return "#555";
-  }
-
-
-  // =========================================================
-  // IDENTIFICAR FAMÍLIA DO ID
-  // =========================================================
-
-  function familiaDoId(id){
-
-    if(
-      id === 0 ||
-      id === 10 ||
-      id === 20 ||
-      id === 30
-    ){
-      return 0;
-    }
-
-    if(
-      id === 6 ||
-      id === 16 ||
-      id === 26 ||
-      id === 36
-    ){
-      return 6;
-    }
-
-    if(
-      id === 9 ||
-      id === 19 ||
-      id === 29 ||
-      id === 39
-    ){
-      return 9;
-    }
-
-    return null;
-  }
-
-
-  let historico =
-    carregarHistorico();
-
-
-  // =========================================================
-  // STORAGE
-  // =========================================================
-
-  function carregarHistorico(){
-
-    try{
-
-      const salvo =
-        localStorage.getItem(
-          STORAGE_KEY
-        );
-
-      if(!salvo){
-        return [];
-      }
-
-      const dados =
-        JSON.parse(salvo);
-
-      if(!Array.isArray(dados)){
-        return [];
-      }
-
-      return dados
-        .map(Number)
-        .filter(numero =>
-          Number.isInteger(numero) &&
-          numero >= 0 &&
-          numero <= 36
-        )
-        .slice(-300);
-
-    }catch(erro){
 
-      return [];
-    }
-  }
+/* =========================================================
+   FAMÍLIA
+========================================================= */
 
+function familiaDoId(id){
 
-  function salvarHistorico(){
+if(
+id===0 ||
+id===10 ||
+id===20 ||
+id===30
+){
+return 0;
+}
 
-    try{
+if(
+id===6 ||
+id===16 ||
+id===26 ||
+id===36
+){
+return 6;
+}
 
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(historico)
-      );
+if(
+id===9 ||
+id===19 ||
+id===29 ||
+id===39
+){
+return 9;
+}
 
-    }catch(erro){
+return null;
 
-      console.error(
-        "Erro ao salvar histórico.",
-        erro
-      );
-    }
-  }
+}
 
 
-  // =========================================================
-  // VIZINHOS NA ROLETA
-  // =========================================================
+function corDoId(id){
 
-  function vizinhos(
-    numero,
-    quantidade = 1
-  ){
+const familia=familiaDoId(id);
 
-    const indice =
-      track.indexOf(numero);
+if(familia===0){
+return COR_T0;
+}
 
-    if(indice === -1){
-      return [];
-    }
+if(familia===6){
+return COR_T6;
+}
 
-    const resultado = [
-      numero
-    ];
+if(familia===9){
+return COR_T9;
+}
 
-    for(
-      let distancia = 1;
-      distancia <= quantidade;
-      distancia++
-    ){
+return "#555";
 
-      resultado.push(
-        track[
-          (
-            indice -
-            distancia +
-            track.length
-          ) %
-          track.length
-        ]
-      );
+}
 
-      resultado.push(
-        track[
-          (
-            indice +
-            distancia
-          ) %
-          track.length
-        ]
-      );
 
-    }
+/* =========================================================
+   STORAGE
+========================================================= */
 
-    return resultado;
-  }
+function carregarHistorico(){
 
+try{
 
-  // =========================================================
-  // COBERTURA DAS BASES
-  // =========================================================
+const salvo=
+localStorage.getItem(STORAGE_KEY);
 
-  const coberturaDasBases = {};
+if(!salvo){
+return [];
+}
 
+const dados=
+JSON.parse(salvo);
 
-  BASES_069.forEach(base => {
+if(!Array.isArray(dados)){
+return [];
+}
 
-    coberturaDasBases[base] =
-      new Set(
-        vizinhos(base,1)
-      );
+return dados
+.map(Number)
+.filter(function(numero){
 
-  });
+return (
+Number.isInteger(numero) &&
+numero>=0 &&
+numero<=36
+);
 
+})
+.slice(-5000);
 
-  // =========================================================
-  // DESCOBRIR QUAL ID O RESULTADO ESTÁ BATENDO
-  // =========================================================
+}catch(erro){
 
-  function idsQueBatem(numero){
+return [];
 
-    const ids = [];
+}
 
+}
 
-    BASES_069.forEach(base => {
 
-      if(
-        coberturaDasBases[base]
-          .has(numero)
-      ){
+let historico=
+carregarHistorico();
 
-        ids.push(base);
 
-      }
+function salvarHistorico(){
 
-    });
+try{
 
+localStorage.setItem(
+STORAGE_KEY,
+JSON.stringify(historico)
+);
 
-    if(
-      Object.prototype
-        .hasOwnProperty
-        .call(
-          IDS_ESPECIAIS,
-          numero
-        )
-    ){
+}catch(erro){
 
-      IDS_ESPECIAIS[numero]
-        .forEach(id => {
+console.error(erro);
 
-          if(
-            !ids.includes(id)
-          ){
+}
 
-            ids.push(id);
+}
 
-          }
 
-        });
+/* =========================================================
+   VIZINHOS
+========================================================= */
 
-    }
+function vizinhos(numero,quantidade){
 
+if(quantidade===undefined){
+quantidade=1;
+}
 
-    return ids;
-  }
+const indice=
+track.indexOf(numero);
 
+if(indice===-1){
+return [];
+}
 
-  // =========================================================
-  // REGIÃO DO NÚMERO
-  // =========================================================
+const resultado=[numero];
 
-  function regiaoDoNumero(numero){
+for(
+let distancia=1;
+distancia<=quantidade;
+distancia++
+){
 
-    if(
-      regioesRoleta.ZERO.has(numero)
-    ){
-      return "ZERO";
-    }
+resultado.push(
 
-    if(
-      regioesRoleta.VOISINS.has(numero)
-    ){
-      return "VOISINS";
-    }
+track[
+(
+indice-
+distancia+
+track.length
+)%
+track.length
+]
 
-    if(
-      regioesRoleta.ORPHELINS.has(numero)
-    ){
-      return "ORPHELINS";
-    }
+);
 
-    if(
-      regioesRoleta.TIERS.has(numero)
-    ){
-      return "TIERS";
-    }
+resultado.push(
 
-    return null;
-  }
+track[
+(
+indice+
+distancia
+)%
+track.length
+]
 
+);
 
-  // =========================================================
-  // ANÁLISE DA JANELA DE 14
-  // =========================================================
+}
 
-  function analisarJanela14(){
+return resultado;
 
-    const janela =
-      historico.slice(
-        -TAMANHO_JANELA
-      );
+}
 
 
-    const sequencia =
-      janela.map(numero => {
+/* =========================================================
+   COBERTURA DAS BASES
+========================================================= */
 
-        return {
+const coberturaDasBases={};
 
-          numero,
+BASES_069.forEach(function(base){
 
-          ids:
-            idsQueBatem(numero)
+coberturaDasBases[base]=
+new Set(
+vizinhos(base,1)
+);
 
-        };
+});
 
-      });
 
+/* =========================================================
+   IDs QUE BATEM
+========================================================= */
 
-    return {
+function idsQueBatem(numero){
 
-      janela,
+const ids=[];
 
-      sequencia
 
-    };
-  }
+BASES_069.forEach(function(base){
 
+if(
+coberturaDasBases[base]
+.has(numero)
+){
 
-  // =========================================================
-  // DADOS DO GRÁFICO 0 / 6 / 9
-  //
-  // Cada linha acumula as batidas dentro dos últimos 14.
-  // Uma rodada conta no máximo 1 ponto para cada família.
-  // =========================================================
+ids.push(base);
 
-  function montarDadosGrafico069(){
+}
 
-    const janela =
-      historico.slice(
-        -TAMANHO_JANELA
-      );
+});
 
-    let acumulado0 = 0;
-    let acumulado6 = 0;
-    let acumulado9 = 0;
 
-    const dados = [
+if(
+Object.prototype
+.hasOwnProperty
+.call(
+IDS_ESPECIAIS,
+numero
+)
+){
 
-      {
-        posicao:0,
-        numero:null,
-        t0:0,
-        t6:0,
-        t9:0
-      }
+IDS_ESPECIAIS[numero]
+.forEach(function(id){
 
-    ];
+if(!ids.includes(id)){
 
+ids.push(id);
 
-    janela.forEach(
-      (numero,index) => {
+}
 
-        const ids =
-          idsQueBatem(numero);
+});
 
-        const familias =
-          new Set(
-            ids
-              .map(familiaDoId)
-              .filter(
-                familia =>
-                  familia !== null
-              )
-          );
+}
 
+return ids;
 
-        if(
-          familias.has(0)
-        ){
-          acumulado0++;
-        }
+}
 
-        if(
-          familias.has(6)
-        ){
-          acumulado6++;
-        }
 
-        if(
-          familias.has(9)
-        ){
-          acumulado9++;
-        }
+/* =========================================================
+   FAMÍLIAS QUE BATEM
+========================================================= */
 
+function familiasQueBatem(numero){
 
-        dados.push({
+const familias=
+new Set();
 
-          posicao:index + 1,
+idsQueBatem(numero)
+.forEach(function(id){
 
-          numero,
+const familia=
+familiaDoId(id);
 
-          t0:acumulado0,
+if(familia!==null){
 
-          t6:acumulado6,
+familias.add(familia);
 
-          t9:acumulado9
+}
 
-        });
+});
 
-      }
-    );
+return familias;
 
+}
 
-    return dados;
-  }
 
+/* =========================================================
+   REGIÃO
+========================================================= */
 
-  // =========================================================
-  // EXTRAIR NÚMEROS DO TEXTO
-  // =========================================================
+function regiaoDoNumero(numero){
 
-  function extrairNumeros(texto){
+if(regioesRoleta.ZERO.has(numero)){
+return "ZERO";
+}
 
-    const encontrados =
-      texto.match(
-        /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
-      );
+if(regioesRoleta.VOISINS.has(numero)){
+return "VOISINS";
+}
 
-    if(!encontrados){
-      return [];
-    }
+if(regioesRoleta.ORPHELINS.has(numero)){
+return "ORPHELINS";
+}
 
-    return encontrados
-      .map(Number)
-      .filter(numero =>
-        numero >= 0 &&
-        numero <= 36
-      )
-      .slice(-300);
-  }
+if(regioesRoleta.TIERS.has(numero)){
+return "TIERS";
+}
 
+return null;
 
-  // =========================================================
-  // INSERIR HISTÓRICO
-  // =========================================================
+}
 
-  function inserirHistorico(){
 
-    const entrada =
-      document.getElementById(
-        "entradaHistorico"
-      );
+/* =========================================================
+   COR ROLETA
+========================================================= */
 
-    const numeros =
-      extrairNumeros(
-        entrada.value
-      );
+function corNumeroRoleta(numero){
 
-    if(!numeros.length){
+if(numero===0){
 
-      statusArea.textContent =
-        "Nenhum número válido encontrado.";
+return {
+fundo:"#087c48",
+texto:"#ffffff"
+};
 
-      statusArea.style.color =
-        "#ff5252";
+}
 
-      return;
-    }
+if(
+numerosVermelhos.has(numero)
+){
 
+return {
+fundo:"#c6283d",
+texto:"#ffffff"
+};
 
-    historico =
-      numeros.slice(-300);
+}
 
+return {
+fundo:"#181818",
+texto:"#ffffff"
+};
 
-    salvarHistorico();
+}
 
 
-    entrada.value = "";
+/* =========================================================
+   TRAJETÓRIA
+========================================================= */
 
+function gerarTrajetoria(janela){
 
-    statusArea.textContent =
-      `${historico.length} números carregados.`;
+let t0=0;
+let t6=0;
+let t9=0;
 
+const pontos=[];
+const eventos=[];
 
-    statusArea.style.color =
-      "#00e676";
 
+janela.forEach(function(numero,index){
 
-    render();
-  }
+const familias=
+familiasQueBatem(numero);
 
+const evento={
 
-  // =========================================================
-  // ADICIONAR NÚMERO
-  // =========================================================
+t0:
+familias.has(0)
+?1
+:0,
 
-  function adicionarNumero(numero){
+t6:
+familias.has(6)
+?1
+:0,
 
-    historico.push(numero);
+t9:
+familias.has(9)
+?1
+:0
 
+};
 
-    if(
-      historico.length > 300
-    ){
 
-      historico.shift();
+t0+=evento.t0;
+t6+=evento.t6;
+t9+=evento.t9;
 
-    }
 
+eventos.push(evento);
 
-    salvarHistorico();
 
+pontos.push({
 
-    statusArea.textContent =
-      `Número ${numero} inserido.`;
+posicao:index+1,
 
+numero:numero,
 
-    statusArea.style.color =
-      "#00e5ff";
+t0:t0,
+t6:t6,
+t9:t9
 
+});
 
-    render();
-  }
+});
 
 
-  // =========================================================
-  // APAGAR ÚLTIMO
-  // =========================================================
+return {
 
-  function apagarUltimo(){
+pontos:pontos,
 
-    if(!historico.length){
-      return;
-    }
+eventos:eventos,
 
+total0:t0,
+total6:t6,
+total9:t9
 
-    const apagado =
-      historico.pop();
+};
 
+}
 
-    salvarHistorico();
 
+/* =========================================================
+   ÚLTIMOS 14
+========================================================= */
 
-    statusArea.textContent =
-      `Número ${apagado} apagado.`;
+function analisarJanela14(){
 
+const janela=
+historico.slice(
+-TAMANHO_JANELA
+);
 
-    statusArea.style.color =
-      "#ffc107";
+return {
 
+janela:janela,
 
-    render();
-  }
+sequencia:
+janela.map(function(numero){
 
+return {
 
-  // =========================================================
-  // APAGAR TUDO
-  // =========================================================
+numero:numero,
 
-  function apagarTudo(){
+ids:
+idsQueBatem(numero)
 
-    const confirmar =
-      window.confirm(
-        "Apagar todo o histórico?"
-      );
+};
 
+})
 
-    if(!confirmar){
-      return;
-    }
+};
 
+}
 
-    historico = [];
 
+/* =========================================================
+   COMPARAÇÃO DE PADRÃO
+========================================================= */
 
-    salvarHistorico();
+function compararEventos(a,b){
 
+let iguais=0;
 
-    statusArea.textContent =
-      "Histórico apagado.";
+if(a.t0===b.t0){
+iguais++;
+}
 
+if(a.t6===b.t6){
+iguais++;
+}
 
-    statusArea.style.color =
-      "#ff5252";
+if(a.t9===b.t9){
+iguais++;
+}
 
+return iguais/3;
 
-    render();
-  }
+}
 
 
-  // =========================================================
-  // COR NORMAL DA ROLETA
-  // =========================================================
+/* =========================================================
+   SIMILARIDADE DE DUAS JANELAS
+========================================================= */
 
-  function corNumeroRoleta(numero){
+function calcularSimilaridade(
+janelaAtual,
+janelaAntiga
+){
 
-    if(numero === 0){
+const atual=
+gerarTrajetoria(janelaAtual);
 
-      return {
-        fundo:"#087c48",
-        texto:"#ffffff"
-      };
+const antiga=
+gerarTrajetoria(janelaAntiga);
 
-    }
+let scoreEventos=0;
 
 
-    if(
-      numerosVermelhos.has(numero)
-    ){
+for(
+let i=0;
+i<TAMANHO_JANELA;
+i++
+){
 
-      return {
-        fundo:"#c6283d",
-        texto:"#ffffff"
-      };
+scoreEventos+=
+compararEventos(
+atual.eventos[i],
+antiga.eventos[i]
+);
 
-    }
+}
 
+scoreEventos/=
+TAMANHO_JANELA;
 
-    return {
-      fundo:"#181818",
-      texto:"#ffffff"
-    };
-  }
 
+/* ---------------------------------------------
+   FORMATO DAS LINHAS
+--------------------------------------------- */
 
-  // =========================================================
-  // INTERFACE
-  // =========================================================
+let diferenca=0;
 
-  document.body.style.margin =
-    "0";
 
-  document.body.style.background =
-    "#101010";
+for(
+let i=0;
+i<TAMANHO_JANELA;
+i++
+){
 
-  document.body.style.color =
-    "#ffffff";
+diferenca+=
 
-  document.body.style.fontFamily =
-    "Arial,sans-serif";
+Math.abs(
+atual.pontos[i].t0-
+antiga.pontos[i].t0
+)
 
++
 
-  document.body.innerHTML = `
+Math.abs(
+atual.pontos[i].t6-
+antiga.pontos[i].t6
+)
 
-  <style>
++
 
-    *{
-      box-sizing:border-box;
-    }
+Math.abs(
+atual.pontos[i].t9-
+antiga.pontos[i].t9
+);
 
-    button,
-    textarea{
-      font-family:Arial,sans-serif;
-    }
+}
 
-    button{
-      cursor:pointer;
-      touch-action:manipulation;
-    }
 
-    .app{
-      width:100%;
-      max-width:850px;
-      margin:auto;
-      padding:8px;
-    }
+const maximo=
+TAMANHO_JANELA*
+TAMANHO_JANELA*
+3;
 
-    h2{
-      text-align:center;
-      margin:5px 0 10px;
-      font-size:22px;
-    }
 
-    .painel{
-      background:#1d1d1f;
-      border:1px solid #444;
-      border-radius:10px;
-      padding:9px;
-      margin-bottom:8px;
-    }
+let scoreForma=
+1-
+(
+diferenca/
+maximo
+);
 
-    .tituloPainel{
-      color:#aaa;
-      font-size:12px;
-      font-weight:900;
-      margin-bottom:7px;
-    }
 
-    textarea{
-      width:100%;
-      min-height:72px;
-      padding:8px;
-      background:#111;
-      color:#fff;
-      border:1px solid #555;
-      border-radius:7px;
-      font-size:14px;
-    }
+scoreForma=
+Math.max(
+0,
+Math.min(
+1,
+scoreForma
+)
+);
 
-    .acoes{
-      display:flex;
-      gap:6px;
-      flex-wrap:wrap;
-      margin-top:7px;
-    }
 
-    .btn{
-      padding:8px 11px;
-      background:#333;
-      color:#fff;
-      border:1px solid #555;
-      border-radius:7px;
-      font-weight:900;
-    }
+/* ---------------------------------------------
+   PESO FINAL
+--------------------------------------------- */
 
-    .verde{
-      background:#146238;
-    }
+const final=
 
-    .vermelho{
-      background:#762832;
-    }
+(
+scoreEventos*
+0.70
+)
 
-    .status{
-      margin-top:7px;
-      color:#aaa;
-      font-size:12px;
-      font-weight:900;
-    }
++
 
+(
+scoreForma*
+0.30
+);
 
-    /* =====================================================
-       JANELA 14
-    ===================================================== */
 
-    .janelaBloco{
-      display:flex;
-      flex-direction:column;
-      gap:7px;
-    }
+return final*100;
 
-    .linhaJanela{
-      display:grid;
-      grid-template-columns:
-        78px minmax(0,1fr);
-      gap:6px;
-      align-items:center;
-    }
+}
 
-    .rotuloLinha{
-      color:#bbb;
-      font-size:10px;
-      font-weight:900;
-      line-height:1.25;
-    }
 
-    .janelaScroll{
-      display:flex;
-      gap:5px;
-      overflow-x:auto;
-      padding-bottom:2px;
-    }
+/* =========================================================
+   RAIO X
+========================================================= */
 
-    .numeroJanela{
-      min-width:37px;
-      height:37px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border-radius:50%;
-      border:2px solid rgba(255,255,255,.75);
-      color:#fff;
-      font-size:14px;
-      font-weight:900;
-    }
+function analisarRaioX(){
 
-    .numeroRegiao{
-      min-width:37px;
-      height:37px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border-radius:8px;
-      border:2px solid rgba(255,255,255,.65);
-      color:#fff;
-      font-size:14px;
-      font-weight:900;
-    }
+const total=
+historico.length;
 
-    .idBox{
-      min-width:37px;
-      height:37px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:2px;
-      border-radius:8px;
-      background:#111;
-      border:1px solid #555;
-      padding:2px;
-    }
 
-    .idBoxMultiplo{
-      border-color:#fff;
-      box-shadow:
-        0 0 7px rgba(255,255,255,.45);
-    }
+/* precisa de histórico anterior + janela atual */
 
-    .tagId{
-      min-width:27px;
-      height:28px;
-      padding:0 4px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border-radius:6px;
-      color:#fff;
-      font-size:12px;
-      font-weight:900;
-    }
+if(total<29){
 
-    .idVazio{
-      color:#555;
-      font-size:15px;
-      font-weight:900;
-    }
+return {
 
+estado:"AGUARDANDO",
 
-    /* =====================================================
-       LEGENDA REGIÕES
-    ===================================================== */
+mensagem:
+"São necessários pelo menos 29 resultados.",
 
-    .legendaRegioes{
-      display:flex;
-      justify-content:center;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:8px;
-      color:#aaa;
-      font-size:10px;
-    }
+encaixes:0,
 
-    .legendaItem{
-      display:flex;
-      align-items:center;
-      gap:4px;
-    }
+similaridade:0,
 
-    .legendaCor{
-      width:11px;
-      height:11px;
-      border-radius:3px;
-    }
+familias:{
+0:0,
+6:0,
+9:0,
+fora:0
+},
 
+numeros:[]
 
-    /* =====================================================
-       GRÁFICO 0 / 6 / 9
-    ===================================================== */
+};
 
-    .graficoCabecalho{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:8px;
-      flex-wrap:wrap;
-      margin-bottom:5px;
-    }
+}
 
-    .graficoLegenda{
-      display:flex;
-      gap:9px;
-      align-items:center;
-      flex-wrap:wrap;
-      font-size:11px;
-      font-weight:900;
-    }
 
-    .graficoLegendaItem{
-      display:flex;
-      align-items:center;
-      gap:4px;
-    }
+const inicioAtual=
+total-
+TAMANHO_JANELA;
 
-    .graficoLegendaCor{
-      width:17px;
-      height:4px;
-      border-radius:4px;
-    }
 
-    .graficoResumo{
-      display:flex;
-      gap:5px;
-      margin-bottom:7px;
-    }
+const janelaAtual=
+historico.slice(
+inicioAtual
+);
 
-    .graficoResumoCard{
-      flex:1;
-      min-width:70px;
-      background:#111;
-      border:1px solid #444;
-      border-radius:7px;
-      padding:5px;
-      text-align:center;
-    }
 
-    .graficoResumoNome{
-      font-size:10px;
-      font-weight:900;
-      color:#aaa;
-    }
+const candidatos=[];
 
-    .graficoResumoValor{
-      margin-top:2px;
-      font-size:18px;
-      font-weight:900;
-    }
 
-    .graficoContainer{
-      width:100%;
-      height:210px;
-      position:relative;
-      background:#111;
-      border:1px solid #444;
-      border-radius:8px;
-      overflow:hidden;
-    }
+/* =====================================================
+   PROCURA JANELAS ANTIGAS
+===================================================== */
 
-    #grafico069{
-      width:100%;
-      height:100%;
-      display:block;
-    }
+for(
+let inicio=0;
+inicio+TAMANHO_JANELA<inicioAtual;
+inicio++
+){
 
+const fim=
+inicio+
+TAMANHO_JANELA;
 
-    /* =====================================================
-       TECLADO
-    ===================================================== */
 
-    .teclado{
-      display:grid;
-      grid-template-columns:
-        repeat(6,1fr);
-      gap:4px;
-    }
+const janelaAntiga=
+historico.slice(
+inicio,
+fim
+);
 
-    .numeroBtn{
-      min-height:40px;
-      border:1px solid #666;
-      border-radius:7px;
-      color:#fff;
-      font-size:15px;
-      font-weight:900;
-    }
 
-    .numeroBtn:active{
-      transform:scale(.96);
-    }
+const proximoNumero=
+historico[fim];
 
-    .zeroBtn{
-      grid-column:span 6;
-    }
 
+if(proximoNumero===undefined){
+continue;
+}
 
-    /* =====================================================
-       HISTÓRICO
-    ===================================================== */
 
-    .historico{
-      display:flex;
-      gap:4px;
-      overflow-x:auto;
-      min-height:34px;
-    }
+const similaridade=
+calcularSimilaridade(
+janelaAtual,
+janelaAntiga
+);
 
-    .histNumero{
-      min-width:31px;
-      height:31px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border-radius:6px;
-      border:1px solid #555;
-      font-size:13px;
-      font-weight:900;
-    }
 
-    .histNumero.janelaAtual{
-      border:2px solid #00e5ff;
-    }
+if(
+similaridade>=
+LIMIAR_SIMILARIDADE
+){
 
-    .histNumero.ultimo{
-      box-shadow:
-        0 0 8px #00e5ff;
-    }
+candidatos.push({
 
+similaridade:
+similaridade,
 
-    @media(max-width:600px){
+proximoNumero:
+proximoNumero
 
-      .app{
-        padding:5px;
-      }
+});
 
-      .painel{
-        padding:7px;
-      }
+}
 
-      .linhaJanela{
-        grid-template-columns:
-          60px minmax(0,1fr);
-      }
+}
 
-      .rotuloLinha{
-        font-size:9px;
-      }
 
-      .numeroJanela,
-      .numeroRegiao,
-      .idBox{
-        min-width:34px;
-        height:34px;
-      }
+/* =====================================================
+   NENHUM ENCAIXE
+===================================================== */
 
-      .tagId{
-        min-width:24px;
-        height:25px;
-        font-size:11px;
-      }
+if(!candidatos.length){
 
-      .teclado{
-        gap:3px;
-      }
+return {
 
-      .numeroBtn{
-        min-height:38px;
-      }
+estado:"SEM PADRÃO",
 
-      .graficoContainer{
-        height:190px;
-      }
+mensagem:
+"Nenhum encaixe histórico atingiu o limite atual.",
 
-    }
+encaixes:0,
 
-  </style>
+similaridade:0,
 
+familias:{
+0:0,
+6:0,
+9:0,
+fora:0
+},
 
-  <main class="app">
+numeros:[]
 
-    <h2>
-      Análise 0 • 6 • 9
-    </h2>
+};
 
+}
 
-    <!-- ENTRADA -->
 
-    <section class="painel">
+/* =====================================================
+   MELHORES ENCAIXES
+===================================================== */
 
-      <textarea
-        id="entradaHistorico"
-        placeholder="Cole o histórico do mais antigo para o mais recente..."
-      ></textarea>
+candidatos.sort(function(a,b){
 
+return (
+b.similaridade-
+a.similaridade
+);
 
-      <div class="acoes">
+});
 
-        <button
-          id="btnInserir"
-          class="btn verde"
-        >
-          Inserir histórico
-        </button>
 
-        <button
-          id="btnApagarUltimo"
-          class="btn"
-        >
-          Apagar último
-        </button>
+const encaixes=
+candidatos.slice(
+0,
+MAX_ENCAIXES
+);
 
-        <button
-          id="btnApagarTudo"
-          class="btn vermelho"
-        >
-          Apagar tudo
-        </button>
 
-      </div>
+let somaSimilaridade=0;
 
+let peso0=0;
+let peso6=0;
+let peso9=0;
+let pesoFora=0;
 
-      <div
-        id="statusArea"
-        class="status"
-      >
-        Cole o histórico ou use o teclado.
-      </div>
+let pesoTotal=0;
 
-    </section>
 
+const numeros=
+new Map();
 
-    <!-- ÚLTIMOS 14 -->
 
-    <section class="painel">
+encaixes.forEach(function(item){
 
-      <div class="tituloPainel">
+somaSimilaridade+=
+item.similaridade;
 
-        ÚLTIMOS
-        <span id="qtdJanela">0</span>/14
 
-      </div>
+const peso=
+item.similaridade/
+100;
 
 
-      <div class="janelaBloco">
+pesoTotal+=peso;
 
 
-        <!-- LINHA 1 -->
+const familias=
+Array.from(
+familiasQueBatem(
+item.proximoNumero
+)
+);
 
-        <div class="linhaJanela">
 
-          <div class="rotuloLinha">
-            ROLETA
-          </div>
+/* ---------------------------------------------
+   PESO POR FAMÍLIA
+--------------------------------------------- */
 
-          <div
-            id="linhaCores"
-            class="janelaScroll"
-          ></div>
+if(!familias.length){
 
-        </div>
+pesoFora+=peso;
 
+}else{
 
-        <!-- LINHA 2 -->
+const pesoDividido=
+peso/
+familias.length;
 
-        <div class="linhaJanela">
 
-          <div class="rotuloLinha">
-            REGIÕES
-          </div>
+familias.forEach(function(familia){
 
-          <div
-            id="linhaRegioes"
-            class="janelaScroll"
-          ></div>
+if(familia===0){
 
-        </div>
+peso0+=pesoDividido;
 
+}
 
-        <!-- LINHA 3 -->
+if(familia===6){
 
-        <div class="linhaJanela">
+peso6+=pesoDividido;
 
-          <div class="rotuloLinha">
-            ID<br>
-            0 • 6 • 9
-          </div>
+}
 
-          <div
-            id="linhaIds"
-            class="janelaScroll"
-          ></div>
+if(familia===9){
 
-        </div>
+peso9+=pesoDividido;
 
-      </div>
+}
 
+});
 
-      <div class="legendaRegioes">
+}
 
-        <div class="legendaItem">
-          <span
-            class="legendaCor"
-            style="background:#9bea2c"
-          ></span>
-          Zero
-        </div>
 
-        <div class="legendaItem">
-          <span
-            class="legendaCor"
-            style="background:#8a20d4"
-          ></span>
-          Voisins
-        </div>
+/* ---------------------------------------------
+   NÚMEROS
+--------------------------------------------- */
 
-        <div class="legendaItem">
-          <span
-            class="legendaCor"
-            style="background:#176436"
-          ></span>
-          Orphelins
-        </div>
+if(
+!numeros.has(
+item.proximoNumero
+)
+){
 
-        <div class="legendaItem">
-          <span
-            class="legendaCor"
-            style="background:#29499b"
-          ></span>
-          Tiers
-        </div>
+numeros.set(
+item.proximoNumero,
+{
+numero:item.proximoNumero,
+ocorrencias:0,
+peso:0
+}
+);
 
-      </div>
+}
 
-    </section>
 
+const registro=
+numeros.get(
+item.proximoNumero
+);
 
-    <!-- =====================================================
-         NOVO GRÁFICO 0 / 6 / 9
-    ====================================================== -->
 
-    <section class="painel">
+registro.ocorrencias++;
 
-      <div class="graficoCabecalho">
+registro.peso+=peso;
 
-        <div class="tituloPainel" style="margin:0;">
-          EVOLUÇÃO 0 • 6 • 9 — ÚLTIMOS 14
-        </div>
+});
 
 
-        <div class="graficoLegenda">
+const ranking=
+Array.from(
+numeros.values()
+);
 
-          <div class="graficoLegendaItem">
-            <span
-              class="graficoLegendaCor"
-              style="background:#00c853"
-            ></span>
-            0
-          </div>
 
-          <div class="graficoLegendaItem">
-            <span
-              class="graficoLegendaCor"
-              style="background:#ffc107"
-            ></span>
-            6
-          </div>
+ranking.sort(function(a,b){
 
-          <div class="graficoLegendaItem">
-            <span
-              class="graficoLegendaCor"
-              style="background:#2196f3"
-            ></span>
-            9
-          </div>
+if(
+b.peso!==
+a.peso
+){
 
-        </div>
+return (
+b.peso-
+a.peso
+);
 
-      </div>
+}
 
+return (
+b.ocorrencias-
+a.ocorrencias
+);
 
-      <div class="graficoResumo">
+});
 
-        <div class="graficoResumoCard">
 
-          <div class="graficoResumoNome">
-            TERMINAL 0
-          </div>
+const percentual0=
+pesoTotal
+?
+peso0/pesoTotal*100
+:
+0;
 
-          <div
-            id="graficoTotal0"
-            class="graficoResumoValor"
-            style="color:#00c853"
-          >
-            0
-          </div>
 
-        </div>
+const percentual6=
+pesoTotal
+?
+peso6/pesoTotal*100
+:
+0;
 
 
-        <div class="graficoResumoCard">
+const percentual9=
+pesoTotal
+?
+peso9/pesoTotal*100
+:
+0;
 
-          <div class="graficoResumoNome">
-            TERMINAL 6
-          </div>
 
-          <div
-            id="graficoTotal6"
-            class="graficoResumoValor"
-            style="color:#ffc107"
-          >
-            0
-          </div>
+const percentualFora=
+pesoTotal
+?
+pesoFora/pesoTotal*100
+:
+0;
 
-        </div>
 
+const media=
+somaSimilaridade/
+encaixes.length;
 
-        <div class="graficoResumoCard">
 
-          <div class="graficoResumoNome">
-            TERMINAL 9
-          </div>
+let familiaLider=0;
+let valorLider=percentual0;
 
-          <div
-            id="graficoTotal9"
-            class="graficoResumoValor"
-            style="color:#2196f3"
-          >
-            0
-          </div>
 
-        </div>
+if(
+percentual6>
+valorLider
+){
 
-      </div>
+familiaLider=6;
+valorLider=percentual6;
 
+}
 
-      <div class="graficoContainer">
 
-        <canvas id="grafico069"></canvas>
+if(
+percentual9>
+valorLider
+){
 
-      </div>
+familiaLider=9;
+valorLider=percentual9;
 
-    </section>
+}
 
 
-    <!-- TECLADO -->
+/* só destaca se houver algum domínio real */
 
-    <section class="painel">
+let estado="OBSERVANDO";
 
-      <div class="tituloPainel">
-        TECLADO 0–36
-      </div>
+if(
+encaixes.length>=4 &&
+media>=78 &&
+valorLider>=40
+){
 
-      <div
-        id="teclado"
-        class="teclado"
-      ></div>
+estado=
+"SINAL "+familiaLider;
 
-    </section>
+}
 
 
-    <!-- HISTÓRICO -->
+return {
 
-    <section class="painel">
+estado:estado,
 
-      <div class="tituloPainel">
+mensagem:
+"Comparação feita com padrões anteriores.",
 
-        HISTÓRICO —
-        <span id="qtdHistorico">0</span>
+encaixes:
+encaixes.length,
 
-      </div>
+similaridade:
+media,
 
-      <div
-        id="historico"
-        class="historico"
-      ></div>
+familiaLider:
+familiaLider,
 
-    </section>
+familias:{
 
-  </main>
-  `;
+0:percentual0,
 
+6:percentual6,
 
-  // =========================================================
-  // ELEMENTOS
-  // =========================================================
+9:percentual9,
 
-  const statusArea =
-    document.getElementById(
-      "statusArea"
-    );
+fora:percentualFora
 
-  const elementoQtdJanela =
-    document.getElementById(
-      "qtdJanela"
-    );
+},
 
-  const elementoLinhaCores =
-    document.getElementById(
-      "linhaCores"
-    );
+numeros:
+ranking.slice(0,3)
 
-  const elementoLinhaRegioes =
-    document.getElementById(
-      "linhaRegioes"
-    );
+};
 
-  const elementoLinhaIds =
-    document.getElementById(
-      "linhaIds"
-    );
+}
 
-  const elementoTeclado =
-    document.getElementById(
-      "teclado"
-    );
 
-  const elementoHistorico =
-    document.getElementById(
-      "historico"
-    );
+/* =========================================================
+   EXTRAIR NÚMEROS
+========================================================= */
 
-  const elementoQtdHistorico =
-    document.getElementById(
-      "qtdHistorico"
-    );
+function extrairNumeros(texto){
 
-  const graficoTotal0 =
-    document.getElementById(
-      "graficoTotal0"
-    );
+const encontrados=
+texto.match(
+/\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
+);
 
-  const graficoTotal6 =
-    document.getElementById(
-      "graficoTotal6"
-    );
 
-  const graficoTotal9 =
-    document.getElementById(
-      "graficoTotal9"
-    );
+if(!encontrados){
 
+return [];
 
-  // =========================================================
-  // TECLADO
-  // =========================================================
+}
 
-  for(
-    let numero = 1;
-    numero <= 36;
-    numero++
-  ){
 
-    const cores =
-      corNumeroRoleta(numero);
+return encontrados
+.map(Number)
+.filter(function(numero){
 
-    const botao =
-      document.createElement(
-        "button"
-      );
+return (
+numero>=0 &&
+numero<=36
+);
 
-    botao.className =
-      "numeroBtn";
+})
+.slice(-5000);
 
-    botao.textContent =
-      numero;
+}
 
-    botao.style.background =
-      cores.fundo;
 
-    botao.style.color =
-      cores.texto;
+/* =========================================================
+   INTERFACE
+========================================================= */
 
-    botao.onclick = () => {
+document.body.innerHTML="";
 
-      adicionarNumero(numero);
+document.body.style.margin="0";
+document.body.style.background="#101010";
+document.body.style.color="#ffffff";
+document.body.style.fontFamily="Arial,sans-serif";
 
-    };
 
-    elementoTeclado
-      .appendChild(botao);
+const app=
+document.createElement("div");
 
-  }
+app.id="app069";
 
+app.innerHTML=`
 
-  const botaoZero =
-    document.createElement(
-      "button"
-    );
+<style>
 
-  botaoZero.className =
-    "numeroBtn zeroBtn";
+*{
+box-sizing:border-box;
+}
 
-  botaoZero.textContent =
-    "0";
+body{
+margin:0;
+background:#101010;
+color:#fff;
+font-family:Arial,sans-serif;
+}
 
-  botaoZero.style.background =
-    "#087c48";
+#app069{
+width:100%;
+max-width:850px;
+margin:0 auto;
+padding:7px;
+}
 
-  botaoZero.style.color =
-    "#ffffff";
+h2{
+text-align:center;
+margin:5px 0 10px;
+font-size:22px;
+}
 
-  botaoZero.onclick = () => {
+.painel{
+background:#1d1d1f;
+border:1px solid #444;
+border-radius:10px;
+padding:9px;
+margin-bottom:8px;
+}
 
-    adicionarNumero(0);
+.titulo{
+font-size:11px;
+font-weight:900;
+color:#aaa;
+margin-bottom:7px;
+}
 
-  };
+textarea{
+width:100%;
+height:70px;
+resize:vertical;
+background:#111;
+border:1px solid #555;
+border-radius:7px;
+color:#fff;
+padding:8px;
+}
 
-  elementoTeclado
-    .appendChild(botaoZero);
+.acoes{
+display:flex;
+gap:5px;
+margin-top:6px;
+flex-wrap:wrap;
+}
 
+.btn{
+border:1px solid #555;
+border-radius:7px;
+padding:8px 10px;
+background:#333;
+color:#fff;
+font-weight:900;
+}
 
-  // =========================================================
-  // EVENTOS
-  // =========================================================
+.btnVerde{
+background:#146238;
+}
 
-  document
-    .getElementById(
-      "btnInserir"
-    )
-    .onclick =
-      inserirHistorico;
+.btnVermelho{
+background:#762832;
+}
 
+#statusArea{
+font-size:11px;
+font-weight:bold;
+color:#aaa;
+margin-top:6px;
+}
 
-  document
-    .getElementById(
-      "btnApagarUltimo"
-    )
-    .onclick =
-      apagarUltimo;
+/* ======================================================
+   3 LINHAS
+====================================================== */
 
+.linhaAnalise{
+display:grid;
+grid-template-columns:60px 1fr;
+gap:5px;
+margin-bottom:6px;
+align-items:center;
+}
 
-  document
-    .getElementById(
-      "btnApagarTudo"
-    )
-    .onclick =
-      apagarTudo;
+.rotulo{
+font-size:9px;
+font-weight:900;
+color:#aaa;
+}
 
+.scrollLinha{
+display:flex;
+gap:4px;
+overflow-x:auto;
+}
 
-  // =========================================================
-  // RENDER DOS ÚLTIMOS 14
-  // =========================================================
+.numeroRoleta,
+.numeroRegiao,
+.idBox{
 
-  function renderJanela(analise){
+min-width:35px;
+height:35px;
 
-    elementoQtdJanela.textContent =
-      analise.janela.length;
+display:flex;
+justify-content:center;
+align-items:center;
 
+font-weight:900;
+font-size:13px;
 
-    if(!analise.janela.length){
+}
 
-      elementoLinhaCores.innerHTML =
-        "Sem números.";
+.numeroRoleta{
+border-radius:50%;
+border:2px solid #ddd;
+}
 
-      elementoLinhaRegioes.innerHTML =
-        "Sem números.";
+.numeroRegiao{
+border-radius:7px;
+border:1px solid #aaa;
+}
 
-      elementoLinhaIds.innerHTML =
-        "Sem números.";
+.idBox{
+border-radius:7px;
+background:#111;
+border:1px solid #444;
+gap:2px;
+padding:2px;
+}
 
-      return;
-    }
+.tagID{
+font-size:11px;
+font-weight:900;
+padding:6px 4px;
+border-radius:5px;
+color:#fff;
+}
 
+.semID{
+color:#555;
+}
 
-    // =====================================================
-    // LINHA 1 — ROLETA
-    // =====================================================
 
-    elementoLinhaCores.innerHTML =
-      analise.janela
-        .map(numero => {
+/* ======================================================
+   GRÁFICO
+====================================================== */
 
-          const cores =
-            corNumeroRoleta(numero);
+.legendaGrafico{
+display:flex;
+gap:12px;
+font-size:11px;
+font-weight:bold;
+margin-bottom:5px;
+}
 
-          return `
+.legendaGrafico span{
+display:flex;
+align-items:center;
+gap:4px;
+}
 
-            <div
-              class="numeroJanela"
-              style="
-                background:${cores.fundo};
-                color:${cores.texto};
-              "
-            >
-              ${numero}
-            </div>
+.bolinhaLegenda{
+width:10px;
+height:10px;
+border-radius:50%;
+}
 
-          `;
+.resumoGrafico{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:5px;
+margin-bottom:6px;
+}
 
-        })
-        .join("");
+.cardResumo{
+background:#111;
+border:1px solid #444;
+border-radius:6px;
+text-align:center;
+padding:5px;
+}
 
+.cardResumo small{
+display:block;
+color:#888;
+font-size:9px;
+}
 
-    // =====================================================
-    // LINHA 2 — REGIÃO
-    // =====================================================
+.cardResumo strong{
+font-size:18px;
+}
 
-    elementoLinhaRegioes.innerHTML =
-      analise.janela
-        .map(numero => {
+.graficoContainer{
+height:210px;
+background:#111;
+border:1px solid #444;
+border-radius:8px;
+overflow:hidden;
+}
 
-          const regiao =
-            regiaoDoNumero(numero);
+#grafico069{
+width:100%;
+height:100%;
+display:block;
+}
 
-          const cor =
-            regiao
-              ? coresRegioes[regiao]
-              : "#555";
 
-          return `
+/* ======================================================
+   RAIO X
+====================================================== */
 
-            <div
-              class="numeroRegiao"
-              style="
-                background:${cor};
-              "
-              title="${regiao || ""}"
-            >
-              ${numero}
-            </div>
+.raiox{
+background:#101010;
+border:1px solid #555;
+border-radius:8px;
+padding:8px;
+}
 
-          `;
+.rxTopo{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:7px;
+}
 
-        })
-        .join("");
+.rxTitulo{
+color:#00e5ff;
+font-weight:900;
+font-size:13px;
+}
 
+.rxEstado{
+background:#222;
+border:1px solid #555;
+border-radius:6px;
+padding:5px 8px;
+font-size:11px;
+font-weight:900;
+}
 
-    // =====================================================
-    // LINHA 3 — ID CORRESPONDENTE
-    // =====================================================
+.rxInfo{
+display:grid;
+grid-template-columns:repeat(2,1fr);
+gap:5px;
+margin-bottom:6px;
+}
 
-    elementoLinhaIds.innerHTML =
-      analise.sequencia
-        .map(item => {
+.rxCard{
+background:#181818;
+border:1px solid #333;
+border-radius:6px;
+text-align:center;
+padding:6px;
+}
 
-          if(!item.ids.length){
+.rxCard small{
+display:block;
+font-size:9px;
+color:#888;
+}
 
-            return `
+.rxCard strong{
+font-size:17px;
+}
 
-              <div class="idBox">
+.rxFamilias{
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:4px;
+margin-top:6px;
+}
 
-                <span class="idVazio">
-                  —
-                </span>
+.rxFamilia{
+background:#171717;
+border:1px solid #333;
+border-radius:6px;
+text-align:center;
+padding:5px 2px;
+}
 
-              </div>
+.rxFamilia strong{
+display:block;
+font-size:15px;
+}
 
-            `;
+.rxFamilia small{
+font-size:8px;
+color:#888;
+}
 
-          }
+.rxCandidatos{
+display:flex;
+gap:5px;
+margin-top:7px;
+}
 
+.rxNumero{
+flex:1;
+background:#181818;
+border:1px solid #444;
+border-radius:6px;
+text-align:center;
+padding:6px;
+}
 
-          const tags =
-            item.ids
-              .map(id => `
+.rxNumero strong{
+font-size:18px;
+}
 
-                <span
-                  class="tagId"
-                  style="
-                    background:${corDoId(id)};
-                  "
-                >
-                  ${id}
-                </span>
+.rxNumero small{
+display:block;
+font-size:9px;
+color:#888;
+}
 
-              `)
-              .join("");
+.rxMensagem{
+font-size:10px;
+color:#888;
+text-align:center;
+margin-top:7px;
+}
 
 
-          return `
+/* ======================================================
+   TECLADO
+====================================================== */
 
-            <div
-              class="
-                idBox
-                ${
-                  item.ids.length > 1
-                    ? "idBoxMultiplo"
-                    : ""
-                }
-              "
-            >
-              ${tags}
-            </div>
+#teclado{
+display:grid;
+grid-template-columns:repeat(6,1fr);
+gap:4px;
+}
 
-          `;
+.numeroBtn{
+height:40px;
+border:1px solid #666;
+border-radius:6px;
+color:#fff;
+font-weight:900;
+font-size:14px;
+}
 
-        })
-        .join("");
+.zeroBtn{
+grid-column:span 6;
+}
 
-  }
 
+/* ======================================================
+   HISTÓRICO
+====================================================== */
 
-  // =========================================================
-  // DESENHAR GRÁFICO DE LINHAS
-  // =========================================================
+.histTopo{
+display:flex;
+justify-content:space-between;
+align-items:center;
+}
 
-  function renderGrafico069(){
+#historico{
+display:none;
+gap:4px;
+overflow:auto;
+margin-top:7px;
+}
 
-    const canvas =
-      document.getElementById(
-        "grafico069"
-      );
+.histNumero{
+min-width:30px;
+height:30px;
+border-radius:5px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:12px;
+font-weight:bold;
+}
 
-    const container =
-      canvas.parentElement;
+@media(max-width:600px){
 
-    const rect =
-      container.getBoundingClientRect();
+.graficoContainer{
+height:190px;
+}
 
-    const dpr =
-      window.devicePixelRatio || 1;
+}
 
-    const largura =
-      Math.max(
-        300,
-        Math.floor(rect.width)
-      );
+</style>
 
-    const altura =
-      Math.max(
-        170,
-        Math.floor(rect.height)
-      );
 
+<h2>
+Análise 0 • 6 • 9
+</h2>
 
-    canvas.width =
-      largura * dpr;
 
-    canvas.height =
-      altura * dpr;
+<section class="painel">
 
-    canvas.style.width =
-      largura + "px";
+<textarea
+id="entradaHistorico"
+placeholder="Cole o histórico aqui..."
+></textarea>
 
-    canvas.style.height =
-      altura + "px";
+<div class="acoes">
 
+<button
+id="btnInserir"
+class="btn btnVerde"
+>
+Inserir histórico
+</button>
 
-    const ctx =
-      canvas.getContext("2d");
+<button
+id="btnApagarUltimo"
+class="btn"
+>
+Apagar último
+</button>
 
+<button
+id="btnApagarTudo"
+class="btn btnVermelho"
+>
+Apagar tudo
+</button>
 
-    ctx.setTransform(
-      dpr,
-      0,
-      0,
-      dpr,
-      0,
-      0
-    );
+</div>
 
+<div id="statusArea">
+Cole o histórico ou use o teclado.
+</div>
 
-    ctx.clearRect(
-      0,
-      0,
-      largura,
-      altura
-    );
+</section>
 
 
-    const dados =
-      montarDadosGrafico069();
+<section class="painel">
 
+<div class="titulo">
+ÚLTIMOS
+<span id="qtdJanela">
+0
+</span>/14
+</div>
 
-    const ultimo =
-      dados[
-        dados.length - 1
-      ];
 
+<div class="linhaAnalise">
 
-    graficoTotal0.textContent =
-      ultimo
-        ? ultimo.t0
-        : 0;
+<div class="rotulo">
+ROLETA
+</div>
 
-    graficoTotal6.textContent =
-      ultimo
-        ? ultimo.t6
-        : 0;
+<div
+id="linhaCores"
+class="scrollLinha"
+></div>
 
-    graficoTotal9.textContent =
-      ultimo
-        ? ultimo.t9
-        : 0;
+</div>
 
 
-    // -------------------------------------------------------
-    // MEDIDAS
-    // -------------------------------------------------------
+<div class="linhaAnalise">
 
-    const margemEsquerda = 29;
-    const margemDireita = 12;
-    const margemSuperior = 12;
-    const margemInferior = 29;
+<div class="rotulo">
+REGIÃO
+</div>
 
-    const larguraUtil =
-      largura -
-      margemEsquerda -
-      margemDireita;
+<div
+id="linhaRegioes"
+class="scrollLinha"
+></div>
 
-    const alturaUtil =
-      altura -
-      margemSuperior -
-      margemInferior;
+</div>
 
 
-    // -------------------------------------------------------
-    // FUNÇÕES DE POSIÇÃO
-    // -------------------------------------------------------
+<div class="linhaAnalise">
 
-    function x(posicao){
+<div class="rotulo">
+ID 0/6/9
+</div>
 
-      return (
-        margemEsquerda +
-        (
-          posicao /
-          TAMANHO_JANELA
-        ) *
-        larguraUtil
-      );
+<div
+id="linhaIds"
+class="scrollLinha"
+></div>
 
-    }
+</div>
 
+</section>
 
-    function y(valor){
 
-      return (
-        margemSuperior +
-        alturaUtil -
-        (
-          valor /
-          TAMANHO_JANELA
-        ) *
-        alturaUtil
-      );
+<section class="painel">
 
-    }
+<div class="titulo">
+EVOLUÇÃO 0 • 6 • 9 — ÚLTIMOS 14
+</div>
 
 
-    // -------------------------------------------------------
-    // FUNDO
-    // -------------------------------------------------------
+<div class="legendaGrafico">
 
-    ctx.fillStyle =
-      "#111";
+<span>
 
-    ctx.fillRect(
-      0,
-      0,
-      largura,
-      altura
-    );
+<i
+class="bolinhaLegenda"
+style="background:#00c853"
+></i>
 
+0
 
-    // -------------------------------------------------------
-    // GRADE HORIZONTAL
-    // -------------------------------------------------------
+</span>
 
-    const niveis =
-      [0,2,4,6,8,10,12,14];
 
+<span>
 
-    ctx.font =
-      "10px Arial";
+<i
+class="bolinhaLegenda"
+style="background:#ffc107"
+></i>
 
-    ctx.textAlign =
-      "right";
+6
 
-    ctx.textBaseline =
-      "middle";
+</span>
 
 
-    niveis.forEach(valor => {
+<span>
 
-      const py =
-        y(valor);
+<i
+class="bolinhaLegenda"
+style="background:#2196f3"
+></i>
 
+9
 
-      ctx.beginPath();
+</span>
 
-      ctx.moveTo(
-        margemEsquerda,
-        py
-      );
+</div>
 
-      ctx.lineTo(
-        largura -
-        margemDireita,
-        py
-      );
 
-      ctx.strokeStyle =
-        valor === 0
-          ? "#666"
-          : "#292929";
+<div class="resumoGrafico">
 
-      ctx.lineWidth =
-        1;
+<div class="cardResumo">
 
-      ctx.stroke();
+<small>
+TERMINAL 0
+</small>
 
+<strong
+id="total0"
+style="color:#00c853"
+>
+0
+</strong>
 
-      ctx.fillStyle =
-        "#777";
+</div>
 
-      ctx.fillText(
-        valor,
-        margemEsquerda - 5,
-        py
-      );
 
-    });
+<div class="cardResumo">
 
+<small>
+TERMINAL 6
+</small>
 
-    // -------------------------------------------------------
-    // EIXO X
-    // -------------------------------------------------------
+<strong
+id="total6"
+style="color:#ffc107"
+>
+0
+</strong>
 
-    ctx.textAlign =
-      "center";
+</div>
 
-    ctx.textBaseline =
-      "top";
 
+<div class="cardResumo">
 
-    for(
-      let i = 1;
-      i <= TAMANHO_JANELA;
-      i++
-    ){
+<small>
+TERMINAL 9
+</small>
 
-      const px =
-        x(i);
+<strong
+id="total9"
+style="color:#2196f3"
+>
+0
+</strong>
 
+</div>
 
-      ctx.beginPath();
+</div>
 
-      ctx.moveTo(
-        px,
-        margemSuperior
-      );
 
-      ctx.lineTo(
-        px,
-        margemSuperior +
-        alturaUtil
-      );
+<div class="graficoContainer">
 
-      ctx.strokeStyle =
-        "#202020";
+<canvas
+id="grafico069"
+></canvas>
 
-      ctx.lineWidth =
-        1;
+</div>
 
-      ctx.stroke();
+</section>
 
 
-      ctx.fillStyle =
-        "#666";
+<section class="painel">
 
-      ctx.fillText(
-        String(i),
-        px,
-        margemSuperior +
-        alturaUtil +
-        6
-      );
+<div
+id="raioX"
+class="raiox"
+></div>
 
-    }
+</section>
 
 
-    // -------------------------------------------------------
-    // FUNÇÃO PARA DESENHAR CADA LINHA
-    // -------------------------------------------------------
+<section class="painel">
 
-    function desenharLinha(
-      chave,
-      cor
-    ){
+<div class="titulo">
+TECLADO 0–36
+</div>
 
-      if(
-        dados.length < 1
-      ){
-        return;
-      }
+<div id="teclado">
+</div>
 
+</section>
 
-      ctx.beginPath();
 
+<section class="painel">
 
-      dados.forEach(
-        (ponto,index) => {
+<div class="histTopo">
 
-          const px =
-            x(
-              ponto.posicao
-            );
+<div class="titulo">
 
-          const py =
-            y(
-              ponto[chave]
-            );
+HISTÓRICO OCULTO —
+<span id="qtdHistorico">
+0
+</span>
 
+</div>
 
-          if(index === 0){
+<button
+id="mostrarHistorico"
+class="btn"
+>
+Mostrar
+</button>
 
-            ctx.moveTo(
-              px,
-              py
-            );
+</div>
 
-          }else{
+<div id="historico">
+</div>
 
-            ctx.lineTo(
-              px,
-              py
-            );
+</section>
 
-          }
+`;
 
-        }
-      );
+document.body.appendChild(app);
 
 
-      ctx.strokeStyle =
-        cor;
+/* =========================================================
+   ELEMENTOS
+========================================================= */
 
-      ctx.lineWidth =
-        3;
+const statusArea=
+document.getElementById(
+"statusArea"
+);
 
-      ctx.lineJoin =
-        "round";
+const linhaCores=
+document.getElementById(
+"linhaCores"
+);
 
-      ctx.lineCap =
-        "round";
+const linhaRegioes=
+document.getElementById(
+"linhaRegioes"
+);
 
-      ctx.stroke();
+const linhaIds=
+document.getElementById(
+"linhaIds"
+);
 
+const qtdJanela=
+document.getElementById(
+"qtdJanela"
+);
 
-      // PONTOS
+const total0=
+document.getElementById(
+"total0"
+);
 
-      dados
-        .slice(1)
-        .forEach(ponto => {
+const total6=
+document.getElementById(
+"total6"
+);
 
-          const px =
-            x(
-              ponto.posicao
-            );
+const total9=
+document.getElementById(
+"total9"
+);
 
-          const py =
-            y(
-              ponto[chave]
-            );
+const raioX=
+document.getElementById(
+"raioX"
+);
 
+const teclado=
+document.getElementById(
+"teclado"
+);
 
-          ctx.beginPath();
+const elementoHistorico=
+document.getElementById(
+"historico"
+);
 
-          ctx.arc(
-            px,
-            py,
-            3,
-            0,
-            Math.PI * 2
-          );
+const qtdHistorico=
+document.getElementById(
+"qtdHistorico"
+);
 
-          ctx.fillStyle =
-            cor;
 
-          ctx.fill();
+/* =========================================================
+   INSERIR HISTÓRICO
+========================================================= */
 
-          ctx.strokeStyle =
-            "#111";
+function inserirHistorico(){
 
-          ctx.lineWidth =
-            1.5;
+const campo=
+document.getElementById(
+"entradaHistorico"
+);
 
-          ctx.stroke();
+const numeros=
+extrairNumeros(
+campo.value
+);
 
-        });
+if(!numeros.length){
 
-    }
+statusArea.textContent=
+"Nenhum número válido.";
 
+statusArea.style.color=
+"#ff5252";
 
-    // -------------------------------------------------------
-    // DESENHA AS TRÊS LINHAS NO MESMO GRÁFICO
-    // -------------------------------------------------------
+return;
 
-    desenharLinha(
-      "t0",
-      COR_T0
-    );
+}
 
-    desenharLinha(
-      "t6",
-      COR_T6
-    );
 
-    desenharLinha(
-      "t9",
-      COR_T9
-    );
+historico=
+numeros;
 
-  }
 
+salvarHistorico();
 
-  // =========================================================
-  // RENDER HISTÓRICO
-  // =========================================================
 
-  function renderHistorico(){
+campo.value="";
 
-    elementoQtdHistorico.textContent =
-      historico.length;
 
+statusArea.textContent=
+historico.length+
+" números carregados.";
 
-    if(!historico.length){
+statusArea.style.color=
+"#00e676";
 
-      elementoHistorico.innerHTML =
-        "Histórico vazio.";
 
-      return;
-    }
+render();
 
+}
 
-    const inicioJanela =
-      Math.max(
-        0,
-        historico.length -
-        TAMANHO_JANELA
-      );
 
+/* =========================================================
+   ADICIONAR
+========================================================= */
 
-    const visiveis =
-      historico.slice(-60);
+function adicionarNumero(numero){
 
+historico.push(numero);
 
-    const offset =
-      historico.length -
-      visiveis.length;
 
+if(historico.length>5000){
 
-    elementoHistorico.innerHTML =
-      visiveis
-        .map(
-          (
-            numero,
-            index
-          ) => {
+historico.shift();
 
-            const indiceReal =
-              offset + index;
+}
 
-            const cores =
-              corNumeroRoleta(numero);
 
-            const dentroJanela =
-              indiceReal >=
-              inicioJanela;
+salvarHistorico();
 
-            const ultimo =
-              indiceReal ===
-              historico.length - 1;
 
+statusArea.textContent=
+"Número "+
+numero+
+" inserido.";
 
-            return `
 
-              <div
-                class="
-                  histNumero
-                  ${
-                    dentroJanela
-                      ? "janelaAtual"
-                      : ""
-                  }
-                  ${
-                    ultimo
-                      ? "ultimo"
-                      : ""
-                  }
-                "
-                style="
-                  background:${cores.fundo};
-                  color:${cores.texto};
-                "
-              >
-                ${numero}
-              </div>
+statusArea.style.color=
+"#00e5ff";
 
-            `;
 
-          }
-        )
-        .join("");
+render();
 
+}
 
-    elementoHistorico.scrollLeft =
-      elementoHistorico.scrollWidth;
-  }
 
+/* =========================================================
+   APAGAR
+========================================================= */
 
-  // =========================================================
-  // RENDER PRINCIPAL
-  // =========================================================
+function apagarUltimo(){
 
-  function render(){
+if(!historico.length){
+return;
+}
 
-    const analise =
-      analisarJanela14();
 
-    renderJanela(
-      analise
-    );
+const apagado=
+historico.pop();
 
-    renderHistorico();
 
-    renderGrafico069();
+salvarHistorico();
 
-  }
 
+statusArea.textContent=
+"Número "+
+apagado+
+" apagado.";
 
-  // =========================================================
-  // REDESENHAR GRÁFICO AO MUDAR TAMANHO DA TELA
-  // =========================================================
 
-  let resizeTimer = null;
+render();
 
+}
 
-  window.addEventListener(
-    "resize",
-    function(){
 
-      clearTimeout(
-        resizeTimer
-      );
+function apagarTudo(){
 
-      resizeTimer =
-        setTimeout(
-          renderGrafico069,
-          120
-        );
+if(
+!window.confirm(
+"Apagar todo o histórico?"
+)
+){
 
-    }
-  );
+return;
 
+}
 
-  // =========================================================
-  // INICIAR
-  // =========================================================
 
-  render();
+historico=[];
+
+
+salvarHistorico();
+
+
+render();
+
+}
+
+
+/* =========================================================
+   RENDER 14
+========================================================= */
+
+function renderJanela(){
+
+const analise=
+analisarJanela14();
+
+
+qtdJanela.textContent=
+analise.janela.length;
+
+
+linhaCores.innerHTML=
+analise.janela
+.map(function(numero){
+
+const cor=
+corNumeroRoleta(numero);
+
+return (
+
+'<div class="numeroRoleta" '+
+'style="background:'+
+cor.fundo+
+'">'+
+numero+
+'</div>'
+
+);
+
+})
+.join("");
+
+
+linhaRegioes.innerHTML=
+analise.janela
+.map(function(numero){
+
+const regiao=
+regiaoDoNumero(numero);
+
+const cor=
+regiao
+?
+coresRegioes[regiao]
+:
+"#555";
+
+return (
+
+'<div class="numeroRegiao" '+
+'style="background:'+
+cor+
+'">'+
+numero+
+'</div>'
+
+);
+
+})
+.join("");
+
+
+linhaIds.innerHTML=
+analise.sequencia
+.map(function(item){
+
+if(!item.ids.length){
+
+return (
+
+'<div class="idBox">'+
+'<span class="semID">—</span>'+
+'</div>'
+
+);
+
+}
+
+
+return (
+
+'<div class="idBox">'+
+
+item.ids
+.map(function(id){
+
+return (
+
+'<span class="tagID" '+
+'style="background:'+
+corDoId(id)+
+'">'+
+id+
+'</span>'
+
+);
+
+})
+.join("")+
+
+'</div>'
+
+);
+
+})
+.join("");
+
+}
+
+
+/* =========================================================
+   GRÁFICO
+========================================================= */
+
+function renderGrafico(){
+
+const canvas=
+document.getElementById(
+"grafico069"
+);
+
+const box=
+canvas.parentElement;
+
+
+const largura=
+Math.max(
+300,
+box.clientWidth
+);
+
+
+const altura=
+Math.max(
+170,
+box.clientHeight
+);
+
+
+const dpr=
+window.devicePixelRatio||
+1;
+
+
+canvas.width=
+largura*dpr;
+
+canvas.height=
+altura*dpr;
+
+canvas.style.width=
+largura+"px";
+
+canvas.style.height=
+altura+"px";
+
+
+const ctx=
+canvas.getContext("2d");
+
+
+ctx.setTransform(
+dpr,
+0,
+0,
+dpr,
+0,
+0
+);
+
+
+ctx.clearRect(
+0,
+0,
+largura,
+altura
+);
+
+
+ctx.fillStyle=
+"#111";
+
+ctx.fillRect(
+0,
+0,
+largura,
+altura
+);
+
+
+const janela=
+historico.slice(
+-TAMANHO_JANELA
+);
+
+
+const traj=
+gerarTrajetoria(janela);
+
+
+total0.textContent=
+traj.total0;
+
+total6.textContent=
+traj.total6;
+
+total9.textContent=
+traj.total9;
+
+
+const dados=[{
+
+posicao:0,
+t0:0,
+t6:0,
+t9:0
+
+}].concat(
+traj.pontos
+);
+
+
+const margemE=28;
+const margemD=10;
+const margemC=10;
+const margemB=28;
+
+
+const larguraUtil=
+largura-
+margemE-
+margemD;
+
+
+const alturaUtil=
+altura-
+margemC-
+margemB;
+
+
+function x(posicao){
+
+return (
+margemE+
+(
+posicao/
+TAMANHO_JANELA
+)*
+larguraUtil
+);
+
+}
+
+
+function y(valor){
+
+return (
+margemC+
+alturaUtil-
+(
+valor/
+TAMANHO_JANELA
+)*
+alturaUtil
+);
+
+}
+
+
+/* grade */
+
+ctx.font=
+"9px Arial";
+
+ctx.textAlign=
+"right";
+
+ctx.textBaseline=
+"middle";
+
+
+for(
+let v=0;
+v<=14;
+v+=2
+){
+
+const py=
+y(v);
+
+
+ctx.beginPath();
+
+ctx.moveTo(
+margemE,
+py
+);
+
+ctx.lineTo(
+largura-margemD,
+py
+);
+
+ctx.strokeStyle=
+v===0
+?
+"#555"
+:
+"#282828";
+
+ctx.lineWidth=1;
+
+ctx.stroke();
+
+
+ctx.fillStyle=
+"#777";
+
+ctx.fillText(
+String(v),
+margemE-4,
+py
+);
+
+}
+
+
+/* eixo horizontal */
+
+ctx.textAlign="center";
+ctx.textBaseline="top";
+
+
+for(
+let i=1;
+i<=14;
+i++
+){
+
+const px=x(i);
+
+
+ctx.fillStyle=
+"#666";
+
+ctx.fillText(
+String(i),
+px,
+altura-
+margemB+
+6
+);
+
+}
+
+
+/* linha */
+
+function desenhar(chave,cor){
+
+if(!dados.length){
+return;
+}
+
+
+ctx.beginPath();
+
+
+dados.forEach(function(ponto,index){
+
+const px=
+x(ponto.posicao);
+
+const py=
+y(ponto[chave]);
+
+
+if(index===0){
+
+ctx.moveTo(
+px,
+py
+);
+
+}else{
+
+ctx.lineTo(
+px,
+py
+);
+
+}
+
+});
+
+
+ctx.strokeStyle=
+cor;
+
+ctx.lineWidth=
+3;
+
+ctx.lineJoin=
+"round";
+
+ctx.lineCap=
+"round";
+
+ctx.stroke();
+
+
+dados.slice(1)
+.forEach(function(ponto){
+
+ctx.beginPath();
+
+ctx.arc(
+x(ponto.posicao),
+y(ponto[chave]),
+3,
+0,
+Math.PI*2
+);
+
+ctx.fillStyle=
+cor;
+
+ctx.fill();
+
+});
+
+}
+
+
+desenhar(
+"t0",
+COR_T0
+);
+
+desenhar(
+"t6",
+COR_T6
+);
+
+desenhar(
+"t9",
+COR_T9
+);
+
+}
+
+
+/* =========================================================
+   RAIO X RENDER
+========================================================= */
+
+function renderRaioX(){
+
+const rx=
+analisarRaioX();
+
+
+let corEstado=
+"#aaa";
+
+
+if(
+rx.estado.indexOf(
+"SINAL 0"
+)!==-1
+){
+
+corEstado=
+COR_T0;
+
+}
+
+
+if(
+rx.estado.indexOf(
+"SINAL 6"
+)!==-1
+){
+
+corEstado=
+COR_T6;
+
+}
+
+
+if(
+rx.estado.indexOf(
+"SINAL 9"
+)!==-1
+){
+
+corEstado=
+COR_T9;
+
+}
+
+
+let candidatosHTML="";
+
+
+rx.numeros.forEach(
+function(item){
+
+candidatosHTML+=
+
+'<div class="rxNumero">'+
+
+'<strong>'+
+item.numero+
+'</strong>'+
+
+'<small>'+
+item.ocorrencias+
+'x histórico</small>'+
+
+'</div>';
+
+});
+
+
+if(!candidatosHTML){
+
+candidatosHTML=
+
+'<div class="rxNumero">'+
+'<small>Sem candidatos</small>'+
+'</div>';
+
+}
+
+
+raioX.innerHTML=
+
+'<div class="rxTopo">'+
+
+'<div class="rxTitulo">'+
+'RAIO X DO PADRÃO'+
+'</div>'+
+
+'<div class="rxEstado" '+
+'style="color:'+
+corEstado+
+'">'+
+rx.estado+
+'</div>'+
+
+'</div>'+
+
+
+'<div class="rxInfo">'+
+
+'<div class="rxCard">'+
+'<small>ENCAIXES</small>'+
+'<strong>'+
+rx.encaixes+
+'</strong>'+
+'</div>'+
+
+'<div class="rxCard">'+
+'<small>SIMILARIDADE</small>'+
+'<strong>'+
+rx.similaridade.toFixed(1)+
+'%</strong>'+
+'</div>'+
+
+'</div>'+
+
+
+'<div class="rxFamilias">'+
+
+'<div class="rxFamilia">'+
+'<strong style="color:'+
+COR_T0+
+'">'+
+rx.familias[0].toFixed(0)+
+'%</strong>'+
+'<small>LINHA 0</small>'+
+'</div>'+
+
+'<div class="rxFamilia">'+
+'<strong style="color:'+
+COR_T6+
+'">'+
+rx.familias[6].toFixed(0)+
+'%</strong>'+
+'<small>LINHA 6</small>'+
+'</div>'+
+
+'<div class="rxFamilia">'+
+'<strong style="color:'+
+COR_T9+
+'">'+
+rx.familias[9].toFixed(0)+
+'%</strong>'+
+'<small>LINHA 9</small>'+
+'</div>'+
+
+'<div class="rxFamilia">'+
+'<strong style="color:#888">'+
+rx.familias.fora.toFixed(0)+
+'%</strong>'+
+'<small>FORA</small>'+
+'</div>'+
+
+'</div>'+
+
+
+'<div class="titulo" '+
+'style="margin-top:9px">'+
+'PRÓXIMOS RESULTADOS MAIS RECORRENTES'+
+'</div>'+
+
+
+'<div class="rxCandidatos">'+
+candidatosHTML+
+'</div>'+
+
+
+'<div class="rxMensagem">'+
+rx.mensagem+
+'</div>';
+
+}
+
+
+/* =========================================================
+   HISTÓRICO
+========================================================= */
+
+function renderHistorico(){
+
+qtdHistorico.textContent=
+historico.length;
+
+
+elementoHistorico.innerHTML=
+historico
+.slice(-100)
+.map(function(numero){
+
+const cor=
+corNumeroRoleta(numero);
+
+return (
+
+'<div class="histNumero" '+
+'style="background:'+
+cor.fundo+
+'">'+
+numero+
+'</div>'
+
+);
+
+})
+.join("");
+
+}
+
+
+/* =========================================================
+   TECLADO
+========================================================= */
+
+for(
+let numero=1;
+numero<=36;
+numero++
+){
+
+const botao=
+document.createElement(
+"button"
+);
+
+
+const cor=
+corNumeroRoleta(numero);
+
+
+botao.className=
+"numeroBtn";
+
+
+botao.textContent=
+numero;
+
+
+botao.style.background=
+cor.fundo;
+
+
+botao.onclick=
+function(){
+
+adicionarNumero(numero);
+
+};
+
+
+teclado.appendChild(
+botao
+);
+
+}
+
+
+const zero=
+document.createElement(
+"button"
+);
+
+
+zero.className=
+"numeroBtn zeroBtn";
+
+
+zero.textContent=
+"0";
+
+
+zero.style.background=
+"#087c48";
+
+
+zero.onclick=
+function(){
+
+adicionarNumero(0);
+
+};
+
+
+teclado.appendChild(
+zero
+);
+
+
+/* =========================================================
+   BOTÕES
+========================================================= */
+
+document
+.getElementById(
+"btnInserir"
+)
+.onclick=
+inserirHistorico;
+
+
+document
+.getElementById(
+"btnApagarUltimo"
+)
+.onclick=
+apagarUltimo;
+
+
+document
+.getElementById(
+"btnApagarTudo"
+)
+.onclick=
+apagarTudo;
+
+
+document
+.getElementById(
+"mostrarHistorico"
+)
+.onclick=
+function(){
+
+const aberto=
+elementoHistorico.style.display===
+"flex";
+
+
+if(aberto){
+
+elementoHistorico.style.display=
+"none";
+
+this.textContent=
+"Mostrar";
+
+}else{
+
+elementoHistorico.style.display=
+"flex";
+
+this.textContent=
+"Ocultar";
+
+}
+
+};
+
+
+/* =========================================================
+   RENDER GERAL
+========================================================= */
+
+function render(){
+
+renderJanela();
+
+renderGrafico();
+
+renderRaioX();
+
+renderHistorico();
+
+}
+
+
+/* =========================================================
+   RESIZE
+========================================================= */
+
+let timerResize;
+
+
+window.addEventListener(
+"resize",
+function(){
+
+clearTimeout(
+timerResize
+);
+
+timerResize=
+setTimeout(
+renderGrafico,
+150
+);
+
+});
+
+
+/* =========================================================
+   INICIAR
+========================================================= */
+
+render();
 
 })();
