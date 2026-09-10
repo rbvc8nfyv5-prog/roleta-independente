@@ -3,7 +3,7 @@
   "use strict";
 
   // =========================================================
-  // CONFIGURAÇÃO
+  // CONFIGURAÇÃO PRINCIPAL
   // =========================================================
 
   const track = [
@@ -16,11 +16,7 @@
   const TAMANHO_JANELA = 14;
 
   const STORAGE_KEY =
-    "ANALISADOR_EXCLUSIVO_069_1V_V1";
-
-  const TERMINAIS_ANALISADOS = [
-    0,6,9
-  ];
+    "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
 
   const numerosVermelhos = new Set([
     1,3,5,7,9,
@@ -31,7 +27,7 @@
 
 
   // =========================================================
-  // REGIÕES
+  // REGIÕES DA ROLETA
   // =========================================================
 
   const regioesRoleta = {
@@ -60,43 +56,127 @@
   const coresRegioes = {
 
     ZERO:"#9bea2c",
-
     VOISINS:"#8a20d4",
-
     ORPHELINS:"#176436",
-
     TIERS:"#29499b"
 
   };
 
 
   // =========================================================
-  // CORES DOS TERMINAIS 0 / 6 / 9
+  // BASES 0 / 6 / 9
   // =========================================================
 
-  const coresTerminais = {
+  const BASES_069 = [
+    0,10,20,30,
+    6,16,26,36,
+    9,19,29
+  ];
 
-    0:"#00c853",
 
-    6:"#ffc107",
+  // =========================================================
+  // IDs ESPECIAIS
+  //
+  // 39 É UM ID DA ANÁLISE.
+  // NÃO É NÚMERO DA ROLETA.
+  //
+  // 25 -> 39
+  // 17 -> 9
+  // 2  -> 9
+  // =========================================================
 
-    9:"#2196f3"
+  const IDS_ESPECIAIS = {
+
+    25:[39],
+
+    17:[9],
+
+    2:[9]
 
   };
 
 
+  // =========================================================
+  // CORES DOS IDs / TERMINAIS
+  // =========================================================
+
+  const COR_T0 = "#00c853";
+  const COR_T6 = "#ffc107";
+  const COR_T9 = "#2196f3";
+
+
+  function corDoId(id){
+
+    if(
+      id === 0 ||
+      id === 10 ||
+      id === 20 ||
+      id === 30
+    ){
+      return COR_T0;
+    }
+
+    if(
+      id === 6 ||
+      id === 16 ||
+      id === 26 ||
+      id === 36
+    ){
+      return COR_T6;
+    }
+
+    if(
+      id === 9 ||
+      id === 19 ||
+      id === 29 ||
+      id === 39
+    ){
+      return COR_T9;
+    }
+
+    return "#555";
+  }
+
+
+  // =========================================================
+  // IDENTIFICAR FAMÍLIA DO ID
+  // =========================================================
+
+  function familiaDoId(id){
+
+    if(
+      id === 0 ||
+      id === 10 ||
+      id === 20 ||
+      id === 30
+    ){
+      return 0;
+    }
+
+    if(
+      id === 6 ||
+      id === 16 ||
+      id === 26 ||
+      id === 36
+    ){
+      return 6;
+    }
+
+    if(
+      id === 9 ||
+      id === 19 ||
+      id === 29 ||
+      id === 39
+    ){
+      return 9;
+    }
+
+    return null;
+  }
+
+
   let historico =
     carregarHistorico();
-
-
-  // =========================================================
-  // TERMINAL
-  // =========================================================
-
-  function terminal(numero){
-
-    return numero % 10;
-  }
 
 
   // =========================================================
@@ -116,15 +196,12 @@
         return [];
       }
 
-
       const dados =
         JSON.parse(salvo);
-
 
       if(!Array.isArray(dados)){
         return [];
       }
-
 
       return dados
         .map(Number)
@@ -162,7 +239,7 @@
 
 
   // =========================================================
-  // VIZINHOS NA RACE
+  // VIZINHOS NA ROLETA
   // =========================================================
 
   function vizinhos(
@@ -173,15 +250,13 @@
     const indice =
       track.indexOf(numero);
 
-
     if(indice === -1){
       return [];
     }
 
-
-    const resultado =
-      [numero];
-
+    const resultado = [
+      numero
+    ];
 
     for(
       let distancia = 1;
@@ -190,7 +265,6 @@
     ){
 
       resultado.push(
-
         track[
           (
             indice -
@@ -199,12 +273,9 @@
           ) %
           track.length
         ]
-
       );
 
-
       resultado.push(
-
         track[
           (
             indice +
@@ -212,105 +283,88 @@
           ) %
           track.length
         ]
-
       );
 
     }
-
 
     return resultado;
   }
 
 
   // =========================================================
-  // COBERTURA DE UM TERMINAL COM 1 VIZINHO
+  // COBERTURA DAS BASES
   // =========================================================
 
-  function coberturaTerminal1V(
-    numeroTerminal
-  ){
-
-    const cobertura =
-      new Set();
+  const coberturaDasBases = {};
 
 
-    track.forEach(numero => {
+  BASES_069.forEach(base => {
+
+    coberturaDasBases[base] =
+      new Set(
+        vizinhos(base,1)
+      );
+
+  });
+
+
+  // =========================================================
+  // DESCOBRIR QUAL ID O RESULTADO ESTÁ BATENDO
+  // =========================================================
+
+  function idsQueBatem(numero){
+
+    const ids = [];
+
+
+    BASES_069.forEach(base => {
 
       if(
-        terminal(numero) ===
-        numeroTerminal
+        coberturaDasBases[base]
+          .has(numero)
       ){
 
-        vizinhos(numero,1)
-          .forEach(numeroCoberto => {
-
-            cobertura.add(
-              numeroCoberto
-            );
-
-          });
+        ids.push(base);
 
       }
 
     });
 
 
-    return cobertura;
+    if(
+      Object.prototype
+        .hasOwnProperty
+        .call(
+          IDS_ESPECIAIS,
+          numero
+        )
+    ){
+
+      IDS_ESPECIAIS[numero]
+        .forEach(id => {
+
+          if(
+            !ids.includes(id)
+          ){
+
+            ids.push(id);
+
+          }
+
+        });
+
+    }
+
+
+    return ids;
   }
 
 
   // =========================================================
-  // COBERTURAS FIXAS 0 / 6 / 9
+  // REGIÃO DO NÚMERO
   // =========================================================
 
-  const coberturas069 = {
-
-    0:coberturaTerminal1V(0),
-
-    6:coberturaTerminal1V(6),
-
-    9:coberturaTerminal1V(9)
-
-  };
-
-
-  // =========================================================
-  // QUAL TERMINAL O NÚMERO BATE
-  // =========================================================
-
-  function terminaisQueBatem(
-    numero
-  ){
-
-    const resultado = [];
-
-
-    TERMINAIS_ANALISADOS
-      .forEach(t => {
-
-        if(
-          coberturas069[t]
-            .has(numero)
-        ){
-
-          resultado.push(t);
-
-        }
-
-      });
-
-
-    return resultado;
-  }
-
-
-  // =========================================================
-  // REGIÃO
-  // =========================================================
-
-  function regiaoDoNumero(
-    numero
-  ){
+  function regiaoDoNumero(numero){
 
     if(
       regioesRoleta.ZERO.has(numero)
@@ -318,13 +372,11 @@
       return "ZERO";
     }
 
-
     if(
       regioesRoleta.VOISINS.has(numero)
     ){
       return "VOISINS";
     }
-
 
     if(
       regioesRoleta.ORPHELINS.has(numero)
@@ -332,20 +384,18 @@
       return "ORPHELINS";
     }
 
-
     if(
       regioesRoleta.TIERS.has(numero)
     ){
       return "TIERS";
     }
 
-
     return null;
   }
 
 
   // =========================================================
-  // ANÁLISE DOS ÚLTIMOS 14
+  // ANÁLISE DA JANELA DE 14
   // =========================================================
 
   function analisarJanela14(){
@@ -356,92 +406,134 @@
       );
 
 
-    const sequenciaBatidas =
+    const sequencia =
       janela.map(numero => {
 
         return {
 
           numero,
 
-          terminais:
-            terminaisQueBatem(
-              numero
-            )
+          ids:
+            idsQueBatem(numero)
 
         };
 
       });
 
 
-    const contagem = {
-
-      0:0,
-      6:0,
-      9:0
-
-    };
-
-
-    sequenciaBatidas
-      .forEach(item => {
-
-        item.terminais
-          .forEach(t => {
-
-            contagem[t]++;
-
-          });
-
-      });
-
-
-    const numerosSemBatida =
-      sequenciaBatidas
-        .filter(item =>
-          item.terminais.length === 0
-        )
-        .length;
-
-
-    const numerosComBatida =
-      sequenciaBatidas.length -
-      numerosSemBatida;
-
-
     return {
 
       janela,
 
-      sequenciaBatidas,
-
-      contagem,
-
-      numerosComBatida,
-
-      numerosSemBatida
+      sequencia
 
     };
   }
 
 
   // =========================================================
-  // EXTRAÇÃO DO HISTÓRICO
+  // DADOS DO GRÁFICO 0 / 6 / 9
+  //
+  // Cada linha acumula as batidas dentro dos últimos 14.
+  // Uma rodada conta no máximo 1 ponto para cada família.
   // =========================================================
 
-  function extrairNumeros(
-    texto
-  ){
+  function montarDadosGrafico069(){
+
+    const janela =
+      historico.slice(
+        -TAMANHO_JANELA
+      );
+
+    let acumulado0 = 0;
+    let acumulado6 = 0;
+    let acumulado9 = 0;
+
+    const dados = [
+
+      {
+        posicao:0,
+        numero:null,
+        t0:0,
+        t6:0,
+        t9:0
+      }
+
+    ];
+
+
+    janela.forEach(
+      (numero,index) => {
+
+        const ids =
+          idsQueBatem(numero);
+
+        const familias =
+          new Set(
+            ids
+              .map(familiaDoId)
+              .filter(
+                familia =>
+                  familia !== null
+              )
+          );
+
+
+        if(
+          familias.has(0)
+        ){
+          acumulado0++;
+        }
+
+        if(
+          familias.has(6)
+        ){
+          acumulado6++;
+        }
+
+        if(
+          familias.has(9)
+        ){
+          acumulado9++;
+        }
+
+
+        dados.push({
+
+          posicao:index + 1,
+
+          numero,
+
+          t0:acumulado0,
+
+          t6:acumulado6,
+
+          t9:acumulado9
+
+        });
+
+      }
+    );
+
+
+    return dados;
+  }
+
+
+  // =========================================================
+  // EXTRAIR NÚMEROS DO TEXTO
+  // =========================================================
+
+  function extrairNumeros(texto){
 
     const encontrados =
       texto.match(
         /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
       );
 
-
     if(!encontrados){
       return [];
     }
-
 
     return encontrados
       .map(Number)
@@ -464,12 +556,10 @@
         "entradaHistorico"
       );
 
-
     const numeros =
       extrairNumeros(
         entrada.value
       );
-
 
     if(!numeros.length){
 
@@ -509,9 +599,7 @@
   // ADICIONAR NÚMERO
   // =========================================================
 
-  function adicionarNumero(
-    numero
-  ){
+  function adicionarNumero(numero){
 
     historico.push(numero);
 
@@ -521,6 +609,7 @@
     ){
 
       historico.shift();
+
     }
 
 
@@ -608,41 +697,33 @@
   // COR NORMAL DA ROLETA
   // =========================================================
 
-  function corNumeroRoleta(
-    numero
-  ){
+  function corNumeroRoleta(numero){
 
     if(numero === 0){
 
       return {
-
         fundo:"#087c48",
         texto:"#ffffff"
-
       };
+
     }
 
 
     if(
-      numerosVermelhos.has(
-        numero
-      )
+      numerosVermelhos.has(numero)
     ){
 
       return {
-
         fundo:"#c6283d",
         texto:"#ffffff"
-
       };
+
     }
 
 
     return {
-
       fundo:"#181818",
       texto:"#ffffff"
-
     };
   }
 
@@ -682,7 +763,6 @@
       touch-action:manipulation;
     }
 
-
     .app{
       width:100%;
       max-width:850px;
@@ -690,13 +770,11 @@
       padding:8px;
     }
 
-
     h2{
       text-align:center;
       margin:5px 0 10px;
       font-size:22px;
     }
-
 
     .painel{
       background:#1d1d1f;
@@ -706,14 +784,12 @@
       margin-bottom:8px;
     }
 
-
     .tituloPainel{
       color:#aaa;
       font-size:12px;
       font-weight:900;
       margin-bottom:7px;
     }
-
 
     textarea{
       width:100%;
@@ -726,14 +802,12 @@
       font-size:14px;
     }
 
-
     .acoes{
       display:flex;
       gap:6px;
       flex-wrap:wrap;
       margin-top:7px;
     }
-
 
     .btn{
       padding:8px 11px;
@@ -744,16 +818,13 @@
       font-weight:900;
     }
 
-
     .verde{
       background:#146238;
     }
 
-
     .vermelho{
       background:#762832;
     }
-
 
     .status{
       margin-top:7px;
@@ -764,44 +835,8 @@
 
 
     /* =====================================================
-       RESUMO 0 6 9
-    ===================================================== */
-
-
-    .resumo069{
-      display:grid;
-      grid-template-columns:
-        repeat(3,1fr);
-      gap:6px;
-    }
-
-
-    .card069{
-      padding:8px;
-      border:1px solid #444;
-      border-radius:8px;
-      background:#111;
-      text-align:center;
-    }
-
-
-    .titulo069{
-      font-size:18px;
-      font-weight:900;
-    }
-
-
-    .valor069{
-      margin-top:3px;
-      font-size:14px;
-      font-weight:900;
-    }
-
-
-    /* =====================================================
        JANELA 14
     ===================================================== */
-
 
     .janelaBloco{
       display:flex;
@@ -809,15 +844,13 @@
       gap:7px;
     }
 
-
     .linhaJanela{
       display:grid;
       grid-template-columns:
-        90px minmax(0,1fr);
+        78px minmax(0,1fr);
       gap:6px;
       align-items:center;
     }
-
 
     .rotuloLinha{
       color:#bbb;
@@ -826,14 +859,12 @@
       line-height:1.25;
     }
 
-
     .janelaScroll{
       display:flex;
       gap:5px;
       overflow-x:auto;
       padding-bottom:2px;
     }
-
 
     .numeroJanela{
       min-width:37px;
@@ -842,17 +873,11 @@
       align-items:center;
       justify-content:center;
       border-radius:50%;
-      border:2px solid rgba(
-        255,
-        255,
-        255,
-        .75
-      );
+      border:2px solid rgba(255,255,255,.75);
       color:#fff;
       font-size:14px;
       font-weight:900;
     }
-
 
     .numeroRegiao{
       min-width:37px;
@@ -861,24 +886,13 @@
       align-items:center;
       justify-content:center;
       border-radius:8px;
-      border:2px solid rgba(
-        255,
-        255,
-        255,
-        .65
-      );
+      border:2px solid rgba(255,255,255,.65);
       color:#fff;
       font-size:14px;
       font-weight:900;
     }
 
-
-    /* =====================================================
-       LINHA DE BATIDAS 0 / 6 / 9
-    ===================================================== */
-
-
-    .batidaBox{
+    .idBox{
       min-width:37px;
       height:37px;
       display:flex;
@@ -891,16 +905,14 @@
       padding:2px;
     }
 
-
-    .batidaVazia{
-      color:#555;
-      font-size:15px;
-      font-weight:900;
+    .idBoxMultiplo{
+      border-color:#fff;
+      box-shadow:
+        0 0 7px rgba(255,255,255,.45);
     }
 
-
-    .tagTerminal{
-      min-width:24px;
+    .tagId{
+      min-width:27px;
       height:28px;
       padding:0 4px;
       display:flex;
@@ -908,27 +920,20 @@
       justify-content:center;
       border-radius:6px;
       color:#fff;
-      font-size:13px;
+      font-size:12px;
+      font-weight:900;
+    }
+
+    .idVazio{
+      color:#555;
+      font-size:15px;
       font-weight:900;
     }
 
 
-    .batidaDupla{
-      border-color:#ffffff;
-      box-shadow:
-        0 0 7px rgba(
-          255,
-          255,
-          255,
-          .45
-        );
-    }
-
-
     /* =====================================================
-       LEGENDAS
+       LEGENDA REGIÕES
     ===================================================== */
-
 
     .legendaRegioes{
       display:flex;
@@ -940,13 +945,11 @@
       font-size:10px;
     }
 
-
     .legendaItem{
       display:flex;
       align-items:center;
       gap:4px;
     }
-
 
     .legendaCor{
       width:11px;
@@ -956,9 +959,87 @@
 
 
     /* =====================================================
-       TECLADO
+       GRÁFICO 0 / 6 / 9
     ===================================================== */
 
+    .graficoCabecalho{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-bottom:5px;
+    }
+
+    .graficoLegenda{
+      display:flex;
+      gap:9px;
+      align-items:center;
+      flex-wrap:wrap;
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .graficoLegendaItem{
+      display:flex;
+      align-items:center;
+      gap:4px;
+    }
+
+    .graficoLegendaCor{
+      width:17px;
+      height:4px;
+      border-radius:4px;
+    }
+
+    .graficoResumo{
+      display:flex;
+      gap:5px;
+      margin-bottom:7px;
+    }
+
+    .graficoResumoCard{
+      flex:1;
+      min-width:70px;
+      background:#111;
+      border:1px solid #444;
+      border-radius:7px;
+      padding:5px;
+      text-align:center;
+    }
+
+    .graficoResumoNome{
+      font-size:10px;
+      font-weight:900;
+      color:#aaa;
+    }
+
+    .graficoResumoValor{
+      margin-top:2px;
+      font-size:18px;
+      font-weight:900;
+    }
+
+    .graficoContainer{
+      width:100%;
+      height:210px;
+      position:relative;
+      background:#111;
+      border:1px solid #444;
+      border-radius:8px;
+      overflow:hidden;
+    }
+
+    #grafico069{
+      width:100%;
+      height:100%;
+      display:block;
+    }
+
+
+    /* =====================================================
+       TECLADO
+    ===================================================== */
 
     .teclado{
       display:grid;
@@ -966,7 +1047,6 @@
         repeat(6,1fr);
       gap:4px;
     }
-
 
     .numeroBtn{
       min-height:40px;
@@ -977,11 +1057,9 @@
       font-weight:900;
     }
 
-
     .numeroBtn:active{
       transform:scale(.96);
     }
-
 
     .zeroBtn{
       grid-column:span 6;
@@ -992,14 +1070,12 @@
        HISTÓRICO
     ===================================================== */
 
-
     .historico{
       display:flex;
       gap:4px;
       overflow-x:auto;
       min-height:34px;
     }
-
 
     .histNumero{
       min-width:31px;
@@ -1013,11 +1089,9 @@
       font-weight:900;
     }
 
-
     .histNumero.janelaAtual{
       border:2px solid #00e5ff;
     }
-
 
     .histNumero.ultimo{
       box-shadow:
@@ -1025,53 +1099,48 @@
     }
 
 
-    @media(
-      max-width:600px
-    ){
+    @media(max-width:600px){
 
       .app{
         padding:5px;
       }
 
-
       .painel{
         padding:7px;
       }
 
-
       .linhaJanela{
         grid-template-columns:
-          64px minmax(0,1fr);
+          60px minmax(0,1fr);
       }
-
 
       .rotuloLinha{
         font-size:9px;
       }
 
-
       .numeroJanela,
       .numeroRegiao,
-      .batidaBox{
+      .idBox{
         min-width:34px;
         height:34px;
       }
 
-
-      .tagTerminal{
-        min-width:21px;
+      .tagId{
+        min-width:24px;
         height:25px;
         font-size:11px;
       }
-
 
       .teclado{
         gap:3px;
       }
 
-
       .numeroBtn{
         min-height:38px;
+      }
+
+      .graficoContainer{
+        height:190px;
       }
 
     }
@@ -1105,14 +1174,12 @@
           Inserir histórico
         </button>
 
-
         <button
           id="btnApagarUltimo"
           class="btn"
         >
           Apagar último
         </button>
-
 
         <button
           id="btnApagarTudo"
@@ -1134,84 +1201,6 @@
     </section>
 
 
-    <!-- RESUMO EXCLUSIVO 069 -->
-
-    <section class="painel">
-
-      <div class="tituloPainel">
-        0 • 6 • 9 — 1 VIZINHO / ÚLTIMOS 14
-      </div>
-
-
-      <div class="resumo069">
-
-        <div
-          class="card069"
-          style="
-            border-color:#00c853
-          "
-        >
-
-          <div class="titulo069">
-            T0
-          </div>
-
-          <div
-            id="qtdT0"
-            class="valor069"
-          >
-            0
-          </div>
-
-        </div>
-
-
-        <div
-          class="card069"
-          style="
-            border-color:#ffc107
-          "
-        >
-
-          <div class="titulo069">
-            T6
-          </div>
-
-          <div
-            id="qtdT6"
-            class="valor069"
-          >
-            0
-          </div>
-
-        </div>
-
-
-        <div
-          class="card069"
-          style="
-            border-color:#2196f3
-          "
-        >
-
-          <div class="titulo069">
-            T9
-          </div>
-
-          <div
-            id="qtdT9"
-            class="valor069"
-          >
-            0
-          </div>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
     <!-- ÚLTIMOS 14 -->
 
     <section class="painel">
@@ -1219,10 +1208,7 @@
       <div class="tituloPainel">
 
         ÚLTIMOS
-        <span id="qtdJanela">
-          0
-        </span>
-        /14
+        <span id="qtdJanela">0</span>/14
 
       </div>
 
@@ -1235,10 +1221,8 @@
         <div class="linhaJanela">
 
           <div class="rotuloLinha">
-            PRETO /<br>
-            VERMELHO
+            ROLETA
           </div>
-
 
           <div
             id="linhaCores"
@@ -1256,7 +1240,6 @@
             REGIÕES
           </div>
 
-
           <div
             id="linhaRegioes"
             class="janelaScroll"
@@ -1270,13 +1253,12 @@
         <div class="linhaJanela">
 
           <div class="rotuloLinha">
-            BATIDA<br>
+            ID<br>
             0 • 6 • 9
           </div>
 
-
           <div
-            id="linhaBatidas"
+            id="linhaIds"
             class="janelaScroll"
           ></div>
 
@@ -1288,59 +1270,144 @@
       <div class="legendaRegioes">
 
         <div class="legendaItem">
-
           <span
             class="legendaCor"
-            style="
-              background:#9bea2c
-            "
+            style="background:#9bea2c"
           ></span>
-
           Zero
-
         </div>
 
-
         <div class="legendaItem">
-
           <span
             class="legendaCor"
-            style="
-              background:#8a20d4
-            "
+            style="background:#8a20d4"
           ></span>
-
           Voisins
-
         </div>
 
-
         <div class="legendaItem">
-
           <span
             class="legendaCor"
-            style="
-              background:#176436
-            "
+            style="background:#176436"
           ></span>
-
           Orphelins
-
         </div>
-
 
         <div class="legendaItem">
-
           <span
             class="legendaCor"
-            style="
-              background:#29499b
-            "
+            style="background:#29499b"
           ></span>
-
           Tiers
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         NOVO GRÁFICO 0 / 6 / 9
+    ====================================================== -->
+
+    <section class="painel">
+
+      <div class="graficoCabecalho">
+
+        <div class="tituloPainel" style="margin:0;">
+          EVOLUÇÃO 0 • 6 • 9 — ÚLTIMOS 14
+        </div>
+
+
+        <div class="graficoLegenda">
+
+          <div class="graficoLegendaItem">
+            <span
+              class="graficoLegendaCor"
+              style="background:#00c853"
+            ></span>
+            0
+          </div>
+
+          <div class="graficoLegendaItem">
+            <span
+              class="graficoLegendaCor"
+              style="background:#ffc107"
+            ></span>
+            6
+          </div>
+
+          <div class="graficoLegendaItem">
+            <span
+              class="graficoLegendaCor"
+              style="background:#2196f3"
+            ></span>
+            9
+          </div>
 
         </div>
+
+      </div>
+
+
+      <div class="graficoResumo">
+
+        <div class="graficoResumoCard">
+
+          <div class="graficoResumoNome">
+            TERMINAL 0
+          </div>
+
+          <div
+            id="graficoTotal0"
+            class="graficoResumoValor"
+            style="color:#00c853"
+          >
+            0
+          </div>
+
+        </div>
+
+
+        <div class="graficoResumoCard">
+
+          <div class="graficoResumoNome">
+            TERMINAL 6
+          </div>
+
+          <div
+            id="graficoTotal6"
+            class="graficoResumoValor"
+            style="color:#ffc107"
+          >
+            0
+          </div>
+
+        </div>
+
+
+        <div class="graficoResumoCard">
+
+          <div class="graficoResumoNome">
+            TERMINAL 9
+          </div>
+
+          <div
+            id="graficoTotal9"
+            class="graficoResumoValor"
+            style="color:#2196f3"
+          >
+            0
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="graficoContainer">
+
+        <canvas id="grafico069"></canvas>
 
       </div>
 
@@ -1354,7 +1421,6 @@
       <div class="tituloPainel">
         TECLADO 0–36
       </div>
-
 
       <div
         id="teclado"
@@ -1371,12 +1437,9 @@
       <div class="tituloPainel">
 
         HISTÓRICO —
-        <span id="qtdHistorico">
-          0
-        </span>
+        <span id="qtdHistorico">0</span>
 
       </div>
-
 
       <div
         id="historico"
@@ -1398,64 +1461,54 @@
       "statusArea"
     );
 
-
   const elementoQtdJanela =
     document.getElementById(
       "qtdJanela"
     );
-
 
   const elementoLinhaCores =
     document.getElementById(
       "linhaCores"
     );
 
-
   const elementoLinhaRegioes =
     document.getElementById(
       "linhaRegioes"
     );
 
-
-  const elementoLinhaBatidas =
+  const elementoLinhaIds =
     document.getElementById(
-      "linhaBatidas"
+      "linhaIds"
     );
-
 
   const elementoTeclado =
     document.getElementById(
       "teclado"
     );
 
-
   const elementoHistorico =
     document.getElementById(
       "historico"
     );
-
 
   const elementoQtdHistorico =
     document.getElementById(
       "qtdHistorico"
     );
 
-
-  const elementoQtdT0 =
+  const graficoTotal0 =
     document.getElementById(
-      "qtdT0"
+      "graficoTotal0"
     );
 
-
-  const elementoQtdT6 =
+  const graficoTotal6 =
     document.getElementById(
-      "qtdT6"
+      "graficoTotal6"
     );
 
-
-  const elementoQtdT9 =
+  const graficoTotal9 =
     document.getElementById(
-      "qtdT9"
+      "graficoTotal9"
     );
 
 
@@ -1470,46 +1523,33 @@
   ){
 
     const cores =
-      corNumeroRoleta(
-        numero
-      );
-
+      corNumeroRoleta(numero);
 
     const botao =
       document.createElement(
         "button"
       );
 
-
     botao.className =
       "numeroBtn";
-
 
     botao.textContent =
       numero;
 
-
     botao.style.background =
       cores.fundo;
-
 
     botao.style.color =
       cores.texto;
 
-
     botao.onclick = () => {
 
-      adicionarNumero(
-        numero
-      );
+      adicionarNumero(numero);
 
     };
 
-
     elementoTeclado
-      .appendChild(
-        botao
-      );
+      .appendChild(botao);
 
   }
 
@@ -1519,22 +1559,17 @@
       "button"
     );
 
-
   botaoZero.className =
     "numeroBtn zeroBtn";
-
 
   botaoZero.textContent =
     "0";
 
-
   botaoZero.style.background =
     "#087c48";
 
-
   botaoZero.style.color =
     "#ffffff";
-
 
   botaoZero.onclick = () => {
 
@@ -1542,11 +1577,8 @@
 
   };
 
-
   elementoTeclado
-    .appendChild(
-      botaoZero
-    );
+    .appendChild(botaoZero);
 
 
   // =========================================================
@@ -1578,38 +1610,16 @@
 
 
   // =========================================================
-  // RENDER JANELA 14
+  // RENDER DOS ÚLTIMOS 14
   // =========================================================
 
-  function renderJanela(
-    analise
-  ){
+  function renderJanela(analise){
 
     elementoQtdJanela.textContent =
       analise.janela.length;
 
 
-    elementoQtdT0.textContent =
-      analise.contagem[0] +
-      "/" +
-      analise.janela.length;
-
-
-    elementoQtdT6.textContent =
-      analise.contagem[6] +
-      "/" +
-      analise.janela.length;
-
-
-    elementoQtdT9.textContent =
-      analise.contagem[9] +
-      "/" +
-      analise.janela.length;
-
-
-    if(
-      !analise.janela.length
-    ){
+    if(!analise.janela.length){
 
       elementoLinhaCores.innerHTML =
         "Sem números.";
@@ -1617,7 +1627,7 @@
       elementoLinhaRegioes.innerHTML =
         "Sem números.";
 
-      elementoLinhaBatidas.innerHTML =
+      elementoLinhaIds.innerHTML =
         "Sem números.";
 
       return;
@@ -1625,7 +1635,7 @@
 
 
     // =====================================================
-    // LINHA 1 — COR NORMAL
+    // LINHA 1 — ROLETA
     // =====================================================
 
     elementoLinhaCores.innerHTML =
@@ -1633,10 +1643,7 @@
         .map(numero => {
 
           const cores =
-            corNumeroRoleta(
-              numero
-            );
-
+            corNumeroRoleta(numero);
 
           return `
 
@@ -1647,9 +1654,7 @@
                 color:${cores.texto};
               "
             >
-
               ${numero}
-
             </div>
 
           `;
@@ -1659,7 +1664,7 @@
 
 
     // =====================================================
-    // LINHA 2 — REGIÕES
+    // LINHA 2 — REGIÃO
     // =====================================================
 
     elementoLinhaRegioes.innerHTML =
@@ -1667,16 +1672,12 @@
         .map(numero => {
 
           const regiao =
-            regiaoDoNumero(
-              numero
-            );
-
+            regiaoDoNumero(numero);
 
           const cor =
             regiao
               ? coresRegioes[regiao]
               : "#555";
-
 
           return `
 
@@ -1687,9 +1688,7 @@
               "
               title="${regiao || ""}"
             >
-
               ${numero}
-
             </div>
 
           `;
@@ -1699,48 +1698,41 @@
 
 
     // =====================================================
-    // LINHA 3 — BATIDA 0 / 6 / 9
+    // LINHA 3 — ID CORRESPONDENTE
     // =====================================================
 
-    elementoLinhaBatidas.innerHTML =
-      analise.sequenciaBatidas
+    elementoLinhaIds.innerHTML =
+      analise.sequencia
         .map(item => {
 
-
-          if(
-            !item.terminais.length
-          ){
+          if(!item.ids.length){
 
             return `
 
-              <div
-                class="batidaBox"
-              >
+              <div class="idBox">
 
-                <span
-                  class="batidaVazia"
-                >
+                <span class="idVazio">
                   —
                 </span>
 
               </div>
 
             `;
+
           }
 
 
           const tags =
-            item.terminais
-              .map(t => `
+            item.ids
+              .map(id => `
 
                 <span
-                  class="tagTerminal"
+                  class="tagId"
                   style="
-                    background:
-                    ${coresTerminais[t]};
+                    background:${corDoId(id)};
                   "
                 >
-                  ${t}
+                  ${id}
                 </span>
 
               `)
@@ -1751,28 +1743,441 @@
 
             <div
               class="
-                batidaBox
+                idBox
                 ${
-                  item.terminais.length > 1
-                    ? "batidaDupla"
+                  item.ids.length > 1
+                    ? "idBoxMultiplo"
                     : ""
                 }
               "
             >
-
               ${tags}
-
             </div>
 
           `;
 
         })
         .join("");
+
   }
 
 
   // =========================================================
-  // HISTÓRICO
+  // DESENHAR GRÁFICO DE LINHAS
+  // =========================================================
+
+  function renderGrafico069(){
+
+    const canvas =
+      document.getElementById(
+        "grafico069"
+      );
+
+    const container =
+      canvas.parentElement;
+
+    const rect =
+      container.getBoundingClientRect();
+
+    const dpr =
+      window.devicePixelRatio || 1;
+
+    const largura =
+      Math.max(
+        300,
+        Math.floor(rect.width)
+      );
+
+    const altura =
+      Math.max(
+        170,
+        Math.floor(rect.height)
+      );
+
+
+    canvas.width =
+      largura * dpr;
+
+    canvas.height =
+      altura * dpr;
+
+    canvas.style.width =
+      largura + "px";
+
+    canvas.style.height =
+      altura + "px";
+
+
+    const ctx =
+      canvas.getContext("2d");
+
+
+    ctx.setTransform(
+      dpr,
+      0,
+      0,
+      dpr,
+      0,
+      0
+    );
+
+
+    ctx.clearRect(
+      0,
+      0,
+      largura,
+      altura
+    );
+
+
+    const dados =
+      montarDadosGrafico069();
+
+
+    const ultimo =
+      dados[
+        dados.length - 1
+      ];
+
+
+    graficoTotal0.textContent =
+      ultimo
+        ? ultimo.t0
+        : 0;
+
+    graficoTotal6.textContent =
+      ultimo
+        ? ultimo.t6
+        : 0;
+
+    graficoTotal9.textContent =
+      ultimo
+        ? ultimo.t9
+        : 0;
+
+
+    // -------------------------------------------------------
+    // MEDIDAS
+    // -------------------------------------------------------
+
+    const margemEsquerda = 29;
+    const margemDireita = 12;
+    const margemSuperior = 12;
+    const margemInferior = 29;
+
+    const larguraUtil =
+      largura -
+      margemEsquerda -
+      margemDireita;
+
+    const alturaUtil =
+      altura -
+      margemSuperior -
+      margemInferior;
+
+
+    // -------------------------------------------------------
+    // FUNÇÕES DE POSIÇÃO
+    // -------------------------------------------------------
+
+    function x(posicao){
+
+      return (
+        margemEsquerda +
+        (
+          posicao /
+          TAMANHO_JANELA
+        ) *
+        larguraUtil
+      );
+
+    }
+
+
+    function y(valor){
+
+      return (
+        margemSuperior +
+        alturaUtil -
+        (
+          valor /
+          TAMANHO_JANELA
+        ) *
+        alturaUtil
+      );
+
+    }
+
+
+    // -------------------------------------------------------
+    // FUNDO
+    // -------------------------------------------------------
+
+    ctx.fillStyle =
+      "#111";
+
+    ctx.fillRect(
+      0,
+      0,
+      largura,
+      altura
+    );
+
+
+    // -------------------------------------------------------
+    // GRADE HORIZONTAL
+    // -------------------------------------------------------
+
+    const niveis =
+      [0,2,4,6,8,10,12,14];
+
+
+    ctx.font =
+      "10px Arial";
+
+    ctx.textAlign =
+      "right";
+
+    ctx.textBaseline =
+      "middle";
+
+
+    niveis.forEach(valor => {
+
+      const py =
+        y(valor);
+
+
+      ctx.beginPath();
+
+      ctx.moveTo(
+        margemEsquerda,
+        py
+      );
+
+      ctx.lineTo(
+        largura -
+        margemDireita,
+        py
+      );
+
+      ctx.strokeStyle =
+        valor === 0
+          ? "#666"
+          : "#292929";
+
+      ctx.lineWidth =
+        1;
+
+      ctx.stroke();
+
+
+      ctx.fillStyle =
+        "#777";
+
+      ctx.fillText(
+        valor,
+        margemEsquerda - 5,
+        py
+      );
+
+    });
+
+
+    // -------------------------------------------------------
+    // EIXO X
+    // -------------------------------------------------------
+
+    ctx.textAlign =
+      "center";
+
+    ctx.textBaseline =
+      "top";
+
+
+    for(
+      let i = 1;
+      i <= TAMANHO_JANELA;
+      i++
+    ){
+
+      const px =
+        x(i);
+
+
+      ctx.beginPath();
+
+      ctx.moveTo(
+        px,
+        margemSuperior
+      );
+
+      ctx.lineTo(
+        px,
+        margemSuperior +
+        alturaUtil
+      );
+
+      ctx.strokeStyle =
+        "#202020";
+
+      ctx.lineWidth =
+        1;
+
+      ctx.stroke();
+
+
+      ctx.fillStyle =
+        "#666";
+
+      ctx.fillText(
+        String(i),
+        px,
+        margemSuperior +
+        alturaUtil +
+        6
+      );
+
+    }
+
+
+    // -------------------------------------------------------
+    // FUNÇÃO PARA DESENHAR CADA LINHA
+    // -------------------------------------------------------
+
+    function desenharLinha(
+      chave,
+      cor
+    ){
+
+      if(
+        dados.length < 1
+      ){
+        return;
+      }
+
+
+      ctx.beginPath();
+
+
+      dados.forEach(
+        (ponto,index) => {
+
+          const px =
+            x(
+              ponto.posicao
+            );
+
+          const py =
+            y(
+              ponto[chave]
+            );
+
+
+          if(index === 0){
+
+            ctx.moveTo(
+              px,
+              py
+            );
+
+          }else{
+
+            ctx.lineTo(
+              px,
+              py
+            );
+
+          }
+
+        }
+      );
+
+
+      ctx.strokeStyle =
+        cor;
+
+      ctx.lineWidth =
+        3;
+
+      ctx.lineJoin =
+        "round";
+
+      ctx.lineCap =
+        "round";
+
+      ctx.stroke();
+
+
+      // PONTOS
+
+      dados
+        .slice(1)
+        .forEach(ponto => {
+
+          const px =
+            x(
+              ponto.posicao
+            );
+
+          const py =
+            y(
+              ponto[chave]
+            );
+
+
+          ctx.beginPath();
+
+          ctx.arc(
+            px,
+            py,
+            3,
+            0,
+            Math.PI * 2
+          );
+
+          ctx.fillStyle =
+            cor;
+
+          ctx.fill();
+
+          ctx.strokeStyle =
+            "#111";
+
+          ctx.lineWidth =
+            1.5;
+
+          ctx.stroke();
+
+        });
+
+    }
+
+
+    // -------------------------------------------------------
+    // DESENHA AS TRÊS LINHAS NO MESMO GRÁFICO
+    // -------------------------------------------------------
+
+    desenharLinha(
+      "t0",
+      COR_T0
+    );
+
+    desenharLinha(
+      "t6",
+      COR_T6
+    );
+
+    desenharLinha(
+      "t9",
+      COR_T9
+    );
+
+  }
+
+
+  // =========================================================
+  // RENDER HISTÓRICO
   // =========================================================
 
   function renderHistorico(){
@@ -1815,21 +2220,15 @@
             index
           ) => {
 
-
             const indiceReal =
               offset + index;
 
-
             const cores =
-              corNumeroRoleta(
-                numero
-              );
-
+              corNumeroRoleta(numero);
 
             const dentroJanela =
               indiceReal >=
               inicioJanela;
-
 
             const ultimo =
               indiceReal ===
@@ -1853,15 +2252,11 @@
                   }
                 "
                 style="
-                  background:
-                  ${cores.fundo};
-                  color:
-                  ${cores.texto};
+                  background:${cores.fundo};
+                  color:${cores.texto};
                 "
               >
-
                 ${numero}
-
               </div>
 
             `;
@@ -1885,15 +2280,40 @@
     const analise =
       analisarJanela14();
 
-
     renderJanela(
       analise
     );
 
-
     renderHistorico();
 
+    renderGrafico069();
+
   }
+
+
+  // =========================================================
+  // REDESENHAR GRÁFICO AO MUDAR TAMANHO DA TELA
+  // =========================================================
+
+  let resizeTimer = null;
+
+
+  window.addEventListener(
+    "resize",
+    function(){
+
+      clearTimeout(
+        resizeTimer
+      );
+
+      resizeTimer =
+        setTimeout(
+          renderGrafico069,
+          120
+        );
+
+    }
+  );
 
 
   // =========================================================
