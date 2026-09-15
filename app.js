@@ -6,3650 +6,1787 @@
    CONFIGURAÇÕES
 ========================================================= */
 
+const STORAGE_KEY = "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
+const STORAGE_ESTADO = "ANALISADOR_069_ESTADO_AUTO_V3";
+
 const TAMANHO_JANELA = 14;
-
-const STORAGE_KEY =
-"ANALISADOR_069_IDS_CORRESPONDENTES_V1";
-
-const STORAGE_RX =
-"ANALISADOR_069_TAMANHO_RX_V1";
-
-const STORAGE_MODO_RX =
-"ANALISADOR_069_MODO_RX_V1";
-
-const STORAGE_AUTO_RX =
-"ANALISADOR_069_AUTO_RX_ATUAL_V1";
+const JANELA_ESTADO = 20;
+const MAX_HISTORICO = 5000;
+const MAX_TIMELINE = 200;
 
 const COR_T0 = "#00c853";
 const COR_T6 = "#ffc107";
 const COR_T9 = "#2196f3";
+
+const BASES_069 = [
+  0,10,20,30,
+  6,16,26,36,
+  9,19,29
+];
+
+const TODOS_IDS_RX = [
+  0,10,20,30,
+  6,16,26,36,
+  9,19,29,39
+];
+
+const IDS_ESPECIAIS = {
+  25:[39],
+  17:[9],
+  2:[9]
+};
 
 const PERCENTUAL_REPLICAS_RX = 0.10;
 const MIN_REPLICAS_RX = 15;
 const MAX_REPLICAS_RX = 40;
 const MIN_ZONAS_RX = 8;
 
-/*
-5 setores de 2 vizinhos = 25 números
-1 setor de 1 vizinho    = 3 números
-TOTAL                   = 28 números
-*/
-
-const QTD_BLOCOS_2V = 5;
-const QTD_BLOCOS_1V = 1;
+const QTD_2V = 5;
+const QTD_1V = 1;
 
 /*
-BACKTEST
+  AUTO NOVO
+
+  Estado recente manda.
+  Histórico geral apenas estabiliza.
+
+  Não existe mais trava de 3 pontos.
+  Se outro RX estiver melhor no estado
+  atual, ele pode assumir imediatamente.
 */
 
-const MAX_TESTES_OFFSET = 200;
-
-const OFFSETS_TESTADOS = [
-    -2,
-    -1,
-    0,
-    1,
-    2
-];
-
-/*
-AUTO
-
-Para trocar automaticamente de RX,
-o novo precisa superar o atual por
-esta margem.
-
-Evita:
-4 → 5 → 4 → 6
-por diferenças insignificantes.
-*/
-
-const MARGEM_TROCA_AUTO = 3.0;
-
-let TAMANHO_RX = 6;
-let MODO_RX = "AUTO";
-let AUTO_RX_ATUAL = 6;
+const PESO_ULTIMOS_10 = 0.45;
+const PESO_ULTIMOS_20 = 0.35;
+const PESO_SIMILARIDADE = 0.15;
+const PESO_HISTORICO = 0.05;
 
 
 /* =========================================================
-   CARREGAR CONFIGURAÇÃO
-========================================================= */
-
-try{
-
-    const salvo =
-    Number(
-        localStorage.getItem(
-            STORAGE_RX
-        )
-    );
-
-    if(
-        salvo === 4 ||
-        salvo === 5 ||
-        salvo === 6
-    ){
-        TAMANHO_RX = salvo;
-    }
-
-}catch(e){}
-
-
-try{
-
-    const salvo =
-    localStorage.getItem(
-        STORAGE_MODO_RX
-    );
-
-    if(
-        salvo === "AUTO" ||
-        salvo === "MANUAL"
-    ){
-        MODO_RX = salvo;
-    }
-
-}catch(e){}
-
-
-try{
-
-    const salvo =
-    Number(
-        localStorage.getItem(
-            STORAGE_AUTO_RX
-        )
-    );
-
-    if(
-        salvo === 4 ||
-        salvo === 5 ||
-        salvo === 6
-    ){
-        AUTO_RX_ATUAL = salvo;
-    }
-
-}catch(e){}
-
-
-/* =========================================================
-   ROLETA EUROPEIA
+   ROLETA
 ========================================================= */
 
 const track = [
-    32,15,19,4,21,2,25,17,34,6,
-    27,13,36,11,30,8,23,10,5,24,
-    16,33,1,20,14,31,9,22,18,29,
-    7,28,12,35,3,26,0
+  32,15,19,4,21,2,25,17,34,6,
+  27,13,36,11,30,8,23,10,5,24,
+  16,33,1,20,14,31,9,22,18,29,
+  7,28,12,35,3,26,0
 ];
-
 
 const numerosVermelhos = new Set([
-    1,3,5,7,9,
-    12,14,16,18,
-    19,21,23,25,27,
-    30,32,34,36
+  1,3,5,7,9,
+  12,14,16,18,
+  19,21,23,25,27,
+  30,32,34,36
 ]);
 
-
-/* =========================================================
-   REGIÕES VISUAIS
-========================================================= */
-
 const regioesRoleta = {
-
-    ZERO:new Set([
-        0,32,15,26,3,35,12
-    ]),
-
-    VOISINS:new Set([
-        19,4,21,2,25,
-        28,7,29,18,22
-    ]),
-
-    ORPHELINS:new Set([
-        9,31,14,20,1,17,6,34
-    ]),
-
-    TIERS:new Set([
-        27,13,36,11,30,8,
-        23,10,5,24,16,33
-    ])
-
+  ZERO:new Set([0,32,15,26,3,35,12]),
+  VOISINS:new Set([19,4,21,2,25,28,7,29,18,22]),
+  ORPHELINS:new Set([9,31,14,20,1,17,6,34]),
+  TIERS:new Set([27,13,36,11,30,8,23,10,5,24,16,33])
 };
-
 
 const coresRegioes = {
-    ZERO:"#9bea2c",
-    VOISINS:"#8a20d4",
-    ORPHELINS:"#176436",
-    TIERS:"#29499b"
+  ZERO:"#9bea2c",
+  VOISINS:"#8a20d4",
+  ORPHELINS:"#176436",
+  TIERS:"#29499b"
 };
 
 
 /* =========================================================
-   IDS 0 / 6 / 9
+   ESTADO
 ========================================================= */
 
-const BASES_069 = [
-    0,10,20,30,
-    6,16,26,36,
-    9,19,29
-];
+let historico = carregarHistorico();
 
+let estado = {
+  modo:"AUTO",
+  manualRX:6,
 
-const TODOS_IDS_RX = [
-    0,10,20,30,
-    6,16,26,36,
-    9,19,29,39
-];
+  /*
+    snapshots:
+    jogadas que estão esperando
+    o PRÓXIMO resultado.
+  */
+  pendentes:{
+    4:null,
+    5:null,
+    6:null
+  },
 
+  /*
+    timeline real.
+  */
+  timeline:{
+    4:[],
+    5:[],
+    6:[]
+  },
 
-const IDS_ESPECIAIS = {
-    25:[39],
-    17:[9],
-    2:[9]
+  rxAutoAtual:6
 };
+
+carregarEstado();
 
 
 /* =========================================================
-   HELPERS RODA
+   STORAGE
+========================================================= */
+
+function carregarHistorico(){
+
+  try{
+
+    const raw = localStorage.getItem(STORAGE_KEY);
+
+    if(!raw) return [];
+
+    const dados = JSON.parse(raw);
+
+    if(!Array.isArray(dados)) return [];
+
+    return dados
+      .map(Number)
+      .filter(n =>
+        Number.isInteger(n) &&
+        n >= 0 &&
+        n <= 36
+      )
+      .slice(-MAX_HISTORICO);
+
+  }catch(e){
+    return [];
+  }
+}
+
+
+function salvarHistorico(){
+
+  try{
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(historico)
+    );
+  }catch(e){}
+}
+
+
+function carregarEstado(){
+
+  try{
+
+    const raw = localStorage.getItem(STORAGE_ESTADO);
+
+    if(!raw) return;
+
+    const salvo = JSON.parse(raw);
+
+    if(
+      salvo.modo === "AUTO" ||
+      salvo.modo === "MANUAL"
+    ){
+      estado.modo = salvo.modo;
+    }
+
+    if([4,5,6].includes(salvo.manualRX)){
+      estado.manualRX = salvo.manualRX;
+    }
+
+    if([4,5,6].includes(salvo.rxAutoAtual)){
+      estado.rxAutoAtual = salvo.rxAutoAtual;
+    }
+
+    if(salvo.timeline){
+
+      [4,5,6].forEach(rx => {
+
+        if(Array.isArray(salvo.timeline[rx])){
+          estado.timeline[rx] =
+            salvo.timeline[rx].slice(-MAX_TIMELINE);
+        }
+
+      });
+
+    }
+
+    if(salvo.pendentes){
+
+      [4,5,6].forEach(rx => {
+
+        if(salvo.pendentes[rx]){
+          estado.pendentes[rx] =
+            salvo.pendentes[rx];
+        }
+
+      });
+
+    }
+
+  }catch(e){}
+}
+
+
+function salvarEstado(){
+
+  try{
+
+    localStorage.setItem(
+      STORAGE_ESTADO,
+      JSON.stringify(estado)
+    );
+
+  }catch(e){}
+}
+
+
+/* =========================================================
+   HELPERS
 ========================================================= */
 
 function indiceRoda(numero){
-
-    return track.indexOf(
-        numero
-    );
-
+  return track.indexOf(numero);
 }
 
 
-function numeroOffset(
-    numero,
-    offset
-){
+function setorVizinhosOrdenado(centro, quantidade){
 
-    const indice =
-    indiceRoda(
-        numero
-    );
+  const i = indiceRoda(centro);
 
-    if(indice < 0){
-        return numero;
-    }
+  if(i < 0) return [];
 
-    return track[
-        (
-            indice +
-            offset +
-            track.length
-        )
-        %
+  const nums = [];
+
+  for(let d=-quantidade; d<=quantidade; d++){
+
+    nums.push(
+      track[
+        (i+d+track.length) %
         track.length
-    ];
-
-}
-
-
-function setorVizinhosOrdenado(
-    centro,
-    quantidade
-){
-
-    const indice =
-    indiceRoda(
-        centro
+      ]
     );
 
-    if(indice < 0){
-        return [];
-    }
+  }
 
-    const numeros = [];
-
-    for(
-        let d=-quantidade;
-        d<=quantidade;
-        d++
-    ){
-
-        numeros.push(
-            track[
-                (
-                    indice +
-                    d +
-                    track.length
-                )
-                %
-                track.length
-            ]
-        );
-
-    }
-
-    return numeros;
+  return nums;
 }
 
 
-function vizinhos(
-    numero,
-    quantidade=1
-){
+function vizinhos(numero, quantidade=1){
 
-    const indice =
-    indiceRoda(
-        numero
+  const i = indiceRoda(numero);
+
+  if(i < 0) return [];
+
+  const resultado = [numero];
+
+  for(let d=1; d<=quantidade; d++){
+
+    resultado.push(
+      track[
+        (i-d+track.length) %
+        track.length
+      ]
     );
 
-    if(indice < 0){
-        return [];
-    }
+    resultado.push(
+      track[
+        (i+d) %
+        track.length
+      ]
+    );
 
-    const resultado =
-    [numero];
+  }
 
-    for(
-        let d=1;
-        d<=quantidade;
-        d++
-    ){
-
-        resultado.push(
-            track[
-                (
-                    indice -
-                    d +
-                    track.length
-                )
-                %
-                track.length
-            ]
-        );
-
-        resultado.push(
-            track[
-                (
-                    indice +
-                    d
-                )
-                %
-                track.length
-            ]
-        );
-
-    }
-
-    return resultado;
+  return resultado;
 }
 
-
-/* =========================================================
-   FAMÍLIAS
-========================================================= */
 
 function familiaDoId(id){
 
-    if(
-        id === 0 ||
-        id === 10 ||
-        id === 20 ||
-        id === 30
-    ){
-        return 0;
-    }
+  if([0,10,20,30].includes(id)) return 0;
+  if([6,16,26,36].includes(id)) return 6;
+  if([9,19,29,39].includes(id)) return 9;
 
-    if(
-        id === 6 ||
-        id === 16 ||
-        id === 26 ||
-        id === 36
-    ){
-        return 6;
-    }
-
-    if(
-        id === 9 ||
-        id === 19 ||
-        id === 29 ||
-        id === 39
-    ){
-        return 9;
-    }
-
-    return null;
+  return null;
 }
 
 
 function corDoId(id){
 
-    const familia =
-    familiaDoId(
-        id
-    );
+  const f = familiaDoId(id);
 
-    if(familia === 0){
-        return COR_T0;
-    }
+  if(f === 0) return COR_T0;
+  if(f === 6) return COR_T6;
+  if(f === 9) return COR_T9;
 
-    if(familia === 6){
-        return COR_T6;
-    }
-
-    if(familia === 9){
-        return COR_T9;
-    }
-
-    return "#555";
+  return "#555";
 }
 
 
-function corFamilia(familia){
+function regiaoDoNumero(numero){
 
-    if(familia === 0){
-        return COR_T0;
-    }
+  if(regioesRoleta.ZERO.has(numero)) return "ZERO";
+  if(regioesRoleta.VOISINS.has(numero)) return "VOISINS";
+  if(regioesRoleta.ORPHELINS.has(numero)) return "ORPHELINS";
+  if(regioesRoleta.TIERS.has(numero)) return "TIERS";
 
-    if(familia === 6){
-        return COR_T6;
-    }
+  return null;
+}
 
-    if(familia === 9){
-        return COR_T9;
-    }
 
-    return "#777";
+function corNumeroRoleta(numero){
+
+  if(numero === 0){
+    return "#087c48";
+  }
+
+  if(numerosVermelhos.has(numero)){
+    return "#c6283d";
+  }
+
+  return "#181818";
 }
 
 
 /* =========================================================
-   COBERTURA IDS
+   IDS
 ========================================================= */
 
 const coberturaDasBases = {};
 
+BASES_069.forEach(base => {
 
-BASES_069.forEach(
-function(base){
-
-    coberturaDasBases[base] =
-    new Set(
-        vizinhos(
-            base,
-            1
-        )
-    );
+  coberturaDasBases[base] =
+    new Set(vizinhos(base,1));
 
 });
 
 
 function idsQueBatem(numero){
 
-    const ids = [];
+  const ids = [];
 
+  BASES_069.forEach(base => {
 
-    BASES_069.forEach(
-    function(base){
+    if(coberturaDasBases[base].has(numero)){
+      ids.push(base);
+    }
 
-        if(
-            coberturaDasBases[base]
-            .has(numero)
-        ){
-            ids.push(base);
-        }
+  });
+
+  if(
+    Object.prototype.hasOwnProperty.call(
+      IDS_ESPECIAIS,
+      numero
+    )
+  ){
+
+    IDS_ESPECIAIS[numero].forEach(id => {
+
+      if(!ids.includes(id)){
+        ids.push(id);
+      }
 
     });
 
+  }
 
-    if(
-        Object.prototype
-        .hasOwnProperty
-        .call(
-            IDS_ESPECIAIS,
-            numero
-        )
-    ){
-
-        IDS_ESPECIAIS[numero]
-        .forEach(
-        function(id){
-
-            if(
-                !ids.includes(id)
-            ){
-                ids.push(id);
-            }
-
-        });
-
-    }
-
-    return ids;
+  return ids;
 }
 
 
 function familiasQueBatem(numero){
 
-    return new Set(
-
-        idsQueBatem(numero)
-
-        .map(familiaDoId)
-
-        .filter(
-        function(familia){
-
-            return (
-                familia !== null
-            );
-
-        })
-
-    );
+  return new Set(
+    idsQueBatem(numero)
+      .map(familiaDoId)
+      .filter(f => f !== null)
+  );
 }
 
 
 /* =========================================================
-   REGIÕES
+   TRAJETÓRIA
 ========================================================= */
 
-function regiaoDoNumero(numero){
+function gerarTrajetoria(janela){
 
-    if(
-        regioesRoleta.ZERO
-        .has(numero)
-    ){
-        return "ZERO";
-    }
+  let t0=0;
+  let t6=0;
+  let t9=0;
 
-    if(
-        regioesRoleta.VOISINS
-        .has(numero)
-    ){
-        return "VOISINS";
-    }
+  const pontos=[];
+  const eventos=[];
 
-    if(
-        regioesRoleta.ORPHELINS
-        .has(numero)
-    ){
-        return "ORPHELINS";
-    }
+  janela.forEach((numero,index) => {
 
-    if(
-        regioesRoleta.TIERS
-        .has(numero)
-    ){
-        return "TIERS";
-    }
+    const f = familiasQueBatem(numero);
 
-    return null;
-}
+    const b0 = f.has(0) ? 1 : 0;
+    const b6 = f.has(6) ? 1 : 0;
+    const b9 = f.has(9) ? 1 : 0;
 
+    t0 += b0;
+    t6 += b6;
+    t9 += b9;
 
-/* =========================================================
-   COR ROLETA
-========================================================= */
-
-function corNumeroRoleta(numero){
-
-    if(numero === 0){
-
-        return {
-            fundo:"#087c48",
-            texto:"#fff"
-        };
-
-    }
-
-    if(
-        numerosVermelhos
-        .has(numero)
-    ){
-
-        return {
-            fundo:"#c6283d",
-            texto:"#fff"
-        };
-
-    }
-
-    return {
-        fundo:"#181818",
-        texto:"#fff"
-    };
-}
-
-
-/* =========================================================
-   HISTÓRICO
-========================================================= */
-
-function carregarHistorico(){
-
-    try{
-
-        const salvo =
-        localStorage.getItem(
-            STORAGE_KEY
-        );
-
-        if(!salvo){
-            return [];
-        }
-
-        const dados =
-        JSON.parse(
-            salvo
-        );
-
-        if(
-            !Array.isArray(
-                dados
-            )
-        ){
-            return [];
-        }
-
-        return dados
-
-        .map(Number)
-
-        .filter(
-        function(numero){
-
-            return (
-                Number.isInteger(numero) &&
-                numero >= 0 &&
-                numero <= 36
-            );
-
-        })
-
-        .slice(-5000);
-
-
-    }catch(e){
-
-        return [];
-
-    }
-}
-
-
-let historico =
-carregarHistorico();
-
-
-function salvarHistorico(){
-
-    try{
-
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify(
-                historico
-            )
-        );
-
-    }catch(e){}
-
-}
-
-
-function extrairNumeros(texto){
-
-    const encontrados =
-    texto.match(
-        /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
-    );
-
-    if(!encontrados){
-        return [];
-    }
-
-    return encontrados
-
-    .map(Number)
-
-    .filter(
-    function(numero){
-
-        return (
-            numero >= 0 &&
-            numero <= 36
-        );
-
-    })
-
-    .slice(-5000);
-}
-
-
-/* =========================================================
-   CONTEXTO DE EVENTOS
-   OTIMIZA O BACKTEST
-========================================================= */
-
-function criarContextoEventos(base){
-
-    const chaves = [];
-    const prefix0 = [0];
-    const prefix6 = [0];
-    const prefix9 = [0];
-
-    let soma0 = 0;
-    let soma6 = 0;
-    let soma9 = 0;
-
-
-    base.forEach(
-    function(numero){
-
-        const familias =
-        familiasQueBatem(
-            numero
-        );
-
-        const b0 =
-        familias.has(0)
-        ? 1
-        : 0;
-
-        const b6 =
-        familias.has(6)
-        ? 1
-        : 0;
-
-        const b9 =
-        familias.has(9)
-        ? 1
-        : 0;
-
-
-        let chave = "";
-
-        if(b0) chave += "0";
-        if(b6) chave += "6";
-        if(b9) chave += "9";
-
-        if(!chave){
-            chave = "-";
-        }
-
-        chaves.push(
-            chave
-        );
-
-
-        soma0 += b0;
-        soma6 += b6;
-        soma9 += b9;
-
-
-        prefix0.push(
-            soma0
-        );
-
-        prefix6.push(
-            soma6
-        );
-
-        prefix9.push(
-            soma9
-        );
-
+    eventos.push({
+      t0:b0,
+      t6:b6,
+      t9:b9
     });
 
+    pontos.push({
+      posicao:index+1,
+      numero,
+      t0,
+      t6,
+      t9
+    });
 
-    return {
-        base,
-        chaves,
-        prefix0,
-        prefix6,
-        prefix9
-    };
+  });
+
+  return {
+    pontos,
+    eventos,
+    total0:t0,
+    total6:t6,
+    total9:t9
+  };
 }
 
 
-/* =========================================================
-   SIMILARIDADE ENTRE JANELAS
-========================================================= */
+function chaveEvento(e){
 
-function similaridadeEntreJanelas(
-    contexto,
-    inicioAtual,
-    inicioAntigo,
-    tamanho
-){
+  let c="";
 
-    let eventosIguais = 0;
-    let erro = 0;
+  if(e.t0) c+="0";
+  if(e.t6) c+="6";
+  if(e.t9) c+="9";
+
+  return c || "-";
+}
 
 
-    for(
-        let i=0;
-        i<tamanho;
-        i++
+function calcularSimilaridade(atual, antiga){
+
+  const tamanho = atual.length;
+
+  if(
+    tamanho === 0 ||
+    antiga.length !== tamanho
+  ){
+    return 0;
+  }
+
+  const a = gerarTrajetoria(atual);
+  const b = gerarTrajetoria(antiga);
+
+  let iguais=0;
+
+  for(let i=0;i<tamanho;i++){
+
+    if(
+      chaveEvento(a.eventos[i]) ===
+      chaveEvento(b.eventos[i])
     ){
-
-        if(
-            contexto.chaves[
-                inicioAtual+i
-            ]
-            ===
-            contexto.chaves[
-                inicioAntigo+i
-            ]
-        ){
-            eventosIguais++;
-        }
-
-
-        const a0 =
-        contexto.prefix0[
-            inicioAtual+i+1
-        ]
-        -
-        contexto.prefix0[
-            inicioAtual
-        ];
-
-
-        const a6 =
-        contexto.prefix6[
-            inicioAtual+i+1
-        ]
-        -
-        contexto.prefix6[
-            inicioAtual
-        ];
-
-
-        const a9 =
-        contexto.prefix9[
-            inicioAtual+i+1
-        ]
-        -
-        contexto.prefix9[
-            inicioAtual
-        ];
-
-
-        const b0 =
-        contexto.prefix0[
-            inicioAntigo+i+1
-        ]
-        -
-        contexto.prefix0[
-            inicioAntigo
-        ];
-
-
-        const b6 =
-        contexto.prefix6[
-            inicioAntigo+i+1
-        ]
-        -
-        contexto.prefix6[
-            inicioAntigo
-        ];
-
-
-        const b9 =
-        contexto.prefix9[
-            inicioAntigo+i+1
-        ]
-        -
-        contexto.prefix9[
-            inicioAntigo
-        ];
-
-
-        erro +=
-        Math.abs(
-            a0-b0
-        );
-
-        erro +=
-        Math.abs(
-            a6-b6
-        );
-
-        erro +=
-        Math.abs(
-            a9-b9
-        );
-
+      iguais++;
     }
 
+  }
 
-    const scoreEventos =
-    eventosIguais /
-    tamanho *
-    100;
+  const scoreEventos =
+    iguais/tamanho*100;
 
+  let erro=0;
 
-    const maxErro =
-    tamanho *
-    tamanho *
-    3;
+  for(let i=0;i<tamanho;i++){
 
+    erro += Math.abs(
+      a.pontos[i].t0 -
+      b.pontos[i].t0
+    );
 
-    let scoreForma =
-    1 -
-    erro /
-    maxErro;
+    erro += Math.abs(
+      a.pontos[i].t6 -
+      b.pontos[i].t6
+    );
 
+    erro += Math.abs(
+      a.pontos[i].t9 -
+      b.pontos[i].t9
+    );
 
-    scoreForma =
+  }
+
+  const maxErro =
+    tamanho*tamanho*3;
+
+  let scoreForma =
+    1-(erro/maxErro);
+
+  scoreForma =
     Math.max(
-        0,
-        Math.min(
-            1,
-            scoreForma
-        )
-    )
-    *
-    100;
+      0,
+      Math.min(1,scoreForma)
+    )*100;
 
-
-    return (
-        scoreEventos *
-        0.80
-        +
-        scoreForma *
-        0.20
-    );
+  return (
+    scoreEventos*0.80 +
+    scoreForma*0.20
+  );
 }
 
 
 /* =========================================================
-   PROCURAR RÉPLICAS
-   totalUsavel = quantidade de resultados
-   disponíveis naquele momento.
+   RÉPLICAS
 ========================================================= */
 
-function procurarReplicasNoIntervalo(
-    contexto,
-    totalUsavel,
-    tamanho
-){
+function selecionarReplicas(base, tamanho){
 
-    if(
-        totalUsavel <
-        tamanho * 2 + 1
-    ){
+  const total = base.length;
 
-        return {
-            suficiente:false,
-            replicas:[],
-            totalJanelas:0
-        };
+  if(total < tamanho*2+1){
 
+    return {
+      estado:"AGUARDANDO",
+      replicas:[],
+      similaridade:0
+    };
+
+  }
+
+  const inicioAtual =
+    total-tamanho;
+
+  const janelaAtual =
+    base.slice(inicioAtual);
+
+  const todas=[];
+
+  for(
+    let inicio=0;
+    inicio+tamanho<inicioAtual;
+    inicio++
+  ){
+
+    const fim =
+      inicio+tamanho;
+
+    const proximo =
+      base[fim];
+
+    if(proximo === undefined){
+      continue;
     }
 
+    todas.push({
 
-    const inicioAtual =
-    totalUsavel -
-    tamanho;
+      inicio,
+      fim,
+      proximo,
 
+      similaridade:
+        calcularSimilaridade(
+          janelaAtual,
+          base.slice(inicio,fim)
+        ),
 
-    const replicas = [];
-
-
-    for(
-        let inicio=0;
-        inicio+tamanho<inicioAtual;
-        inicio++
-    ){
-
-        const fim =
-        inicio +
-        tamanho;
-
-
-        const proximo =
-        contexto.base[
-            fim
-        ];
-
-
-        if(
-            proximo === undefined
-        ){
-            continue;
-        }
-
-
-        replicas.push({
-
-            inicio,
-            fim,
-            proximo,
-
-            similaridade:
-            similaridadeEntreJanelas(
-                contexto,
-                inicioAtual,
-                inicio,
-                tamanho
-            ),
-
-            distancia:
-            inicioAtual -
-            fim
-
-        });
-
-    }
-
-
-    replicas.sort(
-    function(a,b){
-
-        if(
-            Math.abs(
-                b.similaridade -
-                a.similaridade
-            )
-            >
-            0.0001
-        ){
-
-            return (
-                b.similaridade -
-                a.similaridade
-            );
-
-        }
-
-        return (
-            a.distancia -
-            b.distancia
-        );
+      distancia:
+        inicioAtual-fim
 
     });
 
+  }
+
+  todas.sort((a,b) => {
+
+    if(
+      Math.abs(
+        b.similaridade-a.similaridade
+      ) > 0.0001
+    ){
+      return b.similaridade-a.similaridade;
+    }
+
+    return a.distancia-b.distancia;
+
+  });
+
+  if(!todas.length){
 
     return {
-        suficiente:true,
-        replicas,
-        totalJanelas:
-        replicas.length
+      estado:"SEM DADOS",
+      replicas:[],
+      similaridade:0
     };
-}
 
+  }
 
-/* =========================================================
-   ZONAS ENCONTRADAS
-========================================================= */
+  let qtd =
+    Math.ceil(
+      todas.length *
+      PERCENTUAL_REPLICAS_RX
+    );
 
-function contarZonasDoGrupo(grupo){
+  qtd =
+    Math.max(
+      qtd,
+      MIN_REPLICAS_RX
+    );
 
-    const zonas =
+  qtd =
+    Math.min(
+      qtd,
+      todas.length,
+      MAX_REPLICAS_RX
+    );
+
+  const grupo =
+    todas.slice(0,qtd);
+
+  const zonas =
     new Set();
 
+  grupo.forEach(item => {
 
-    grupo.forEach(
-    function(item){
+    idsQueBatem(item.proximo)
+      .forEach(id => zonas.add(id));
 
-        idsQueBatem(
-            item.proximo
-        )
-        .forEach(
-        function(id){
+  });
 
-            if(
-                TODOS_IDS_RX
-                .includes(id)
-            ){
-                zonas.add(id);
-            }
+  let indice=qtd;
 
-        });
+  while(
+    zonas.size < MIN_ZONAS_RX &&
+    indice < todas.length &&
+    grupo.length < MAX_REPLICAS_RX
+  ){
 
-    });
+    const item =
+      todas[indice++];
 
+    grupo.push(item);
 
-    return zonas;
+    idsQueBatem(item.proximo)
+      .forEach(id => zonas.add(id));
+
+  }
+
+  const similaridade =
+    grupo.reduce(
+      (s,x) => s+x.similaridade,
+      0
+    ) / grupo.length;
+
+  return {
+    estado:"OK",
+    replicas:grupo,
+    similaridade,
+    zonasEncontradas:zonas.size
+  };
 }
 
 
 /* =========================================================
-   SELECIONAR RÉPLICAS
+   ESTADO ATUAL ALTO / BAIXO
 ========================================================= */
 
-function selecionarReplicasNoIntervalo(
-    contexto,
-    totalUsavel,
-    tamanho
-){
+function analisarEstadoAtual(base){
 
-    const busca =
-    procurarReplicasNoIntervalo(
-        contexto,
-        totalUsavel,
-        tamanho
-    );
+  const janela =
+    base.slice(-JANELA_ESTADO);
 
+  let baixos=0;
+  let altos=0;
+  let zero=0;
 
-    if(
-        !busca.suficiente
-    ){
+  janela.forEach(n => {
 
-        return {
-            estado:"AGUARDANDO",
-            replicas:[],
-            melhor:0,
-            nivel:0,
-            totalJanelas:0,
-            zonasEncontradas:0
-        };
-
+    if(n === 0){
+      zero++;
+    }
+    else if(n <= 18){
+      baixos++;
+    }
+    else{
+      altos++;
     }
 
+  });
 
-    if(
-        !busca.replicas.length
-    ){
+  const validos =
+    baixos+altos;
 
-        return {
-            estado:"SEM DADOS",
-            replicas:[],
-            melhor:0,
-            nivel:0,
-            totalJanelas:0,
-            zonasEncontradas:0
-        };
+  const pBaixo =
+    validos
+    ?
+    baixos/validos
+    :
+    0.5;
 
-    }
+  const pAlto =
+    validos
+    ?
+    altos/validos
+    :
+    0.5;
 
-
-    const totalDisponivel =
-    busca.replicas.length;
-
-
-    let quantidadeInicial =
-    Math.ceil(
-        totalDisponivel *
-        PERCENTUAL_REPLICAS_RX
-    );
-
-
-    quantidadeInicial =
-    Math.max(
-        quantidadeInicial,
-        MIN_REPLICAS_RX
-    );
-
-
-    quantidadeInicial =
-    Math.min(
-        quantidadeInicial,
-        totalDisponivel,
-        MAX_REPLICAS_RX
-    );
-
-
-    const grupo =
-    busca.replicas.slice(
-        0,
-        quantidadeInicial
-    );
-
-
-    let zonas =
-    contarZonasDoGrupo(
-        grupo
-    );
-
-
-    let indice =
-    quantidadeInicial;
-
-
-    while(
-        zonas.size <
-        MIN_ZONAS_RX
-        &&
-        indice <
-        totalDisponivel
-        &&
-        grupo.length <
-        MAX_REPLICAS_RX
-    ){
-
-        grupo.push(
-            busca.replicas[
-                indice
-            ]
-        );
-
-        indice++;
-
-
-        zonas =
-        contarZonasDoGrupo(
-            grupo
-        );
-
-    }
-
-
-    return {
-
-        estado:
-        grupo.length
-        ?
-        "OK"
-        :
-        "SEM DADOS",
-
-        replicas:
-        grupo,
-
-        melhor:
-        busca.replicas[0]
-        .similaridade,
-
-        nivel:
-        grupo.length
-        ?
-        grupo[
-            grupo.length-1
-        ].similaridade
-        :
-        0,
-
-        totalJanelas:
-        totalDisponivel,
-
-        zonasEncontradas:
-        zonas.size
-
-    };
+  return {
+    janela,
+    baixos,
+    altos,
+    zero,
+    pBaixo,
+    pAlto
+  };
 }
 
 
 /* =========================================================
-   FREQUÊNCIA DOS RESULTADOS DAS RÉPLICAS
+   FREQUÊNCIA DAS RÉPLICAS
 ========================================================= */
 
-function gerarFrequenciaReplicas(
-    replicas
-){
+function gerarFrequenciaReplicas(replicas){
 
-    const frequencia =
+  const freq =
     new Map();
 
+  track.forEach(n =>
+    freq.set(n,0)
+  );
 
-    track.forEach(
-    function(numero){
+  replicas.forEach(item => {
 
-        frequencia.set(
-            numero,
-            0
-        );
+    if(freq.has(item.proximo)){
 
-    });
+      freq.set(
+        item.proximo,
+        freq.get(item.proximo)+1
+      );
 
+    }
 
-    replicas.forEach(
-    function(item){
+  });
 
-        const numero =
-        Number(
-            item.proximo
-        );
-
-
-        if(
-            frequencia.has(
-                numero
-            )
-        ){
-
-            frequencia.set(
-                numero,
-                frequencia.get(
-                    numero
-                )
-                +
-                1
-            );
-
-        }
-
-    });
-
-
-    return frequencia;
+  return freq;
 }
 
 
 /* =========================================================
-   AVALIAÇÃO ESTRATÉGICA DE SETOR
+   SETORES + MOMENTO DA MESA
 ========================================================= */
 
 function avaliarSetor(
+  centro,
+  quantidade,
+  frequencia,
+  momento
+){
+
+  const numeros =
+    setorVizinhosOrdenado(
+      centro,
+      quantidade
+    );
+
+  if(!numeros.length){
+    return null;
+  }
+
+  let suporte=0;
+  let score=0;
+  let distintos=0;
+
+  let altosSetor=0;
+  let baixosSetor=0;
+
+  numeros.forEach((numero,index) => {
+
+    const qtd =
+      frequencia.get(numero) || 0;
+
+    suporte += qtd;
+
+    if(qtd > 0){
+      distintos++;
+    }
+
+    const distancia =
+      Math.abs(index-quantidade);
+
+    let mult=1;
+
+    if(quantidade === 2){
+
+      if(distancia === 0){
+        mult=1.35;
+      }
+      else if(distancia === 1){
+        mult=1.15;
+      }
+
+    }else{
+
+      if(distancia === 0){
+        mult=1.25;
+      }
+
+    }
+
+    score += qtd*mult;
+
+    if(numero >= 19){
+      altosSetor++;
+    }
+
+    else if(
+      numero >=1 &&
+      numero <=18
+    ){
+      baixosSetor++;
+    }
+
+  });
+
+
+  /*
+    ESTADO ATUAL:
+
+    É apenas um ajuste pequeno.
+    Não substitui o Raio X.
+
+    Se últimos 20 estão mais altos,
+    setores com maior presença alta
+    recebem pequeno bônus.
+  */
+
+  if(momento){
+
+    const desequilibrio =
+      momento.pAlto -
+      momento.pBaixo;
+
+    const balancoSetor =
+      (
+        altosSetor -
+        baixosSetor
+      )
+      /
+      numeros.length;
+
+    score +=
+      suporte *
+      desequilibrio *
+      balancoSetor *
+      0.30;
+
+  }
+
+
+  return {
     centro,
     quantidade,
-    frequencia
-){
-
-    const numeros =
-    setorVizinhosOrdenado(
-        centro,
-        quantidade
-    );
-
-
-    const ampliado =
-    setorVizinhosOrdenado(
-        centro,
-        quantidade+1
-    );
-
-
-    if(
-        !numeros.length ||
-        !ampliado.length
-    ){
-        return null;
-    }
-
-
-    let ocorrencias = 0;
-    let distintos = 0;
-    let score = 0;
-
-
-    numeros.forEach(
-    function(numero,index){
-
-        const quantidadeNumero =
-        frequencia.get(
-            numero
-        )
-        ||
-        0;
-
-
-        ocorrencias +=
-        quantidadeNumero;
-
-
-        if(
-            quantidadeNumero > 0
-        ){
-            distintos++;
-        }
-
-
-        const distancia =
-        Math.abs(
-            index -
-            quantidade
-        );
-
-
-        let pesoPosicao = 1;
-
-
-        if(
-            quantidade === 2
-        ){
-
-            if(
-                distancia === 0
-            ){
-                pesoPosicao = 1.45;
-            }
-
-            else if(
-                distancia === 1
-            ){
-                pesoPosicao = 1.20;
-            }
-
-            else{
-                pesoPosicao = 1.00;
-            }
-
-        }
-
-        else{
-
-            if(
-                distancia === 0
-            ){
-                pesoPosicao = 1.30;
-            }
-
-            else{
-                pesoPosicao = 1.00;
-            }
-
-        }
-
-
-        score +=
-        quantidadeNumero *
-        pesoPosicao;
-
-    });
-
-
-    const externoEsquerda =
-    ampliado[0];
-
-
-    const externoDireita =
-    ampliado[
-        ampliado.length-1
-    ];
-
-
-    const freqExtE =
-    frequencia.get(
-        externoEsquerda
-    )
-    ||
-    0;
-
-
-    const freqExtD =
-    frequencia.get(
-        externoDireita
-    )
-    ||
-    0;
-
-
-    /*
-    Se os erros estão imediatamente
-    depois do setor, o setor atual
-    perde força e um setor deslocado
-    tende a ganhar.
-    */
-
-    score -=
-    (
-        freqExtE +
-        freqExtD
-    )
-    *
-    0.35;
-
-
-    return {
-
-        centro,
-        quantidade,
-        numeros,
-
-        ocorrencias,
-        distintos,
-        score,
-
-        externoEsquerda,
-        externoDireita,
-        freqExtE,
-        freqExtD
-
-    };
-}
-
-
-/* =========================================================
-   SOBREPOSIÇÃO
-========================================================= */
-
-function temSobreposicao(
     numeros,
-    usados
-){
-
-    return numeros.some(
-    function(numero){
-
-        return usados.has(
-            numero
-        );
-
-    });
+    suporte,
+    distintos,
+    score
+  };
 }
 
 
 /* =========================================================
-   CANDIDATOS
+   MONTA 5x2V + 1x1V
 ========================================================= */
 
-function gerarTodosCandidatos(
-    quantidade,
-    frequencia
+function montarJogada(
+  replicas,
+  base
 ){
 
-    const lista = [];
-
-
-    track.forEach(
-    function(centro){
-
-        const candidato =
-        avaliarSetor(
-            centro,
-            quantidade,
-            frequencia
-        );
-
-
-        if(candidato){
-            lista.push(
-                candidato
-            );
-        }
-
-    });
-
-
-    lista.sort(
-    function(a,b){
-
-        if(
-            Math.abs(
-                b.score -
-                a.score
-            )
-            >
-            0.0001
-        ){
-
-            return (
-                b.score -
-                a.score
-            );
-
-        }
-
-
-        if(
-            b.ocorrencias !==
-            a.ocorrencias
-        ){
-
-            return (
-                b.ocorrencias -
-                a.ocorrencias
-            );
-
-        }
-
-
-        if(
-            b.distintos !==
-            a.distintos
-        ){
-
-            return (
-                b.distintos -
-                a.distintos
-            );
-
-        }
-
-
-        return (
-            indiceRoda(
-                a.centro
-            )
-            -
-            indiceRoda(
-                b.centro
-            )
-        );
-
-    });
-
-
-    return lista;
-}
-
-
-/* =========================================================
-   JOGADA EXATA
-
-   SEMPRE TENTA:
-
-   5 SETORES 2V
-   1 SETOR 1V
-
-   SEM SOBREPOSIÇÃO.
-
-   O algoritmo testa cada possível 1V
-   como reserva e monta os cinco 2V
-   restantes. Escolhe o conjunto de
-   maior pontuação.
-========================================================= */
-
-function montarJogadaBaseDasReplicas(
-    replicas
-){
-
-    const frequencia =
+  const frequencia =
     gerarFrequenciaReplicas(
-        replicas
+      replicas
     );
 
+  const momento =
+    analisarEstadoAtual(
+      base
+    );
 
-    const candidatos2 =
-    gerarTodosCandidatos(
+  const candidatos2 =
+    track
+    .map(c =>
+      avaliarSetor(
+        c,
         2,
-        frequencia
-    );
-
-
-    const candidatos1 =
-    gerarTodosCandidatos(
-        1,
-        frequencia
-    );
-
-
-    let melhorPlano = null;
-
-
-    candidatos1.forEach(
-    function(reserva1){
-
-        const usados =
-        new Set(
-            reserva1.numeros
-        );
-
-
-        const escolhidos2 = [];
-
-        let scoreTotal =
-        reserva1.score;
-
-
-        for(
-            const candidato
-            of candidatos2
-        ){
-
-            if(
-                escolhidos2.length >=
-                QTD_BLOCOS_2V
-            ){
-                break;
-            }
-
-
-            if(
-                temSobreposicao(
-                    candidato.numeros,
-                    usados
-                )
-            ){
-                continue;
-            }
-
-
-            escolhidos2.push(
-                candidato
-            );
-
-
-            scoreTotal +=
-            candidato.score;
-
-
-            candidato.numeros
-            .forEach(
-            function(numero){
-
-                usados.add(
-                    numero
-                );
-
-            });
-
-        }
-
-
-        if(
-            escolhidos2.length !==
-            QTD_BLOCOS_2V
-        ){
-            return;
-        }
-
-
-        if(
-            usados.size !== 28
-        ){
-            return;
-        }
-
-
-        if(
-            !melhorPlano
-            ||
-            scoreTotal >
-            melhorPlano.scoreTotal
-        ){
-
-            melhorPlano = {
-
-                blocos2:
-                escolhidos2,
-
-                blocos1:[
-                    reserva1
-                ],
-
-                numerosUsados:
-                usados,
-
-                scoreTotal
-
-            };
-
-        }
-
-    });
-
-
-    /*
-    Fallback geométrico.
-    Só entra se a seleção normal não
-    conseguiu montar 28 casas.
-    */
-
-    if(!melhorPlano){
-
-        for(
-            const reserva1
-            of candidatos1
-        ){
-
-            const usados =
-            new Set(
-                reserva1.numeros
-            );
-
-            const blocos2 = [];
-
-
-            for(
-                const candidato
-                of candidatos2
-            ){
-
-                if(
-                    temSobreposicao(
-                        candidato.numeros,
-                        usados
-                    )
-                ){
-                    continue;
-                }
-
-
-                blocos2.push(
-                    candidato
-                );
-
-
-                candidato.numeros
-                .forEach(
-                function(numero){
-
-                    usados.add(
-                        numero
-                    );
-
-                });
-
-
-                if(
-                    blocos2.length ===
-                    5
-                ){
-                    break;
-                }
-
-            }
-
-
-            if(
-                blocos2.length === 5
-                &&
-                usados.size === 28
-            ){
-
-                melhorPlano = {
-
-                    blocos2,
-                    blocos1:[
-                        reserva1
-                    ],
-                    numerosUsados:
-                    usados,
-                    scoreTotal:0
-
-                };
-
-                break;
-
-            }
-
-        }
-
-    }
-
-
-    if(!melhorPlano){
-
-        return {
-            blocos2:[],
-            blocos1:[],
-            numerosUsados:
-            new Set(),
-            scoreTotal:0
-        };
-
-    }
-
-
-    melhorPlano.blocos2.sort(
-    function(a,b){
-
-        return (
-            b.score -
-            a.score
-        );
-
-    });
-
-
-    return melhorPlano;
-}
-
-
-/* =========================================================
-   APLICAR OFFSET
-========================================================= */
-
-function aplicarOffsetJogada(
-    jogada,
-    offset
-){
-
-    function mover(bloco){
-
-        const centro =
-        numeroOffset(
-            bloco.centro,
-            offset
-        );
-
-
-        return {
-
-            ...bloco,
-
-            centro,
-
-            numeros:
-            setorVizinhosOrdenado(
-                centro,
-                bloco.quantidade
-            )
-
-        };
-
-    }
-
-
-    const blocos2 =
-    jogada.blocos2.map(
-        mover
-    );
-
-
-    const blocos1 =
-    jogada.blocos1.map(
-        mover
-    );
-
-
-    const numerosUsados =
-    new Set();
-
-
-    [
-        ...blocos2,
-        ...blocos1
-    ]
-    .forEach(
-    function(bloco){
-
-        bloco.numeros
-        .forEach(
-        function(numero){
-
-            numerosUsados.add(
-                numero
-            );
-
-        });
-
-    });
-
-
-    return {
-        blocos2,
-        blocos1,
-        numerosUsados,
-        totalNumeros:
-        numerosUsados.size,
-        offset
-    };
-}
-
-
-/* =========================================================
-   DISTÂNCIA DO RESULTADO ATÉ A JOGADA
-========================================================= */
-
-function distanciaAteCobertura(
-    numero,
-    cobertura
-){
-
-    if(
-        cobertura.has(
-            numero
-        )
-    ){
-        return 0;
-    }
-
-
-    const indice =
-    indiceRoda(
-        numero
-    );
-
-
-    let menor =
-    Infinity;
-
-
-    cobertura.forEach(
-    function(alvo){
-
-        const outro =
-        indiceRoda(
-            alvo
-        );
-
-
-        let distancia =
-        Math.abs(
-            indice -
-            outro
-        );
-
-
-        distancia =
-        Math.min(
-            distancia,
-            track.length -
-            distancia
-        );
-
-
-        if(
-            distancia <
-            menor
-        ){
-            menor =
-            distancia;
-        }
-
-    });
-
-
-    return menor;
-}
-
-
-/* =========================================================
-   BACKTEST DE OFFSET
-
-   WALK-FORWARD:
-   para testar o resultado T,
-   utiliza apenas resultados anteriores a T.
-========================================================= */
-
-function calibrarOffset(
-    contexto,
-    tamanhoRX
-){
-
-    const base =
-    contexto.base;
-
-
-    const minimoHistorico =
-    Math.max(
-        35,
-        tamanhoRX * 4
-    );
-
-
-    const inicioTeste =
-    Math.max(
-        minimoHistorico,
-        base.length -
-        MAX_TESTES_OFFSET
-    );
-
-
-    const estatisticas =
-    OFFSETS_TESTADOS.map(
-    function(offset){
-
-        return {
-
-            offset,
-
-            testes:0,
-            acertos:0,
-            perto1:0,
-            perto2:0,
-
-            pesoTotal:0,
-            acertoPeso:0,
-
-            recentesTestes:0,
-            recentesAcertos:0
-
-        };
-
-    });
-
-
-    if(
-        base.length <=
-        minimoHistorico
-    ){
-
-        return {
-            offset:0,
-            testes:0,
-            melhor:null,
-            estatisticas
-        };
-
-    }
-
-
-    const quantidadePossivel =
-    Math.max(
-        1,
-        base.length -
-        inicioTeste
-    );
-
-
-    for(
-        let indice=inicioTeste;
-        indice<base.length;
-        indice++
-    ){
-
-        const selecao =
-        selecionarReplicasNoIntervalo(
-            contexto,
-            indice,
-            tamanhoRX
-        );
-
-
-        if(
-            selecao.estado !==
-            "OK"
-            ||
-            !selecao.replicas.length
-        ){
-            continue;
-        }
-
-
-        const jogadaBase =
-        montarJogadaBaseDasReplicas(
-            selecao.replicas
-        );
-
-
-        if(
-            jogadaBase.blocos2.length !== 5
-            ||
-            jogadaBase.blocos1.length !== 1
-        ){
-            continue;
-        }
-
-
-        const resultadoReal =
-        base[
-            indice
-        ];
-
-
-        /*
-        Resultados recentes pesam mais
-        no ranking automático.
-        */
-
-        const progresso =
-        (
-            indice -
-            inicioTeste +
-            1
-        )
-        /
-        quantidadePossivel;
-
-
-        const pesoTempo =
-        0.35 +
-        (
-            progresso *
-            0.65
-        );
-
-
-        const recente =
-        indice >=
-        base.length - 40;
-
-
-        estatisticas.forEach(
-        function(est){
-
-            const jogada =
-            aplicarOffsetJogada(
-                jogadaBase,
-                est.offset
-            );
-
-
-            const distancia =
-            distanciaAteCobertura(
-                resultadoReal,
-                jogada.numerosUsados
-            );
-
-
-            est.testes++;
-
-            est.pesoTotal +=
-            pesoTempo;
-
-
-            if(recente){
-                est.recentesTestes++;
-            }
-
-
-            if(
-                distancia === 0
-            ){
-
-                est.acertos++;
-
-                est.acertoPeso +=
-                pesoTempo;
-
-
-                if(recente){
-                    est.recentesAcertos++;
-                }
-
-            }
-
-            else if(
-                distancia === 1
-            ){
-
-                est.perto1++;
-
-            }
-
-            else if(
-                distancia === 2
-            ){
-
-                est.perto2++;
-
-            }
-
-        });
-
-    }
-
-
-    estatisticas.forEach(
-    function(est){
-
-        est.percentual =
-        est.testes
-        ?
-        est.acertos /
-        est.testes *
-        100
-        :
-        0;
-
-
-        est.percentualPonderado =
-        est.pesoTotal
-        ?
-        est.acertoPeso /
-        est.pesoTotal *
-        100
-        :
-        0;
-
-
-        est.percentualRecente =
-        est.recentesTestes
-        ?
-        est.recentesAcertos /
-        est.recentesTestes *
-        100
-        :
-        0;
-
-
-        /*
-        Offset:
-        acerto manda.
-        Erro a uma casa serve apenas
-        como desempate secundário.
-        */
-
-        est.scoreOffset =
-        (
-            est.percentualPonderado *
-            0.75
-        )
-        +
-        (
-            est.percentualRecente *
-            0.20
-        )
-        +
-        (
-            est.testes
-            ?
-            (
-                est.perto1 /
-                est.testes *
-                100
-            )
-            *
-            0.04
-            :
-            0
-        )
-        +
-        (
-            est.testes
-            ?
-            (
-                est.perto2 /
-                est.testes *
-                100
-            )
-            *
-            0.01
-            :
-            0
-        );
-
-    });
-
-
-    estatisticas.sort(
-    function(a,b){
-
-        if(
-            Math.abs(
-                b.scoreOffset -
-                a.scoreOffset
-            )
-            >
-            0.0001
-        ){
-
-            return (
-                b.scoreOffset -
-                a.scoreOffset
-            );
-
-        }
-
-
-        if(
-            b.acertos !==
-            a.acertos
-        ){
-
-            return (
-                b.acertos -
-                a.acertos
-            );
-
-        }
-
-
-        return (
-            Math.abs(
-                a.offset
-            )
-            -
-            Math.abs(
-                b.offset
-            )
-        );
-
-    });
-
-
-    const melhor =
-    estatisticas[0];
-
-
-    const offsetFinal =
-    melhor
-    &&
-    melhor.testes >= 25
-    ?
-    melhor.offset
-    :
-    0;
-
-
-    return {
-
-        offset:
-        offsetFinal,
-
-        testes:
-        melhor
-        ?
-        melhor.testes
-        :
-        0,
-
-        melhor,
-
-        estatisticas
-
-    };
-}
-
-
-/* =========================================================
-   RANKING RX
-========================================================= */
-
-function gerarRankingRX(
-    selecao
-){
-
-    const mapa =
-    new Map();
-
-
-    TODOS_IDS_RX.forEach(
-    function(id){
-
-        mapa.set(
-            id,
-            {
-                id,
-                ocorrencias:0,
-                melhorSimilaridade:0,
-                maisRecente:Infinity,
-                origem:"RX"
-            }
-        );
-
-    });
-
-
-    let somaSimilaridade = 0;
-
-    let cont0 = 0;
-    let cont6 = 0;
-    let cont9 = 0;
-
-    let totalFamilias = 0;
-
-
-    selecao.replicas
-    .forEach(
-    function(item){
-
-        somaSimilaridade +=
-        item.similaridade;
-
-
-        idsQueBatem(
-            item.proximo
-        )
-        .forEach(
-        function(id){
-
-            if(
-                !mapa.has(id)
-            ){
-                return;
-            }
-
-
-            const registro =
-            mapa.get(id);
-
-
-            registro.ocorrencias++;
-
-
-            registro
-            .melhorSimilaridade =
-            Math.max(
-                registro
-                .melhorSimilaridade,
-                item.similaridade
-            );
-
-
-            registro
-            .maisRecente =
-            Math.min(
-                registro
-                .maisRecente,
-                item.distancia
-            );
-
-        });
-
-
-        const familias =
-        Array.from(
-            familiasQueBatem(
-                item.proximo
-            )
-        );
-
-
-        if(
-            familias.length
-        ){
-
-            const fracao =
-            1 /
-            familias.length;
-
-
-            familias.forEach(
-            function(familia){
-
-                if(
-                    familia === 0
-                ){
-                    cont0 += fracao;
-                }
-
-                if(
-                    familia === 6
-                ){
-                    cont6 += fracao;
-                }
-
-                if(
-                    familia === 9
-                ){
-                    cont9 += fracao;
-                }
-
-            });
-
-
-            totalFamilias++;
-
-        }
-
-    });
-
-
-    const ranking =
-    Array.from(
-        mapa.values()
+        frequencia,
+        momento
+      )
     )
-    .filter(
-    function(item){
+    .sort((a,b) =>
+      b.score-a.score
+    );
 
-        return (
-            item.ocorrencias >
-            0
-        );
-
-    });
-
-
-    ranking.sort(
-    function(a,b){
-
-        if(
-            b.ocorrencias !==
-            a.ocorrencias
-        ){
-
-            return (
-                b.ocorrencias -
-                a.ocorrencias
-            );
-
-        }
-
-
-        if(
-            Math.abs(
-                b.melhorSimilaridade -
-                a.melhorSimilaridade
-            )
-            >
-            0.0001
-        ){
-
-            return (
-                b.melhorSimilaridade -
-                a.melhorSimilaridade
-            );
-
-        }
-
-
-        if(
-            a.maisRecente !==
-            b.maisRecente
-        ){
-
-            return (
-                a.maisRecente -
-                b.maisRecente
-            );
-
-        }
-
-
-        return (
-            TODOS_IDS_RX
-            .indexOf(a.id)
-            -
-            TODOS_IDS_RX
-            .indexOf(b.id)
-        );
-
-    });
-
-
-    const primeiros8 =
-    ranking.slice(
-        0,
-        8
+  const candidatos1 =
+    track
+    .map(c =>
+      avaliarSetor(
+        c,
+        1,
+        frequencia,
+        momento
+      )
+    )
+    .sort((a,b) =>
+      b.score-a.score
     );
 
 
-    const tem0 =
-    primeiros8.some(
-        function(item){
-
-            return (
-                item.id === 0
-            );
-
-        }
-    );
+  let melhor=null;
 
 
-    const tem26 =
-    primeiros8.some(
-        function(item){
+  /*
+    Testa cada possível setor 1V
+    como reserva.
 
-            return (
-                item.id === 26
-            );
+    Depois encaixa cinco 2V
+    sem sobreposição.
+  */
 
-        }
-    );
+  candidatos1.forEach(um => {
 
-
-    const top8 = [];
     const usados =
-    new Set();
+      new Set(
+        um.numeros
+      );
+
+    const dois=[];
+
+    let score =
+      um.score;
 
 
-    for(
-        let i=0;
-        i<ranking.length &&
-        top8.length<8;
-        i++
-    ){
+    for(const candidato of candidatos2){
 
-        const item =
-        ranking[i];
-
-
-        if(
-            usados.has(
-                item.id
-            )
-        ){
-            continue;
-        }
-
-
-        if(
-            tem0 &&
-            tem26 &&
-            (
-                item.id === 0 ||
-                item.id === 26
-            )
-        ){
-
-            const item0 =
-            ranking.find(
-                function(x){
-
-                    return x.id === 0;
-
-                }
-            );
-
-
-            const item26 =
-            ranking.find(
-                function(x){
-
-                    return x.id === 26;
-
-                }
-            );
-
-
-            if(
-                item0 &&
-                item26
-            ){
-
-                top8.push({
-
-                    tipo:"ZERO26",
-
-                    ids:[
-                        0,
-                        26
-                    ],
-
-                    idPrincipal:0,
-
-                    label:"0 + 3",
-
-                    ocorrencias:
-                    item0.ocorrencias +
-                    item26.ocorrencias,
-
-                    ocorrencias0:
-                    item0.ocorrencias,
-
-                    ocorrencias26:
-                    item26.ocorrencias,
-
-                    origem:"RX"
-
-                });
-
-
-                usados.add(0);
-                usados.add(26);
-
-                continue;
-
-            }
-
-        }
-
-
-        top8.push({
-
-            tipo:"NORMAL",
-
-            ids:[
-                item.id
-            ],
-
-            idPrincipal:
-            item.id,
-
-            label:
-            String(
-                item.id
-            ),
-
-            ocorrencias:
-            item.ocorrencias,
-
-            origem:
-            item.origem
-
-        });
-
-
-        usados.add(
-            item.id
+      const sobrepoe =
+        candidato.numeros.some(
+          n => usados.has(n)
         );
+
+      if(sobrepoe){
+        continue;
+      }
+
+      dois.push(candidato);
+
+      score +=
+        candidato.score;
+
+      candidato.numeros.forEach(
+        n => usados.add(n)
+      );
+
+      if(dois.length === 5){
+        break;
+      }
 
     }
 
 
-    TODOS_IDS_RX.forEach(
-    function(id){
+    if(
+      dois.length === 5 &&
+      usados.size === 28
+    ){
 
-        if(
-            top8.length >= 8
-        ){
-            return;
-        }
+      if(
+        !melhor ||
+        score > melhor.score
+      ){
 
+        melhor = {
+          blocos2:dois,
+          blocos1:[um],
+          numerosUsados:usados,
+          score
+        };
 
-        if(
-            usados.has(id)
-        ){
-            return;
-        }
+      }
 
+    }
 
-        top8.push({
-
-            tipo:"NORMAL",
-
-            ids:[
-                id
-            ],
-
-            idPrincipal:
-            id,
-
-            label:
-            String(id),
-
-            ocorrencias:0,
-
-            origem:
-            "SEM DADOS"
-
-        });
+  });
 
 
-        usados.add(id);
+  if(!melhor){
+
+    return {
+      blocos2:[],
+      blocos1:[],
+      numerosUsados:new Set(),
+      score:0
+    };
+
+  }
+
+
+  melhor.blocos2.sort(
+    (a,b) =>
+      b.score-a.score
+  );
+
+  return melhor;
+}
+
+
+/* =========================================================
+   ANALISAR RX 4/5/6
+========================================================= */
+
+function analisarRX(
+  base,
+  tamanho
+){
+
+  const selecao =
+    selecionarReplicas(
+      base,
+      tamanho
+    );
+
+
+  if(
+    selecao.estado !== "OK"
+  ){
+
+    return {
+      tamanho,
+      valido:false,
+      similaridade:0,
+      replicas:[],
+      jogada:null
+    };
+
+  }
+
+
+  const jogada =
+    montarJogada(
+      selecao.replicas,
+      base
+    );
+
+
+  return {
+
+    tamanho,
+
+    valido:
+      jogada.blocos2.length === 5 &&
+      jogada.blocos1.length === 1 &&
+      jogada.numerosUsados.size === 28,
+
+    similaridade:
+      selecao.similaridade,
+
+    replicas:
+      selecao.replicas,
+
+    zonasEncontradas:
+      selecao.zonasEncontradas,
+
+    jogada
+
+  };
+}
+
+
+/* =========================================================
+   SNAPSHOT FIEL
+
+   A jogada gerada AGORA fica guardada.
+   O próximo número será comparado com ela.
+
+   Trocar AUTO/MANUAL não altera snapshot.
+========================================================= */
+
+function criarSnapshot(rx){
+
+  if(
+    !rx ||
+    !rx.valido ||
+    !rx.jogada
+  ){
+    return null;
+  }
+
+  return {
+
+    tamanho:
+      rx.tamanho,
+
+    criadoCom:
+      historico.length,
+
+    numeros:
+      Array.from(
+        rx.jogada.numerosUsados
+      ),
+
+    blocos2:
+      rx.jogada.blocos2.map(
+        b => ({
+          centro:b.centro,
+          numeros:b.numeros.slice()
+        })
+      ),
+
+    blocos1:
+      rx.jogada.blocos1.map(
+        b => ({
+          centro:b.centro,
+          numeros:b.numeros.slice()
+        })
+      )
+
+  };
+}
+
+
+/* =========================================================
+   FECHAR RESULTADO PENDENTE
+
+   É executado ANTES de inserir
+   o novo número no histórico.
+========================================================= */
+
+function avaliarPendentes(
+  novoNumero
+){
+
+  [4,5,6].forEach(rx => {
+
+    const pendente =
+      estado.pendentes[rx];
+
+    if(!pendente){
+      return;
+    }
+
+
+    const green =
+      pendente.numeros.includes(
+        novoNumero
+      );
+
+
+    estado.timeline[rx].push({
+
+      resultado:
+        novoNumero,
+
+      green,
+
+      criadoCom:
+        pendente.criadoCom,
+
+      rx,
+
+      hora:
+        Date.now()
 
     });
 
 
-    const p0 =
-    totalFamilias
-    ?
-    cont0 /
-    totalFamilias *
-    100
-    :
-    0;
-
-
-    const p6 =
-    totalFamilias
-    ?
-    cont6 /
-    totalFamilias *
-    100
-    :
-    0;
-
-
-    const p9 =
-    totalFamilias
-    ?
-    cont9 /
-    totalFamilias *
-    100
-    :
-    0;
-
-
-    const familiasOrdenadas = [
-
-        {
-            familia:0,
-            valor:p0
-        },
-
-        {
-            familia:6,
-            valor:p6
-        },
-
-        {
-            familia:9,
-            valor:p9
-        }
-
-    ]
-    .sort(
-        function(a,b){
-
-            return (
-                b.valor -
-                a.valor
-            );
-
-        }
-    );
-
-
-    return {
-
-        top8:
-        top8.slice(
-            0,
-            8
-        ),
-
-        familias:{
-            0:p0,
-            6:p6,
-            9:p9
-        },
-
-        lider:
-        familiasOrdenadas[0]
-        .valor > 0
-        ?
-        familiasOrdenadas[0]
-        :
-        null,
-
-        similaridade:
-        selecao.replicas.length
-        ?
-        somaSimilaridade /
-        selecao.replicas.length
-        :
-        0
-
-    };
-}
-
-
-/* =========================================================
-   ANALISAR UM RX ESPECÍFICO
-========================================================= */
-
-function analisarRXEspecifico(
-    contexto,
-    tamanho
-){
-
-    const selecao =
-    selecionarReplicasNoIntervalo(
-        contexto,
-        historico.length,
-        tamanho
-    );
-
-
-    if(
-        selecao.estado !==
-        "OK"
-    ){
-
-        return {
-
-            tamanho,
-
-            valido:false,
-
-            replicas:0,
-
-            totalJanelas:
-            selecao.totalJanelas
-            ||
-            0,
-
-            zonasEncontradas:0,
-
-            similaridade:0,
-
-            familias:{
-                0:0,
-                6:0,
-                9:0
-            },
-
-            lider:null,
-
-            ranking:[],
-
-            jogada:{
-                blocos2:[],
-                blocos1:[],
-                numerosUsados:
-                new Set(),
-                totalNumeros:0,
-                offset:0
-            },
-
-            calibracao:null,
-
-            forcaAuto:0
-
-        };
-
-    }
-
-
-    const ranking =
-    gerarRankingRX(
-        selecao
-    );
-
-
-    const jogadaBase =
-    montarJogadaBaseDasReplicas(
-        selecao.replicas
-    );
-
-
-    const calibracao =
-    calibrarOffset(
-        contexto,
-        tamanho
-    );
-
-
-    const jogada =
-    aplicarOffsetJogada(
-        jogadaBase,
-        calibracao.offset
-    );
-
-
-    const melhorTeste =
-    calibracao.melhor;
-
-
-    const taxaPonderada =
-    melhorTeste
-    ?
-    melhorTeste.percentualPonderado
-    :
-    0;
-
-
-    const taxaRecente =
-    melhorTeste
-    ?
-    melhorTeste.percentualRecente
-    :
-    0;
+    estado.timeline[rx] =
+      estado.timeline[rx]
+      .slice(-MAX_TIMELINE);
 
 
     /*
-    FORÇA AUTOMÁTICA
-
-    55% = desempenho ponderado do histórico
-    20% = últimos 40 resultados
-    20% = similaridade atual
-    5%  = quantidade de zonas confirmadas
-
-    Isso faz o AUTO acompanhar o RX
-    que está mais casado com o momento
-    atual sem ignorar o desempenho real.
+      Resultado já foi conferido.
+      Nunca mais é recalculado.
     */
 
-    const confirmacaoZonas =
-    Math.min(
-        100,
-        (
-            selecao.zonasEncontradas /
-            8
-        )
-        *
-        100
-    );
+    estado.pendentes[rx] =
+      null;
+
+  });
 
 
-    const forcaAuto =
-    (
-        taxaPonderada *
-        0.55
-    )
-    +
-    (
-        taxaRecente *
-        0.20
-    )
-    +
-    (
-        ranking.similaridade *
-        0.20
-    )
-    +
-    (
-        confirmacaoZonas *
-        0.05
-    );
-
-
-    return {
-
-        tamanho,
-
-        valido:
-        jogada.blocos2.length === 5
-        &&
-        jogada.blocos1.length === 1
-        &&
-        jogada.numerosUsados.size === 28,
-
-        replicas:
-        selecao.replicas.length,
-
-        totalJanelas:
-        selecao.totalJanelas
-        ||
-        0,
-
-        zonasEncontradas:
-        selecao.zonasEncontradas
-        ||
-        0,
-
-        similaridade:
-        ranking.similaridade,
-
-        familias:
-        ranking.familias,
-
-        lider:
-        ranking.lider,
-
-        ranking:
-        ranking.top8,
-
-        jogada,
-
-        calibracao,
-
-        forcaAuto,
-
-        taxaPonderada,
-
-        taxaRecente
-
-    };
+  salvarEstado();
 }
 
 
 /* =========================================================
-   AUTO 4 / 5 / 6
+   PLACAR REAL
 ========================================================= */
 
-function escolherMelhorRX(
-    analises
+function estatisticaTimeline(rx){
+
+  const timeline =
+    estado.timeline[rx] || [];
+
+
+  const ultimos20 =
+    timeline.slice(-20);
+
+
+  const ultimos10 =
+    timeline.slice(-10);
+
+
+  function taxa(lista){
+
+    if(!lista.length){
+      return 0;
+    }
+
+    const greens =
+      lista.filter(
+        x => x.green
+      ).length;
+
+    return (
+      greens /
+      lista.length *
+      100
+    );
+  }
+
+
+  let sequenciaLoss=0;
+
+  for(
+    let i=timeline.length-1;
+    i>=0;
+    i--
+  ){
+
+    if(timeline[i].green){
+      break;
+    }
+
+    sequenciaLoss++;
+
+  }
+
+
+  return {
+
+    total:
+      timeline.length,
+
+    taxa10:
+      taxa(ultimos10),
+
+    taxa20:
+      taxa(ultimos20),
+
+    taxaHistorica:
+      taxa(
+        timeline.slice(-100)
+      ),
+
+    sequenciaLoss
+
+  };
+}
+
+
+/* =========================================================
+   FORÇA AUTO
+========================================================= */
+
+function calcularForcaAuto(
+  rx
 ){
 
-    const validos =
+  if(
+    !rx ||
+    !rx.valido
+  ){
+    return -Infinity;
+  }
+
+
+  const est =
+    estatisticaTimeline(
+      rx.tamanho
+    );
+
+
+  /*
+    Enquanto não existe histórico real
+    suficiente da estratégia, a
+    similaridade ajuda mais.
+  */
+
+  if(est.total < 5){
+
+    return (
+      rx.similaridade *
+      0.70
+      +
+      (
+        rx.zonasEncontradas || 0
+      )
+      /
+      8 *
+      100 *
+      0.30
+    );
+
+  }
+
+
+  let nota =
+
+    est.taxa10 *
+    PESO_ULTIMOS_10
+
+    +
+
+    est.taxa20 *
+    PESO_ULTIMOS_20
+
+    +
+
+    rx.similaridade *
+    PESO_SIMILARIDADE
+
+    +
+
+    est.taxaHistorica *
+    PESO_HISTORICO;
+
+
+  /*
+    PUNIÇÃO POR LOSS CONSECUTIVO.
+
+    Agora o AUTO não fica agarrado
+    em um RX que começou a falhar.
+  */
+
+  if(est.sequenciaLoss >= 2){
+
+    nota -=
+      (
+        est.sequenciaLoss-1
+      )
+      *
+      4;
+
+  }
+
+
+  return nota;
+}
+
+
+/* =========================================================
+   ESCOLHER AUTO
+
+   NÃO HÁ MAIS TRAVA/HISTERESE.
+========================================================= */
+
+function escolherAuto(analises){
+
+  const ranking =
     analises
-    .filter(
-    function(rx){
+    .filter(x => x.valido)
+    .map(rx => ({
+      ...rx,
+      forcaAuto:
+        calcularForcaAuto(rx),
+      estatistica:
+        estatisticaTimeline(
+          rx.tamanho
+        )
+    }))
+    .sort((a,b) => {
 
-        return rx.valido;
+      if(
+        Math.abs(
+          b.forcaAuto -
+          a.forcaAuto
+        ) > 0.0001
+      ){
+        return b.forcaAuto-a.forcaAuto;
+      }
 
-    })
-    .sort(
-    function(a,b){
-
-        if(
-            Math.abs(
-                b.forcaAuto -
-                a.forcaAuto
-            )
-            >
-            0.0001
-        ){
-
-            return (
-                b.forcaAuto -
-                a.forcaAuto
-            );
-
-        }
-
-
-        if(
-            Math.abs(
-                b.taxaRecente -
-                a.taxaRecente
-            )
-            >
-            0.0001
-        ){
-
-            return (
-                b.taxaRecente -
-                a.taxaRecente
-            );
-
-        }
-
-
-        if(
-            Math.abs(
-                b.similaridade -
-                a.similaridade
-            )
-            >
-            0.0001
-        ){
-
-            return (
-                b.similaridade -
-                a.similaridade
-            );
-
-        }
-
-
+      if(
+        b.estatistica.taxa20 !==
+        a.estatistica.taxa20
+      ){
         return (
-            a.tamanho -
-            b.tamanho
+          b.estatistica.taxa20 -
+          a.estatistica.taxa20
         );
+      }
+
+      return (
+        b.similaridade -
+        a.similaridade
+      );
 
     });
 
 
-    if(
-        !validos.length
-    ){
-        return null;
-    }
-
-
-    const melhor =
-    validos[0];
-
-
-    const atual =
-    validos.find(
-        function(rx){
-
-            return (
-                rx.tamanho ===
-                AUTO_RX_ATUAL
-            );
-
-        }
-    );
-
-
-    /*
-    HISTERese:
-    mantém o atual se a vantagem
-    do concorrente for menor que 3 pontos.
-    */
-
-    let escolhido =
-    melhor;
-
-
-    if(
-        atual
-        &&
-        melhor.tamanho !==
-        atual.tamanho
-        &&
-        (
-            melhor.forcaAuto -
-            atual.forcaAuto
-        )
-        <
-        MARGEM_TROCA_AUTO
-    ){
-
-        escolhido =
-        atual;
-
-    }
-
-
-    AUTO_RX_ATUAL =
-    escolhido.tamanho;
-
-
-    try{
-
-        localStorage.setItem(
-            STORAGE_AUTO_RX,
-            String(
-                AUTO_RX_ATUAL
-            )
-        );
-
-    }catch(e){}
-
-
-    console.table(
-
-        validos.map(
-        function(rx){
-
-            return {
-
-                RX:
-                rx.tamanho,
-
-                FORCA:
-                rx.forcaAuto
-                .toFixed(1),
-
-                HISTORICO:
-                rx.taxaPonderada
-                .toFixed(1) +
-                "%",
-
-                RECENTE:
-                rx.taxaRecente
-                .toFixed(1) +
-                "%",
-
-                SIMILARIDADE:
-                rx.similaridade
-                .toFixed(1) +
-                "%",
-
-                OFFSET:
-                rx.jogada.offset,
-
-                ATIVO:
-                rx.tamanho ===
-                escolhido.tamanho
-                ?
-                "SIM"
-                :
-                ""
-
-            };
-
-        })
-
-    );
-
-
-    return escolhido;
-}
-
-
-/* =========================================================
-   ANÁLISE PRINCIPAL
-========================================================= */
-
-function analisarPrincipal(){
-
-    const contexto =
-    criarContextoEventos(
-        historico
-    );
-
-
-    if(
-        MODO_RX ===
-        "MANUAL"
-    ){
-
-        const manual =
-        analisarRXEspecifico(
-            contexto,
-            TAMANHO_RX
-        );
-
-
-        return {
-
-            ativo:
-            manual,
-
-            rankingAuto:[
-                manual
-            ]
-
-        };
-
-    }
-
-
-    const analises = [
-
-        analisarRXEspecifico(
-            contexto,
-            4
-        ),
-
-        analisarRXEspecifico(
-            contexto,
-            5
-        ),
-
-        analisarRXEspecifico(
-            contexto,
-            6
-        )
-
-    ];
-
-
-    const escolhido =
-    escolherMelhorRX(
-        analises
-    );
-
-
-    if(escolhido){
-
-        TAMANHO_RX =
-        escolhido.tamanho;
-
-    }
-
-
+  if(!ranking.length){
     return {
-
-        ativo:
-        escolhido
-        ||
-        analises.find(
-            function(rx){
-
-                return rx.valido;
-
-            }
-        )
-        ||
-        analises[0],
-
-        rankingAuto:
-        analises
-        .slice()
-        .sort(
-        function(a,b){
-
-            return (
-                b.forcaAuto -
-                a.forcaAuto
-            );
-
-        })
-
+      escolhido:null,
+      ranking:[]
     };
+  }
+
+
+  estado.rxAutoAtual =
+    ranking[0].tamanho;
+
+
+  salvarEstado();
+
+
+  return {
+    escolhido:
+      ranking[0],
+    ranking
+  };
 }
 
 
 /* =========================================================
-   ÚLTIMOS 14
+   CALCULAR ESTADO ATUAL DOS TRÊS
 ========================================================= */
 
-function analisarJanela14(){
+function calcularTudo(){
 
-    const janela =
-    historico.slice(
-        -TAMANHO_JANELA
+  const rx4 =
+    analisarRX(
+      historico,
+      4
+    );
+
+  const rx5 =
+    analisarRX(
+      historico,
+      5
+    );
+
+  const rx6 =
+    analisarRX(
+      historico,
+      6
     );
 
 
-    return {
+  const analises = [
+    rx4,
+    rx5,
+    rx6
+  ];
 
-        janela,
 
-        sequencia:
-        janela.map(
-        function(numero){
+  const auto =
+    escolherAuto(
+      analises
+    );
 
-            return {
 
-                numero,
+  /*
+    IMPORTANTÍSSIMO:
 
-                ids:
-                idsQueBatem(
-                    numero
-                )
+    Os três recebem snapshot,
+    mesmo se AUTO estiver usando
+    apenas um.
 
-            };
+    Assim conseguimos saber
+    honestamente se 4, 5 ou 6
+    teria acertado o próximo giro.
+  */
 
-        })
+  analises.forEach(rx => {
 
-    };
+    estado.pendentes[
+      rx.tamanho
+    ] =
+      criarSnapshot(rx);
+
+  });
+
+
+  salvarEstado();
+
+
+  let ativo;
+
+
+  if(
+    estado.modo === "MANUAL"
+  ){
+
+    ativo =
+      analises.find(
+        x =>
+          x.tamanho ===
+          estado.manualRX
+      );
+
+  }
+
+  else{
+
+    ativo =
+      auto.escolhido;
+
+  }
+
+
+  return {
+    analises,
+    auto,
+    ativo
+  };
 }
 
 
 /* =========================================================
-   MODO AUTO / MANUAL
+   INSERIR NÚMERO
+
+   ORDEM É FUNDAMENTAL:
+
+   1. verifica snapshots antigos;
+   2. grava GREEN/LOSS;
+   3. insere novo número;
+   4. calcula novas jogadas;
+   5. congela para próximo giro.
 ========================================================= */
 
-function ativarAuto(){
+function adicionarNumero(numero){
 
-    MODO_RX =
-    "AUTO";
-
-
-    try{
-
-        localStorage.setItem(
-            STORAGE_MODO_RX,
-            MODO_RX
-        );
-
-    }catch(e){}
-
-
-    invalidarCache();
-
-    render();
-}
-
-
-function ativarManual(
-    tamanho
-){
-
-    if(
-        tamanho !== 4 &&
-        tamanho !== 5 &&
-        tamanho !== 6
-    ){
-        return;
-    }
-
-
-    MODO_RX =
-    "MANUAL";
-
-    TAMANHO_RX =
-    tamanho;
-
-
-    try{
-
-        localStorage.setItem(
-            STORAGE_MODO_RX,
-            MODO_RX
-        );
-
-
-        localStorage.setItem(
-            STORAGE_RX,
-            String(
-                TAMANHO_RX
-            )
-        );
-
-    }catch(e){}
-
-
-    invalidarCache();
-
-    render();
-}
-
-
-/* =========================================================
-   AÇÕES HISTÓRICO
-========================================================= */
-
-function inserirHistorico(){
-
-    const campo =
-    document.getElementById(
-        "entradaHistorico"
-    );
-
-
-    const numeros =
-    extrairNumeros(
-        campo.value
-    );
-
-
-    if(
-        !numeros.length
-    ){
-
-        statusArea.textContent =
-        "Nenhum número válido.";
-
-
-        statusArea.style.color =
-        "#ff5252";
-
-
-        return;
-
-    }
-
-
-    historico =
-    numeros.slice(
-        -5000
-    );
-
-
-    salvarHistorico();
-
-    invalidarCache();
-
-
-    campo.value = "";
-
-
-    statusArea.textContent =
-    historico.length +
-    " números carregados.";
-
-
-    statusArea.style.color =
-    "#00e676";
-
-
-    render();
-}
-
-
-function adicionarNumero(
+  avaliarPendentes(
     numero
-){
+  );
 
-    historico.push(
-        numero
+
+  historico.push(
+    numero
+  );
+
+
+  historico =
+    historico.slice(
+      -MAX_HISTORICO
     );
 
 
-    if(
-        historico.length >
-        5000
-    ){
-        historico.shift();
-    }
+  salvarHistorico();
 
 
-    salvarHistorico();
-
-    invalidarCache();
-
-
-    statusArea.textContent =
+  statusArea.textContent =
     "Número " +
     numero +
     " inserido.";
 
 
-    statusArea.style.color =
+  statusArea.style.color =
     "#00e5ff";
 
 
-    render();
+  render();
 }
 
 
-function apagarUltimo(){
+/* =========================================================
+   COLAR HISTÓRICO
 
-    if(
-        !historico.length
-    ){
-        return;
-    }
+   Aqui não inventamos GREEN/LOSS
+   retroativo.
+
+   Timeline começa fielmente a partir
+   do momento em que o sistema passa
+   a acompanhar os próximos números.
+========================================================= */
+
+function extrairNumeros(texto){
+
+  const encontrados =
+    texto.match(
+      /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
+    );
+
+  if(!encontrados){
+    return [];
+  }
+
+  return encontrados
+    .map(Number)
+    .filter(
+      n => n>=0 && n<=36
+    )
+    .slice(-MAX_HISTORICO);
+}
 
 
-    const apagado =
-    historico.pop();
+function inserirHistorico(){
+
+  const campo =
+    document.getElementById(
+      "entradaHistorico"
+    );
 
 
-    salvarHistorico();
+  const numeros =
+    extrairNumeros(
+      campo.value
+    );
 
-    invalidarCache();
 
+  if(!numeros.length){
 
     statusArea.textContent =
-    "Número " +
-    apagado +
-    " apagado.";
+      "Nenhum número válido.";
+
+    return;
+  }
 
 
-    statusArea.style.color =
-    "#ffc107";
+  historico =
+    numeros;
 
 
-    render();
+  /*
+    Novo histórico:
+    limpa timeline antiga porque
+    não pertence necessariamente
+    a esta sequência.
+  */
+
+  estado.timeline = {
+    4:[],
+    5:[],
+    6:[]
+  };
+
+  estado.pendentes = {
+    4:null,
+    5:null,
+    6:null
+  };
+
+
+  salvarHistorico();
+  salvarEstado();
+
+
+  campo.value = "";
+
+
+  statusArea.textContent =
+    historico.length +
+    " números carregados.";
+
+
+  render();
+}
+
+
+/* =========================================================
+   APAGAR
+========================================================= */
+
+function apagarUltimo(){
+
+  if(!historico.length){
+    return;
+  }
+
+
+  historico.pop();
+
+
+  /*
+    Ao voltar o histórico manualmente,
+    o snapshot atual deixa de ser válido.
+  */
+
+  estado.pendentes = {
+    4:null,
+    5:null,
+    6:null
+  };
+
+
+  salvarHistorico();
+  salvarEstado();
+
+  render();
 }
 
 
 function apagarTudo(){
 
-    if(
-        !window.confirm(
-            "Apagar todo o histórico?"
-        )
-    ){
-        return;
-    }
+  if(
+    !confirm(
+      "Apagar todo o histórico?"
+    )
+  ){
+    return;
+  }
 
 
-    historico = [];
+  historico=[];
 
 
-    salvarHistorico();
-
-    invalidarCache();
-
-
-    statusArea.textContent =
-    "Histórico apagado.";
+  estado.timeline = {
+    4:[],
+    5:[],
+    6:[]
+  };
 
 
-    statusArea.style.color =
-    "#ff5252";
+  estado.pendentes = {
+    4:null,
+    5:null,
+    6:null
+  };
 
 
-    render();
+  salvarHistorico();
+  salvarEstado();
+
+  render();
+}
+
+
+/* =========================================================
+   AUTO / MANUAL
+========================================================= */
+
+function ativarAuto(){
+
+  estado.modo =
+    "AUTO";
+
+  salvarEstado();
+
+  render();
+}
+
+
+function ativarManual(rx){
+
+  estado.modo =
+    "MANUAL";
+
+  estado.manualRX =
+    rx;
+
+  salvarEstado();
+
+  render();
 }
 
 
@@ -3657,437 +1794,314 @@ function apagarTudo(){
    INTERFACE
 ========================================================= */
 
-document.body.innerHTML = "";
+document.body.innerHTML="";
 
-document.body.style.margin =
-"0";
-
-document.body.style.background =
-"#101010";
-
-document.body.style.color =
-"#fff";
-
-document.body.style.fontFamily =
-"Arial,sans-serif";
+document.body.style.margin="0";
+document.body.style.background="#101010";
+document.body.style.color="#fff";
+document.body.style.fontFamily="Arial,sans-serif";
 
 
 const app =
-document.createElement(
-    "div"
-);
+document.createElement("div");
 
 
 app.innerHTML = `
 
 <style>
 
-*{
-box-sizing:border-box;
-}
+*{box-sizing:border-box}
 
-button,
-textarea{
-font-family:Arial,sans-serif;
+button,textarea{
+font-family:Arial,sans-serif
 }
 
 button{
-cursor:pointer;
-touch-action:manipulation;
+cursor:pointer
 }
 
-.app069{
-max-width:850px;
+.app{
+max-width:880px;
 margin:auto;
-padding:7px;
+padding:7px
 }
 
 h2{
 text-align:center;
-margin:5px 0 10px;
-font-size:22px;
+margin:5px 0 9px
 }
 
 .painel{
 background:#1d1d1f;
 border:1px solid #444;
 border-radius:10px;
-padding:9px;
-margin-bottom:8px;
+padding:8px;
+margin-bottom:7px
 }
 
-.tituloPainel{
+.titulo{
 font-size:11px;
 font-weight:900;
-color:#aaa;
-}
-
-.cabecalhoPainel{
-display:flex;
-align-items:center;
-justify-content:space-between;
-gap:6px;
-}
-
-.cabecalhoDireita{
-display:flex;
-align-items:center;
-gap:5px;
-}
-
-.btnMostrar{
-background:#292929;
-border:1px solid #555;
-color:#ddd;
-border-radius:6px;
-padding:5px 8px;
-font-size:10px;
-font-weight:900;
-}
-
-.conteudoOculto{
-display:none;
-margin-top:8px;
-}
-
-.seletorRX{
-display:flex;
-gap:3px;
-align-items:center;
-}
-
-.btnRX{
-min-width:29px;
-height:27px;
-padding:0 6px;
-background:#202020;
-border:1px solid #555;
-border-radius:6px;
-color:#888;
-font-size:11px;
-font-weight:900;
-}
-
-.btnRX.auto{
-min-width:46px;
-}
-
-.btnRX.ativo{
-background:#00a6c7;
-border-color:#00e5ff;
-color:#fff;
-}
-
-.btnRX.autoEscolhido{
-border-color:#00e5ff;
-color:#00e5ff;
-box-shadow:0 0 6px rgba(0,229,255,.35);
+color:#aaa
 }
 
 textarea{
 width:100%;
-height:72px;
+height:65px;
 background:#111;
-color:#fff;
+color:white;
 border:1px solid #555;
 border-radius:7px;
-padding:8px;
-resize:vertical;
+padding:7px
 }
 
 .acoes{
 display:flex;
 gap:5px;
-flex-wrap:wrap;
-margin-top:6px;
+margin-top:5px;
+flex-wrap:wrap
 }
 
 .btn{
 background:#333;
-color:#fff;
 border:1px solid #555;
 border-radius:7px;
-padding:8px 10px;
-font-weight:900;
+color:white;
+padding:7px 9px;
+font-weight:900
 }
 
-.btnVerde{
-background:#146238;
-}
-
-.btnVermelho{
-background:#762832;
-}
+.verde{background:#146238}
+.vermelho{background:#762832}
 
 .status{
-margin-top:6px;
-font-size:11px;
+font-size:10px;
 font-weight:900;
 color:#aaa;
+margin-top:5px
 }
 
-.linhaAnalise{
+.modos{
+display:flex;
+gap:4px;
+align-items:center;
+flex-wrap:wrap
+}
+
+.modo{
+background:#222;
+border:1px solid #555;
+color:#999;
+border-radius:7px;
+padding:7px 10px;
+font-weight:900
+}
+
+.modo.ativo{
+background:#007d98;
+border-color:#00e5ff;
+color:white
+}
+
+.modo.vencedor{
+box-shadow:0 0 8px #00e5ff;
+border-color:#00e5ff
+}
+
+
+/* MOMENTO */
+
+.momento{
 display:grid;
-grid-template-columns:65px minmax(0,1fr);
+grid-template-columns:repeat(3,1fr);
+gap:5px;
+margin-top:6px
+}
+
+.momentoBox{
+background:#111;
+border:1px solid #333;
+border-radius:7px;
+padding:6px;
+text-align:center
+}
+
+.momentoBox small{
+display:block;
+font-size:8px;
+color:#888
+}
+
+.momentoBox strong{
+font-size:16px
+}
+
+
+/* TIMELINE */
+
+.timelineArea{
+margin-top:8px
+}
+
+.timelineLinha{
+display:grid;
+grid-template-columns:46px 1fr 55px;
 gap:5px;
 align-items:center;
-margin-top:7px;
+margin-top:5px
+}
+
+.timelineNome{
+font-size:11px;
+font-weight:900;
+text-align:center
+}
+
+.timeline{
+display:flex;
+gap:2px;
+overflow:hidden;
+justify-content:flex-end
+}
+
+.resultadoGL{
+width:17px;
+min-width:17px;
+height:17px;
+border-radius:4px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:8px;
+font-weight:900
+}
+
+.green{
+background:#00a651;
+color:white
+}
+
+.loss{
+background:#c62828;
+color:white
+}
+
+.timelineTaxa{
+font-size:10px;
+font-weight:900;
+text-align:right
+}
+
+
+/* ÚLTIMOS 14 */
+
+.linha{
+display:grid;
+grid-template-columns:55px 1fr;
+gap:5px;
+margin-top:5px;
+align-items:center
 }
 
 .rotulo{
-font-size:9px;
+font-size:8px;
 font-weight:900;
-color:#aaa;
+color:#888
 }
 
-.scrollLinha{
+.scroll{
 display:flex;
-gap:4px;
-overflow-x:auto;
-padding-bottom:2px;
+gap:3px;
+overflow-x:auto
 }
 
-.numeroRoleta,
-.numeroRegiao,
-.idBox{
-min-width:35px;
-height:35px;
+.bola,
+.regiao,
+.id{
+min-width:34px;
+height:34px;
 display:flex;
 align-items:center;
 justify-content:center;
-font-weight:900;
-font-size:13px;
+font-size:12px;
+font-weight:900
 }
 
-.numeroRoleta{
+.bola{
 border-radius:50%;
-border:2px solid rgba(255,255,255,.75);
+border:2px solid #aaa
 }
 
-.numeroRegiao{
-border-radius:7px;
-border:1px solid #aaa;
+.regiao{
+border-radius:6px
 }
 
-.idBox{
-border-radius:7px;
+.id{
 background:#111;
 border:1px solid #444;
-gap:2px;
-padding:2px;
+border-radius:6px;
+gap:2px
 }
 
-.tagID{
-font-size:11px;
-font-weight:900;
-padding:6px 4px;
-border-radius:5px;
-color:#fff;
-}
-
-.semID{
-color:#555;
-}
-
-.legendaRegioes{
-display:flex;
-justify-content:center;
-gap:8px;
-flex-wrap:wrap;
-margin-top:8px;
-font-size:9px;
-color:#aaa;
-}
-
-.itemRegiao{
-display:flex;
-align-items:center;
-gap:4px;
-}
-
-.corRegiao{
-width:10px;
-height:10px;
-border-radius:3px;
+.tag{
+padding:5px 3px;
+border-radius:4px
 }
 
 
 /* JOGADA */
 
-.jogadaBox{
-background:#101010;
-border:1px solid #444;
-border-radius:8px;
-padding:8px;
+.jogadaTitulo{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:5px
 }
 
-.jogadaSubtitulo{
-font-size:9px;
+.rxAtivo{
+font-size:12px;
 font-weight:900;
-color:#aaa;
-margin:7px 0 5px;
+color:#00e5ff
 }
 
-.linhaJogadas{
+.jogadaLinha{
 display:flex;
 gap:5px;
 overflow-x:auto;
-padding-bottom:4px;
+margin-top:5px
 }
 
-.blocoJogada{
-min-width:145px;
-background:#181818;
+.bloco{
+min-width:137px;
+background:#111;
 border:1px solid #00e5ff;
 border-radius:8px;
-padding:8px;
-text-align:center;
+padding:7px;
+text-align:center
 }
 
-.blocoJogada.um{
-border-color:#ffc107;
+.bloco.um{
+border-color:#ffc107
 }
 
-.blocoJogada small{
+.bloco small{
 display:block;
 font-size:8px;
-font-weight:900;
 color:#888;
+font-weight:900
 }
 
-.blocoJogada strong{
+.bloco strong{
+font-size:21px;
 display:block;
-font-size:22px;
-margin:3px 0;
+margin:3px
 }
 
-.centro2{
-color:#00e5ff;
-}
-
-.centro1{
-color:#ffc107;
-}
-
-.numerosCobertos{
-font-size:11px;
-font-weight:900;
-color:#eee;
-line-height:1.5;
-padding-top:5px;
+.nums{
 border-top:1px solid #333;
-}
-
-
-/* RX */
-
-.raiox{
-background:#101010;
-border:1px solid #444;
-border-radius:8px;
-padding:8px;
-}
-
-.rxTopo{
-display:grid;
-grid-template-columns:repeat(4,1fr);
-gap:5px;
-margin-bottom:7px;
-}
-
-.rxCard{
-background:#181818;
-border:1px solid #333;
-border-radius:7px;
-padding:6px;
-text-align:center;
-}
-
-.rxCard small{
-display:block;
-font-size:8px;
-color:#888;
-font-weight:900;
-}
-
-.rxCard strong{
-display:block;
-font-size:15px;
-margin-top:3px;
-}
-
-.rxFamilias{
-display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:5px;
-margin-bottom:7px;
-}
-
-.rxFamilia{
-background:#171717;
-border:1px solid #333;
-border-radius:7px;
-padding:6px;
-text-align:center;
-}
-
-.rxFamilia strong{
-font-size:17px;
-}
-
-.rxFamilia small{
-display:block;
-font-size:8px;
-color:#888;
-}
-
-.rxSinal{
-background:#111;
-border:1px solid #444;
-border-radius:8px;
-text-align:center;
-padding:8px;
-margin-bottom:8px;
-}
-
-.rxSinal small{
-display:block;
-font-size:8px;
-font-weight:900;
-color:#888;
-}
-
-.rxSinal strong{
-display:block;
-font-size:26px;
-margin-top:3px;
-}
-
-.rxRanking{
-display:grid;
-grid-template-columns:repeat(4,1fr);
-gap:4px;
-}
-
-.rxNumero{
-background:#181818;
-border:1px solid #3c3c3c;
-border-radius:7px;
-text-align:center;
-padding:7px 2px;
-min-height:68px;
-}
-
-.rxNumero strong{
-display:block;
-font-size:18px;
-}
-
-.rxNumero small{
-display:block;
-font-size:8px;
-color:#888;
-margin-top:2px;
+padding-top:4px;
+font-size:10px;
+font-weight:900
 }
 
 
@@ -4097,79 +2111,33 @@ margin-top:2px;
 display:grid;
 grid-template-columns:repeat(6,1fr);
 gap:4px;
-margin-top:7px;
+margin-top:5px
 }
 
-.numeroBtn{
-height:40px;
+.numero{
+height:38px;
 border:1px solid #666;
-border-radius:7px;
-color:#fff;
-font-weight:900;
-font-size:14px;
-}
-
-.zeroBtn{
-grid-column:span 6;
-}
-
-
-/* HISTÓRICO */
-
-.historico{
-display:flex;
-gap:4px;
-overflow-x:auto;
-}
-
-.histNumero{
-min-width:31px;
-height:31px;
-display:flex;
-align-items:center;
-justify-content:center;
 border-radius:6px;
-border:1px solid #555;
-font-size:12px;
-font-weight:900;
+color:white;
+font-weight:900
 }
 
-.janelaAtual{
-border:2px solid #00e5ff;
+.zero{
+grid-column:span 6
 }
-
-.ultimo{
-box-shadow:0 0 8px #00e5ff;
-}
-
 
 @media(max-width:600px){
 
-.app069{
-padding:5px;
+.app{padding:5px}
+
+.timelineLinha{
+grid-template-columns:38px 1fr 46px
 }
 
-.painel{
-padding:7px;
-}
-
-.linhaAnalise{
-grid-template-columns:58px minmax(0,1fr);
-}
-
-.numeroRoleta,
-.numeroRegiao,
-.idBox{
-min-width:34px;
-height:34px;
-}
-
-.blocoJogada{
-min-width:138px;
-}
-
-.rxTopo{
-grid-template-columns:repeat(2,1fr);
+.resultadoGL{
+width:15px;
+min-width:15px;
+height:15px
 }
 
 }
@@ -4177,858 +2145,546 @@ grid-template-columns:repeat(2,1fr);
 </style>
 
 
-<div class="app069">
+<div class="app">
 
-<h2>
-Análise 0 • 6 • 9
-</h2>
+<h2>Análise 0 • 6 • 9</h2>
 
 
-<section class="painel">
+<div class="painel">
 
 <textarea
 id="entradaHistorico"
-placeholder="Cole o histórico do mais antigo para o mais recente..."
+placeholder="Cole o histórico..."
 ></textarea>
 
 <div class="acoes">
 
 <button
-id="btnInserir"
-class="btn btnVerde"
->
+id="inserir"
+class="btn verde">
 Inserir histórico
 </button>
 
 <button
-id="btnApagarUltimo"
-class="btn"
->
+id="apagarUltimo"
+class="btn">
 Apagar último
 </button>
 
 <button
-id="btnApagarTudo"
-class="btn btnVermelho"
->
+id="apagarTudo"
+class="btn vermelho">
 Apagar tudo
 </button>
 
 </div>
 
 <div
-id="statusArea"
-class="status"
->
-Cole o histórico ou use o teclado.
-</div>
-
-</section>
-
-
-<section class="painel">
-
-<div class="tituloPainel">
-
-ÚLTIMOS
-<span id="qtdJanela">
-0
-</span>/14
-
-</div>
-
-
-<div class="linhaAnalise">
-
-<div class="rotulo">
-ROLETA
-</div>
-
-<div
-id="linhaCores"
-class="scrollLinha"
-></div>
-
-</div>
-
-
-<div class="linhaAnalise">
-
-<div class="rotulo">
-REGIÕES
-</div>
-
-<div
-id="linhaRegioes"
-class="scrollLinha"
-></div>
-
-</div>
-
-
-<div class="linhaAnalise">
-
-<div class="rotulo">
-ID<br>0 • 6 • 9
-</div>
-
-<div
-id="linhaIds"
-class="scrollLinha"
-></div>
-
-</div>
-
-
-<div class="legendaRegioes">
-
-<div class="itemRegiao">
-<span
-class="corRegiao"
-style="background:#9bea2c"
-></span>
-Zero
-</div>
-
-<div class="itemRegiao">
-<span
-class="corRegiao"
-style="background:#8a20d4"
-></span>
-Voisins
-</div>
-
-<div class="itemRegiao">
-<span
-class="corRegiao"
-style="background:#176436"
-></span>
-Orphelins
-</div>
-
-<div class="itemRegiao">
-<span
-class="corRegiao"
-style="background:#29499b"
-></span>
-Tiers
+id="status"
+class="status">
+Pronto.
 </div>
 
 </div>
 
-</section>
 
+<div class="painel">
 
-<section class="painel">
-
-<div class="cabecalhoPainel">
-
-<div class="tituloPainel">
-JOGADA SUGERIDA
+<div class="titulo">
+CONTROLE RAIO X
 </div>
 
-<button
-id="btnMostrarJogada"
-class="btnMostrar"
->
-Mostrar
-</button>
+<div class="modos">
 
-</div>
-
-<div
-id="conteudoJogada"
-class="conteudoOculto"
->
-
-<div
-id="jogadaArea"
-class="jogadaBox"
-></div>
-
-</div>
-
-</section>
-
-
-<section class="painel">
-
-<div class="cabecalhoPainel">
-
-<div
-id="tituloRaioX"
-class="tituloPainel"
->
-RAIO X
-</div>
-
-<div class="cabecalhoDireita">
-
-<div class="seletorRX">
-
-<button
-id="rxAuto"
-class="btnRX auto"
->
+<button id="auto" class="modo">
 AUTO
 </button>
 
-<button
-id="rx4"
-class="btnRX"
->
+<button id="m4" class="modo">
 4
 </button>
 
-<button
-id="rx5"
-class="btnRX"
->
+<button id="m5" class="modo">
 5
 </button>
 
-<button
-id="rx6"
-class="btnRX"
->
+<button id="m6" class="modo">
 6
 </button>
 
 </div>
 
-<button
-id="btnMostrarRaioX"
-class="btnMostrar"
->
-Mostrar
-</button>
 
+<div
+id="momento"
+class="momento">
 </div>
 
+
+<div class="timelineArea">
+
+<div class="titulo">
+DESEMPENHO REAL — ÚLTIMOS 20
 </div>
 
 <div
-id="conteudoRaioX"
-class="conteudoOculto"
->
+id="timeline4"
+class="timelineLinha">
+</div>
 
 <div
-id="raioX"
-class="raiox"
-></div>
+id="timeline5"
+class="timelineLinha">
+</div>
+
+<div
+id="timeline6"
+class="timelineLinha">
+</div>
 
 </div>
 
-</section>
+</div>
 
 
-<section class="painel">
+<div class="painel">
 
-<div class="tituloPainel">
+<div class="titulo">
+ÚLTIMOS 14
+</div>
+
+<div class="linha">
+
+<div class="rotulo">
+ROLETA
+</div>
+
+<div id="linhaRoleta" class="scroll">
+</div>
+
+</div>
+
+<div class="linha">
+
+<div class="rotulo">
+REGIÃO
+</div>
+
+<div id="linhaRegiao" class="scroll">
+</div>
+
+</div>
+
+<div class="linha">
+
+<div class="rotulo">
+ID
+</div>
+
+<div id="linhaID" class="scroll">
+</div>
+
+</div>
+
+</div>
+
+
+<div class="painel">
+
+<div class="jogadaTitulo">
+
+<div class="titulo">
+JOGADA SUGERIDA
+</div>
+
+<div
+id="rxAtivo"
+class="rxAtivo">
+—
+</div>
+
+</div>
+
+<div id="jogada">
+</div>
+
+</div>
+
+
+<div class="painel">
+
+<div class="titulo">
 TECLADO 0–36
 </div>
 
 <div
 id="teclado"
-class="teclado"
-></div>
-
-</section>
-
-
-<section class="painel">
-
-<div class="cabecalhoPainel">
-
-<div class="tituloPainel">
-
-HISTÓRICO OCULTO —
-<span id="qtdHistorico">
-0
-</span>
-
+class="teclado">
 </div>
 
-<button
-id="btnMostrarHistorico"
-class="btnMostrar"
->
-Mostrar
-</button>
-
 </div>
-
-<div
-id="conteudoHistorico"
-class="conteudoOculto"
->
-
-<div
-id="historico"
-class="historico"
-></div>
-
-</div>
-
-</section>
 
 </div>
 `;
 
 
-document.body.appendChild(
-    app
-);
+document.body.appendChild(app);
 
 
 /* =========================================================
-   ELEMENTOS
+   DOM
 ========================================================= */
 
 const statusArea =
-document.getElementById(
-    "statusArea"
-);
-
-
-const qtdJanela =
-document.getElementById(
-    "qtdJanela"
-);
-
-
-const linhaCores =
-document.getElementById(
-    "linhaCores"
-);
-
-
-const linhaRegioes =
-document.getElementById(
-    "linhaRegioes"
-);
-
-
-const linhaIds =
-document.getElementById(
-    "linhaIds"
-);
-
+document.getElementById("status");
 
 const jogadaArea =
-document.getElementById(
-    "jogadaArea"
-);
+document.getElementById("jogada");
 
-
-const raioX =
-document.getElementById(
-    "raioX"
-);
-
-
-const tituloRaioX =
-document.getElementById(
-    "tituloRaioX"
-);
-
-
-const teclado =
-document.getElementById(
-    "teclado"
-);
-
-
-const qtdHistorico =
-document.getElementById(
-    "qtdHistorico"
-);
-
-
-const elementoHistorico =
-document.getElementById(
-    "historico"
-);
-
-
-/* =========================================================
-   PAINÉIS
-========================================================= */
-
-function configurarPainelOculto(
-    botaoId,
-    conteudoId
-){
-
-    const botao =
-    document.getElementById(
-        botaoId
-    );
-
-
-    const conteudo =
-    document.getElementById(
-        conteudoId
-    );
-
-
-    botao.onclick =
-    function(){
-
-        const aberto =
-        conteudo.style.display ===
-        "block";
-
-
-        conteudo.style.display =
-        aberto
-        ?
-        "none"
-        :
-        "block";
-
-
-        botao.textContent =
-        aberto
-        ?
-        "Mostrar"
-        :
-        "Ocultar";
-
-    };
-
-}
-
-
-configurarPainelOculto(
-    "btnMostrarJogada",
-    "conteudoJogada"
-);
-
-
-configurarPainelOculto(
-    "btnMostrarRaioX",
-    "conteudoRaioX"
-);
-
-
-configurarPainelOculto(
-    "btnMostrarHistorico",
-    "conteudoHistorico"
-);
-
-
-/* =========================================================
-   BOTÕES AUTO / MANUAL
-========================================================= */
-
-document
-.getElementById(
-    "rxAuto"
-)
-.onclick =
-ativarAuto;
-
-
-document
-.getElementById(
-    "rx4"
-)
-.onclick =
-function(){
-
-    ativarManual(4);
-
-};
-
-
-document
-.getElementById(
-    "rx5"
-)
-.onclick =
-function(){
-
-    ativarManual(5);
-
-};
-
-
-document
-.getElementById(
-    "rx6"
-)
-.onclick =
-function(){
-
-    ativarManual(6);
-
-};
-
-
-/* =========================================================
-   ATUALIZAR BOTÕES
-========================================================= */
-
-function atualizarBotoesRX(){
-
-    const btnAuto =
-    document.getElementById(
-        "rxAuto"
-    );
-
-
-    btnAuto.classList.toggle(
-        "ativo",
-        MODO_RX ===
-        "AUTO"
-    );
-
-
-    [4,5,6]
-    .forEach(
-    function(numero){
-
-        const botao =
-        document.getElementById(
-            "rx" +
-            numero
-        );
-
-
-        botao.classList.remove(
-            "ativo"
-        );
-
-
-        botao.classList.remove(
-            "autoEscolhido"
-        );
-
-
-        botao.textContent =
-        String(
-            numero
-        );
-
-
-        if(
-            MODO_RX ===
-            "MANUAL"
-            &&
-            TAMANHO_RX ===
-            numero
-        ){
-
-            botao.classList.add(
-                "ativo"
-            );
-
-        }
-
-
-        if(
-            MODO_RX ===
-            "AUTO"
-            &&
-            TAMANHO_RX ===
-            numero
-        ){
-
-            botao.classList.add(
-                "autoEscolhido"
-            );
-
-
-            botao.textContent =
-            numero +
-            " ★";
-
-        }
-
-    });
-
-
-    if(
-        MODO_RX ===
-        "AUTO"
-    ){
-
-        tituloRaioX.textContent =
-        "RAIO X " +
-        TAMANHO_RX +
-        " — MAIS FORTE";
-
-    }
-
-    else{
-
-        tituloRaioX.textContent =
-        "RAIO X " +
-        TAMANHO_RX +
-        " — MANUAL";
-
-    }
-
-}
+const rxAtivoArea =
+document.getElementById("rxAtivo");
 
 
 /* =========================================================
    TECLADO
 ========================================================= */
 
-for(
-    let numero=1;
-    numero<=36;
-    numero++
-){
-
-    const botao =
-    document.createElement(
-        "button"
-    );
+const teclado =
+document.getElementById("teclado");
 
 
-    const cor =
-    corNumeroRoleta(
-        numero
-    );
+for(let n=1;n<=36;n++){
 
+  const b =
+    document.createElement("button");
 
-    botao.className =
-    "numeroBtn";
+  b.className="numero";
 
+  b.textContent=n;
 
-    botao.textContent =
-    numero;
+  b.style.background =
+    corNumeroRoleta(n);
 
+  b.onclick=() =>
+    adicionarNumero(n);
 
-    botao.style.background =
-    cor.fundo;
-
-
-    botao.onclick =
-    function(){
-
-        adicionarNumero(
-            numero
-        );
-
-    };
-
-
-    teclado.appendChild(
-        botao
-    );
-
+  teclado.appendChild(b);
 }
 
 
-const zero =
-document.createElement(
-    "button"
-);
+const bz =
+document.createElement("button");
 
+bz.className="numero zero";
+bz.textContent="0";
+bz.style.background="#087c48";
+bz.onclick=() => adicionarNumero(0);
 
-zero.className =
-"numeroBtn zeroBtn";
-
-
-zero.textContent =
-"0";
-
-
-zero.style.background =
-"#087c48";
-
-
-zero.onclick =
-function(){
-
-    adicionarNumero(0);
-
-};
-
-
-teclado.appendChild(
-    zero
-);
+teclado.appendChild(bz);
 
 
 /* =========================================================
-   BOTÕES HISTÓRICO
+   EVENTOS
 ========================================================= */
 
-document
-.getElementById(
-    "btnInserir"
-)
-.onclick =
-inserirHistorico;
+document.getElementById("auto")
+.onclick=ativarAuto;
 
+document.getElementById("m4")
+.onclick=() => ativarManual(4);
 
-document
-.getElementById(
-    "btnApagarUltimo"
-)
-.onclick =
-apagarUltimo;
+document.getElementById("m5")
+.onclick=() => ativarManual(5);
 
+document.getElementById("m6")
+.onclick=() => ativarManual(6);
 
-document
-.getElementById(
-    "btnApagarTudo"
-)
-.onclick =
-apagarTudo;
+document.getElementById("inserir")
+.onclick=inserirHistorico;
+
+document.getElementById("apagarUltimo")
+.onclick=apagarUltimo;
+
+document.getElementById("apagarTudo")
+.onclick=apagarTudo;
 
 
 /* =========================================================
-   RENDER 14
+   RENDER TIMELINE
 ========================================================= */
 
-function renderJanela(){
+function renderTimeline(rx){
 
-    const analise =
-    analisarJanela14();
+  const area =
+    document.getElementById(
+      "timeline"+rx
+    );
 
+  const timeline =
+    estado.timeline[rx]
+      .slice(-20);
 
-    qtdJanela.textContent =
-    analise.janela.length;
-
-
-    linhaCores.innerHTML =
-
-    analise.janela
-
-    .map(
-    function(numero){
-
-        const cor =
-        corNumeroRoleta(
-            numero
-        );
+  const est =
+    estatisticaTimeline(rx);
 
 
-        return (
+  const caixas =
+    timeline
+    .map(item => {
 
-            '<div class="numeroRoleta" ' +
+      return (
+        '<span class="' +
+        'resultadoGL ' +
+        (
+          item.green
+          ? 'green'
+          : 'loss'
+        ) +
+        '" title="Resultado ' +
+        item.resultado +
+        '">' +
 
-            'style="background:' +
-            cor.fundo +
-            ';color:' +
-            cor.texto +
-            '">' +
+        (
+          item.green
+          ? 'G'
+          : 'L'
+        ) +
 
-            numero +
-
-            '</div>'
-
-        );
+        '</span>'
+      );
 
     })
-
     .join("");
 
 
-    linhaRegioes.innerHTML =
+  area.innerHTML =
 
-    analise.janela
+    '<div class="timelineNome">' +
+    'RX' + rx +
+    '</div>' +
 
-    .map(
-    function(numero){
+    '<div class="timeline">' +
+    caixas +
+    '</div>' +
 
-        const regiao =
-        regiaoDoNumero(
-            numero
-        );
+    '<div class="timelineTaxa">' +
+    (
+      est.total
+      ? est.taxa20.toFixed(0)+"%"
+      : "—"
+    ) +
+    '</div>';
+}
 
 
-        const cor =
-        regiao
-        ?
-        coresRegioes[
-            regiao
-        ]
-        :
-        "#555";
+/* =========================================================
+   RENDER MOMENTO
+========================================================= */
 
+function renderMomento(){
+
+  const m =
+    analisarEstadoAtual(
+      historico
+    );
+
+
+  const total =
+    m.baixos +
+    m.altos;
+
+
+  const baixo =
+    total
+    ?
+    m.baixos/total*100
+    :
+    0;
+
+
+  const alto =
+    total
+    ?
+    m.altos/total*100
+    :
+    0;
+
+
+  document
+  .getElementById("momento")
+  .innerHTML =
+
+    '<div class="momentoBox">' +
+    '<small>BAIXOS 1–18</small>' +
+    '<strong>' +
+    baixo.toFixed(0) +
+    '%</strong>' +
+    '</div>' +
+
+    '<div class="momentoBox">' +
+    '<small>ALTOS 19–36</small>' +
+    '<strong>' +
+    alto.toFixed(0) +
+    '%</strong>' +
+    '</div>' +
+
+    '<div class="momentoBox">' +
+    '<small>JANELA</small>' +
+    '<strong>' +
+    m.janela.length +
+    '</strong>' +
+    '</div>';
+}
+
+
+/* =========================================================
+   RENDER ÚLTIMOS 14
+========================================================= */
+
+function render14(){
+
+  const janela =
+    historico.slice(-14);
+
+
+  document
+  .getElementById("linhaRoleta")
+  .innerHTML =
+
+    janela.map(n =>
+
+      '<div class="bola" ' +
+      'style="background:' +
+      corNumeroRoleta(n) +
+      '">' +
+      n +
+      '</div>'
+
+    ).join("");
+
+
+  document
+  .getElementById("linhaRegiao")
+  .innerHTML =
+
+    janela.map(n => {
+
+      const r =
+        regiaoDoNumero(n);
+
+      return (
+        '<div class="regiao" ' +
+        'style="background:' +
+        (
+          r
+          ? coresRegioes[r]
+          : "#555"
+        ) +
+        '">' +
+        n +
+        '</div>'
+      );
+
+    }).join("");
+
+
+  document
+  .getElementById("linhaID")
+  .innerHTML =
+
+    janela.map(n => {
+
+      const ids =
+        idsQueBatem(n);
+
+      if(!ids.length){
 
         return (
-
-            '<div class="numeroRegiao" ' +
-
-            'style="background:' +
-            cor +
-            '">' +
-
-            numero +
-
-            '</div>'
-
+          '<div class="id">—</div>'
         );
 
-    })
+      }
 
-    .join("");
+      return (
 
+        '<div class="id">' +
 
-    linhaIds.innerHTML =
+        ids.map(id =>
 
-    analise.sequencia
+          '<span class="tag" ' +
+          'style="background:' +
+          corDoId(id) +
+          '">' +
+          id +
+          '</span>'
 
-    .map(
-    function(item){
+        ).join("") +
 
-        if(
-            !item.ids.length
-        ){
+        '</div>'
 
-            return (
+      );
 
-                '<div class="idBox">' +
-                '<span class="semID">—</span>' +
-                '</div>'
-
-            );
-
-        }
+    }).join("");
+}
 
 
-        return (
+/* =========================================================
+   RENDER CONTROLE
+========================================================= */
 
-            '<div class="idBox">' +
+function renderControle(resultado){
 
-            item.ids
+  ["auto","m4","m5","m6"]
+  .forEach(id => {
 
-            .map(
-            function(id){
+    document
+    .getElementById(id)
+    .classList.remove(
+      "ativo",
+      "vencedor"
+    );
 
-                return (
+  });
 
-                    '<span class="tagID" ' +
 
-                    'style="background:' +
-                    corDoId(id) +
-                    '">' +
+  if(
+    estado.modo === "AUTO"
+  ){
 
-                    id +
+    document
+    .getElementById("auto")
+    .classList.add("ativo");
 
-                    '</span>'
 
-                );
+    if(
+      resultado.auto.escolhido
+    ){
 
-            })
+      document
+      .getElementById(
+        "m" +
+        resultado.auto.escolhido.tamanho
+      )
+      .classList.add(
+        "vencedor"
+      );
 
-            .join("") +
+    }
 
-            '</div>'
+  }
 
-        );
+  else{
 
-    })
+    document
+    .getElementById(
+      "m" +
+      estado.manualRX
+    )
+    .classList.add(
+      "ativo"
+    );
 
-    .join("");
+  }
 
 }
 
@@ -5039,681 +2695,182 @@ function renderJanela(){
 
 function renderJogada(rx){
 
-    if(
-        !rx
-        ||
-        !rx.jogada
-        ||
-        rx.jogada.blocos2.length !== 5
-        ||
-        rx.jogada.blocos1.length !== 1
-    ){
+  if(
+    !rx ||
+    !rx.valido
+  ){
 
-        jogadaArea.innerHTML =
-
-        '<div style="' +
-        'text-align:center;' +
-        'color:#777;' +
-        'padding:8px' +
-        '">' +
-
-        'Aguardando análise.' +
-
-        '</div>';
-
-
-        return;
-
-    }
-
-
-    const html2 =
-
-    rx.jogada.blocos2
-
-    .map(
-    function(bloco){
-
-        return (
-
-            '<div class="blocoJogada">' +
-
-            '<small>2 VIZINHOS DO</small>' +
-
-            '<strong class="centro2">' +
-            bloco.centro +
-            '</strong>' +
-
-            '<div class="numerosCobertos">' +
-
-            bloco.numeros
-            .join(
-                " • "
-            ) +
-
-            '</div>' +
-
-            '</div>'
-
-        );
-
-    })
-
-    .join("");
-
-
-    const html1 =
-
-    rx.jogada.blocos1
-
-    .map(
-    function(bloco){
-
-        return (
-
-            '<div class="blocoJogada um">' +
-
-            '<small>1 VIZINHO DO</small>' +
-
-            '<strong class="centro1">' +
-            bloco.centro +
-            '</strong>' +
-
-            '<div class="numerosCobertos">' +
-
-            bloco.numeros
-            .join(
-                " • "
-            ) +
-
-            '</div>' +
-
-            '</div>'
-
-        );
-
-    })
-
-    .join("");
-
+    rxAtivoArea.textContent="—";
 
     jogadaArea.innerHTML =
+      '<div style="color:#777">' +
+      'Aguardando dados.' +
+      '</div>';
 
-    '<div class="jogadaSubtitulo">' +
-    '2 VIZINHOS' +
-    '</div>' +
+    return;
+  }
 
-    '<div class="linhaJogadas">' +
-    html2 +
-    '</div>' +
 
-    '<div class="jogadaSubtitulo">' +
-    '1 VIZINHO' +
-    '</div>' +
+  rxAtivoArea.textContent =
 
-    '<div class="linhaJogadas">' +
-    html1 +
-    '</div>';
-
-}
-
-
-/* =========================================================
-   RENDER RX
-========================================================= */
-
-function renderRaioX(rx){
-
-    if(
-        !rx ||
-        !rx.ranking.length
-    ){
-
-        raioX.innerHTML =
-
-        '<div style="' +
-        'text-align:center;' +
-        'color:#777;' +
-        'padding:15px' +
-        '">' +
-
-        'Aguardando histórico suficiente.' +
-
-        '</div>';
-
-
-        return;
-
-    }
-
-
-    const rankingHTML =
-
-    rx.ranking
-
-    .map(
-    function(item,index){
-
-        const cor =
-        corFamilia(
-            familiaDoId(
-                item.idPrincipal
-            )
-        );
-
-
-        let ocorrencias =
-        item.ocorrencias +
-        "x";
-
-
-        if(
-            item.tipo ===
-            "ZERO26"
-        ){
-
-            ocorrencias =
-            "0:" +
-            item.ocorrencias0 +
-            "x • 26:" +
-            item.ocorrencias26 +
-            "x";
-
-        }
-
-
-        return (
-
-            '<div class="rxNumero" ' +
-
-            'style="border-color:' +
-            cor +
-            '">' +
-
-            '<small>#' +
-            (index+1) +
-            '</small>' +
-
-            '<strong style="color:' +
-            cor +
-            '">' +
-
-            item.label +
-
-            '</strong>' +
-
-            '<small>' +
-            ocorrencias +
-            '</small>' +
-
-            '<small>' +
-            item.origem +
-            '</small>' +
-
-            '</div>'
-
-        );
-
-    })
-
-    .join("");
-
-
-    let sinal =
-
-    '<div class="rxSinal">' +
-    '<small>SINAL</small>' +
-    '<strong style="color:#777">—</strong>' +
-    '</div>';
-
-
-    if(
-        rx.lider
-    ){
-
-        sinal =
-
-        '<div class="rxSinal">' +
-
-        '<small>SINAL</small>' +
-
-        '<strong style="color:' +
-        corFamilia(
-            rx.lider.familia
-        ) +
-        '">' +
-
-        rx.lider.familia +
-
-        '</strong>' +
-
-        '</div>';
-
-    }
-
-
-    raioX.innerHTML =
-
-    '<div class="rxTopo">' +
-
-
-    '<div class="rxCard">' +
-
-    '<small>RÉPLICAS USADAS</small>' +
-
-    '<strong>' +
-    rx.replicas +
-    '</strong>' +
-
-    '</div>' +
-
-
-    '<div class="rxCard">' +
-
-    '<small>JANELAS</small>' +
-
-    '<strong>' +
-    rx.totalJanelas +
-    '</strong>' +
-
-    '</div>' +
-
-
-    '<div class="rxCard">' +
-
-    '<small>ZONAS DO RX</small>' +
-
-    '<strong>' +
-    rx.zonasEncontradas +
-    '</strong>' +
-
-    '</div>' +
-
-
-    '<div class="rxCard">' +
-
-    '<small>SIMILARIDADE</small>' +
-
-    '<strong>' +
-    rx.similaridade
-    .toFixed(1) +
-    '%' +
-
-    '</strong>' +
-
-    '</div>' +
-
-
-    '</div>' +
-
-
-    '<div class="rxFamilias">' +
-
-
-    '<div class="rxFamilia">' +
-
-    '<strong style="color:' +
-    COR_T0 +
-    '">' +
-
-    rx.familias[0]
-    .toFixed(0) +
-    '%' +
-
-    '</strong>' +
-
-    '<small>0</small>' +
-
-    '</div>' +
-
-
-    '<div class="rxFamilia">' +
-
-    '<strong style="color:' +
-    COR_T6 +
-    '">' +
-
-    rx.familias[6]
-    .toFixed(0) +
-    '%' +
-
-    '</strong>' +
-
-    '<small>6</small>' +
-
-    '</div>' +
-
-
-    '<div class="rxFamilia">' +
-
-    '<strong style="color:' +
-    COR_T9 +
-    '">' +
-
-    rx.familias[9]
-    .toFixed(0) +
-    '%' +
-
-    '</strong>' +
-
-    '<small>9</small>' +
-
-    '</div>' +
-
-
-    '</div>' +
-
-
-    sinal +
-
-
-    '<div class="tituloPainel" ' +
-    'style="margin-bottom:5px">' +
-
-    '8 ZONAS — RAIO X ' +
+    "RX" +
     rx.tamanho +
 
+    (
+      estado.modo === "AUTO"
+      ? " • AUTO"
+      : " • MANUAL"
+    );
+
+
+  const dois =
+    rx.jogada.blocos2
+    .map(b =>
+
+      '<div class="bloco">' +
+
+      '<small>2 VIZINHOS DO</small>' +
+
+      '<strong>' +
+      b.centro +
+      '</strong>' +
+
+      '<div class="nums">' +
+      b.numeros.join(" • ") +
+      '</div>' +
+
+      '</div>'
+
+    ).join("");
+
+
+  const um =
+    rx.jogada.blocos1
+    .map(b =>
+
+      '<div class="bloco um">' +
+
+      '<small>1 VIZINHO DO</small>' +
+
+      '<strong>' +
+      b.centro +
+      '</strong>' +
+
+      '<div class="nums">' +
+      b.numeros.join(" • ") +
+      '</div>' +
+
+      '</div>'
+
+    ).join("");
+
+
+  jogadaArea.innerHTML =
+
+    '<div class="jogadaLinha">' +
+    dois +
     '</div>' +
 
-
-    '<div class="rxRanking">' +
-
-    rankingHTML +
-
+    '<div class="jogadaLinha">' +
+    um +
     '</div>';
-
 }
 
 
 /* =========================================================
-   HISTÓRICO
-========================================================= */
-
-function renderHistorico(){
-
-    qtdHistorico.textContent =
-    historico.length;
-
-
-    const visiveis =
-    historico.slice(
-        -100
-    );
-
-
-    const offset =
-    historico.length -
-    visiveis.length;
-
-
-    const inicioJanela =
-    Math.max(
-        0,
-        historico.length -
-        TAMANHO_JANELA
-    );
-
-
-    elementoHistorico.innerHTML =
-
-    visiveis
-
-    .map(
-    function(numero,index){
-
-        const indiceReal =
-        offset +
-        index;
-
-
-        const cor =
-        corNumeroRoleta(
-            numero
-        );
-
-
-        return (
-
-            '<div class="' +
-
-            'histNumero ' +
-
-            (
-                indiceReal >=
-                inicioJanela
-                ?
-                'janelaAtual '
-                :
-                ''
-            ) +
-
-            (
-                indiceReal ===
-                historico.length-1
-                ?
-                'ultimo'
-                :
-                ''
-            ) +
-
-            '" style="' +
-
-            'background:' +
-            cor.fundo +
-            ';color:' +
-            cor.texto +
-
-            '">' +
-
-            numero +
-
-            '</div>'
-
-        );
-
-    })
-
-    .join("");
-
-
-    elementoHistorico.scrollLeft =
-    elementoHistorico.scrollWidth;
-
-}
-
-
-/* =========================================================
-   CACHE
-========================================================= */
-
-let cacheChave = "";
-let cacheResultado = null;
-
-
-function invalidarCache(){
-
-    cacheChave = "";
-    cacheResultado = null;
-
-}
-
-
-function assinaturaHistorico(){
-
-    let hash =
-    2166136261;
-
-
-    for(
-        let i=0;
-        i<historico.length;
-        i++
-    ){
-
-        hash ^=
-        (
-            historico[i] +
-            i
-        );
-
-
-        hash =
-        Math.imul(
-            hash,
-            16777619
-        );
-
-    }
-
-
-    return (
-        hash >>>
-        0
-    );
-}
-
-
-function obterAnaliseAtual(){
-
-    const chave =
-
-    MODO_RX +
-    "|" +
-    TAMANHO_RX +
-    "|" +
-    AUTO_RX_ATUAL +
-    "|" +
-    historico.length +
-    "|" +
-    assinaturaHistorico();
-
-
-    if(
-        cacheResultado
-        &&
-        cacheChave ===
-        chave
-    ){
-
-        return cacheResultado;
-
-    }
-
-
-    cacheResultado =
-    analisarPrincipal();
-
-
-    cacheChave =
-    chave;
-
-
-    return cacheResultado;
-}
-
-
-/* =========================================================
-   RENDER GERAL
+   RENDER
 ========================================================= */
 
 function render(){
 
-    try{
+  /*
+    Calcula RX4, RX5 e RX6
+    simultaneamente.
+  */
 
-        renderJanela();
-
-        renderHistorico();
-
-
-        const resultado =
-        obterAnaliseAtual();
+  const resultado =
+    calcularTudo();
 
 
-        const rx =
-        resultado.ativo;
+  renderControle(
+    resultado
+  );
+
+  renderMomento();
+
+  renderTimeline(4);
+  renderTimeline(5);
+  renderTimeline(6);
+
+  render14();
+
+  renderJogada(
+    resultado.ativo
+  );
 
 
-        if(
-            rx &&
-            MODO_RX ===
-            "AUTO"
-        ){
+  /*
+    Diagnóstico interno.
+  */
 
-            TAMANHO_RX =
-            rx.tamanho;
+  console.table(
 
-        }
+    resultado.auto.ranking
+    .map(rx => {
 
-
-        atualizarBotoesRX();
-
-
-        try{
-
-            renderRaioX(
-                rx
-            );
-
-        }catch(erro){
-
-            console.error(
-                "Erro no Raio X:",
-                erro
-            );
-
-        }
-
-
-        try{
-
-            renderJogada(
-                rx
-            );
-
-        }catch(erro){
-
-            console.error(
-                "Erro na jogada:",
-                erro
-            );
-
-
-            jogadaArea.innerHTML =
-            "Erro ao montar jogada.";
-
-        }
-
-
-    }catch(erro){
-
-        console.error(
-            "Erro geral:",
-            erro
+      const e =
+        estatisticaTimeline(
+          rx.tamanho
         );
 
+      return {
 
-        statusArea.textContent =
-        "Erro: " +
-        (
-            erro &&
-            erro.message
-            ?
-            erro.message
-            :
-            "erro desconhecido"
-        );
+        RX:rx.tamanho,
 
+        NOTA:
+          rx.forcaAuto
+          .toFixed(1),
 
-        statusArea.style.color =
-        "#ff5252";
+        "10":
+          e.taxa10
+          .toFixed(0) +
+          "%",
 
-    }
+        "20":
+          e.taxa20
+          .toFixed(0) +
+          "%",
+
+        LOSS:
+          e.sequenciaLoss,
+
+        SIM:
+          rx.similaridade
+          .toFixed(1) +
+          "%",
+
+        ATIVO:
+          resultado.auto.escolhido &&
+          resultado.auto.escolhido.tamanho ===
+          rx.tamanho
+          ? "SIM"
+          : ""
+
+      };
+
+    })
+
+  );
 
 }
 
 
 /* =========================================================
-   INICIAR
+   PRIMEIRA INICIALIZAÇÃO
+
+   Se ainda não existe snapshot,
+   render() cria as três jogadas
+   aguardando o próximo número.
 ========================================================= */
 
 render();
