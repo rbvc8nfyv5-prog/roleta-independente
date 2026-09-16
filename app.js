@@ -1,28 +1,23 @@
 (function(){
-
 "use strict";
 
 /* =========================================================
-   CONFIGURAÇÕES
+   ANALISADOR 0 • 6 • 9 — MOTOR COMPLETO V7
 ========================================================= */
 
-const STORAGE_KEY = "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
-const STORAGE_ESTADO = "ANALISADOR_069_ESTADO_AUTO_V3";
+const STORAGE_KEY =
+"ANALISADOR_069_IDS_CORRESPONDENTES_V1";
+
+const STORAGE_ESTADO =
+"ANALISADOR_069_ESTADO_COMPLETO_V7";
+
+const MAX_HISTORICO = 5000;
+const MAX_TIMELINE = 300;
 
 const TAMANHO_JANELA = 14;
-const JANELA_ESTADO = 20;
-const MAX_HISTORICO = 5000;
-const MAX_TIMELINE = 200;
+const JANELA_MOMENTO = 20;
 
-const COR_T0 = "#00c853";
-const COR_T6 = "#ffc107";
-const COR_T9 = "#2196f3";
-
-const BASES_069 = [
-  0,10,20,30,
-  6,16,26,36,
-  9,19,29
-];
+const RX_LIST = [4,5,6];
 
 const TODOS_IDS_RX = [
   0,10,20,30,
@@ -30,35 +25,12 @@ const TODOS_IDS_RX = [
   9,19,29,39
 ];
 
-const IDS_ESPECIAIS = {
-  25:[39],
-  17:[9],
-  2:[9]
-};
-
 const PERCENTUAL_REPLICAS_RX = 0.10;
 const MIN_REPLICAS_RX = 15;
 const MAX_REPLICAS_RX = 40;
-const MIN_ZONAS_RX = 8;
 
-const QTD_2V = 5;
-const QTD_1V = 1;
-
-/*
-  AUTO NOVO
-
-  Estado recente manda.
-  Histórico geral apenas estabiliza.
-
-  Não existe mais trava de 3 pontos.
-  Se outro RX estiver melhor no estado
-  atual, ele pode assumir imediatamente.
-*/
-
-const PESO_ULTIMOS_10 = 0.45;
-const PESO_ULTIMOS_20 = 0.35;
-const PESO_SIMILARIDADE = 0.15;
-const PESO_HISTORICO = 0.05;
+const META_ASSERTIVIDADE = 90;
+const LIMITE_RECUPERACAO = 85;
 
 
 /* =========================================================
@@ -80,10 +52,25 @@ const numerosVermelhos = new Set([
 ]);
 
 const regioesRoleta = {
-  ZERO:new Set([0,32,15,26,3,35,12]),
-  VOISINS:new Set([19,4,21,2,25,28,7,29,18,22]),
-  ORPHELINS:new Set([9,31,14,20,1,17,6,34]),
-  TIERS:new Set([27,13,36,11,30,8,23,10,5,24,16,33])
+
+  ZERO:new Set([
+    0,32,15,26,3,35,12
+  ]),
+
+  VOISINS:new Set([
+    19,4,21,2,25,
+    28,7,29,18,22
+  ]),
+
+  ORPHELINS:new Set([
+    9,31,14,20,1,17,6,34
+  ]),
+
+  TIERS:new Set([
+    27,13,36,11,30,8,
+    23,10,5,24,16,33
+  ])
+
 };
 
 const coresRegioes = {
@@ -93,175 +80,46 @@ const coresRegioes = {
   TIERS:"#29499b"
 };
 
+const COR_T0 = "#00c853";
+const COR_T6 = "#ffc107";
+const COR_T9 = "#2196f3";
+
 
 /* =========================================================
-   ESTADO
+   BASES 0 / 6 / 9
 ========================================================= */
 
-let historico = carregarHistorico();
+const BASES_069 = [
+  0,10,20,30,
+  6,16,26,36,
+  9,19,29
+];
 
-let estado = {
-  modo:"AUTO",
-  manualRX:6,
-
-  /*
-    snapshots:
-    jogadas que estão esperando
-    o PRÓXIMO resultado.
-  */
-  pendentes:{
-    4:null,
-    5:null,
-    6:null
-  },
-
-  /*
-    timeline real.
-  */
-  timeline:{
-    4:[],
-    5:[],
-    6:[]
-  },
-
-  rxAutoAtual:6
+const IDS_ESPECIAIS = {
+  25:[39],
+  17:[9],
+  2:[9]
 };
 
-carregarEstado();
-
 
 /* =========================================================
-   STORAGE
+   HELPERS DA RODA
 ========================================================= */
 
-function carregarHistorico(){
+function setorVizinhosOrdenado(centro,quantidade){
 
-  try{
+  const indice = track.indexOf(centro);
 
-    const raw = localStorage.getItem(STORAGE_KEY);
+  if(indice === -1) return [];
 
-    if(!raw) return [];
+  const nums=[];
 
-    const dados = JSON.parse(raw);
-
-    if(!Array.isArray(dados)) return [];
-
-    return dados
-      .map(Number)
-      .filter(n =>
-        Number.isInteger(n) &&
-        n >= 0 &&
-        n <= 36
-      )
-      .slice(-MAX_HISTORICO);
-
-  }catch(e){
-    return [];
-  }
-}
-
-
-function salvarHistorico(){
-
-  try{
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(historico)
-    );
-  }catch(e){}
-}
-
-
-function carregarEstado(){
-
-  try{
-
-    const raw = localStorage.getItem(STORAGE_ESTADO);
-
-    if(!raw) return;
-
-    const salvo = JSON.parse(raw);
-
-    if(
-      salvo.modo === "AUTO" ||
-      salvo.modo === "MANUAL"
-    ){
-      estado.modo = salvo.modo;
-    }
-
-    if([4,5,6].includes(salvo.manualRX)){
-      estado.manualRX = salvo.manualRX;
-    }
-
-    if([4,5,6].includes(salvo.rxAutoAtual)){
-      estado.rxAutoAtual = salvo.rxAutoAtual;
-    }
-
-    if(salvo.timeline){
-
-      [4,5,6].forEach(rx => {
-
-        if(Array.isArray(salvo.timeline[rx])){
-          estado.timeline[rx] =
-            salvo.timeline[rx].slice(-MAX_TIMELINE);
-        }
-
-      });
-
-    }
-
-    if(salvo.pendentes){
-
-      [4,5,6].forEach(rx => {
-
-        if(salvo.pendentes[rx]){
-          estado.pendentes[rx] =
-            salvo.pendentes[rx];
-        }
-
-      });
-
-    }
-
-  }catch(e){}
-}
-
-
-function salvarEstado(){
-
-  try{
-
-    localStorage.setItem(
-      STORAGE_ESTADO,
-      JSON.stringify(estado)
-    );
-
-  }catch(e){}
-}
-
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function indiceRoda(numero){
-  return track.indexOf(numero);
-}
-
-
-function setorVizinhosOrdenado(centro, quantidade){
-
-  const i = indiceRoda(centro);
-
-  if(i < 0) return [];
-
-  const nums = [];
-
-  for(let d=-quantidade; d<=quantidade; d++){
+  for(let d=-quantidade;d<=quantidade;d++){
 
     nums.push(
       track[
-        (i+d+track.length) %
+        (indice+d+track.length)
+        %
         track.length
       ]
     );
@@ -272,26 +130,30 @@ function setorVizinhosOrdenado(centro, quantidade){
 }
 
 
-function vizinhos(numero, quantidade=1){
+function vizinhos(numero,quantidade=1){
 
-  const i = indiceRoda(numero);
+  const indice=track.indexOf(numero);
 
-  if(i < 0) return [];
+  if(indice===-1) return [];
 
-  const resultado = [numero];
+  const resultado=[numero];
 
-  for(let d=1; d<=quantidade; d++){
+  for(let distancia=1;
+      distancia<=quantidade;
+      distancia++){
 
     resultado.push(
       track[
-        (i-d+track.length) %
+        (indice-distancia+track.length)
+        %
         track.length
       ]
     );
 
     resultado.push(
       track[
-        (i+d) %
+        (indice+distancia)
+        %
         track.length
       ]
     );
@@ -302,50 +164,41 @@ function vizinhos(numero, quantidade=1){
 }
 
 
-function familiaDoId(id){
+function distanciaRoda(a,b){
 
-  if([0,10,20,30].includes(id)) return 0;
-  if([6,16,26,36].includes(id)) return 6;
-  if([9,19,29,39].includes(id)) return 9;
+  const ia=track.indexOf(a);
+  const ib=track.indexOf(b);
 
-  return null;
+  if(ia<0 || ib<0) return 99;
+
+  const d=Math.abs(ia-ib);
+
+  return Math.min(
+    d,
+    track.length-d
+  );
 }
 
 
-function corDoId(id){
-
-  const f = familiaDoId(id);
-
-  if(f === 0) return COR_T0;
-  if(f === 6) return COR_T6;
-  if(f === 9) return COR_T9;
-
-  return "#555";
-}
-
+/* =========================================================
+   REGIÕES
+========================================================= */
 
 function regiaoDoNumero(numero){
 
-  if(regioesRoleta.ZERO.has(numero)) return "ZERO";
-  if(regioesRoleta.VOISINS.has(numero)) return "VOISINS";
-  if(regioesRoleta.ORPHELINS.has(numero)) return "ORPHELINS";
-  if(regioesRoleta.TIERS.has(numero)) return "TIERS";
+  if(regioesRoleta.ZERO.has(numero))
+    return "ZERO";
+
+  if(regioesRoleta.VOISINS.has(numero))
+    return "VOISINS";
+
+  if(regioesRoleta.ORPHELINS.has(numero))
+    return "ORPHELINS";
+
+  if(regioesRoleta.TIERS.has(numero))
+    return "TIERS";
 
   return null;
-}
-
-
-function corNumeroRoleta(numero){
-
-  if(numero === 0){
-    return "#087c48";
-  }
-
-  if(numerosVermelhos.has(numero)){
-    return "#c6283d";
-  }
-
-  return "#181818";
 }
 
 
@@ -353,40 +206,45 @@ function corNumeroRoleta(numero){
    IDS
 ========================================================= */
 
-const coberturaDasBases = {};
+const coberturaDasBases={};
 
-BASES_069.forEach(base => {
+BASES_069.forEach(base=>{
 
-  coberturaDasBases[base] =
-    new Set(vizinhos(base,1));
+  coberturaDasBases[base]=
+  new Set(vizinhos(base,1));
 
 });
 
 
 function idsQueBatem(numero){
 
-  const ids = [];
+  const ids=[];
 
-  BASES_069.forEach(base => {
+  BASES_069.forEach(base=>{
 
-    if(coberturaDasBases[base].has(numero)){
+    if(
+      coberturaDasBases[base]
+      .has(numero)
+    ){
       ids.push(base);
     }
 
   });
 
   if(
-    Object.prototype.hasOwnProperty.call(
+    Object.prototype
+    .hasOwnProperty
+    .call(
       IDS_ESPECIAIS,
       numero
     )
   ){
 
-    IDS_ESPECIAIS[numero].forEach(id => {
+    IDS_ESPECIAIS[numero]
+    .forEach(id=>{
 
-      if(!ids.includes(id)){
+      if(!ids.includes(id))
         ids.push(id);
-      }
 
     });
 
@@ -396,40 +254,259 @@ function idsQueBatem(numero){
 }
 
 
+function familiaDoId(id){
+
+  if(
+    id===0 ||
+    id===10 ||
+    id===20 ||
+    id===30
+  ) return 0;
+
+  if(
+    id===6 ||
+    id===16 ||
+    id===26 ||
+    id===36
+  ) return 6;
+
+  if(
+    id===9 ||
+    id===19 ||
+    id===29 ||
+    id===39
+  ) return 9;
+
+  return null;
+}
+
+
 function familiasQueBatem(numero){
 
   return new Set(
     idsQueBatem(numero)
-      .map(familiaDoId)
-      .filter(f => f !== null)
+    .map(familiaDoId)
+    .filter(f=>f!==null)
+  );
+}
+
+
+function corDoId(id){
+
+  const f=familiaDoId(id);
+
+  if(f===0) return COR_T0;
+  if(f===6) return COR_T6;
+  if(f===9) return COR_T9;
+
+  return "#555";
+}
+
+
+/* =========================================================
+   TERMINAIS T0–T9
+========================================================= */
+
+function terminalDoNumero(numero){
+  return numero%10;
+}
+
+
+function vizinhosTerminal(t){
+
+  return [
+    (t+9)%10,
+    t,
+    (t+1)%10
+  ];
+}
+
+
+function numerosDoTerminal(t){
+
+  return track.filter(
+    n=>n%10===t
   );
 }
 
 
 /* =========================================================
-   TRAJETÓRIA
+   HISTÓRICO
+========================================================= */
+
+function carregarHistorico(){
+
+  try{
+
+    const x=JSON.parse(
+      localStorage.getItem(STORAGE_KEY)
+      ||
+      "[]"
+    );
+
+    if(!Array.isArray(x))
+      return [];
+
+    return x
+    .map(Number)
+    .filter(n=>
+      Number.isInteger(n) &&
+      n>=0 &&
+      n<=36
+    )
+    .slice(-MAX_HISTORICO);
+
+  }catch(e){
+
+    return [];
+
+  }
+}
+
+
+let historico=carregarHistorico();
+
+
+function salvarHistorico(){
+
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(historico)
+  );
+}
+
+
+/* =========================================================
+   ESTADO
+========================================================= */
+
+function estadoPadrao(){
+
+  return {
+
+    modo:"AUTO",
+
+    manualRX:6,
+
+    pendentes:{
+      4:null,
+      5:null,
+      6:null
+    },
+
+    pendenteAuto:null,
+
+    timeline:{
+      4:[],
+      5:[],
+      6:[]
+    },
+
+    timelineAuto:[],
+
+    ultimaAnalise:null
+
+  };
+}
+
+
+function carregarEstado(){
+
+  const padrao=estadoPadrao();
+
+  try{
+
+    const salvo=JSON.parse(
+      localStorage.getItem(STORAGE_ESTADO)
+      ||
+      "{}"
+    );
+
+    return {
+
+      ...padrao,
+      ...salvo,
+
+      pendentes:{
+        ...padrao.pendentes,
+        ...(salvo.pendentes||{})
+      },
+
+      timeline:{
+        ...padrao.timeline,
+        ...(salvo.timeline||{})
+      },
+
+      timelineAuto:
+      Array.isArray(salvo.timelineAuto)
+      ?
+      salvo.timelineAuto
+      :
+      []
+
+    };
+
+  }catch(e){
+
+    return padrao;
+
+  }
+}
+
+
+let estado=carregarEstado();
+
+
+function salvarEstado(){
+
+  localStorage.setItem(
+    STORAGE_ESTADO,
+    JSON.stringify(estado)
+  );
+}
+
+
+/* =========================================================
+   ASSINATURA DO HISTÓRICO
+
+   ESSENCIAL:
+   clicar AUTO / 4 / 5 / 6 NÃO altera
+   uma previsão já congelada.
+========================================================= */
+
+function assinaturaHistorico(){
+
+  return (
+    historico.length +
+    "|" +
+    historico.slice(-32).join(",")
+  );
+}
+
+
+/* =========================================================
+   TRAJETÓRIA RX
 ========================================================= */
 
 function gerarTrajetoria(janela){
 
-  let t0=0;
-  let t6=0;
-  let t9=0;
+  let t0=0,t6=0,t9=0;
 
   const pontos=[];
   const eventos=[];
 
-  janela.forEach((numero,index) => {
+  janela.forEach((numero,index)=>{
 
-    const f = familiasQueBatem(numero);
+    const familias=
+    familiasQueBatem(numero);
 
-    const b0 = f.has(0) ? 1 : 0;
-    const b6 = f.has(6) ? 1 : 0;
-    const b9 = f.has(9) ? 1 : 0;
+    const b0=familias.has(0)?1:0;
+    const b6=familias.has(6)?1:0;
+    const b9=familias.has(9)?1:0;
 
-    t0 += b0;
-    t6 += b6;
-    t9 += b9;
+    t0+=b0;
+    t6+=b6;
+    t9+=b9;
 
     eventos.push({
       t0:b0,
@@ -459,314 +536,813 @@ function gerarTrajetoria(janela){
 
 function chaveEvento(e){
 
-  let c="";
+  let s="";
 
-  if(e.t0) c+="0";
-  if(e.t6) c+="6";
-  if(e.t9) c+="9";
+  if(e.t0) s+="0";
+  if(e.t6) s+="6";
+  if(e.t9) s+="9";
 
-  return c || "-";
+  return s||"-";
 }
 
 
-function calcularSimilaridade(atual, antiga){
+function calcularSimilaridade(
+  janelaAtual,
+  janelaAntiga
+){
 
-  const tamanho = atual.length;
+  const tamanho=
+  janelaAtual.length;
 
   if(
-    tamanho === 0 ||
-    antiga.length !== tamanho
-  ){
-    return 0;
-  }
+    !tamanho ||
+    janelaAntiga.length!==tamanho
+  ) return 0;
 
-  const a = gerarTrajetoria(atual);
-  const b = gerarTrajetoria(antiga);
+  const atual=
+  gerarTrajetoria(janelaAtual);
+
+  const antiga=
+  gerarTrajetoria(janelaAntiga);
 
   let iguais=0;
 
   for(let i=0;i<tamanho;i++){
 
     if(
-      chaveEvento(a.eventos[i]) ===
-      chaveEvento(b.eventos[i])
+      chaveEvento(atual.eventos[i])
+      ===
+      chaveEvento(antiga.eventos[i])
     ){
       iguais++;
     }
 
   }
 
-  const scoreEventos =
-    iguais/tamanho*100;
+  const scoreEventos=
+  iguais/tamanho*100;
 
   let erro=0;
 
   for(let i=0;i<tamanho;i++){
 
-    erro += Math.abs(
-      a.pontos[i].t0 -
-      b.pontos[i].t0
+    erro+=Math.abs(
+      atual.pontos[i].t0-
+      antiga.pontos[i].t0
     );
 
-    erro += Math.abs(
-      a.pontos[i].t6 -
-      b.pontos[i].t6
+    erro+=Math.abs(
+      atual.pontos[i].t6-
+      antiga.pontos[i].t6
     );
 
-    erro += Math.abs(
-      a.pontos[i].t9 -
-      b.pontos[i].t9
+    erro+=Math.abs(
+      atual.pontos[i].t9-
+      antiga.pontos[i].t9
     );
 
   }
 
-  const maxErro =
-    tamanho*tamanho*3;
+  const maxErro=
+  tamanho*tamanho*3;
 
-  let scoreForma =
-    1-(erro/maxErro);
+  let scoreForma=
+  1-(erro/maxErro);
 
-  scoreForma =
-    Math.max(
-      0,
-      Math.min(1,scoreForma)
-    )*100;
+  scoreForma=
+  Math.max(
+    0,
+    Math.min(1,scoreForma)
+  )*100;
 
   return (
-    scoreEventos*0.80 +
-    scoreForma*0.20
+    scoreEventos*.80 +
+    scoreForma*.20
   );
 }
 
 
 /* =========================================================
-   RÉPLICAS
+   MOMENTO ATUAL — 20 NÚMEROS
 ========================================================= */
 
-function selecionarReplicas(base, tamanho){
+function analisarMomento(base=historico){
 
-  const total = base.length;
+  const janela=
+  base.slice(-JANELA_MOMENTO);
 
-  if(total < tamanho*2+1){
+  const r={
 
-    return {
-      estado:"AGUARDANDO",
-      replicas:[],
-      similaridade:0
-    };
+    total:janela.length,
 
-  }
+    alto:0,
+    baixo:0,
+    zero:0,
 
-  const inicioAtual =
-    total-tamanho;
+    vermelho:0,
+    preto:0,
 
-  const janelaAtual =
-    base.slice(inicioAtual);
+    regioes:{
+      ZERO:0,
+      VOISINS:0,
+      ORPHELINS:0,
+      TIERS:0
+    },
 
-  const todas=[];
+    familias:{
+      0:0,
+      6:0,
+      9:0
+    },
 
-  for(
-    let inicio=0;
-    inicio+tamanho<inicioAtual;
-    inicio++
-  ){
+    terminais:
+    Array(10).fill(0),
 
-    const fim =
-      inicio+tamanho;
+    terminalViz:
+    Array(10).fill(0),
 
-    const proximo =
-      base[fim];
+    roda:
+    new Map()
 
-    if(proximo === undefined){
-      continue;
+  };
+
+  track.forEach(n=>
+    r.roda.set(n,0)
+  );
+
+  janela.forEach(numero=>{
+
+    if(numero===0){
+      r.zero++;
+    }
+    else if(numero<=18){
+      r.baixo++;
+    }
+    else{
+      r.alto++;
     }
 
-    todas.push({
+    if(numero!==0){
 
-      inicio,
-      fim,
-      proximo,
+      if(
+        numerosVermelhos.has(numero)
+      ){
+        r.vermelho++;
+      }
+      else{
+        r.preto++;
+      }
 
-      similaridade:
-        calcularSimilaridade(
-          janelaAtual,
-          base.slice(inicio,fim)
-        ),
+    }
 
-      distancia:
-        inicioAtual-fim
+    const reg=
+    regiaoDoNumero(numero);
+
+    if(reg)
+      r.regioes[reg]++;
+
+    familiasQueBatem(numero)
+    .forEach(f=>{
+      r.familias[f]++;
+    });
+
+    const t=
+    terminalDoNumero(numero);
+
+    r.terminais[t]++;
+
+    vizinhosTerminal(t)
+    .forEach(tv=>{
+      r.terminalViz[tv]++;
+    });
+
+    track.forEach(alvo=>{
+
+      const d=
+      distanciaRoda(numero,alvo);
+
+      let p=0;
+
+      if(d===0) p=1;
+      else if(d===1) p=.55;
+      else if(d===2) p=.25;
+
+      if(p){
+
+        r.roda.set(
+          alvo,
+          r.roda.get(alvo)+p
+        );
+
+      }
 
     });
 
-  }
-
-  todas.sort((a,b) => {
-
-    if(
-      Math.abs(
-        b.similaridade-a.similaridade
-      ) > 0.0001
-    ){
-      return b.similaridade-a.similaridade;
-    }
-
-    return a.distancia-b.distancia;
-
   });
 
-  if(!todas.length){
+  return r;
+}
 
-    return {
-      estado:"SEM DADOS",
-      replicas:[],
-      similaridade:0
-    };
 
+/* =========================================================
+   ESTATÍSTICA TIMELINE
+========================================================= */
+
+function estatisticaTimeline(lista){
+
+  function taxa(qtd){
+
+    const x=
+    lista.slice(-qtd);
+
+    if(!x.length)
+      return 0;
+
+    return (
+      x.filter(v=>v.green).length
+      /
+      x.length
+      *
+      100
+    );
   }
 
-  let qtd =
-    Math.ceil(
-      todas.length *
-      PERCENTUAL_REPLICAS_RX
-    );
+  let loss=0;
 
-  qtd =
-    Math.max(
-      qtd,
-      MIN_REPLICAS_RX
-    );
+  for(let i=lista.length-1;i>=0;i--){
 
-  qtd =
-    Math.min(
-      qtd,
-      todas.length,
-      MAX_REPLICAS_RX
-    );
+    if(lista[i].green)
+      break;
 
-  const grupo =
-    todas.slice(0,qtd);
-
-  const zonas =
-    new Set();
-
-  grupo.forEach(item => {
-
-    idsQueBatem(item.proximo)
-      .forEach(id => zonas.add(id));
-
-  });
-
-  let indice=qtd;
-
-  while(
-    zonas.size < MIN_ZONAS_RX &&
-    indice < todas.length &&
-    grupo.length < MAX_REPLICAS_RX
-  ){
-
-    const item =
-      todas[indice++];
-
-    grupo.push(item);
-
-    idsQueBatem(item.proximo)
-      .forEach(id => zonas.add(id));
-
+    loss++;
   }
-
-  const similaridade =
-    grupo.reduce(
-      (s,x) => s+x.similaridade,
-      0
-    ) / grupo.length;
 
   return {
-    estado:"OK",
-    replicas:grupo,
-    similaridade,
-    zonasEncontradas:zonas.size
+
+    total:lista.length,
+
+    taxa5:taxa(5),
+    taxa10:taxa(10),
+    taxa20:taxa(20),
+
+    lossSeguidos:loss
+
   };
 }
 
 
 /* =========================================================
-   ESTADO ATUAL ALTO / BAIXO
+   ESTADO DE RECUPERAÇÃO
 ========================================================= */
 
-function analisarEstadoAtual(base){
+function estadoRecuperacao(){
 
-  const janela =
-    base.slice(-JANELA_ESTADO);
-
-  let baixos=0;
-  let altos=0;
-  let zero=0;
-
-  janela.forEach(n => {
-
-    if(n === 0){
-      zero++;
-    }
-    else if(n <= 18){
-      baixos++;
-    }
-    else{
-      altos++;
-    }
-
-  });
-
-  const validos =
-    baixos+altos;
-
-  const pBaixo =
-    validos
-    ?
-    baixos/validos
-    :
-    0.5;
-
-  const pAlto =
-    validos
-    ?
-    altos/validos
-    :
-    0.5;
-
-  return {
-    janela,
-    baixos,
-    altos,
-    zero,
-    pBaixo,
-    pAlto
-  };
-}
-
-
-/* =========================================================
-   FREQUÊNCIA DAS RÉPLICAS
-========================================================= */
-
-function gerarFrequenciaReplicas(replicas){
-
-  const freq =
-    new Map();
-
-  track.forEach(n =>
-    freq.set(n,0)
+  const e=
+  estatisticaTimeline(
+    estado.timelineAuto
   );
 
-  replicas.forEach(item => {
+  if(e.total<5){
 
-    if(freq.has(item.proximo)){
+    return {
+      nivel:0,
+      nome:"APRENDENDO",
+      stats:e
+    };
+  }
 
-      freq.set(
-        item.proximo,
-        freq.get(item.proximo)+1
+  if(
+    e.lossSeguidos>=3 ||
+    e.taxa20<80
+  ){
+
+    return {
+      nivel:3,
+      nome:"REESTRUTURAÇÃO",
+      stats:e
+    };
+  }
+
+  if(
+    e.lossSeguidos>=2 ||
+    e.taxa20<LIMITE_RECUPERACAO
+  ){
+
+    return {
+      nivel:2,
+      nome:"RECUPERAÇÃO FORTE",
+      stats:e
+    };
+  }
+
+  if(
+    e.taxa20<META_ASSERTIVIDADE
+  ){
+
+    return {
+      nivel:1,
+      nome:"RECALIBRANDO",
+      stats:e
+    };
+  }
+
+  return {
+    nivel:0,
+    nome:"NORMAL",
+    stats:e
+  };
+}
+
+
+/* =========================================================
+   RAIO X
+========================================================= */
+
+function analisarRaioX(base,tamanho){
+
+  if(
+    base.length <
+    tamanho*2+2
+  ){
+
+    return {
+      tamanho,
+      replicas:[],
+      similaridade:0,
+      ranking:[],
+      sinais:{
+        0:0,
+        6:0,
+        9:0
+      }
+    };
+  }
+
+  const atual=
+  base.slice(-tamanho);
+
+  const candidatos=[];
+
+  const fimAtual=
+  base.length-tamanho;
+
+  for(let inicio=0;
+      inicio+tamanho<fimAtual;
+      inicio++){
+
+    const antiga=
+    base.slice(
+      inicio,
+      inicio+tamanho
+    );
+
+    const proximo=
+    base[inicio+tamanho];
+
+    const similaridade=
+    calcularSimilaridade(
+      atual,
+      antiga
+    );
+
+    candidatos.push({
+      inicio,
+      proximo,
+      similaridade
+    });
+  }
+
+  candidatos.sort((a,b)=>{
+
+    if(
+      b.similaridade!==
+      a.similaridade
+    ){
+      return (
+        b.similaridade-
+        a.similaridade
+      );
+    }
+
+    return b.inicio-a.inicio;
+  });
+
+  let qtd=
+  Math.ceil(
+    candidatos.length*
+    PERCENTUAL_REPLICAS_RX
+  );
+
+  qtd=Math.max(
+    MIN_REPLICAS_RX,
+    qtd
+  );
+
+  qtd=Math.min(
+    MAX_REPLICAS_RX,
+    candidatos.length,
+    qtd
+  );
+
+  let replicas=
+  candidatos.slice(0,qtd);
+
+  const contagem={};
+
+  TODOS_IDS_RX.forEach(id=>{
+    contagem[id]={
+      id,
+      ocorrencias:0,
+      melhorSimilaridade:0,
+      ultima:-1
+    };
+  });
+
+  function contabilizar(rep){
+
+    idsQueBatem(rep.proximo)
+    .forEach(id=>{
+
+      if(!contagem[id])
+        return;
+
+      contagem[id].ocorrencias++;
+
+      contagem[id].melhorSimilaridade=
+      Math.max(
+        contagem[id].melhorSimilaridade,
+        rep.similaridade
       );
 
+      contagem[id].ultima=
+      Math.max(
+        contagem[id].ultima,
+        rep.inicio
+      );
+    });
+  }
+
+  replicas.forEach(contabilizar);
+
+  function positivos(){
+
+    return TODOS_IDS_RX.filter(
+      id=>
+      contagem[id].ocorrencias>0
+    ).length;
+  }
+
+  let cursor=qtd;
+
+  while(
+    positivos()<8 &&
+    cursor<candidatos.length &&
+    cursor<MAX_REPLICAS_RX
+  ){
+
+    const rep=
+    candidatos[cursor];
+
+    replicas.push(rep);
+
+    contabilizar(rep);
+
+    cursor++;
+  }
+
+  const ordemFixa=
+  new Map(
+    TODOS_IDS_RX.map(
+      (id,i)=>[id,i]
+    )
+  );
+
+  const ranking=
+  Object.values(contagem)
+  .filter(x=>x.ocorrencias>0)
+  .sort((a,b)=>{
+
+    if(
+      b.ocorrencias!==
+      a.ocorrencias
+    ){
+      return (
+        b.ocorrencias-
+        a.ocorrencias
+      );
     }
+
+    if(
+      b.melhorSimilaridade!==
+      a.melhorSimilaridade
+    ){
+      return (
+        b.melhorSimilaridade-
+        a.melhorSimilaridade
+      );
+    }
+
+    if(b.ultima!==a.ultima)
+      return b.ultima-a.ultima;
+
+    return (
+      ordemFixa.get(a.id)-
+      ordemFixa.get(b.id)
+    );
+  });
+
+  let f0=0,f6=0,f9=0,total=0;
+
+  replicas.forEach(rep=>{
+
+    const fs=
+    [...familiasQueBatem(rep.proximo)];
+
+    if(!fs.length)
+      return;
+
+    const parte=1/fs.length;
+
+    fs.forEach(f=>{
+
+      if(f===0) f0+=parte;
+      if(f===6) f6+=parte;
+      if(f===9) f9+=parte;
+
+    });
+
+    total++;
+  });
+
+  return {
+
+    tamanho,
+    replicas,
+
+    similaridade:
+    replicas.length
+    ?
+    replicas.reduce(
+      (s,x)=>s+x.similaridade,
+      0
+    )/replicas.length
+    :
+    0,
+
+    ranking,
+
+    sinais:{
+      0:total?f0/total*100:0,
+      6:total?f6/total*100:0,
+      9:total?f9/total*100:0
+    }
+
+  };
+}
+
+
+/* =========================================================
+   FALLBACK MESA 14 / 20
+========================================================= */
+
+function analisarMesaAtual(){
+
+  const j14=
+  historico.slice(-14);
+
+  const j20=
+  historico.slice(-20);
+
+  const dados={};
+
+  TODOS_IDS_RX.forEach(id=>{
+
+    dados[id]={
+      id,
+      incidencias14:0,
+      incidencias20:0,
+      rec14:-1,
+      rec20:-1
+    };
+
+  });
+
+  j14.forEach((n,i)=>{
+
+    idsQueBatem(n)
+    .forEach(id=>{
+
+      if(!dados[id])
+        return;
+
+      dados[id].incidencias14++;
+      dados[id].rec14=i;
+
+    });
+
+  });
+
+  j20.forEach((n,i)=>{
+
+    idsQueBatem(n)
+    .forEach(id=>{
+
+      if(!dados[id])
+        return;
+
+      dados[id].incidencias20++;
+      dados[id].rec20=i;
+
+    });
+
+  });
+
+  const ordem=
+  new Map(
+    TODOS_IDS_RX.map(
+      (id,i)=>[id,i]
+    )
+  );
+
+  return Object.values(dados)
+  .sort((a,b)=>{
+
+    if(
+      b.incidencias14!==
+      a.incidencias14
+    ){
+      return (
+        b.incidencias14-
+        a.incidencias14
+      );
+    }
+
+    if(b.rec14!==a.rec14)
+      return b.rec14-a.rec14;
+
+    if(
+      b.incidencias20!==
+      a.incidencias20
+    ){
+      return (
+        b.incidencias20-
+        a.incidencias20
+      );
+    }
+
+    if(b.rec20!==a.rec20)
+      return b.rec20-a.rec20;
+
+    return (
+      ordem.get(a.id)-
+      ordem.get(b.id)
+    );
+  });
+}
+
+
+/* =========================================================
+   8 ZONAS RX
+========================================================= */
+
+function montar8Zonas(rx){
+
+  const suportados=
+  rx.ranking.map(x=>({
+    tipo:"ID",
+    id:x.id,
+    label:String(x.id),
+    origem:"RAIO X",
+    ocorrencias:x.ocorrencias
+  }));
+
+  const mesa=
+  analisarMesaAtual();
+
+  const existentes=
+  new Set(
+    suportados.map(x=>x.id)
+  );
+
+  mesa.forEach(x=>{
+
+    if(
+      suportados.length>=9
+    ) return;
+
+    if(existentes.has(x.id))
+      return;
+
+    if(
+      x.incidencias14<=0 &&
+      x.incidencias20<=0
+    ) return;
+
+    suportados.push({
+      tipo:"ID",
+      id:x.id,
+      label:String(x.id),
+      origem:
+      x.incidencias14>0
+      ?
+      "MESA 14"
+      :
+      "MESA 20",
+      ocorrencias:
+      x.incidencias14||
+      x.incidencias20
+    });
+
+    existentes.add(x.id);
+  });
+
+  let primeiros=
+  suportados.slice(0,8);
+
+  const tem0=
+  primeiros.some(x=>x.id===0);
+
+  const tem26=
+  primeiros.some(x=>x.id===26);
+
+  if(tem0 && tem26){
+
+    const pos=
+    Math.min(
+      primeiros.findIndex(x=>x.id===0),
+      primeiros.findIndex(x=>x.id===26)
+    );
+
+    primeiros=
+    primeiros.filter(
+      x=>x.id!==0 && x.id!==26
+    );
+
+    primeiros.splice(
+      pos,
+      0,
+      {
+        tipo:"ZERO26",
+        id:"0+26",
+        label:"0 + 3",
+        origem:"RAIO X",
+        ocorrencias:0
+      }
+    );
+
+    const usados=
+    new Set(
+      primeiros
+      .filter(x=>x.tipo==="ID")
+      .map(x=>x.id)
+    );
+
+    for(const c of suportados){
+
+      if(primeiros.length>=8)
+        break;
+
+      if(
+        c.id===0 ||
+        c.id===26 ||
+        usados.has(c.id)
+      ) continue;
+
+      primeiros.push(c);
+      usados.add(c.id);
+    }
+  }
+
+  while(primeiros.length<8){
+
+    primeiros.push({
+      tipo:"SEM",
+      label:"—",
+      origem:"SEM DADOS",
+      ocorrencias:0
+    });
+  }
+
+  return primeiros.slice(0,8);
+}
+
+
+/* =========================================================
+   FREQUÊNCIA DOS PRÓXIMOS REAIS
+========================================================= */
+
+function frequenciaDasReplicas(replicas){
+
+  const freq=new Map();
+
+  track.forEach(n=>freq.set(n,0));
+
+  replicas.forEach(rep=>{
+
+    freq.set(
+      rep.proximo,
+      (freq.get(rep.proximo)||0)+1
+    );
 
   });
 
@@ -775,113 +1351,315 @@ function gerarFrequenciaReplicas(replicas){
 
 
 /* =========================================================
-   SETORES + MOMENTO DA MESA
+   SCORE DO SETOR
 ========================================================= */
 
 function avaliarSetor(
   centro,
   quantidade,
   frequencia,
-  momento
+  momento,
+  recuperacao
 ){
 
-  const numeros =
-    setorVizinhosOrdenado(
-      centro,
-      quantidade
-    );
+  const numeros=
+  setorVizinhosOrdenado(
+    centro,
+    quantidade
+  );
 
-  if(!numeros.length){
-    return null;
-  }
-
-  let suporte=0;
   let score=0;
-  let distintos=0;
+  let suporte=0;
 
-  let altosSetor=0;
-  let baixosSetor=0;
+  numeros.forEach((numero,index)=>{
 
-  numeros.forEach((numero,index) => {
+    const freq=
+    frequencia.get(numero)||0;
 
-    const qtd =
-      frequencia.get(numero) || 0;
+    suporte+=freq;
 
-    suporte += qtd;
+    const dist=
+    Math.abs(index-quantidade);
 
-    if(qtd > 0){
-      distintos++;
+    let peso=1;
+
+    if(quantidade===2){
+
+      if(dist===0) peso=1.45;
+      else if(dist===1) peso=1.20;
+      else peso=1;
+
     }
+    else{
 
-    const distancia =
-      Math.abs(index-quantidade);
-
-    let mult=1;
-
-    if(quantidade === 2){
-
-      if(distancia === 0){
-        mult=1.35;
-      }
-      else if(distancia === 1){
-        mult=1.15;
-      }
-
-    }else{
-
-      if(distancia === 0){
-        mult=1.25;
-      }
+      if(dist===0) peso=1.30;
+      else peso=1;
 
     }
 
-    score += qtd*mult;
-
-    if(numero >= 19){
-      altosSetor++;
-    }
-
-    else if(
-      numero >=1 &&
-      numero <=18
-    ){
-      baixosSetor++;
-    }
-
+    score+=freq*peso;
   });
 
 
-  /*
-    ESTADO ATUAL:
+  /* -----------------------------------------
+     PENALIZAÇÃO DE BORDA
+  ----------------------------------------- */
 
-    É apenas um ajuste pequeno.
-    Não substitui o Raio X.
+  const idx=
+  track.indexOf(centro);
 
-    Se últimos 20 estão mais altos,
-    setores com maior presença alta
-    recebem pequeno bônus.
-  */
+  const foraEsq=
+  track[
+    (
+      idx-quantidade-1+
+      track.length
+    )
+    %
+    track.length
+  ];
 
-  if(momento){
+  const foraDir=
+  track[
+    (
+      idx+quantidade+1
+    )
+    %
+    track.length
+  ];
 
-    const desequilibrio =
-      momento.pAlto -
-      momento.pBaixo;
+  const forcaBorda=
+  (
+    frequencia.get(foraEsq)||0
+  )
+  +
+  (
+    frequencia.get(foraDir)||0
+  );
 
-    const balancoSetor =
-      (
-        altosSetor -
-        baixosSetor
-      )
-      /
-      numeros.length;
+  score-=
+  forcaBorda*
+  (
+    recuperacao.nivel>=2
+    ?
+    .50
+    :
+    .35
+  );
 
-    score +=
-      suporte *
-      desequilibrio *
-      balancoSetor *
-      0.30;
 
+  /* -----------------------------------------
+     ALTO / BAIXO
+  ----------------------------------------- */
+
+  const totalAB=
+  momento.alto+
+  momento.baixo;
+
+  if(totalAB){
+
+    const desequilibrio=
+    (
+      momento.alto-
+      momento.baixo
+    )
+    /
+    totalAB;
+
+    let altos=0;
+    let baixos=0;
+
+    numeros.forEach(n=>{
+
+      if(n>=19) altos++;
+      else if(n>=1) baixos++;
+
+    });
+
+    const balancoSetor=
+    (
+      altos-baixos
+    )
+    /
+    numeros.length;
+
+    score+=
+    suporte*
+    desequilibrio*
+    balancoSetor*
+    (
+      recuperacao.nivel>=2
+      ?
+      .50
+      :
+      .30
+    );
+  }
+
+
+  /* -----------------------------------------
+     VERMELHO / PRETO
+  ----------------------------------------- */
+
+  const totalCor=
+  momento.vermelho+
+  momento.preto;
+
+  if(totalCor){
+
+    const desequilibrio=
+    (
+      momento.vermelho-
+      momento.preto
+    )
+    /
+    totalCor;
+
+    let red=0;
+    let black=0;
+
+    numeros.forEach(n=>{
+
+      if(n===0) return;
+
+      if(
+        numerosVermelhos.has(n)
+      ) red++;
+      else black++;
+
+    });
+
+    const balanco=
+    (
+      red-black
+    )
+    /
+    numeros.length;
+
+    score+=
+    suporte*
+    desequilibrio*
+    balanco*
+    (
+      recuperacao.nivel>=2
+      ?
+      .30
+      :
+      .15
+    );
+  }
+
+
+  /* -----------------------------------------
+     TERMINAIS
+  ----------------------------------------- */
+
+  const maxTerminal=
+  Math.max(
+    1,
+    ...momento.terminalViz
+  );
+
+  let scoreTerminal=0;
+
+  numeros.forEach(n=>{
+
+    const t=
+    terminalDoNumero(n);
+
+    scoreTerminal+=
+    momento.terminalViz[t]
+    /
+    maxTerminal;
+
+  });
+
+  score+=
+  suporte*
+  (
+    scoreTerminal/
+    numeros.length
+  )
+  *
+  (
+    recuperacao.nivel>=2
+    ?
+    .55
+    :
+    .25
+  );
+
+
+  /* -----------------------------------------
+     POSIÇÃO FÍSICA DA RODA
+  ----------------------------------------- */
+
+  const maxRoda=
+  Math.max(
+    1,
+    ...[...momento.roda.values()]
+  );
+
+  let fisico=0;
+
+  numeros.forEach(n=>{
+
+    fisico+=
+    momento.roda.get(n)/
+    maxRoda;
+
+  });
+
+  score+=
+  suporte*
+  (
+    fisico/
+    numeros.length
+  )
+  *
+  (
+    recuperacao.nivel>=2
+    ?
+    .40
+    :
+    .18
+  );
+
+
+  /* -----------------------------------------
+     REGIÕES
+     Somente ajuste da JOGADA.
+     Não entra na similaridade RX.
+  ----------------------------------------- */
+
+  const regDominante=
+  Object.entries(
+    momento.regioes
+  )
+  .sort((a,b)=>b[1]-a[1])[0];
+
+  if(regDominante){
+
+    const nome=
+    regDominante[0];
+
+    const qtd=
+    numeros.filter(
+      n=>regiaoDoNumero(n)===nome
+    ).length;
+
+    score+=
+    suporte*
+    (
+      qtd/numeros.length
+    )
+    *
+    (
+      recuperacao.nivel>=2
+      ?
+      .25
+      :
+      .10
+    );
   }
 
 
@@ -889,904 +1667,498 @@ function avaliarSetor(
     centro,
     quantidade,
     numeros,
-    suporte,
-    distintos,
-    score
+    score,
+    suporte
   };
 }
 
 
 /* =========================================================
-   MONTA 5x2V + 1x1V
+   MONTAR JOGADA
+   5 × 2V + 1 × 1V = 28
 ========================================================= */
 
 function montarJogada(
   replicas,
-  base
+  base=historico
 ){
 
-  const frequencia =
-    gerarFrequenciaReplicas(
-      replicas
-    );
+  if(!replicas.length)
+    return null;
 
-  const momento =
-    analisarEstadoAtual(
-      base
-    );
+  const frequencia=
+  frequenciaDasReplicas(replicas);
 
-  const candidatos2 =
-    track
-    .map(c =>
-      avaliarSetor(
-        c,
-        2,
-        frequencia,
-        momento
-      )
+  const momento=
+  analisarMomento(base);
+
+  const recuperacao=
+  estadoRecuperacao();
+
+  const candidatos2=
+  track.map(centro=>
+    avaliarSetor(
+      centro,
+      2,
+      frequencia,
+      momento,
+      recuperacao
     )
-    .sort((a,b) =>
-      b.score-a.score
-    );
+  )
+  .sort((a,b)=>b.score-a.score);
 
-  const candidatos1 =
-    track
-    .map(c =>
-      avaliarSetor(
-        c,
-        1,
-        frequencia,
-        momento
-      )
+  const candidatos1=
+  track.map(centro=>
+    avaliarSetor(
+      centro,
+      1,
+      frequencia,
+      momento,
+      recuperacao
     )
-    .sort((a,b) =>
-      b.score-a.score
-    );
-
+  )
+  .sort((a,b)=>b.score-a.score);
 
   let melhor=null;
 
-
   /*
-    Testa cada possível setor 1V
-    como reserva.
-
-    Depois encaixa cinco 2V
-    sem sobreposição.
+    Procura geometricamente uma combinação
+    válida de 28 números.
   */
 
-  candidatos1.forEach(um => {
+  for(const bloco1 of candidatos1){
 
-    const usados =
-      new Set(
-        um.numeros
-      );
+    const usados=
+    new Set(bloco1.numeros);
 
-    const dois=[];
+    const blocos2=[];
 
-    let score =
-      um.score;
+    let total=
+    bloco1.score;
 
+    for(const bloco2 of candidatos2){
 
-    for(const candidato of candidatos2){
-
-      const sobrepoe =
-        candidato.numeros.some(
-          n => usados.has(n)
-        );
-
-      if(sobrepoe){
+      if(
+        bloco2.numeros
+        .some(n=>usados.has(n))
+      ){
         continue;
       }
 
-      dois.push(candidato);
+      blocos2.push(bloco2);
 
-      score +=
-        candidato.score;
+      total+=bloco2.score;
 
-      candidato.numeros.forEach(
-        n => usados.add(n)
-      );
+      bloco2.numeros
+      .forEach(n=>usados.add(n));
 
-      if(dois.length === 5){
+      if(blocos2.length===5)
         break;
-      }
-
     }
-
 
     if(
-      dois.length === 5 &&
-      usados.size === 28
+      blocos2.length!==5 ||
+      usados.size!==28
     ){
-
-      if(
-        !melhor ||
-        score > melhor.score
-      ){
-
-        melhor = {
-          blocos2:dois,
-          blocos1:[um],
-          numerosUsados:usados,
-          score
-        };
-
-      }
-
+      continue;
     }
 
-  });
+    if(
+      !melhor ||
+      total>melhor.score
+    ){
 
-
-  if(!melhor){
-
-    return {
-      blocos2:[],
-      blocos1:[],
-      numerosUsados:new Set(),
-      score:0
-    };
-
+      melhor={
+        blocos2,
+        bloco1,
+        numerosUsados:usados,
+        score:total
+      };
+    }
   }
-
-
-  melhor.blocos2.sort(
-    (a,b) =>
-      b.score-a.score
-  );
 
   return melhor;
 }
 
 
 /* =========================================================
-   ANALISAR RX 4/5/6
+   ANÁLISE DOS TRÊS RX
 ========================================================= */
 
-function analisarRX(
-  base,
-  tamanho
-){
+function calcularAnalises(){
 
-  const selecao =
-    selecionarReplicas(
-      base,
+  return RX_LIST.map(tamanho=>{
+
+    const rx=
+    analisarRaioX(
+      historico,
       tamanho
     );
 
-
-  if(
-    selecao.estado !== "OK"
-  ){
+    const jogada=
+    montarJogada(
+      rx.replicas,
+      historico
+    );
 
     return {
       tamanho,
-      valido:false,
-      similaridade:0,
-      replicas:[],
-      jogada:null
+      ...rx,
+      jogada,
+      zonas:
+      montar8Zonas(rx)
     };
-
-  }
-
-
-  const jogada =
-    montarJogada(
-      selecao.replicas,
-      base
-    );
-
-
-  return {
-
-    tamanho,
-
-    valido:
-      jogada.blocos2.length === 5 &&
-      jogada.blocos1.length === 1 &&
-      jogada.numerosUsados.size === 28,
-
-    similaridade:
-      selecao.similaridade,
-
-    replicas:
-      selecao.replicas,
-
-    zonasEncontradas:
-      selecao.zonasEncontradas,
-
-    jogada
-
-  };
+  });
 }
 
 
 /* =========================================================
-   SNAPSHOT FIEL
-
-   A jogada gerada AGORA fica guardada.
-   O próximo número será comparado com ela.
-
-   Trocar AUTO/MANUAL não altera snapshot.
+   ESCOLHA AUTO
 ========================================================= */
 
-function criarSnapshot(rx){
+function escolherAuto(analises){
+
+  const rec=
+  estadoRecuperacao();
+
+  const avaliadas=
+  analises.map(rx=>{
+
+    const est=
+    estatisticaTimeline(
+      estado.timeline[rx.tamanho]
+    );
+
+    let score;
+
+    if(est.total<5){
+
+      score=
+      rx.similaridade*.85;
+
+    }
+    else{
+
+      score=
+      est.taxa5*.45 +
+      est.taxa10*.30 +
+      est.taxa20*.15 +
+      rx.similaridade*.10;
+
+      if(est.lossSeguidos===1)
+        score-=3;
+
+      if(est.lossSeguidos===2)
+        score-=14;
+
+      if(est.lossSeguidos>=3)
+        score-=30+
+        (est.lossSeguidos-3)*10;
+    }
+
+    /*
+      Quando AUTO está deteriorando,
+      damos ainda mais importância
+      ao comportamento imediatamente recente.
+    */
+
+    if(rec.nivel>=1){
+
+      score+=
+      est.taxa5*.15;
+
+      score-=
+      est.lossSeguidos*
+      (
+        rec.nivel===1
+        ?
+        4
+        :
+        8
+      );
+    }
+
+    return {
+      rx,
+      est,
+      score
+    };
+  });
+
+  avaliadas.sort((a,b)=>{
+
+    if(
+      b.est.taxa5!==
+      a.est.taxa5
+    ){
+      return (
+        b.est.taxa5-
+        a.est.taxa5
+      );
+    }
+
+    if(
+      a.est.lossSeguidos!==
+      b.est.lossSeguidos
+    ){
+      return (
+        a.est.lossSeguidos-
+        b.est.lossSeguidos
+      );
+    }
+
+    return b.score-a.score;
+  });
+
+  return avaliadas[0]
+  ?
+  avaliadas[0].rx
+  :
+  analises[0];
+}
+
+
+/* =========================================================
+   SNAPSHOT CONGELADO
+========================================================= */
+
+function criarSnapshot(rx,sig){
 
   if(
     !rx ||
-    !rx.valido ||
-    !rx.jogada
+    !rx.jogada ||
+    rx.jogada.numerosUsados.size!==28
   ){
     return null;
   }
 
   return {
 
-    tamanho:
-      rx.tamanho,
+    assinatura:sig,
 
     criadoCom:
-      historico.length,
+    historico.length,
+
+    rx:
+    rx.tamanho,
 
     numeros:
-      Array.from(
-        rx.jogada.numerosUsados
-      ),
+    [...rx.jogada.numerosUsados],
 
-    blocos2:
-      rx.jogada.blocos2.map(
-        b => ({
-          centro:b.centro,
-          numeros:b.numeros.slice()
-        })
-      ),
+    centros2:
+    rx.jogada.blocos2
+    .map(x=>x.centro),
 
-    blocos1:
-      rx.jogada.blocos1.map(
-        b => ({
-          centro:b.centro,
-          numeros:b.numeros.slice()
-        })
-      )
+    centro1:
+    rx.jogada.bloco1.centro,
+
+    hora:
+    Date.now()
 
   };
 }
 
 
 /* =========================================================
-   FECHAR RESULTADO PENDENTE
+   GARANTIR PENDENTES
 
-   É executado ANTES de inserir
-   o novo número no histórico.
+   NÃO sobrescreve se a história
+   continua exatamente a mesma.
+========================================================= */
+
+function garantirPendentes(
+  analises,
+  ativoAuto
+){
+
+  const sig=
+  assinaturaHistorico();
+
+  analises.forEach(rx=>{
+
+    const atual=
+    estado.pendentes[rx.tamanho];
+
+    if(
+      atual &&
+      atual.assinatura===sig
+    ){
+      return;
+    }
+
+    estado.pendentes[rx.tamanho]=
+    criarSnapshot(rx,sig);
+  });
+
+  if(
+    !estado.pendenteAuto ||
+    estado.pendenteAuto.assinatura!==sig
+  ){
+
+    estado.pendenteAuto=
+    criarSnapshot(
+      ativoAuto,
+      sig
+    );
+  }
+
+  salvarEstado();
+}
+
+
+/* =========================================================
+   AVALIAR PENDENTES
 ========================================================= */
 
 function avaliarPendentes(
   novoNumero
 ){
 
-  [4,5,6].forEach(rx => {
+  const sigAtual=
+  assinaturaHistorico();
 
-    const pendente =
-      estado.pendentes[rx];
+  RX_LIST.forEach(rx=>{
 
-    if(!pendente){
+    const p=
+    estado.pendentes[rx];
+
+    if(!p)
+      return;
+
+    /*
+      Se não corresponde ao estado
+      imediatamente anterior, é stale.
+    */
+
+    if(
+      p.assinatura!==sigAtual
+    ){
+
+      estado.pendentes[rx]=null;
       return;
     }
 
-
-    const green =
-      pendente.numeros.includes(
-        novoNumero
-      );
-
+    const green=
+    p.numeros.includes(
+      novoNumero
+    );
 
     estado.timeline[rx].push({
 
-      resultado:
-        novoNumero,
-
+      resultado:novoNumero,
       green,
-
-      criadoCom:
-        pendente.criadoCom,
 
       rx,
 
+      assinatura:
+      p.assinatura,
+
+      numeros:
+      p.numeros.slice(),
+
+      centros2:
+      p.centros2.slice(),
+
+      centro1:
+      p.centro1,
+
       hora:
-        Date.now()
+      Date.now()
 
     });
 
+    estado.timeline[rx]=
+    estado.timeline[rx]
+    .slice(-MAX_TIMELINE);
 
-    estado.timeline[rx] =
-      estado.timeline[rx]
-      .slice(-MAX_TIMELINE);
-
-
-    /*
-      Resultado já foi conferido.
-      Nunca mais é recalculado.
-    */
-
-    estado.pendentes[rx] =
-      null;
-
+    estado.pendentes[rx]=null;
   });
 
 
-  salvarEstado();
-}
-
-
-/* =========================================================
-   PLACAR REAL
-========================================================= */
-
-function estatisticaTimeline(rx){
-
-  const timeline =
-    estado.timeline[rx] || [];
-
-
-  const ultimos20 =
-    timeline.slice(-20);
-
-
-  const ultimos10 =
-    timeline.slice(-10);
-
-
-  function taxa(lista){
-
-    if(!lista.length){
-      return 0;
-    }
-
-    const greens =
-      lista.filter(
-        x => x.green
-      ).length;
-
-    return (
-      greens /
-      lista.length *
-      100
-    );
-  }
-
-
-  let sequenciaLoss=0;
-
-  for(
-    let i=timeline.length-1;
-    i>=0;
-    i--
-  ){
-
-    if(timeline[i].green){
-      break;
-    }
-
-    sequenciaLoss++;
-
-  }
-
-
-  return {
-
-    total:
-      timeline.length,
-
-    taxa10:
-      taxa(ultimos10),
-
-    taxa20:
-      taxa(ultimos20),
-
-    taxaHistorica:
-      taxa(
-        timeline.slice(-100)
-      ),
-
-    sequenciaLoss
-
-  };
-}
-
-
-/* =========================================================
-   FORÇA AUTO
-========================================================= */
-
-function calcularForcaAuto(
-  rx
-){
+  const pAuto=
+  estado.pendenteAuto;
 
   if(
-    !rx ||
-    !rx.valido
+    pAuto &&
+    pAuto.assinatura===sigAtual
   ){
-    return -Infinity;
-  }
 
-
-  const est =
-    estatisticaTimeline(
-      rx.tamanho
+    const green=
+    pAuto.numeros.includes(
+      novoNumero
     );
 
+    estado.timelineAuto.push({
 
-  /*
-    Enquanto não existe histórico real
-    suficiente da estratégia, a
-    similaridade ajuda mais.
-  */
+      resultado:novoNumero,
+      green,
 
-  if(est.total < 5){
+      rx:pAuto.rx,
 
-    return (
-      rx.similaridade *
-      0.70
-      +
-      (
-        rx.zonasEncontradas || 0
-      )
-      /
-      8 *
-      100 *
-      0.30
-    );
+      numeros:
+      pAuto.numeros.slice(),
 
-  }
+      centros2:
+      pAuto.centros2.slice(),
 
+      centro1:
+      pAuto.centro1,
 
-  let nota =
+      assinatura:
+      pAuto.assinatura,
 
-    est.taxa10 *
-    PESO_ULTIMOS_10
-
-    +
-
-    est.taxa20 *
-    PESO_ULTIMOS_20
-
-    +
-
-    rx.similaridade *
-    PESO_SIMILARIDADE
-
-    +
-
-    est.taxaHistorica *
-    PESO_HISTORICO;
-
-
-  /*
-    PUNIÇÃO POR LOSS CONSECUTIVO.
-
-    Agora o AUTO não fica agarrado
-    em um RX que começou a falhar.
-  */
-
-  if(est.sequenciaLoss >= 2){
-
-    nota -=
-      (
-        est.sequenciaLoss-1
-      )
-      *
-      4;
-
-  }
-
-
-  return nota;
-}
-
-
-/* =========================================================
-   ESCOLHER AUTO
-
-   NÃO HÁ MAIS TRAVA/HISTERESE.
-========================================================= */
-
-function escolherAuto(analises){
-
-  const ranking =
-    analises
-    .filter(x => x.valido)
-    .map(rx => ({
-      ...rx,
-      forcaAuto:
-        calcularForcaAuto(rx),
-      estatistica:
-        estatisticaTimeline(
-          rx.tamanho
-        )
-    }))
-    .sort((a,b) => {
-
-      if(
-        Math.abs(
-          b.forcaAuto -
-          a.forcaAuto
-        ) > 0.0001
-      ){
-        return b.forcaAuto-a.forcaAuto;
-      }
-
-      if(
-        b.estatistica.taxa20 !==
-        a.estatistica.taxa20
-      ){
-        return (
-          b.estatistica.taxa20 -
-          a.estatistica.taxa20
-        );
-      }
-
-      return (
-        b.similaridade -
-        a.similaridade
-      );
+      hora:
+      Date.now()
 
     });
 
-
-  if(!ranking.length){
-    return {
-      escolhido:null,
-      ranking:[]
-    };
+    estado.timelineAuto=
+    estado.timelineAuto
+    .slice(-MAX_TIMELINE);
   }
 
-
-  estado.rxAutoAtual =
-    ranking[0].tamanho;
-
+  estado.pendenteAuto=null;
 
   salvarEstado();
-
-
-  return {
-    escolhido:
-      ranking[0],
-    ranking
-  };
 }
 
 
 /* =========================================================
-   CALCULAR ESTADO ATUAL DOS TRÊS
-========================================================= */
+   ENTRADA DO NÚMERO
 
-function calcularTudo(){
-
-  const rx4 =
-    analisarRX(
-      historico,
-      4
-    );
-
-  const rx5 =
-    analisarRX(
-      historico,
-      5
-    );
-
-  const rx6 =
-    analisarRX(
-      historico,
-      6
-    );
-
-
-  const analises = [
-    rx4,
-    rx5,
-    rx6
-  ];
-
-
-  const auto =
-    escolherAuto(
-      analises
-    );
-
-
-  /*
-    IMPORTANTÍSSIMO:
-
-    Os três recebem snapshot,
-    mesmo se AUTO estiver usando
-    apenas um.
-
-    Assim conseguimos saber
-    honestamente se 4, 5 ou 6
-    teria acertado o próximo giro.
-  */
-
-  analises.forEach(rx => {
-
-    estado.pendentes[
-      rx.tamanho
-    ] =
-      criarSnapshot(rx);
-
-  });
-
-
-  salvarEstado();
-
-
-  let ativo;
-
-
-  if(
-    estado.modo === "MANUAL"
-  ){
-
-    ativo =
-      analises.find(
-        x =>
-          x.tamanho ===
-          estado.manualRX
-      );
-
-  }
-
-  else{
-
-    ativo =
-      auto.escolhido;
-
-  }
-
-
-  return {
-    analises,
-    auto,
-    ativo
-  };
-}
-
-
-/* =========================================================
-   INSERIR NÚMERO
-
-   ORDEM É FUNDAMENTAL:
-
-   1. verifica snapshots antigos;
-   2. grava GREEN/LOSS;
-   3. insere novo número;
-   4. calcula novas jogadas;
-   5. congela para próximo giro.
+   Atualiza visual primeiro.
+   Análise pesada depois.
 ========================================================= */
 
 function adicionarNumero(numero){
 
-  avaliarPendentes(
-    numero
-  );
+  avaliarPendentes(numero);
 
+  historico.push(numero);
 
-  historico.push(
-    numero
-  );
-
-
-  historico =
-    historico.slice(
-      -MAX_HISTORICO
-    );
-
+  historico=
+  historico.slice(-MAX_HISTORICO);
 
   salvarHistorico();
-
-
-  statusArea.textContent =
-    "Número " +
-    numero +
-    " inserido.";
-
-
-  statusArea.style.color =
-    "#00e5ff";
-
-
-  render();
-}
-
-
-/* =========================================================
-   COLAR HISTÓRICO
-
-   Aqui não inventamos GREEN/LOSS
-   retroativo.
-
-   Timeline começa fielmente a partir
-   do momento em que o sistema passa
-   a acompanhar os próximos números.
-========================================================= */
-
-function extrairNumeros(texto){
-
-  const encontrados =
-    texto.match(
-      /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
-    );
-
-  if(!encontrados){
-    return [];
-  }
-
-  return encontrados
-    .map(Number)
-    .filter(
-      n => n>=0 && n<=36
-    )
-    .slice(-MAX_HISTORICO);
-}
-
-
-function inserirHistorico(){
-
-  const campo =
-    document.getElementById(
-      "entradaHistorico"
-    );
-
-
-  const numeros =
-    extrairNumeros(
-      campo.value
-    );
-
-
-  if(!numeros.length){
-
-    statusArea.textContent =
-      "Nenhum número válido.";
-
-    return;
-  }
-
-
-  historico =
-    numeros;
-
 
   /*
-    Novo histórico:
-    limpa timeline antiga porque
-    não pertence necessariamente
-    a esta sequência.
+    Número aparece imediatamente.
   */
 
-  estado.timeline = {
-    4:[],
-    5:[],
-    6:[]
-  };
+  renderRapido();
 
-  estado.pendentes = {
-    4:null,
-    5:null,
-    6:null
-  };
-
-
-  salvarHistorico();
-  salvarEstado();
-
-
-  campo.value = "";
-
-
-  statusArea.textContent =
-    historico.length +
-    " números carregados.";
-
-
-  render();
-}
-
-
-/* =========================================================
-   APAGAR
-========================================================= */
-
-function apagarUltimo(){
-
-  if(!historico.length){
-    return;
-  }
-
-
-  historico.pop();
-
+  statusArea.textContent=
+  "Entrou "+numero+
+  " • recalculando próxima jogada...";
 
   /*
-    Ao voltar o histórico manualmente,
-    o snapshot atual deixa de ser válido.
+    Libera a pintura da interface
+    antes do cálculo pesado.
   */
 
-  estado.pendentes = {
-    4:null,
-    5:null,
-    6:null
-  };
-
-
-  salvarHistorico();
-  salvarEstado();
-
-  render();
-}
-
-
-function apagarTudo(){
-
-  if(
-    !confirm(
-      "Apagar todo o histórico?"
-    )
-  ){
-    return;
-  }
-
-
-  historico=[];
-
-
-  estado.timeline = {
-    4:[],
-    5:[],
-    6:[]
-  };
-
-
-  estado.pendentes = {
-    4:null,
-    5:null,
-    6:null
-  };
-
-
-  salvarHistorico();
-  salvarEstado();
-
-  render();
-}
-
-
-/* =========================================================
-   AUTO / MANUAL
-========================================================= */
-
-function ativarAuto(){
-
-  estado.modo =
-    "AUTO";
-
-  salvarEstado();
-
-  render();
-}
-
-
-function ativarManual(rx){
-
-  estado.modo =
-    "MANUAL";
-
-  estado.manualRX =
-    rx;
-
-  salvarEstado();
-
-  render();
+  setTimeout(()=>{
+    renderCompleto();
+  },0);
 }
 
 
@@ -1796,17 +2168,13 @@ function ativarManual(rx){
 
 document.body.innerHTML="";
 
-document.body.style.margin="0";
-document.body.style.background="#101010";
-document.body.style.color="#fff";
-document.body.style.fontFamily="Arial,sans-serif";
+document.body.style.cssText=
+"margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif";
 
-
-const app =
+const app=
 document.createElement("div");
 
-
-app.innerHTML = `
+app.innerHTML=`
 
 <style>
 
@@ -1817,18 +2185,20 @@ font-family:Arial,sans-serif
 }
 
 button{
-cursor:pointer
+cursor:pointer;
+touch-action:manipulation
 }
 
 .app{
-max-width:880px;
+max-width:930px;
 margin:auto;
-padding:7px
+padding:6px
 }
 
 h2{
 text-align:center;
-margin:5px 0 9px
+font-size:20px;
+margin:5px 0 8px
 }
 
 .painel{
@@ -1840,85 +2210,63 @@ margin-bottom:7px
 }
 
 .titulo{
-font-size:11px;
+font-size:9px;
 font-weight:900;
-color:#aaa
+color:#999
 }
 
 textarea{
 width:100%;
-height:65px;
+height:60px;
 background:#111;
-color:white;
+color:#fff;
 border:1px solid #555;
 border-radius:7px;
 padding:7px
 }
 
-.acoes{
+.acoes,.controle{
 display:flex;
-gap:5px;
-margin-top:5px;
-flex-wrap:wrap
+gap:4px;
+flex-wrap:wrap;
+margin-top:5px
 }
 
 .btn{
 background:#333;
 border:1px solid #555;
+color:#fff;
 border-radius:7px;
-color:white;
 padding:7px 9px;
 font-weight:900
 }
 
-.verde{background:#146238}
-.vermelho{background:#762832}
+.ativo{
+background:#007d98!important;
+border-color:#00e5ff!important
+}
+
+.vencedor{
+border-color:#00e5ff!important;
+color:#00e5ff!important;
+box-shadow:0 0 6px #00e5ff55
+}
 
 .status{
-font-size:10px;
+font-size:9px;
 font-weight:900;
-color:#aaa;
+color:#00e5ff;
 margin-top:5px
 }
 
-.modos{
-display:flex;
-gap:4px;
-align-items:center;
-flex-wrap:wrap
-}
-
-.modo{
-background:#222;
-border:1px solid #555;
-color:#999;
-border-radius:7px;
-padding:7px 10px;
-font-weight:900
-}
-
-.modo.ativo{
-background:#007d98;
-border-color:#00e5ff;
-color:white
-}
-
-.modo.vencedor{
-box-shadow:0 0 8px #00e5ff;
-border-color:#00e5ff
-}
-
-
-/* MOMENTO */
-
-.momento{
+.motor{
 display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:5px;
+grid-template-columns:repeat(6,1fr);
+gap:4px;
 margin-top:6px
 }
 
-.momentoBox{
+.card{
 background:#111;
 border:1px solid #333;
 border-radius:7px;
@@ -1926,104 +2274,115 @@ padding:6px;
 text-align:center
 }
 
-.momentoBox small{
+.card small{
 display:block;
-font-size:8px;
-color:#888
+font-size:7px;
+font-weight:900;
+color:#777
 }
 
-.momentoBox strong{
-font-size:16px
+.card strong{
+font-size:14px
 }
 
+.ok{color:#00e676}
+.aviso{color:#ffc107}
+.ruim{color:#ff5252}
 
-/* TIMELINE */
+.momento{
+display:grid;
+grid-template-columns:repeat(6,1fr);
+gap:4px;
+margin-top:6px
+}
 
-.timelineArea{
-margin-top:8px
+.mini{
+background:#111;
+border:1px solid #333;
+border-radius:6px;
+padding:5px;
+text-align:center
+}
+
+.mini small{
+display:block;
+font-size:7px;
+color:#777;
+font-weight:900
+}
+
+.mini strong{
+font-size:12px
 }
 
 .timelineLinha{
 display:grid;
-grid-template-columns:46px 1fr 55px;
-gap:5px;
+grid-template-columns:42px 1fr 45px;
+gap:4px;
 align-items:center;
-margin-top:5px
+margin-top:4px
 }
 
 .timelineNome{
-font-size:11px;
-font-weight:900;
-text-align:center
+font-size:9px;
+font-weight:900
 }
 
 .timeline{
 display:flex;
 gap:2px;
-overflow:hidden;
-justify-content:flex-end
+justify-content:flex-end;
+overflow:hidden
 }
 
-.resultadoGL{
-width:17px;
-min-width:17px;
-height:17px;
-border-radius:4px;
+.gl{
+width:15px;
+min-width:15px;
+height:15px;
+border-radius:3px;
 display:flex;
 align-items:center;
 justify-content:center;
-font-size:8px;
+font-size:7px;
 font-weight:900
 }
 
-.green{
-background:#00a651;
-color:white
-}
+.g{background:#00a651}
+.l{background:#c62828}
 
-.loss{
-background:#c62828;
-color:white
-}
-
-.timelineTaxa{
-font-size:10px;
+.taxa{
+font-size:9px;
 font-weight:900;
 text-align:right
 }
 
-
-/* ÚLTIMOS 14 */
-
 .linha{
 display:grid;
-grid-template-columns:55px 1fr;
-gap:5px;
-margin-top:5px;
-align-items:center
+grid-template-columns:52px 1fr;
+gap:4px;
+align-items:center;
+margin-top:4px
 }
 
 .rotulo{
-font-size:8px;
+font-size:7px;
 font-weight:900;
-color:#888
+color:#777
 }
 
 .scroll{
 display:flex;
 gap:3px;
-overflow-x:auto
+overflow:auto
 }
 
-.bola,
-.regiao,
-.id{
-min-width:34px;
-height:34px;
+.bola,.regiao,.idbox{
+min-width:32px;
+height:32px;
 display:flex;
 align-items:center;
 justify-content:center;
-font-size:12px;
+font-size:10px;
 font-weight:900
 }
 
@@ -2032,51 +2391,84 @@ border-radius:50%;
 border:2px solid #aaa
 }
 
-.regiao{
-border-radius:6px
+.regiao,.idbox{
+border-radius:5px
 }
 
-.id{
+.idbox{
 background:#111;
 border:1px solid #444;
-border-radius:6px;
 gap:2px
 }
 
-.tag{
-padding:5px 3px;
-border-radius:4px
+.idtag{
+padding:4px 2px;
+border-radius:3px
 }
 
-
-/* JOGADA */
-
-.jogadaTitulo{
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:5px
+.sinal{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:4px;
+margin-top:6px
 }
 
-.rxAtivo{
-font-size:12px;
-font-weight:900;
-color:#00e5ff
+.sinalBox{
+background:#111;
+border:1px solid #333;
+border-radius:6px;
+padding:5px;
+text-align:center
+}
+
+.sinalBox small{
+display:block;
+font-size:7px;
+color:#777
+}
+
+.sinalBox strong{
+font-size:14px
+}
+
+.zonas{
+display:grid;
+grid-template-columns:repeat(8,1fr);
+gap:4px;
+margin-top:6px
+}
+
+.zona{
+background:#111;
+border:1px solid #444;
+border-radius:6px;
+padding:5px 2px;
+text-align:center
+}
+
+.zona strong{
+display:block;
+font-size:13px
+}
+
+.zona small{
+font-size:6px;
+color:#777
 }
 
 .jogadaLinha{
 display:flex;
 gap:5px;
-overflow-x:auto;
+overflow:auto;
 margin-top:5px
 }
 
 .bloco{
-min-width:137px;
+min-width:135px;
 background:#111;
 border:1px solid #00e5ff;
-border-radius:8px;
-padding:7px;
+border-radius:7px;
+padding:6px;
 text-align:center
 }
 
@@ -2086,26 +2478,22 @@ border-color:#ffc107
 
 .bloco small{
 display:block;
-font-size:8px;
-color:#888;
+font-size:7px;
+color:#777;
 font-weight:900
 }
 
 .bloco strong{
-font-size:21px;
 display:block;
-margin:3px
+font-size:20px
 }
 
 .nums{
 border-top:1px solid #333;
 padding-top:4px;
-font-size:10px;
+font-size:9px;
 font-weight:900
 }
-
-
-/* TECLADO */
 
 .teclado{
 display:grid;
@@ -2114,30 +2502,30 @@ gap:4px;
 margin-top:5px
 }
 
-.numero{
+.numeroBtn{
 height:38px;
 border:1px solid #666;
 border-radius:6px;
-color:white;
+color:#fff;
 font-weight:900
 }
 
-.zero{
+.zeroBtn{
 grid-column:span 6
 }
 
-@media(max-width:600px){
+@media(max-width:650px){
 
-.app{padding:5px}
-
-.timelineLinha{
-grid-template-columns:38px 1fr 46px
+.motor{
+grid-template-columns:repeat(3,1fr)
 }
 
-.resultadoGL{
-width:15px;
-min-width:15px;
-height:15px
+.momento{
+grid-template-columns:repeat(3,1fr)
+}
+
+.zonas{
+grid-template-columns:repeat(4,1fr)
 }
 
 }
@@ -2150,104 +2538,77 @@ height:15px
 <h2>Análise 0 • 6 • 9</h2>
 
 
-<div class="painel">
+<section class="painel">
 
 <textarea
 id="entradaHistorico"
-placeholder="Cole o histórico..."
+placeholder="Cole o histórico do mais antigo para o mais recente..."
 ></textarea>
 
 <div class="acoes">
 
-<button
-id="inserir"
-class="btn verde">
-Inserir histórico
+<button id="btnInserir" class="btn">
+INSERIR HISTÓRICO
 </button>
 
-<button
-id="apagarUltimo"
-class="btn">
-Apagar último
+<button id="btnApagar" class="btn">
+APAGAR ÚLTIMO
 </button>
 
-<button
-id="apagarTudo"
-class="btn vermelho">
-Apagar tudo
+<button id="btnLimpar" class="btn">
+APAGAR TUDO
 </button>
 
 </div>
 
-<div
-id="status"
-class="status">
+<div id="statusArea" class="status">
 Pronto.
 </div>
 
-</div>
+</section>
 
 
-<div class="painel">
+<section class="painel">
 
 <div class="titulo">
-CONTROLE RAIO X
+MOTOR ADAPTATIVO / ASSERTIVIDADE
 </div>
 
-<div class="modos">
+<div class="controle">
 
-<button id="auto" class="modo">
+<button id="auto" class="btn">
 AUTO
 </button>
 
-<button id="m4" class="modo">
+<button id="rx4" class="btn">
 4
 </button>
 
-<button id="m5" class="modo">
+<button id="rx5" class="btn">
 5
 </button>
 
-<button id="m6" class="modo">
+<button id="rx6" class="btn">
 6
 </button>
 
 </div>
 
+<div id="motor" class="motor"></div>
 
-<div
-id="momento"
-class="momento">
+<div id="momento" class="momento"></div>
+
+<div style="margin-top:7px"
+class="titulo">
+TIMELINE REAL — PREVISÃO CONGELADA
 </div>
 
+<div id="timelines"></div>
 
-<div class="timelineArea">
-
-<div class="titulo">
-DESEMPENHO REAL — ÚLTIMOS 20
-</div>
-
-<div
-id="timeline4"
-class="timelineLinha">
-</div>
-
-<div
-id="timeline5"
-class="timelineLinha">
-</div>
-
-<div
-id="timeline6"
-class="timelineLinha">
-</div>
-
-</div>
-
-</div>
+</section>
 
 
-<div class="painel">
+<section class="painel">
 
 <div class="titulo">
 ÚLTIMOS 14
@@ -2259,8 +2620,8 @@ class="timelineLinha">
 ROLETA
 </div>
 
-<div id="linhaRoleta" class="scroll">
-</div>
+<div id="linhaRoleta"
+class="scroll"></div>
 
 </div>
 
@@ -2270,8 +2631,8 @@ ROLETA
 REGIÃO
 </div>
 
-<div id="linhaRegiao" class="scroll">
-</div>
+<div id="linhaRegiao"
+class="scroll"></div>
 
 </div>
 
@@ -2281,199 +2642,206 @@ REGIÃO
 ID
 </div>
 
-<div id="linhaID" class="scroll">
-</div>
+<div id="linhaID"
+class="scroll"></div>
 
 </div>
 
+</section>
+
+
+<section class="painel">
+
+<div id="tituloRX"
+class="titulo">
+RAIO X
 </div>
 
+<div id="sinal"
+class="sinal"></div>
 
-<div class="painel">
+<div id="zonas"
+class="zonas"></div>
 
-<div class="jogadaTitulo">
+</section>
+
+
+<section class="painel">
 
 <div class="titulo">
 JOGADA SUGERIDA
 </div>
 
-<div
-id="rxAtivo"
-class="rxAtivo">
-—
-</div>
+<div id="jogadaInfo"
+class="status"></div>
 
-</div>
+<div id="jogadaArea"></div>
 
-<div id="jogada">
-</div>
-
-</div>
+</section>
 
 
-<div class="painel">
+<section class="painel">
 
 <div class="titulo">
 TECLADO 0–36
 </div>
 
-<div
-id="teclado"
-class="teclado">
-</div>
+<div id="teclado"
+class="teclado"></div>
 
-</div>
+</section>
 
 </div>
 `;
 
-
 document.body.appendChild(app);
 
-
-/* =========================================================
-   DOM
-========================================================= */
-
-const statusArea =
-document.getElementById("status");
-
-const jogadaArea =
-document.getElementById("jogada");
-
-const rxAtivoArea =
-document.getElementById("rxAtivo");
+const statusArea=
+document.getElementById("statusArea");
 
 
 /* =========================================================
-   TECLADO
+   CORES
 ========================================================= */
 
-const teclado =
-document.getElementById("teclado");
+function corNumero(numero){
 
+  if(numero===0)
+    return "#087c48";
 
-for(let n=1;n<=36;n++){
-
-  const b =
-    document.createElement("button");
-
-  b.className="numero";
-
-  b.textContent=n;
-
-  b.style.background =
-    corNumeroRoleta(n);
-
-  b.onclick=() =>
-    adicionarNumero(n);
-
-  teclado.appendChild(b);
+  return numerosVermelhos.has(numero)
+  ?
+  "#c6283d"
+  :
+  "#181818";
 }
 
 
-const bz =
-document.createElement("button");
+/* =========================================================
+   TIMELINE HTML
+========================================================= */
 
-bz.className="numero zero";
-bz.textContent="0";
-bz.style.background="#087c48";
-bz.onclick=() => adicionarNumero(0);
+function timelineHTML(nome,lista){
 
-teclado.appendChild(bz);
+  const s=
+  estatisticaTimeline(lista);
+
+  return `
+
+  <div class="timelineLinha">
+
+    <div class="timelineNome">
+      ${nome}
+    </div>
+
+    <div class="timeline">
+
+      ${lista.slice(-20).map(x=>`
+
+        <span
+        class="gl ${x.green?"g":"l"}"
+        title="Resultado ${x.resultado}">
+        ${x.green?"G":"L"}
+        </span>
+
+      `).join("")}
+
+    </div>
+
+    <div class="taxa">
+      ${s.total?s.taxa20.toFixed(0)+"%":"—"}
+    </div>
+
+  </div>
+
+  `;
+}
 
 
 /* =========================================================
-   EVENTOS
+   RENDER RÁPIDO
 ========================================================= */
 
-document.getElementById("auto")
-.onclick=ativarAuto;
+function renderRapido(){
 
-document.getElementById("m4")
-.onclick=() => ativarManual(4);
+  const janela=
+  historico.slice(-14);
 
-document.getElementById("m5")
-.onclick=() => ativarManual(5);
+  document
+  .getElementById("linhaRoleta")
+  .innerHTML=
+  janela.map(n=>`
 
-document.getElementById("m6")
-.onclick=() => ativarManual(6);
+    <div
+    class="bola"
+    style="background:${corNumero(n)}">
+    ${n}
+    </div>
 
-document.getElementById("inserir")
-.onclick=inserirHistorico;
-
-document.getElementById("apagarUltimo")
-.onclick=apagarUltimo;
-
-document.getElementById("apagarTudo")
-.onclick=apagarTudo;
+  `).join("");
 
 
-/* =========================================================
-   RENDER TIMELINE
-========================================================= */
+  document
+  .getElementById("linhaRegiao")
+  .innerHTML=
+  janela.map(n=>{
 
-function renderTimeline(rx){
+    const r=
+    regiaoDoNumero(n);
 
-  const area =
-    document.getElementById(
-      "timeline"+rx
-    );
+    return `
 
-  const timeline =
-    estado.timeline[rx]
-      .slice(-20);
+    <div
+    class="regiao"
+    style="background:${
+      r
+      ?
+      coresRegioes[r]
+      :
+      "#555"
+    }">
+    ${n}
+    </div>
 
-  const est =
-    estatisticaTimeline(rx);
+    `;
 
-
-  const caixas =
-    timeline
-    .map(item => {
-
-      return (
-        '<span class="' +
-        'resultadoGL ' +
-        (
-          item.green
-          ? 'green'
-          : 'loss'
-        ) +
-        '" title="Resultado ' +
-        item.resultado +
-        '">' +
-
-        (
-          item.green
-          ? 'G'
-          : 'L'
-        ) +
-
-        '</span>'
-      );
-
-    })
-    .join("");
+  }).join("");
 
 
-  area.innerHTML =
+  document
+  .getElementById("linhaID")
+  .innerHTML=
+  janela.map(n=>{
 
-    '<div class="timelineNome">' +
-    'RX' + rx +
-    '</div>' +
+    const lista=
+    idsQueBatem(n);
 
-    '<div class="timeline">' +
-    caixas +
-    '</div>' +
+    if(!lista.length){
 
-    '<div class="timelineTaxa">' +
-    (
-      est.total
-      ? est.taxa20.toFixed(0)+"%"
-      : "—"
-    ) +
-    '</div>';
+      return `
+      <div class="idbox">—</div>
+      `;
+    }
+
+    return `
+
+    <div class="idbox">
+
+    ${lista.map(id=>`
+
+      <span
+      class="idtag"
+      style="background:${corDoId(id)}">
+      ${id}
+      </span>
+
+    `).join("")}
+
+    </div>
+
+    `;
+
+  }).join("");
 }
 
 
@@ -2483,159 +2851,381 @@ function renderTimeline(rx){
 
 function renderMomento(){
 
-  const m =
-    analisarEstadoAtual(
-      historico
-    );
+  const m=
+  analisarMomento();
 
+  const totalAB=
+  Math.max(
+    1,
+    m.alto+m.baixo
+  );
 
-  const total =
-    m.baixos +
-    m.altos;
+  const totalCor=
+  Math.max(
+    1,
+    m.vermelho+m.preto
+  );
 
+  const rankingTerminais=
+  m.terminalViz
+  .map((valor,t)=>({
+    t,
+    valor
+  }))
+  .sort(
+    (a,b)=>b.valor-a.valor
+  )
+  .slice(0,3);
 
-  const baixo =
-    total
-    ?
-    m.baixos/total*100
-    :
-    0;
-
-
-  const alto =
-    total
-    ?
-    m.altos/total*100
-    :
-    0;
-
+  const regiao=
+  Object.entries(
+    m.regioes
+  )
+  .sort((a,b)=>b[1]-a[1])[0];
 
   document
   .getElementById("momento")
-  .innerHTML =
+  .innerHTML=`
 
-    '<div class="momentoBox">' +
-    '<small>BAIXOS 1–18</small>' +
-    '<strong>' +
-    baixo.toFixed(0) +
-    '%</strong>' +
-    '</div>' +
+  <div class="mini">
+  <small>ALTO</small>
+  <strong>
+  ${(m.alto/totalAB*100).toFixed(0)}%
+  </strong>
+  </div>
 
-    '<div class="momentoBox">' +
-    '<small>ALTOS 19–36</small>' +
-    '<strong>' +
-    alto.toFixed(0) +
-    '%</strong>' +
-    '</div>' +
+  <div class="mini">
+  <small>BAIXO</small>
+  <strong>
+  ${(m.baixo/totalAB*100).toFixed(0)}%
+  </strong>
+  </div>
 
-    '<div class="momentoBox">' +
-    '<small>JANELA</small>' +
-    '<strong>' +
-    m.janela.length +
-    '</strong>' +
-    '</div>';
+  <div class="mini">
+  <small>VERMELHO</small>
+  <strong>
+  ${(m.vermelho/totalCor*100).toFixed(0)}%
+  </strong>
+  </div>
+
+  <div class="mini">
+  <small>PRETO</small>
+  <strong>
+  ${(m.preto/totalCor*100).toFixed(0)}%
+  </strong>
+  </div>
+
+  <div class="mini">
+  <small>TERMINAIS</small>
+  <strong>
+  ${rankingTerminais
+    .map(x=>"T"+x.t)
+    .join(" • ")}
+  </strong>
+  </div>
+
+  <div class="mini">
+  <small>REGIÃO</small>
+  <strong>
+  ${regiao?regiao[0]:"—"}
+  </strong>
+  </div>
+
+  `;
 }
 
 
 /* =========================================================
-   RENDER ÚLTIMOS 14
+   RENDER MOTOR
 ========================================================= */
 
-function render14(){
+function classeTaxa(t){
 
-  const janela =
-    historico.slice(-14);
+  if(t>=90) return "ok";
+  if(t>=85) return "aviso";
+
+  return "ruim";
+}
 
 
-  document
-  .getElementById("linhaRoleta")
-  .innerHTML =
+function renderMotor(
+  ativoAuto
+){
 
-    janela.map(n =>
+  const rec=
+  estadoRecuperacao();
 
-      '<div class="bola" ' +
-      'style="background:' +
-      corNumeroRoleta(n) +
-      '">' +
-      n +
-      '</div>'
-
-    ).join("");
-
+  const autoStats=
+  rec.stats;
 
   document
-  .getElementById("linhaRegiao")
-  .innerHTML =
+  .getElementById("motor")
+  .innerHTML=`
 
-    janela.map(n => {
+  <div class="card">
+  <small>ESTADO</small>
+  <strong class="${
+    rec.nivel===0
+    ?
+    "ok"
+    :
+    rec.nivel===1
+    ?
+    "aviso"
+    :
+    "ruim"
+  }">
+  ${rec.nome}
+  </strong>
+  </div>
 
-      const r =
-        regiaoDoNumero(n);
+  <div class="card">
+  <small>RX AUTO</small>
+  <strong>
+  ${ativoAuto?ativoAuto.tamanho:"—"}
+  </strong>
+  </div>
 
-      return (
-        '<div class="regiao" ' +
-        'style="background:' +
-        (
-          r
-          ? coresRegioes[r]
-          : "#555"
-        ) +
-        '">' +
-        n +
-        '</div>'
-      );
+  <div class="card">
+  <small>ÚLTIMOS 5</small>
+  <strong class="${classeTaxa(autoStats.taxa5)}">
+  ${autoStats.total?autoStats.taxa5.toFixed(0)+"%":"—"}
+  </strong>
+  </div>
 
-    }).join("");
+  <div class="card">
+  <small>ÚLTIMOS 10</small>
+  <strong class="${classeTaxa(autoStats.taxa10)}">
+  ${autoStats.total?autoStats.taxa10.toFixed(0)+"%":"—"}
+  </strong>
+  </div>
 
+  <div class="card">
+  <small>ÚLTIMOS 20</small>
+  <strong class="${classeTaxa(autoStats.taxa20)}">
+  ${autoStats.total?autoStats.taxa20.toFixed(0)+"%":"—"}
+  </strong>
+  </div>
+
+  <div class="card">
+  <small>LOSS SEGUIDOS</small>
+  <strong class="${
+    autoStats.lossSeguidos>=2
+    ?
+    "ruim"
+    :
+    ""
+  }">
+  ${autoStats.lossSeguidos}
+  </strong>
+  </div>
+
+  `;
 
   document
-  .getElementById("linhaID")
-  .innerHTML =
+  .getElementById("timelines")
+  .innerHTML=
 
-    janela.map(n => {
+  timelineHTML(
+    "AUTO",
+    estado.timelineAuto
+  )
 
-      const ids =
-        idsQueBatem(n);
+  +
 
-      if(!ids.length){
+  timelineHTML(
+    "RX4",
+    estado.timeline[4]
+  )
 
-        return (
-          '<div class="id">—</div>'
-        );
+  +
 
-      }
+  timelineHTML(
+    "RX5",
+    estado.timeline[5]
+  )
 
-      return (
+  +
 
-        '<div class="id">' +
-
-        ids.map(id =>
-
-          '<span class="tag" ' +
-          'style="background:' +
-          corDoId(id) +
-          '">' +
-          id +
-          '</span>'
-
-        ).join("") +
-
-        '</div>'
-
-      );
-
-    }).join("");
+  timelineHTML(
+    "RX6",
+    estado.timeline[6]
+  );
 }
 
 
 /* =========================================================
-   RENDER CONTROLE
+   RENDER RAIO X
 ========================================================= */
 
-function renderControle(resultado){
+function renderRaioX(rx){
 
-  ["auto","m4","m5","m6"]
-  .forEach(id => {
+  document
+  .getElementById("tituloRX")
+  .textContent=
+
+  estado.modo==="AUTO"
+  ?
+  `RAIO X ${rx.tamanho} — MAIS FORTE`
+  :
+  `RAIO X ${rx.tamanho} — MANUAL`;
+
+
+  document
+  .getElementById("sinal")
+  .innerHTML=`
+
+  <div class="sinalBox">
+  <small>LINHA 0</small>
+  <strong style="color:${COR_T0}">
+  ${rx.sinais[0].toFixed(0)}%
+  </strong>
+  </div>
+
+  <div class="sinalBox">
+  <small>LINHA 6</small>
+  <strong style="color:${COR_T6}">
+  ${rx.sinais[6].toFixed(0)}%
+  </strong>
+  </div>
+
+  <div class="sinalBox">
+  <small>LINHA 9</small>
+  <strong style="color:${COR_T9}">
+  ${rx.sinais[9].toFixed(0)}%
+  </strong>
+  </div>
+
+  `;
+
+
+  document
+  .getElementById("zonas")
+  .innerHTML=
+  rx.zonas.map(z=>`
+
+    <div class="zona">
+
+      <strong>
+      ${z.label}
+      </strong>
+
+      <small>
+      ${z.origem}
+      </small>
+
+    </div>
+
+  `).join("");
+}
+
+
+/* =========================================================
+   RENDER JOGADA
+========================================================= */
+
+function renderJogada(rx){
+
+  const area=
+  document.getElementById(
+    "jogadaArea"
+  );
+
+  const info=
+  document.getElementById(
+    "jogadaInfo"
+  );
+
+  if(
+    !rx ||
+    !rx.jogada
+  ){
+
+    info.textContent=
+    "AGUARDANDO";
+
+    area.innerHTML="";
+
+    return;
+  }
+
+  const rec=
+  estadoRecuperacao();
+
+  info.textContent=
+  `RX${rx.tamanho} • ${
+    rec.nome
+  } • 28/37`;
+
+
+  const dois=
+  rx.jogada.blocos2
+  .map(b=>`
+
+    <div class="bloco">
+
+    <small>
+    2 VIZINHOS DO
+    </small>
+
+    <strong>
+    ${b.centro}
+    </strong>
+
+    <div class="nums">
+    ${b.numeros.join(" • ")}
+    </div>
+
+    </div>
+
+  `).join("");
+
+
+  const um=`
+
+    <div class="bloco um">
+
+    <small>
+    1 VIZINHO DO
+    </small>
+
+    <strong>
+    ${rx.jogada.bloco1.centro}
+    </strong>
+
+    <div class="nums">
+    ${rx.jogada.bloco1.numeros.join(" • ")}
+    </div>
+
+    </div>
+
+  `;
+
+
+  area.innerHTML=`
+
+  <div class="jogadaLinha">
+  ${dois}
+  </div>
+
+  <div class="jogadaLinha">
+  ${um}
+  </div>
+
+  `;
+}
+
+
+/* =========================================================
+   RENDER CONTROLES
+========================================================= */
+
+function renderControles(
+  auto
+){
+
+  ["auto","rx4","rx5","rx6"]
+  .forEach(id=>{
 
     document
     .getElementById(id)
@@ -2646,24 +3236,17 @@ function renderControle(resultado){
 
   });
 
-
-  if(
-    estado.modo === "AUTO"
-  ){
+  if(estado.modo==="AUTO"){
 
     document
     .getElementById("auto")
     .classList.add("ativo");
 
-
-    if(
-      resultado.auto.escolhido
-    ){
+    if(auto){
 
       document
       .getElementById(
-        "m" +
-        resultado.auto.escolhido.tamanho
+        "rx"+auto.tamanho
       )
       .classList.add(
         "vencedor"
@@ -2672,207 +3255,372 @@ function renderControle(resultado){
     }
 
   }
-
   else{
 
     document
     .getElementById(
-      "m" +
-      estado.manualRX
+      "rx"+estado.manualRX
     )
-    .classList.add(
-      "ativo"
-    );
-
+    .classList.add("ativo");
   }
-
 }
 
 
 /* =========================================================
-   RENDER JOGADA
+   RENDER COMPLETO
 ========================================================= */
 
-function renderJogada(rx){
+function renderCompleto(){
 
-  if(
-    !rx ||
-    !rx.valido
-  ){
+  try{
 
-    rxAtivoArea.textContent="—";
+    const analises=
+    calcularAnalises();
 
-    jogadaArea.innerHTML =
-      '<div style="color:#777">' +
-      'Aguardando dados.' +
-      '</div>';
+    const auto=
+    escolherAuto(analises);
+
+    garantirPendentes(
+      analises,
+      auto
+    );
+
+    let ativo;
+
+    if(estado.modo==="AUTO"){
+
+      ativo=auto;
+
+    }
+    else{
+
+      ativo=
+      analises.find(
+        x=>
+        x.tamanho===
+        estado.manualRX
+      )
+      ||
+      auto;
+    }
+
+    renderRapido();
+
+    renderMomento();
+
+    renderMotor(auto);
+
+    renderControles(auto);
+
+    if(ativo){
+
+      renderRaioX(ativo);
+      renderJogada(ativo);
+
+    }
+
+    estado.ultimaAnalise=
+    auto
+    ?
+    {
+      rx:auto.tamanho,
+      similaridade:auto.similaridade,
+      hora:Date.now()
+    }
+    :
+    null;
+
+    salvarEstado();
+
+    statusArea.textContent=
+    auto
+    ?
+    "Próxima jogada calculada."
+    :
+    "Aguardando histórico suficiente.";
+
+  }
+  catch(erro){
+
+    console.error(erro);
+
+    statusArea.textContent=
+    "Erro: "+
+    (
+      erro?.message ||
+      "erro desconhecido"
+    );
+  }
+}
+
+
+/* =========================================================
+   HISTÓRICO COLADO
+========================================================= */
+
+function extrairNumeros(texto){
+
+  const x=
+  texto.match(
+    /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
+  );
+
+  if(!x)
+    return [];
+
+  return x
+  .map(Number)
+  .slice(-MAX_HISTORICO);
+}
+
+
+function inserirHistorico(){
+
+  const campo=
+  document.getElementById(
+    "entradaHistorico"
+  );
+
+  const numeros=
+  extrairNumeros(
+    campo.value
+  );
+
+  if(!numeros.length){
+
+    statusArea.textContent=
+    "Nenhum número válido.";
 
     return;
   }
 
+  historico=numeros;
 
-  rxAtivoArea.textContent =
+  /*
+    Histórico substituído:
+    previsões/timeline antigas deixam
+    de corresponder à sequência.
+  */
 
-    "RX" +
-    rx.tamanho +
+  estado.pendentes={
+    4:null,
+    5:null,
+    6:null
+  };
 
-    (
-      estado.modo === "AUTO"
-      ? " • AUTO"
-      : " • MANUAL"
-    );
+  estado.pendenteAuto=null;
 
+  estado.timeline={
+    4:[],
+    5:[],
+    6:[]
+  };
 
-  const dois =
-    rx.jogada.blocos2
-    .map(b =>
+  estado.timelineAuto=[];
 
-      '<div class="bloco">' +
+  salvarHistorico();
+  salvarEstado();
 
-      '<small>2 VIZINHOS DO</small>' +
+  campo.value="";
 
-      '<strong>' +
-      b.centro +
-      '</strong>' +
+  renderRapido();
 
-      '<div class="nums">' +
-      b.numeros.join(" • ") +
-      '</div>' +
-
-      '</div>'
-
-    ).join("");
-
-
-  const um =
-    rx.jogada.blocos1
-    .map(b =>
-
-      '<div class="bloco um">' +
-
-      '<small>1 VIZINHO DO</small>' +
-
-      '<strong>' +
-      b.centro +
-      '</strong>' +
-
-      '<div class="nums">' +
-      b.numeros.join(" • ") +
-      '</div>' +
-
-      '</div>'
-
-    ).join("");
-
-
-  jogadaArea.innerHTML =
-
-    '<div class="jogadaLinha">' +
-    dois +
-    '</div>' +
-
-    '<div class="jogadaLinha">' +
-    um +
-    '</div>';
+  setTimeout(
+    renderCompleto,
+    0
+  );
 }
 
 
 /* =========================================================
-   RENDER
+   APAGAR
 ========================================================= */
 
-function render(){
+function apagarUltimo(){
+
+  if(!historico.length)
+    return;
+
+  historico.pop();
 
   /*
-    Calcula RX4, RX5 e RX6
-    simultaneamente.
+    Estado mudou.
+    Não usar snapshot antigo.
   */
 
-  const resultado =
-    calcularTudo();
+  estado.pendentes={
+    4:null,
+    5:null,
+    6:null
+  };
 
+  estado.pendenteAuto=null;
 
-  renderControle(
-    resultado
+  salvarHistorico();
+  salvarEstado();
+
+  renderRapido();
+
+  setTimeout(
+    renderCompleto,
+    0
   );
+}
 
-  renderMomento();
 
-  renderTimeline(4);
-  renderTimeline(5);
-  renderTimeline(6);
+function apagarTudo(){
 
-  render14();
+  if(
+    !confirm("Apagar tudo?")
+  ) return;
 
-  renderJogada(
-    resultado.ativo
+  historico=[];
+
+  estado=
+  estadoPadrao();
+
+  salvarHistorico();
+  salvarEstado();
+
+  renderRapido();
+
+  setTimeout(
+    renderCompleto,
+    0
   );
-
-
-  /*
-    Diagnóstico interno.
-  */
-
-  console.table(
-
-    resultado.auto.ranking
-    .map(rx => {
-
-      const e =
-        estatisticaTimeline(
-          rx.tamanho
-        );
-
-      return {
-
-        RX:rx.tamanho,
-
-        NOTA:
-          rx.forcaAuto
-          .toFixed(1),
-
-        "10":
-          e.taxa10
-          .toFixed(0) +
-          "%",
-
-        "20":
-          e.taxa20
-          .toFixed(0) +
-          "%",
-
-        LOSS:
-          e.sequenciaLoss,
-
-        SIM:
-          rx.similaridade
-          .toFixed(1) +
-          "%",
-
-        ATIVO:
-          resultado.auto.escolhido &&
-          resultado.auto.escolhido.tamanho ===
-          rx.tamanho
-          ? "SIM"
-          : ""
-
-      };
-
-    })
-
-  );
-
 }
 
 
 /* =========================================================
-   PRIMEIRA INICIALIZAÇÃO
+   AUTO / MANUAL
 
-   Se ainda não existe snapshot,
-   render() cria as três jogadas
-   aguardando o próximo número.
+   IMPORTANTE:
+   não cria nova previsão.
+   Só muda o que está sendo exibido.
 ========================================================= */
 
-render();
+function ativarAuto(){
+
+  estado.modo="AUTO";
+
+  salvarEstado();
+
+  renderCompleto();
+}
+
+
+function ativarManual(rx){
+
+  estado.modo="MANUAL";
+  estado.manualRX=rx;
+
+  salvarEstado();
+
+  renderCompleto();
+}
+
+
+/* =========================================================
+   EVENTOS
+========================================================= */
+
+document
+.getElementById("btnInserir")
+.onclick=
+inserirHistorico;
+
+document
+.getElementById("btnApagar")
+.onclick=
+apagarUltimo;
+
+document
+.getElementById("btnLimpar")
+.onclick=
+apagarTudo;
+
+document
+.getElementById("auto")
+.onclick=
+ativarAuto;
+
+document
+.getElementById("rx4")
+.onclick=
+()=>ativarManual(4);
+
+document
+.getElementById("rx5")
+.onclick=
+()=>ativarManual(5);
+
+document
+.getElementById("rx6")
+.onclick=
+()=>ativarManual(6);
+
+
+/* =========================================================
+   TECLADO
+========================================================= */
+
+const teclado=
+document.getElementById(
+  "teclado"
+);
+
+for(let numero=1;
+    numero<=36;
+    numero++){
+
+  const botao=
+  document.createElement(
+    "button"
+  );
+
+  botao.className=
+  "numeroBtn";
+
+  botao.textContent=
+  numero;
+
+  botao.style.background=
+  corNumero(numero);
+
+  botao.onclick=
+  ()=>adicionarNumero(numero);
+
+  teclado.appendChild(botao);
+}
+
+const zero=
+document.createElement(
+  "button"
+);
+
+zero.className=
+"numeroBtn zeroBtn";
+
+zero.textContent="0";
+
+zero.style.background=
+"#087c48";
+
+zero.onclick=
+()=>adicionarNumero(0);
+
+teclado.appendChild(zero);
+
+
+/* =========================================================
+   INICIALIZAÇÃO
+========================================================= */
+
+renderRapido();
+
+setTimeout(
+  renderCompleto,
+  0
+);
 
 })();
