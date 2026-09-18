@@ -3,39 +3,34 @@
 
 /* =========================================================
    ANALISADOR 0 • 6 • 9
-   MOTOR ADAPTATIVO COMPLETO — V10.3
+   MOTOR ADAPTATIVO COMPLETO — V10.4
 
-   BASE V10 PRESERVADA
-
-   ADIÇÕES:
-   - TRIO DE TERMINAIS POR ACERTO, NÃO POR FREQUÊNCIA
-   - CADA TERMINAL TRABALHA COM 1 VIZINHO DE TERMINAL
-   - BACKTEST 5 / 10 / 20 DO TRIO
-   - TRIO TEM PESO MAIOR NA DECISÃO
-   - DIAGNÓSTICO IMEDIATO DE 1 LOSS
-   - DIFERENCIA QUEBRA ISOLADA / MUDANÇA
-   - LOSS ANALISA:
-       BORDA DA JOGADA
-       TERMINAL
-       VIZINHANÇA DE TERMINAL
-       REGIÃO
-       ALTO/BAIXO
-       ARCO DA RODA
-   - GREEN CLASSIFICADO:
-       ALVO
-       1º VIZINHO
-       2º VIZINHO
+   CORREÇÃO PRINCIPAL:
+   - TRIO DE TERMINAIS = SOMENTE ÚLTIMOS 14
+   - NÃO USA MAIS 20 PARA ESCOLHER O TRIO
+   - NÃO É "OS 3 TERMINAIS QUE MAIS SAÍRAM"
+   - BUSCA PRIMEIRO TRIOS COM 100% DE COBERTURA NOS 14
+   - CADA TERMINAL DO TRIO TRABALHA COM ±1 TERMINAL
+   - HAVENDO VÁRIOS 100%, DESEMPATA PELO MOMENTO MAIS RECENTE
+   - TRIO É RECALCULADO A CADA NOVO NÚMERO
+   - NÃO FICA PRESO EM 0/4/7
+   - AUTO CONTINUA ESCOLHENDO RX4/RX5/RX6
+   - RX CONTINUA SENDO A BASE DA JOGADA
+   - 1 LOSS CONTINUA SENDO DIAGNOSTICADO
    - SEM OFFSET GLOBAL
 ========================================================= */
 
-const STORAGE_KEY = "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
-const STORAGE_ENGINE = "ANALISADOR_069_ENGINE_COMPLETO_V10";
+const STORAGE_KEY =
+  "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
+
+const STORAGE_ENGINE =
+  "ANALISADOR_069_ENGINE_COMPLETO_V10_4";
 
 const MAX_HISTORICO = 5000;
 const MAX_TIMELINE = 300;
 
 const JANELA_VISUAL = 14;
-const JANELA_MOMENTO = 20;
+const JANELA_MOMENTO = 14;
 
 const RX_LIST = [4,5,6];
 
@@ -69,10 +64,23 @@ const vermelhos = new Set([
 ]);
 
 const regioes = {
-  ZERO:new Set([0,32,15,26,3,35,12]),
-  VOISINS:new Set([19,4,21,2,25,28,7,29,18,22]),
-  ORPHELINS:new Set([9,31,14,20,1,17,6,34]),
-  TIERS:new Set([27,13,36,11,30,8,23,10,5,24,16,33])
+  ZERO:new Set([
+    0,32,15,26,3,35,12
+  ]),
+
+  VOISINS:new Set([
+    19,4,21,2,25,
+    28,7,29,18,22
+  ]),
+
+  ORPHELINS:new Set([
+    9,31,14,20,1,17,6,34
+  ]),
+
+  TIERS:new Set([
+    27,13,36,11,30,8,
+    23,10,5,24,16,33
+  ])
 };
 
 const coresRegioes = {
@@ -113,6 +121,7 @@ const ESPECIAIS = {
 let historico = carregarHistorico();
 
 let estado = {
+
   modo:"AUTO",
   manualRX:6,
 
@@ -141,14 +150,24 @@ carregarEstado();
 ========================================================= */
 
 function carregarHistorico(){
+
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
 
-    if(!raw) return [];
+    const raw =
+      localStorage.getItem(
+        STORAGE_KEY
+      );
 
-    const arr = JSON.parse(raw);
+    if(!raw){
+      return [];
+    }
 
-    if(!Array.isArray(arr)) return [];
+    const arr =
+      JSON.parse(raw);
+
+    if(!Array.isArray(arr)){
+      return [];
+    }
 
     return arr
       .map(Number)
@@ -160,43 +179,68 @@ function carregarHistorico(){
       .slice(-MAX_HISTORICO);
 
   }catch(erro){
+
     console.error(erro);
+
     return [];
   }
 }
 
+
 function salvarHistorico(){
+
   try{
+
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(historico)
     );
+
   }catch(erro){
+
     console.error(erro);
   }
 }
 
+
 function carregarEstado(){
+
   try{
+
     const raw =
-      localStorage.getItem(STORAGE_ENGINE);
+      localStorage.getItem(
+        STORAGE_ENGINE
+      );
 
-    if(!raw) return;
+    if(!raw){
+      return;
+    }
 
-    const salvo = JSON.parse(raw);
+    const salvo =
+      JSON.parse(raw);
+
 
     if(
       salvo.modo === "AUTO" ||
       salvo.modo === "MANUAL"
     ){
-      estado.modo = salvo.modo;
+      estado.modo =
+        salvo.modo;
     }
 
-    if(RX_LIST.includes(salvo.manualRX)){
-      estado.manualRX = salvo.manualRX;
+
+    if(
+      RX_LIST.includes(
+        salvo.manualRX
+      )
+    ){
+      estado.manualRX =
+        salvo.manualRX;
     }
+
 
     if(salvo.pendentes){
+
       estado.pendentes =
         Object.assign(
           estado.pendentes,
@@ -204,36 +248,52 @@ function carregarEstado(){
         );
     }
 
+
     if(salvo.timelines){
 
-      ["AUTO",4,5,6].forEach(k => {
+      ["AUTO",4,5,6]
+        .forEach(k => {
 
-        if(Array.isArray(salvo.timelines[k])){
+          if(
+            Array.isArray(
+              salvo.timelines[k]
+            )
+          ){
 
-          estado.timelines[k] =
-            salvo.timelines[k]
-              .slice(-MAX_TIMELINE);
-        }
-      });
+            estado.timelines[k] =
+              salvo.timelines[k]
+                .slice(
+                  -MAX_TIMELINE
+                );
+          }
+        });
     }
 
+
     if(salvo.ultimaEscolha){
+
       estado.ultimaEscolha =
         salvo.ultimaEscolha;
     }
 
   }catch(erro){
+
     console.error(erro);
   }
 }
 
+
 function salvarEstado(){
+
   try{
+
     localStorage.setItem(
       STORAGE_ENGINE,
       JSON.stringify(estado)
     );
+
   }catch(erro){
+
     console.error(erro);
   }
 }
@@ -244,22 +304,37 @@ function salvarEstado(){
 ========================================================= */
 
 function indice(numero){
+
   return track.indexOf(numero);
 }
 
-function setor(centro,qtd){
 
-  const i = indice(centro);
+function setor(
+  centro,
+  qtd
+){
 
-  if(i < 0) return [];
+  const i =
+    indice(centro);
+
+  if(i < 0){
+    return [];
+  }
 
   const r = [];
 
-  for(let d=-qtd;d<=qtd;d++){
+  for(
+    let d=-qtd;
+    d<=qtd;
+    d++
+  ){
 
     r.push(
       track[
-        (i+d+track.length) %
+        (
+          i+d+
+          track.length
+        ) %
         track.length
       ]
     );
@@ -268,26 +343,44 @@ function setor(centro,qtd){
   return r;
 }
 
-function vizinhos(numero,qtd=1){
 
-  const i = indice(numero);
+function vizinhos(
+  numero,
+  qtd=1
+){
 
-  if(i < 0) return [];
+  const i =
+    indice(numero);
 
-  const r = [numero];
+  if(i < 0){
+    return [];
+  }
 
-  for(let d=1;d<=qtd;d++){
+  const r = [
+    numero
+  ];
+
+  for(
+    let d=1;
+    d<=qtd;
+    d++
+  ){
 
     r.push(
       track[
-        (i-d+track.length) %
+        (
+          i-d+
+          track.length
+        ) %
         track.length
       ]
     );
 
     r.push(
       track[
-        (i+d) %
+        (
+          i+d
+        ) %
         track.length
       ]
     );
@@ -295,18 +388,27 @@ function vizinhos(numero,qtd=1){
 
   return r;
 }
+
 
 function distanciaRoda(a,b){
 
-  const ia = indice(a);
-  const ib = indice(b);
+  const ia =
+    indice(a);
 
-  if(ia < 0 || ib < 0){
+  const ib =
+    indice(b);
+
+  if(
+    ia < 0 ||
+    ib < 0
+  ){
     return 99;
   }
 
   const d =
-    Math.abs(ia-ib);
+    Math.abs(
+      ia-ib
+    );
 
   return Math.min(
     d,
@@ -321,24 +423,33 @@ function distanciaRoda(a,b){
 
 function regiao(numero){
 
-  if(regioes.ZERO.has(numero)){
+  if(
+    regioes.ZERO.has(numero)
+  ){
     return "ZERO";
   }
 
-  if(regioes.VOISINS.has(numero)){
+  if(
+    regioes.VOISINS.has(numero)
+  ){
     return "VOISINS";
   }
 
-  if(regioes.ORPHELINS.has(numero)){
+  if(
+    regioes.ORPHELINS.has(numero)
+  ){
     return "ORPHELINS";
   }
 
-  if(regioes.TIERS.has(numero)){
+  if(
+    regioes.TIERS.has(numero)
+  ){
     return "TIERS";
   }
 
   return null;
 }
+
 
 function corRoleta(numero){
 
@@ -350,6 +461,7 @@ function corRoleta(numero){
     ? "#c6283d"
     : "#181818";
 }
+
 
 function altura(numero){
 
@@ -368,98 +480,67 @@ function altura(numero){
 ========================================================= */
 
 function terminal(numero){
+
   return numero % 10;
 }
 
+
 function terminalAnterior(t){
-  return (t+9)%10;
+
+  return (
+    t+9
+  ) % 10;
 }
+
 
 function terminalSeguinte(t){
-  return (t+1)%10;
+
+  return (
+    t+1
+  ) % 10;
 }
 
 
-/*
-  Terminal + 1 vizinho de terminal
-  para cada lado.
-
-  Exemplo T5:
-  T4 + T5 + T6
-*/
 function terminalNaVizinhanca(
   terminalNumero,
   terminalCentro
 ){
+
   return (
     terminalNumero === terminalCentro ||
-    terminalNumero === terminalAnterior(terminalCentro) ||
-    terminalNumero === terminalSeguinte(terminalCentro)
+    terminalNumero === terminalAnterior(
+      terminalCentro
+    ) ||
+    terminalNumero === terminalSeguinte(
+      terminalCentro
+    )
   );
 }
 
 
-function analisarTerminais(janela){
-
-  const contagem =
-    Array(10).fill(0);
-
-  const vizinhanca =
-    Array(10).fill(0);
-
-  const transicoes =
-    Array.from(
-      {length:10},
-      () => Array(10).fill(0)
-    );
-
-  janela.forEach(n => {
-    contagem[terminal(n)]++;
-  });
-
-  for(let t=0;t<10;t++){
-
-    vizinhanca[t] =
-      contagem[terminalAnterior(t)] +
-      contagem[t] +
-      contagem[terminalSeguinte(t)];
-  }
-
-  for(let i=0;i<janela.length-1;i++){
-
-    const a =
-      terminal(janela[i]);
-
-    const b =
-      terminal(janela[i+1]);
-
-    transicoes[a][b]++;
-  }
-
-  return {
-    contagem,
-    vizinhanca,
-    transicoes,
-
-    ultimo:
-      janela.length
-        ? terminal(
-            janela[janela.length-1]
-          )
-        : null
-  };
-}
-
-
 /* =========================================================
-   TODAS AS COMBINAÇÕES DE 3 TERMINAIS
+   COMBINAÇÕES DE 3 TERMINAIS
 ========================================================= */
 
 const COMBINACOES_TRIO = [];
 
-for(let a=0;a<=7;a++){
-  for(let b=a+1;b<=8;b++){
-    for(let c=b+1;c<=9;c++){
+for(
+  let a=0;
+  a<=7;
+  a++
+){
+
+  for(
+    let b=a+1;
+    b<=8;
+    b++
+  ){
+
+    for(
+      let c=b+1;
+      c<=9;
+      c++
+    ){
 
       COMBINACOES_TRIO.push([
         a,b,c
@@ -470,14 +551,7 @@ for(let a=0;a<=7;a++){
 
 
 /* =========================================================
-   ACERTO DO TRIO
-
-   Um resultado acerta o trio quando
-   o terminal dele está:
-
-   - no terminal principal
-   OU
-   - 1 terminal vizinho dele
+   COBERTURA DE UM TRIO
 ========================================================= */
 
 function trioAcertaNumero(
@@ -488,225 +562,473 @@ function trioAcertaNumero(
   const t =
     terminal(numero);
 
-  return trio.some(centro =>
-    terminalNaVizinhanca(
-      t,
-      centro
-    )
+  return trio.some(
+    centro =>
+      terminalNaVizinhanca(
+        t,
+        centro
+      )
   );
 }
 
 
 /* =========================================================
-   TAXA DE UM TRIO
+   COBERTURA TERMINAL DO TRIO
 ========================================================= */
 
-function taxaTrio(
+function coberturaTerminaisTrio(
+  trio
+){
+
+  const cobertos =
+    new Set();
+
+  trio.forEach(t => {
+
+    cobertos.add(t);
+
+    cobertos.add(
+      terminalAnterior(t)
+    );
+
+    cobertos.add(
+      terminalSeguinte(t)
+    );
+  });
+
+  return cobertos;
+}
+
+
+/* =========================================================
+   ESTATÍSTICA DO TRIO NUMA JANELA
+========================================================= */
+
+function estatisticaTrio(
   trio,
   janela
 ){
 
-  if(!janela.length){
-    return 0;
-  }
-
   let acertos = 0;
 
-  janela.forEach(numero => {
+  let direto = 0;
+  let vizinho = 0;
 
-    if(
-      trioAcertaNumero(
-        trio,
-        numero
-      )
-    ){
-      acertos++;
-    }
-  });
+  let falhas = 0;
 
-  return (
-    acertos /
-    janela.length *
-    100
-  );
+  let pesoRecente = 0;
+  let pesoPossivel = 0;
+
+
+  janela.forEach(
+    (numero,index) => {
+
+      const t =
+        terminal(numero);
+
+      const peso =
+        index + 1;
+
+      pesoPossivel +=
+        peso;
+
+
+      if(
+        trio.includes(t)
+      ){
+
+        acertos++;
+        direto++;
+
+        pesoRecente +=
+          peso;
+      }
+
+      else if(
+        trio.some(
+          centro =>
+            t === terminalAnterior(
+              centro
+            ) ||
+            t === terminalSeguinte(
+              centro
+            )
+        )
+      ){
+
+        acertos++;
+        vizinho++;
+
+        /*
+          Vizinho conta como acerto,
+          mas o terminal central recebe
+          desempate um pouco maior.
+        */
+        pesoRecente +=
+          peso*.82;
+      }
+
+      else{
+
+        falhas++;
+      }
+    });
+
+
+  const taxa =
+    janela.length
+      ? acertos /
+        janela.length *
+        100
+      : 0;
+
+
+  const scoreRecente =
+    pesoPossivel
+      ? pesoRecente /
+        pesoPossivel *
+        100
+      : 0;
+
+
+  return {
+    acertos,
+    direto,
+    vizinho,
+    falhas,
+    taxa,
+    scoreRecente
+  };
 }
 
 
 /* =========================================================
-   TRIO VENCEDOR
+   TRIO DE TERMINAIS DO MOMENTO
 
-   IMPORTANTE:
+   DEFINITIVO:
 
-   NÃO procura simplesmente os terminais
-   que mais saíram.
-
-   Procura a combinação de 3 terminais
-   cuja cobertura TERMINAL + 1 VIZINHO
-   mais acertou.
-
-   Últimos 5 têm maior influência,
-   depois 10,
-   depois 20.
-
-   Também observa transição atual.
+   - SOMENTE ÚLTIMOS 14
+   - NÃO USA 20
+   - NÃO USA HISTÓRICO ANTIGO
+   - NÃO ESCOLHE POR FREQUÊNCIA BRUTA
+   - TESTA TODOS OS 120 TRIOS
+   - PRIMEIRO PROCURA 100% NOS 14
+   - ENTRE OS 100%, PRIORIZA:
+       1) comportamento últimos 5
+       2) comportamento últimos 8
+       3) mais acerto DIRETO
+       4) menor cobertura total de terminais
+          para evitar trio largo demais
+       5) recência
 ========================================================= */
 
-function calcularTrioTerminais(janela){
+function calcularTrioTerminais(
+  base
+){
 
-  if(!janela.length){
+  const janela14 =
+    base.slice(-14);
+
+  if(!janela14.length){
 
     return {
       trio:[],
-      ranking:[],
+      taxa14:0,
+      taxa8:0,
       taxa5:0,
-      taxa10:0,
-      taxa20:0
+      direto14:0,
+      vizinho14:0,
+      falhas14:0,
+      cobertura:[],
+      candidatos100:0,
+      ranking:[]
     };
   }
 
-  const j5 =
-    janela.slice(-5);
 
-  const j10 =
-    janela.slice(-10);
+  const janela8 =
+    janela14.slice(-8);
 
-  const j20 =
-    janela.slice(-20);
+  const janela5 =
+    janela14.slice(-5);
 
-  const info =
-    analisarTerminais(j20);
 
   const ranking =
-    COMBINACOES_TRIO.map(trio => {
+    COMBINACOES_TRIO
+      .map(trio => {
 
-      const taxa5 =
-        taxaTrio(
-          trio,
-          j5
-        );
-
-      const taxa10 =
-        taxaTrio(
-          trio,
-          j10
-        );
-
-      const taxa20 =
-        taxaTrio(
-          trio,
-          j20
-        );
-
-      let transicao = 0;
-
-      if(info.ultimo !== null){
-
-        const linha =
-          info.transicoes[
-            info.ultimo
-          ];
-
-        const total =
-          linha.reduce(
-            (a,b)=>a+b,
-            0
+        const e14 =
+          estatisticaTrio(
+            trio,
+            janela14
           );
 
-        if(total){
+        const e8 =
+          estatisticaTrio(
+            trio,
+            janela8
+          );
 
-          let soma = 0;
+        const e5 =
+          estatisticaTrio(
+            trio,
+            janela5
+          );
 
-          for(let t=0;t<10;t++){
 
-            const coberto =
-              trio.some(centro =>
-                terminalNaVizinhanca(
-                  t,
-                  centro
-                )
-              );
+        const cobertura =
+          coberturaTerminaisTrio(
+            trio
+          );
 
-            if(coberto){
-              soma += linha[t];
-            }
-          }
 
-          transicao =
-            soma/total*100;
-        }
-      }
+        /*
+          SCORE NÃO SUBSTITUI A REGRA
+          DO 100%.
+
+          Ele só desempata trios que
+          possuem a mesma taxa.
+        */
+        const score =
+
+          e14.taxa * 100000 +
+
+          e5.taxa * 1000 +
+
+          e8.taxa * 500 +
+
+          e14.direto * 35 +
+
+          e5.direto * 55 +
+
+          e14.scoreRecente * 2 -
+
+          cobertura.size * 4;
+
+
+        return {
+
+          trio:
+            trio.slice(),
+
+          taxa14:
+            e14.taxa,
+
+          taxa8:
+            e8.taxa,
+
+          taxa5:
+            e5.taxa,
+
+          direto14:
+            e14.direto,
+
+          vizinho14:
+            e14.vizinho,
+
+          falhas14:
+            e14.falhas,
+
+          direto5:
+            e5.direto,
+
+          scoreRecente:
+            e14.scoreRecente,
+
+          cobertura:
+            Array.from(
+              cobertura
+            ).sort(
+              (a,b)=>a-b
+            ),
+
+          coberturaQtd:
+            cobertura.size,
+
+          score
+        };
+      });
+
+
+  ranking.sort(
+    (a,b) => {
 
       /*
-        O RECENTE MANDA.
-
-        Isso permite detectar rapidamente
-        quando um trio que estava bom
-        começa a perder aderência.
+        PRIMEIRO:
+        maior taxa nos 14.
       */
-      const score =
-        taxa5*.42 +
-        taxa10*.30 +
-        taxa20*.20 +
-        transicao*.08;
+      if(
+        b.taxa14 !==
+        a.taxa14
+      ){
 
-      return {
-        trio:trio.slice(),
-        taxa5,
-        taxa10,
-        taxa20,
-        transicao,
-        score
-      };
-    });
+        return (
+          b.taxa14 -
+          a.taxa14
+        );
+      }
 
 
-  ranking.sort((a,b) => {
+      /*
+        Se ambos são 100%,
+        o momento mais recente
+        decide.
+      */
+      if(
+        b.taxa5 !==
+        a.taxa5
+      ){
 
-    if(b.score !== a.score){
-      return b.score-a.score;
+        return (
+          b.taxa5 -
+          a.taxa5
+        );
+      }
+
+
+      if(
+        b.taxa8 !==
+        a.taxa8
+      ){
+
+        return (
+          b.taxa8 -
+          a.taxa8
+        );
+      }
+
+
+      /*
+        Prefere o trio que realmente
+        está pegando os terminais
+        centrais, e não somente
+        sobrevivendo pelos vizinhos.
+      */
+      if(
+        b.direto5 !==
+        a.direto5
+      ){
+
+        return (
+          b.direto5 -
+          a.direto5
+        );
+      }
+
+
+      if(
+        b.direto14 !==
+        a.direto14
+      ){
+
+        return (
+          b.direto14 -
+          a.direto14
+        );
+      }
+
+
+      /*
+        Evita escolher automaticamente
+        a combinação que cobre mais
+        terminais apenas por ser larga.
+      */
+      if(
+        a.coberturaQtd !==
+        b.coberturaQtd
+      ){
+
+        return (
+          a.coberturaQtd -
+          b.coberturaQtd
+        );
+      }
+
+
+      if(
+        b.scoreRecente !==
+        a.scoreRecente
+      ){
+
+        return (
+          b.scoreRecente -
+          a.scoreRecente
+        );
+      }
+
+
+      return (
+        b.score -
+        a.score
+      );
     }
+  );
 
-    if(b.taxa5 !== a.taxa5){
-      return b.taxa5-a.taxa5;
-    }
 
-    if(b.taxa10 !== a.taxa10){
-      return b.taxa10-a.taxa10;
-    }
-
-    if(b.taxa20 !== a.taxa20){
-      return b.taxa20-a.taxa20;
-    }
-
-    return 0;
-  });
+  /*
+    PROCURA PRIMEIRO OS 100%.
+  */
+  const perfeitos =
+    ranking.filter(
+      x =>
+        Math.abs(
+          x.taxa14-100
+        ) < .0001
+    );
 
 
   const melhor =
-    ranking[0];
+    perfeitos.length
+      ? perfeitos[0]
+      : ranking[0];
+
 
   return {
+
     trio:
       melhor
         ? melhor.trio.slice()
         : [],
 
-    ranking,
+    taxa14:
+      melhor
+        ? melhor.taxa14
+        : 0,
+
+    taxa8:
+      melhor
+        ? melhor.taxa8
+        : 0,
 
     taxa5:
       melhor
         ? melhor.taxa5
         : 0,
 
-    taxa10:
+    direto14:
       melhor
-        ? melhor.taxa10
+        ? melhor.direto14
         : 0,
 
-    taxa20:
+    vizinho14:
       melhor
-        ? melhor.taxa20
-        : 0
+        ? melhor.vizinho14
+        : 0,
+
+    falhas14:
+      melhor
+        ? melhor.falhas14
+        : 0,
+
+    cobertura:
+      melhor
+        ? melhor.cobertura.slice()
+        : [],
+
+    candidatos100:
+      perfeitos.length,
+
+    ranking
   };
 }
 
@@ -721,7 +1043,10 @@ BASES.forEach(base => {
 
   cobertura[base] =
     new Set(
-      vizinhos(base,1)
+      vizinhos(
+        base,
+        1
+      )
     );
 });
 
@@ -790,9 +1115,11 @@ function idsQueBatem(numero){
       cobertura[base]
         .has(numero)
     ){
+
       ids.push(base);
     }
   });
+
 
   if(
     Object.prototype
@@ -805,7 +1132,9 @@ function idsQueBatem(numero){
     ESPECIAIS[numero]
       .forEach(id => {
 
-        if(!ids.includes(id)){
+        if(
+          !ids.includes(id)
+        ){
           ids.push(id);
         }
       });
@@ -818,10 +1147,11 @@ function idsQueBatem(numero){
 function familiasQueBatem(numero){
 
   return new Set(
+
     idsQueBatem(numero)
       .map(familia)
       .filter(
-        x=>x !== null
+        x => x !== null
       )
   );
 }
@@ -852,43 +1182,21 @@ function construirCache(base){
   const eventos =
     new Uint8Array(n);
 
-  const p0 =
-    new Int32Array(n+1);
+  for(
+    let i=0;
+    i<n;
+    i++
+  ){
 
-  const p6 =
-    new Int32Array(n+1);
-
-  const p9 =
-    new Int32Array(n+1);
-
-  for(let i=0;i<n;i++){
-
-    const e =
+    eventos[i] =
       eventoNumero(
         base[i]
       );
-
-    eventos[i] = e;
-
-    p0[i+1] =
-      p0[i] +
-      ((e&1) ? 1 : 0);
-
-    p6[i+1] =
-      p6[i] +
-      ((e&2) ? 1 : 0);
-
-    p9[i+1] =
-      p9[i] +
-      ((e&4) ? 1 : 0);
   }
 
   return {
     base,
-    eventos,
-    p0,
-    p6,
-    p9
+    eventos
   };
 }
 
@@ -907,10 +1215,20 @@ function similaridadeJanelas(
   let iguais = 0;
   let erro = 0;
 
-  let a0=0,a6=0,a9=0;
-  let b0=0,b6=0,b9=0;
+  let a0=0;
+  let a6=0;
+  let a9=0;
 
-  for(let k=0;k<tamanho;k++){
+  let b0=0;
+  let b6=0;
+  let b9=0;
+
+
+  for(
+    let k=0;
+    k<tamanho;
+    k++
+  ){
 
     const ea =
       cache.eventos[a+k];
@@ -918,9 +1236,11 @@ function similaridadeJanelas(
     const eb =
       cache.eventos[b+k];
 
+
     if(ea === eb){
       iguais++;
     }
+
 
     if(ea&1) a0++;
     if(ea&2) a6++;
@@ -929,6 +1249,7 @@ function similaridadeJanelas(
     if(eb&1) b0++;
     if(eb&2) b6++;
     if(eb&4) b9++;
+
 
     erro +=
       Math.abs(a0-b0);
@@ -940,11 +1261,18 @@ function similaridadeJanelas(
       Math.abs(a9-b9);
   }
 
+
   const scoreEventos =
-    iguais/tamanho*100;
+    iguais /
+    tamanho *
+    100;
+
 
   const maxErro =
-    tamanho*tamanho*3;
+    tamanho *
+    tamanho *
+    3;
+
 
   const scoreForma =
     Math.max(
@@ -953,7 +1281,9 @@ function similaridadeJanelas(
         1,
         1-(erro/maxErro)
       )
-    )*100;
+    ) *
+    100;
+
 
   return (
     scoreEventos*.80 +
@@ -966,12 +1296,16 @@ function similaridadeJanelas(
    RAIO X
 ========================================================= */
 
-function analisarRX(base,rx){
+function analisarRX(
+  base,
+  rx
+){
 
   if(
     base.length <
     rx*2+18
   ){
+
     return {
       valido:false,
       rx,
@@ -986,13 +1320,17 @@ function analisarRX(base,rx){
     };
   }
 
+
   const cache =
     construirCache(base);
+
 
   const atualInicio =
     base.length-rx;
 
+
   const candidatos = [];
+
 
   for(
     let i=0;
@@ -1003,14 +1341,18 @@ function analisarRX(base,rx){
     const proximo =
       base[i+rx];
 
+
     if(
       proximo === undefined
     ){
       continue;
     }
 
+
     candidatos.push({
+
       inicio:i,
+
       proximo,
 
       similaridade:
@@ -1024,23 +1366,26 @@ function analisarRX(base,rx){
   }
 
 
-  candidatos.sort((a,b) => {
+  candidatos.sort(
+    (a,b) => {
 
-    if(
-      b.similaridade !==
-      a.similaridade
-    ){
-      return (
-        b.similaridade -
+      if(
+        b.similaridade !==
         a.similaridade
+      ){
+
+        return (
+          b.similaridade -
+          a.similaridade
+        );
+      }
+
+      return (
+        b.inicio -
+        a.inicio
       );
     }
-
-    return (
-      b.inicio -
-      a.inicio
-    );
-  });
+  );
 
 
   let qtd =
@@ -1049,11 +1394,13 @@ function analisarRX(base,rx){
       PCT_REPLICAS
     );
 
+
   qtd =
     Math.max(
       MIN_REPLICAS,
       qtd
     );
+
 
   qtd =
     Math.min(
@@ -1064,14 +1411,24 @@ function analisarRX(base,rx){
 
 
   const replicas =
-    candidatos.slice(0,qtd);
+    candidatos.slice(
+      0,
+      qtd
+    );
+
 
   const contagem =
     new Map();
 
-  TODOS_IDS.forEach(id =>
-    contagem.set(id,0)
+
+  TODOS_IDS.forEach(
+    id =>
+      contagem.set(
+        id,
+        0
+      )
   );
+
 
   const familias = {
     0:0,
@@ -1087,11 +1444,15 @@ function analisarRX(base,rx){
         rep.proximo
       );
 
+
     ids.forEach(id => {
 
       contagem.set(
         id,
-        (contagem.get(id)||0)+1
+        (
+          contagem.get(id) ||
+          0
+        ) + 1
       );
     });
 
@@ -1102,18 +1463,23 @@ function analisarRX(base,rx){
           ids
             .map(familia)
             .filter(
-              x=>x !== null
+              x => x !== null
             )
         )
       );
 
+
     if(fs.length){
 
       const parte =
-        1/fs.length;
+        1 /
+        fs.length;
+
 
       fs.forEach(f => {
-        familias[f] += parte;
+
+        familias[f] +=
+          parte;
       });
     }
   }
@@ -1128,12 +1494,17 @@ function analisarRX(base,rx){
 
     return TODOS_IDS.filter(
       id =>
-        (contagem.get(id)||0)>0
+        (
+          contagem.get(id) ||
+          0
+        ) > 0
     ).length;
   }
 
 
-  let pos = qtd;
+  let pos =
+    qtd;
+
 
   while(
     positivos() < 8 &&
@@ -1145,6 +1516,7 @@ function analisarRX(base,rx){
     const rep =
       candidatos[pos++];
 
+
     replicas.push(rep);
 
     contarReplica(rep);
@@ -1153,32 +1525,41 @@ function analisarRX(base,rx){
 
   const rankingIds =
     TODOS_IDS
-      .map((id,ordem) => ({
-        id,
-        ocorrencias:
-          contagem.get(id)||0,
-        ordem
-      }))
-      .filter(
-        x=>x.ocorrencias>0
-      )
-      .sort((a,b) => {
+      .map(
+        (id,ordem) => ({
+          id,
 
-        if(
-          b.ocorrencias !==
-          a.ocorrencias
-        ){
-          return (
-            b.ocorrencias -
+          ocorrencias:
+            contagem.get(id) ||
+            0,
+
+          ordem
+        })
+      )
+      .filter(
+        x =>
+          x.ocorrencias > 0
+      )
+      .sort(
+        (a,b) => {
+
+          if(
+            b.ocorrencias !==
             a.ocorrencias
+          ){
+
+            return (
+              b.ocorrencias -
+              a.ocorrencias
+            );
+          }
+
+          return (
+            a.ordem -
+            b.ordem
           );
         }
-
-        return (
-          a.ordem -
-          b.ordem
-        );
-      });
+      );
 
 
   const totalFamilias =
@@ -1192,19 +1573,22 @@ function analisarRX(base,rx){
     0:
       totalFamilias
         ? familias[0] /
-          totalFamilias*100
+          totalFamilias *
+          100
         : 0,
 
     6:
       totalFamilias
         ? familias[6] /
-          totalFamilias*100
+          totalFamilias *
+          100
         : 0,
 
     9:
       totalFamilias
         ? familias[9] /
-          totalFamilias*100
+          totalFamilias *
+          100
         : 0
   };
 
@@ -1212,37 +1596,43 @@ function analisarRX(base,rx){
   const similaridade =
     replicas.length
       ? replicas.reduce(
-          (s,x)=>
+          (s,x) =>
             s+x.similaridade,
           0
-        ) / replicas.length
+        ) /
+        replicas.length
       : 0;
 
 
   return {
+
     valido:
-      replicas.length>0,
+      replicas.length > 0,
 
     rx,
+
     replicas,
+
     similaridade,
+
     rankingIds,
+
     sinal
   };
 }
 
 
 /* =========================================================
-   ESTADO ATUAL
+   MOMENTO — EXATAMENTE ÚLTIMOS 14
 ========================================================= */
 
 function analisarMomento(
-  base,
-  tamanho=20
+  base
 ){
 
   const janela =
-    base.slice(-tamanho);
+    base.slice(-14);
+
 
   const r = {
 
@@ -1262,14 +1652,9 @@ function analisarMomento(
       TIERS:0
     },
 
-    terminais:
-      analisarTerminais(
-        janela
-      ),
-
     trioTerminais:
       calcularTrioTerminais(
-        janela
+        base
       ),
 
     roda:
@@ -1277,8 +1662,12 @@ function analisarMomento(
   };
 
 
-  track.forEach(n =>
-    r.roda.set(n,0)
+  track.forEach(
+    n =>
+      r.roda.set(
+        n,
+        0
+      )
   );
 
 
@@ -1288,15 +1677,18 @@ function analisarMomento(
 
       if(numero <= 18){
         r.baixo++;
-      }else{
+      }
+      else{
         r.alto++;
       }
+
 
       if(
         vermelhos.has(numero)
       ){
         r.vermelho++;
-      }else{
+      }
+      else{
         r.preto++;
       }
     }
@@ -1304,6 +1696,7 @@ function analisarMomento(
 
     const rg =
       regiao(numero);
+
 
     if(rg){
       r.regioes[rg]++;
@@ -1318,7 +1711,9 @@ function analisarMomento(
           alvo
         );
 
+
       let peso = 0;
+
 
       if(d === 0){
         peso = 1;
@@ -1332,16 +1727,21 @@ function analisarMomento(
         peso = .25;
       }
 
+
       if(peso){
 
         r.roda.set(
           alvo,
-          (r.roda.get(alvo)||0)
-          + peso
+          (
+            r.roda.get(alvo) ||
+            0
+          ) +
+          peso
         );
       }
     });
   });
+
 
   return r;
 }
@@ -1358,89 +1758,46 @@ function frequenciaReplicas(
   const freq =
     new Map();
 
-  track.forEach(n =>
-    freq.set(n,0)
+
+  track.forEach(
+    n =>
+      freq.set(
+        n,
+        0
+      )
   );
+
 
   replicas.forEach(rep => {
 
     freq.set(
       rep.proximo,
-      (freq.get(rep.proximo)||0)+1
+
+      (
+        freq.get(
+          rep.proximo
+        ) ||
+        0
+      ) + 1
     );
   });
+
 
   return freq;
 }
 
 
 /* =========================================================
-   SCORE TERMINAL
-========================================================= */
+   SCORE DO TRIO
 
-function scoreTerminal(
-  numero,
-  momento
-){
+   IMPORTANTE:
 
-  const info =
-    momento.terminais;
+   O TRIO NÃO MONTA A JOGADA SOZINHO.
 
-  if(!momento.tamanho){
-    return 0;
-  }
+   ELE AJUDA O RX A ESCOLHER ENTRE
+   SETORES COM SUPORTE HISTÓRICO.
 
-  const t =
-    terminal(numero);
-
-  const direto =
-    info.contagem[t] /
-    momento.tamanho;
-
-  const viz =
-    info.vizinhanca[t] /
-    Math.max(
-      1,
-      momento.tamanho*3
-    );
-
-  let transicao = 0;
-
-  if(info.ultimo !== null){
-
-    const linha =
-      info.transicoes[
-        info.ultimo
-      ];
-
-    const total =
-      linha.reduce(
-        (a,b)=>a+b,
-        0
-      );
-
-    if(total){
-
-      transicao =
-        linha[t]/total;
-    }
-  }
-
-  return (
-    direto*.25 +
-    viz*.35 +
-    transicao*.40
-  );
-}
-
-
-/* =========================================================
-   SCORE DO TRIO VENCEDOR
-
-   Tem peso maior que antes.
-
-   Terminal principal = força máxima.
-   1 vizinho = força auxiliar.
+   TERMINAL CENTRAL > VIZINHO.
 ========================================================= */
 
 function scoreTrioTerminal(
@@ -1451,79 +1808,79 @@ function scoreTrioTerminal(
   const info =
     momento.trioTerminais;
 
+
   if(
     !info ||
-    !Array.isArray(info.trio) ||
+    !Array.isArray(
+      info.trio
+    ) ||
     !info.trio.length
   ){
     return 0;
   }
 
+
   const t =
     terminal(numero);
 
+
   let melhor = 0;
 
-  info.trio.forEach(centro => {
 
-    if(t === centro){
+  info.trio.forEach(
+    centro => {
 
-      melhor =
-        Math.max(
-          melhor,
-          1
-        );
+      if(
+        t === centro
+      ){
+
+        melhor =
+          Math.max(
+            melhor,
+            1
+          );
+      }
+
+      else if(
+        t === terminalAnterior(
+          centro
+        ) ||
+        t === terminalSeguinte(
+          centro
+        )
+      ){
+
+        melhor =
+          Math.max(
+            melhor,
+            .58
+          );
+      }
     }
+  );
 
-    else if(
-      t === terminalAnterior(centro) ||
-      t === terminalSeguinte(centro)
-    ){
-
-      melhor =
-        Math.max(
-          melhor,
-          .62
-        );
-    }
-  });
 
   /*
-    Confiança real do trio.
+    Se o trio está em 100% nos 14,
+    recebe confiança máxima.
 
-    Um trio que está acertando
-    100% recentemente tem mais
-    influência que um trio instável.
+    Se não existir trio 100%,
+    usa a taxa real encontrada.
   */
   const confianca =
-    (
-      info.taxa5*.50 +
-      info.taxa10*.30 +
-      info.taxa20*.20
-    ) / 100;
+    info.taxa14 /
+    100;
+
 
   return (
     melhor *
-    (.55 + confianca*.45)
+    confianca
   );
 }
 
 
 /* =========================================================
-   DIAGNÓSTICO DOS LOSS REAIS
-
-   Um LOSS sozinho já é analisado.
-
-   Mas não significa automaticamente
-   que toda estrutura deve ser jogada fora.
-
-   Ele procura evidência de:
-
-   - BORDA
-   - TERMINAL
-   - REGIÃO
-   - ALTO/BAIXO
-   - ARCO
+   LOSS ATUAL
 ========================================================= */
 
 function diagnosticarLossAtual(){
@@ -1531,16 +1888,13 @@ function diagnosticarLossAtual(){
   const lista =
     estado.timelines.AUTO;
 
+
   if(!lista.length){
 
     return {
       ativo:false,
       tipo:"SEM LOSS",
-      intensidade:0,
-      ultimo:null,
-      terminal:null,
-      regiao:null,
-      altura:null
+      intensidade:0
     };
   }
 
@@ -1550,16 +1904,13 @@ function diagnosticarLossAtual(){
       lista.length-1
     ];
 
+
   if(ultimo.green){
 
     return {
       ativo:false,
       tipo:"ESTRUTURA CONFIRMADA",
-      intensidade:0,
-      ultimo,
-      terminal:null,
-      regiao:null,
-      altura:null
+      intensidade:0
     };
   }
 
@@ -1567,114 +1918,26 @@ function diagnosticarLossAtual(){
   const numero =
     ultimo.resultado;
 
+
   const t =
     terminal(numero);
 
+
   const rg =
     regiao(numero);
+
 
   const alt =
     altura(numero);
 
 
-  /*
-    Distância do resultado para os
-    centros congelados da previsão.
-  */
-  let menor = 99;
-
-  const centros =
-    [];
-
-  if(
-    Array.isArray(
-      ultimo.centros2
-    )
-  ){
-    ultimo.centros2
-      .forEach(c => {
-
-        centros.push(c);
-
-        menor =
-          Math.min(
-            menor,
-            distanciaRoda(
-              numero,
-              c
-            )
-          );
-      });
-  }
-
-  if(
-    ultimo.centro1 !== null &&
-    ultimo.centro1 !== undefined
-  ){
-
-    centros.push(
-      ultimo.centro1
-    );
-
-    menor =
-      Math.min(
-        menor,
-        distanciaRoda(
-          numero,
-          ultimo.centro1
-        )
-      );
-  }
-
-
-  /*
-    Compara o terminal perdido
-    com o trio que estava congelado
-    naquela previsão.
-  */
-  const trio =
-    Array.isArray(
-      ultimo.trioTerminais
-    )
-      ? ultimo.trioTerminais
-      : [];
-
-
-  let relacaoTrio =
-    "FORA_TRIO";
-
-  if(
-    trio.some(x=>x===t)
-  ){
-    relacaoTrio =
-      "TRIO_DIRETO";
-  }
-
-  else if(
-    trio.some(x =>
-      terminalNaVizinhanca(
-        t,
-        x
-      )
-    )
-  ){
-    relacaoTrio =
-      "VIZINHO_TRIO";
-  }
-
-
-  /*
-    Analisa últimos LOSS para descobrir
-    se o primeiro erro já está apontando
-    para uma mudança que também aparece
-    no momento atual.
-  */
   const recentes =
     lista.slice(-5);
 
+
   const losses =
     recentes.filter(
-      x=>!x.green
+      x => !x.green
     );
 
 
@@ -1687,22 +1950,31 @@ function diagnosticarLossAtual(){
   losses.forEach(x => {
 
     if(
-      terminal(x.resultado) === t
+      terminal(
+        x.resultado
+      ) === t
     ){
       mesmoTerminal++;
     }
 
+
     if(
-      regiao(x.resultado) === rg
+      regiao(
+        x.resultado
+      ) === rg
     ){
       mesmaRegiao++;
     }
 
+
     if(
-      altura(x.resultado) === alt
+      altura(
+        x.resultado
+      ) === alt
     ){
       mesmaAltura++;
     }
+
 
     if(
       x.tipo === "FORA1"
@@ -1713,32 +1985,23 @@ function diagnosticarLossAtual(){
 
 
   let intensidade = 1;
+
   let tipo =
     "QUEBRA ISOLADA";
 
 
-  /*
-    Um único FORA1 já é informação
-    relevante porque o resultado ficou
-    imediatamente depois da cobertura.
-  */
   if(
-    ultimo.tipo === "FORA1" ||
-    menor === 3
+    ultimo.tipo ===
+    "FORA1"
   ){
+
+    intensidade = 2;
 
     tipo =
       "QUEBRA DE BORDA";
-
-    intensidade = 2;
   }
 
 
-  /*
-    Se além do LOSS atual existe
-    repetição estrutural, sobe a força
-    da recalibração.
-  */
   if(
     mesmoTerminal >= 2 ||
     mesmaRegiao >= 2 ||
@@ -1746,79 +2009,75 @@ function diagnosticarLossAtual(){
     borda >= 2
   ){
 
+    intensidade = 3;
+
     tipo =
       "MUDANÇA DETECTADA";
-
-    intensidade = 3;
   }
 
 
   return {
+
     ativo:true,
+
     tipo,
+
     intensidade,
 
-    ultimo,
     numero,
 
     terminal:t,
+
     regiao:rg,
+
     altura:alt,
 
-    menorDistancia:menor,
-
-    relacaoTrio,
-
     mesmoTerminal,
+
     mesmaRegiao,
+
     mesmaAltura,
+
     borda
   };
 }
 
 
 /* =========================================================
-   AJUSTE DO SCORE PELO ÚLTIMO LOSS
-
-   Não desloca setores.
-
-   Não cria offset.
-
-   Apenas informa ao motor onde a
-   estrutura anterior perdeu aderência.
+   RESPOSTA AO LOSS
 ========================================================= */
 
 function scoreRespostaLoss(
-  numeros,
-  momento
+  numeros
 ){
 
   const d =
     diagnosticarLossAtual();
 
+
   if(!d.ativo){
     return 0;
   }
 
+
   let score = 0;
 
-  const intensidade =
-    d.intensidade;
 
-
-  /*
-    Terminal do LOSS e vizinhos.
-  */
   numeros.forEach(n => {
 
     const t =
       terminal(n);
 
-    if(t === d.terminal){
+
+    if(
+      t === d.terminal
+    ){
 
       score +=
-        .16*intensidade;
+        .13 *
+        d.intensidade;
     }
+
 
     else if(
       t === terminalAnterior(
@@ -1830,26 +2089,22 @@ function scoreRespostaLoss(
     ){
 
       score +=
-        .07*intensidade;
+        .055 *
+        d.intensidade;
     }
 
 
-    /*
-      Região do LOSS.
-    */
     if(
       regiao(n) ===
       d.regiao
     ){
 
       score +=
-        .035*intensidade;
+        .03 *
+        d.intensidade;
     }
 
 
-    /*
-      Alto/baixo do LOSS.
-    */
     if(
       n !== 0 &&
       altura(n) ===
@@ -1857,18 +2112,19 @@ function scoreRespostaLoss(
     ){
 
       score +=
-        .02*intensidade;
+        .018 *
+        d.intensidade;
     }
   });
 
 
-  score /=
+  return (
+    score /
     Math.max(
       1,
       numeros.length
-    );
-
-  return score;
+    )
+  );
 }
 
 
@@ -1890,7 +2146,9 @@ function avaliarSetor(
       qtd
     );
 
+
   let score = 0;
+
   let suporte = 0;
 
   let suporteAlvo = 0;
@@ -1902,14 +2160,19 @@ function avaliarSetor(
     (numero,index) => {
 
       const f =
-        freq.get(numero)||0;
+        freq.get(numero) ||
+        0;
 
-      suporte += f;
+
+      suporte +=
+        f;
+
 
       const d =
         Math.abs(
           index-qtd
         );
+
 
       let peso = 1;
 
@@ -1919,19 +2182,25 @@ function avaliarSetor(
         if(d === 0){
 
           peso = 1.48;
-          suporteAlvo += f;
+
+          suporteAlvo +=
+            f;
         }
 
         else if(d === 1){
 
           peso = 1.25;
-          suporteV1 += f;
+
+          suporteV1 +=
+            f;
         }
 
         else{
 
           peso = 1;
-          suporteV2 += f;
+
+          suporteV2 +=
+            f;
         }
       }
 
@@ -1940,28 +2209,35 @@ function avaliarSetor(
         if(d === 0){
 
           peso = 1.34;
-          suporteAlvo += f;
+
+          suporteAlvo +=
+            f;
         }
 
         else{
 
           peso = 1.08;
-          suporteV1 += f;
+
+          suporteV1 +=
+            f;
         }
       }
 
+
       score +=
-        f*peso;
+        f *
+        peso;
     }
   );
 
 
   /* =======================================================
-     BORDA IMEDIATA
+     BORDA EXTERNA
   ======================================================= */
 
   const ic =
     indice(centro);
+
 
   const foraEsq =
     track[
@@ -1972,6 +2248,7 @@ function avaliarSetor(
       track.length
     ];
 
+
   const foraDir =
     track[
       (
@@ -1980,27 +2257,34 @@ function avaliarSetor(
       track.length
     ];
 
+
   const freqFora =
-    (freq.get(foraEsq)||0) +
-    (freq.get(foraDir)||0);
+    (
+      freq.get(
+        foraEsq
+      ) ||
+      0
+    ) +
+    (
+      freq.get(
+        foraDir
+      ) ||
+      0
+    );
 
 
   score -=
-    freqFora*.35;
+    freqFora *
+    .35;
 
 
-  /* =======================================================
-     ALVO + PRIMEIRO VIZINHO
-  ======================================================= */
-
+  /*
+    Favorece suporte interno.
+  */
   score +=
     suporteAlvo*.10 +
     suporteV1*.07;
 
-
-  /* =======================================================
-     CONTEXTO
-  ======================================================= */
 
   if(
     contexto > 0 &&
@@ -2008,7 +2292,6 @@ function avaliarSetor(
   ){
 
     let roda = 0;
-    let term = 0;
     let trio = 0;
 
     let altos = 0;
@@ -2021,13 +2304,9 @@ function avaliarSetor(
     numeros.forEach(n => {
 
       roda +=
-        momento.roda.get(n)||0;
+        momento.roda.get(n) ||
+        0;
 
-      term +=
-        scoreTerminal(
-          n,
-          momento
-        );
 
       trio +=
         scoreTrioTerminal(
@@ -2040,15 +2319,18 @@ function avaliarSetor(
 
         if(n <= 18){
           baixos++;
-        }else{
+        }
+        else{
           altos++;
         }
+
 
         if(
           vermelhos.has(n)
         ){
           reds++;
-        }else{
+        }
+        else{
           blacks++;
         }
       }
@@ -2058,8 +2340,6 @@ function avaliarSetor(
     roda /=
       numeros.length;
 
-    term /=
-      numeros.length;
 
     trio /=
       numeros.length;
@@ -2068,6 +2348,7 @@ function avaliarSetor(
     const totalAB =
       momento.alto +
       momento.baixo;
+
 
     const totalCor =
       momento.vermelho +
@@ -2084,12 +2365,14 @@ function avaliarSetor(
         momento.alto /
         totalAB;
 
+
       const ps =
         altos /
         Math.max(
           1,
           altos+baixos
         );
+
 
       scoreAB =
         1 -
@@ -2105,12 +2388,14 @@ function avaliarSetor(
         momento.vermelho /
         totalCor;
 
+
       const ps =
         reds /
         Math.max(
           1,
           reds+blacks
         );
+
 
       scoreCor =
         1 -
@@ -2121,46 +2406,45 @@ function avaliarSetor(
 
 
     /*
-      TRIO agora tem mais peso.
+      RX CONTINUA PRINCIPAL.
 
-      Frequência das réplicas RX continua
-      sendo a base principal.
+      O trio 14 entra como confirmação
+      forte do momento.
     */
     score +=
       suporte *
       (
         roda*.025 +
-        term*.12 +
-        trio*.26 +
+        trio*.31 +
         scoreAB*.07 +
         scoreCor*.04
       ) *
       contexto;
 
 
-    /*
-      Um LOSS já pode fornecer
-      informação para a próxima decisão.
-    */
     score +=
       suporte *
       scoreRespostaLoss(
-        numeros,
-        momento
+        numeros
       ) *
       contexto;
   }
 
 
   return {
+
     centro,
+
     qtd,
+
     numeros,
 
     suporte,
 
     suporteAlvo,
+
     suporteV1,
+
     suporteV2,
 
     freqFora,
@@ -2194,49 +2478,58 @@ function montarJogada(
   }
 
 
+  /*
+    FONTE PRIMÁRIA DA JOGADA:
+    PRÓXIMOS REAIS DAS RÉPLICAS RX.
+  */
   const freq =
     frequenciaReplicas(
       rx.replicas
     );
 
 
+  /*
+    MOMENTO:
+    EXATAMENTE OS ÚLTIMOS 14.
+  */
   const momento =
     analisarMomento(
-      base,
-      20
+      base
     );
 
 
   const candidatos2 =
     track
-      .map(c =>
-        avaliarSetor(
-          c,
-          2,
-          freq,
-          momento,
-          contexto
-        )
+      .map(
+        c =>
+          avaliarSetor(
+            c,
+            2,
+            freq,
+            momento,
+            contexto
+          )
       )
       .sort(
-        (a,b)=>
+        (a,b) =>
           b.score-a.score
       );
 
 
   const candidatos1 =
     track
-      .map(c =>
-        avaliarSetor(
-          c,
-          1,
-          freq,
-          momento,
-          contexto
-        )
+      .map(
+        c =>
+          avaliarSetor(
+            c,
+            1,
+            freq,
+            momento,
+            contexto
+          )
       )
       .sort(
-        (a,b)=>
+        (a,b) =>
           b.score-a.score
       );
 
@@ -2244,14 +2537,27 @@ function montarJogada(
   let melhor = null;
 
 
-  for(const um of candidatos1){
+  /*
+    Testa cada candidato 1V.
+
+    Depois procura 5 setores 2V
+    sem sobreposição.
+
+    Total = 28 números.
+  */
+  for(
+    const um
+    of candidatos1
+  ){
 
     const usados =
       new Set(
         um.numeros
       );
 
+
     const dois = [];
+
 
     let score =
       um.score;
@@ -2265,8 +2571,10 @@ function montarJogada(
       const conflito =
         candidato.numeros
           .some(
-            n=>usados.has(n)
+            n =>
+              usados.has(n)
           );
+
 
       if(conflito){
         continue;
@@ -2277,13 +2585,15 @@ function montarJogada(
         candidato
       );
 
+
       score +=
         candidato.score;
 
 
       candidato.numeros
         .forEach(
-          n=>usados.add(n)
+          n =>
+            usados.add(n)
         );
 
 
@@ -2298,22 +2608,25 @@ function montarJogada(
     if(
       dois.length === 5 &&
       usados.size ===
-        TOTAL_COBERTURA
+      TOTAL_COBERTURA
     ){
 
       if(
         !melhor ||
-        score > melhor.score
+        score >
+        melhor.score
       ){
 
         melhor = {
+
           valido:true,
 
           blocos2:
             dois,
 
-          blocos1:
-            [um],
+          blocos1:[
+            um
+          ],
 
           numeros:
             usados,
@@ -2326,20 +2639,26 @@ function montarJogada(
               .trio
               .slice(),
 
+          trioTaxa14:
+            momento
+              .trioTerminais
+              .taxa14,
+
           trioTaxa5:
             momento
               .trioTerminais
               .taxa5,
 
-          trioTaxa10:
+          candidatosTrio100:
             momento
               .trioTerminais
-              .taxa10,
+              .candidatos100,
 
-          trioTaxa20:
+          coberturaTrio:
             momento
               .trioTerminais
-              .taxa20
+              .cobertura
+              .slice()
         };
       }
     }
@@ -2362,13 +2681,7 @@ function montarJogada(
 
 
 /* =========================================================
-   CLASSIFICAÇÃO CORRETA DO RESULTADO
-
-   Primeiro identifica QUAL BLOCO
-   realmente cobriu o número.
-
-   Isso evita classificar um número
-   usando a distância de outro bloco.
+   CLASSIFICA RESULTADO
 ========================================================= */
 
 function classificarResultadoJogada(
@@ -2389,10 +2702,6 @@ function classificarResultadoJogada(
   }
 
 
-  /*
-    Procura os blocos que realmente
-    contêm o resultado.
-  */
   const blocosCobertura = [];
 
 
@@ -2430,9 +2739,12 @@ function classificarResultadoJogada(
     });
 
 
-  if(blocosCobertura.length){
+  if(
+    blocosCobertura.length
+  ){
 
     let menor = 99;
+
 
     blocosCobertura
       .forEach(b => {
@@ -2442,6 +2754,7 @@ function classificarResultadoJogada(
             numero,
             b.centro
           );
+
 
         if(d < menor){
           menor = d;
@@ -2477,11 +2790,6 @@ function classificarResultadoJogada(
   }
 
 
-  /*
-    LOSS:
-    encontra distância do número
-    para o bloco mais próximo.
-  */
   let melhorFora = 99;
 
 
@@ -2492,20 +2800,16 @@ function classificarResultadoJogada(
         distanciaRoda(
           numero,
           b.centro
-        );
+        ) - 2;
 
-      /*
-        2V cobre até distância 2.
-        Portanto distância 3 é FORA1.
-      */
-      const fora =
-        d-2;
 
       if(
-        fora > 0 &&
-        fora < melhorFora
+        d > 0 &&
+        d < melhorFora
       ){
-        melhorFora = fora;
+
+        melhorFora =
+          d;
       }
     });
 
@@ -2517,24 +2821,23 @@ function classificarResultadoJogada(
         distanciaRoda(
           numero,
           b.centro
-        );
+        ) - 1;
 
-      /*
-        1V cobre até distância 1.
-      */
-      const fora =
-        d-1;
 
       if(
-        fora > 0 &&
-        fora < melhorFora
+        d > 0 &&
+        d < melhorFora
       ){
-        melhorFora = fora;
+
+        melhorFora =
+          d;
       }
     });
 
 
-  if(melhorFora === 1){
+  if(
+    melhorFora === 1
+  ){
 
     return {
       green:false,
@@ -2544,7 +2847,9 @@ function classificarResultadoJogada(
   }
 
 
-  if(melhorFora === 2){
+  if(
+    melhorFora === 2
+  ){
 
     return {
       green:false,
@@ -2557,14 +2862,13 @@ function classificarResultadoJogada(
   return {
     green:false,
     tipo:"FORA",
-    distancia:
-      melhorFora
+    distancia:melhorFora
   };
 }
 
 
 /* =========================================================
-   CONFIGURAÇÃO
+   CONFIG
 ========================================================= */
 
 function gerarConfig(
@@ -2598,6 +2902,7 @@ function gerarConfig(
 
 
   return {
+
     valido:
       jogada.valido,
 
@@ -2631,9 +2936,11 @@ function backtest(
 
   const minimo = 45;
 
+
   if(
     base.length <= minimo
   ){
+
     return estatBacktest(
       timeline
     );
@@ -2654,7 +2961,10 @@ function backtest(
   ){
 
     const passado =
-      base.slice(0,i);
+      base.slice(
+        0,
+        i
+      );
 
 
     const cfg =
@@ -2707,7 +3017,11 @@ function backtest(
       trioTerminais:
         cfg.jogada
           .trioTerminais
-          .slice()
+          .slice(),
+
+      trioTaxa14:
+        cfg.jogada
+          .trioTaxa14
     });
   }
 
@@ -2734,7 +3048,7 @@ function estatBacktest(
 
     return (
       arr.filter(
-        x=>x.green
+        x => x.green
       ).length /
       arr.length *
       100
@@ -2745,6 +3059,7 @@ function estatBacktest(
   function qualidade(arr){
 
     const q = {
+
       total:
         arr.length,
 
@@ -2760,9 +3075,6 @@ function estatBacktest(
 
       interno:0,
 
-      pctAlvo:0,
-      pctV1:0,
-      pctV2:0,
       pctInterno:0,
       pctBorda:0
     };
@@ -2818,25 +3130,11 @@ function estatBacktest(
 
     if(q.green){
 
-      q.pctAlvo =
-        q.alvo /
-        q.green *
-        100;
-
-      q.pctV1 =
-        q.v1 /
-        q.green *
-        100;
-
-      q.pctV2 =
-        q.v2 /
-        q.green *
-        100;
-
       q.pctInterno =
         q.interno /
         q.green *
         100;
+
 
       q.pctBorda =
         q.v2 /
@@ -2868,41 +3166,43 @@ function estatBacktest(
   }
 
 
-  const ult5 =
-    timeline.slice(-5);
-
-  const ult10 =
-    timeline.slice(-10);
-
-  const ult20 =
-    timeline.slice(-20);
-
-
   return {
 
     total:
       timeline.length,
 
     taxa5:
-      taxa(ult5),
+      taxa(
+        timeline.slice(-5)
+      ),
 
     taxa10:
-      taxa(ult10),
+      taxa(
+        timeline.slice(-10)
+      ),
 
     taxa20:
-      taxa(ult20),
+      taxa(
+        timeline.slice(-20)
+      ),
 
     lossSeguidos:
       loss,
 
     qualidade5:
-      qualidade(ult5),
+      qualidade(
+        timeline.slice(-5)
+      ),
 
     qualidade10:
-      qualidade(ult10),
+      qualidade(
+        timeline.slice(-10)
+      ),
 
     qualidade20:
-      qualidade(ult20),
+      qualidade(
+        timeline.slice(-20)
+      ),
 
     timeline
   };
@@ -2955,15 +3255,15 @@ function melhorDoRX(
 
 
     let score =
+
       bt.taxa5*.35 +
+
       bt.taxa10*.35 +
+
       bt.taxa20*.25 +
+
       cfg.similaridade*.05;
 
-
-    /* =====================================================
-       ACERTO INTERNO
-    ===================================================== */
 
     if(
       bt.qualidade10.green >= 3
@@ -2974,6 +3274,7 @@ function melhorDoRX(
           .pctInterno *
         .035;
 
+
       score -=
         bt.qualidade10
           .pctBorda *
@@ -2981,30 +3282,15 @@ function melhorDoRX(
     }
 
 
-    if(
-      bt.qualidade20.green >= 5
-    ){
-
-      score +=
-        bt.qualidade20
-          .pctInterno *
-        .015;
-    }
-
-
-    /* =====================================================
-       FORA1
-
-       Um LOSS na borda já informa que
-       essa configuração merece revisão.
-    ===================================================== */
-
     const ult5 =
       bt.timeline.slice(-5);
 
+
     const fora1 =
       ult5.filter(
-        x=>x.tipo==="FORA1"
+        x =>
+          x.tipo ===
+          "FORA1"
       ).length;
 
 
@@ -3012,24 +3298,22 @@ function melhorDoRX(
       score -= 2;
     }
 
+
     if(fora1 >= 2){
       score -=
         fora1*3;
     }
 
 
-    /* =====================================================
-       LOSS CONSECUTIVO
-
-       1 LOSS já reduz aderência.
-       Não precisa esperar 3.
-    ===================================================== */
-
+    /*
+      UM LOSS JÁ REDUZ ADERÊNCIA.
+    */
     if(
       bt.lossSeguidos === 1
     ){
       score -= 5;
     }
+
 
     if(
       bt.lossSeguidos === 2
@@ -3037,16 +3321,13 @@ function melhorDoRX(
       score -= 15;
     }
 
+
     if(
       bt.lossSeguidos >= 3
     ){
       score -= 30;
     }
 
-
-    /* =====================================================
-       META 90%
-    ===================================================== */
 
     if(
       bt.total >= 10
@@ -3070,19 +3351,46 @@ function melhorDoRX(
     }
 
 
-    if(
-      bt.total < 5
-    ){
+    /*
+      TRIO DOS 14:
 
-      score =
-        cfg.similaridade*.50 +
-        bt.taxa5*.50;
+      se a jogada atual está casada
+      com um trio que cobre 100% dos
+      últimos 14, isso é informação
+      do estado atual da mesa.
+
+      Não substitui o RX.
+    */
+    if(
+      cfg.jogada.trioTaxa14 >= 99.999
+    ){
+      score += 2;
     }
 
 
     const item = {
-      ...cfg,
-      backtest:bt,
+
+      valido:
+        cfg.valido,
+
+      rx:
+        cfg.rx,
+
+      contexto:
+        cfg.contexto,
+
+      raioX:
+        cfg.raioX,
+
+      jogada:
+        cfg.jogada,
+
+      similaridade:
+        cfg.similaridade,
+
+      backtest:
+        bt,
+
       score
     };
 
@@ -3090,9 +3398,11 @@ function melhorDoRX(
     if(
       !melhor ||
       item.score >
-        melhor.score
+      melhor.score
     ){
-      melhor = item;
+
+      melhor =
+        item;
     }
   }
 
@@ -3112,17 +3422,16 @@ function escolherAuto(
   const disponiveis =
     RX_LIST
       .map(
-        rx=>configs[rx]
+        rx =>
+          configs[rx]
       )
       .filter(Boolean)
       .filter(
-        x=>x.valido
+        x => x.valido
       );
 
 
-  if(
-    !disponiveis.length
-  ){
+  if(!disponiveis.length){
     return null;
   }
 
@@ -3130,10 +3439,6 @@ function escolherAuto(
   disponiveis.sort(
     (a,b) => {
 
-
-      /*
-        PRIMEIRO: RECENTE
-      */
       if(
         b.backtest.taxa5 !==
         a.backtest.taxa5
@@ -3146,9 +3451,6 @@ function escolherAuto(
       }
 
 
-      /*
-        DEPOIS BT10
-      */
       if(
         b.backtest.taxa10 !==
         a.backtest.taxa10
@@ -3161,9 +3463,6 @@ function escolherAuto(
       }
 
 
-      /*
-        DEPOIS BT20
-      */
       if(
         b.backtest.taxa20 !==
         a.backtest.taxa20
@@ -3176,9 +3475,6 @@ function escolherAuto(
       }
 
 
-      /*
-        ACERTO INTERNO
-      */
       if(
         b.backtest
           .qualidade10
@@ -3200,9 +3496,6 @@ function escolherAuto(
       }
 
 
-      /*
-        MENOS LOSS
-      */
       if(
         a.backtest
           .lossSeguidos !==
@@ -3233,7 +3526,7 @@ function escolherAuto(
 
 
 /* =========================================================
-   SNAPSHOT
+   ASSINATURA / SNAPSHOT
 ========================================================= */
 
 function assinaturaHistorico(){
@@ -3278,7 +3571,7 @@ function snapshot(config){
       config.jogada
         .blocos2
         .map(
-          x=>x.centro
+          x => x.centro
         ),
 
     centro1:
@@ -3294,16 +3587,9 @@ function snapshot(config){
         .trioTerminais
         .slice(),
 
-    backtest:{
-      taxa5:
-        config.backtest.taxa5,
-
-      taxa10:
-        config.backtest.taxa10,
-
-      taxa20:
-        config.backtest.taxa20
-    },
+    trioTaxa14:
+      config.jogada
+        .trioTaxa14,
 
     hora:
       Date.now()
@@ -3352,7 +3638,9 @@ function garantirPendentes(
   ){
 
     estado.pendentes.AUTO =
-      snapshot(auto);
+      snapshot(
+        auto
+      );
   }
 
 
@@ -3361,7 +3649,7 @@ function garantirPendentes(
 
 
 /* =========================================================
-   CLASSIFICA SNAPSHOT CONGELADO
+   CLASSIFICA SNAPSHOT
 ========================================================= */
 
 function classificarSnapshot(
@@ -3379,10 +3667,6 @@ function classificarSnapshot(
   }
 
 
-  /*
-    Se está coberto, identifica
-    qual centro realmente cobre.
-  */
   let melhorDentro = 99;
 
 
@@ -3401,11 +3685,14 @@ function classificarSnapshot(
             c
           );
 
+
         if(
           d <= 2 &&
           d < melhorDentro
         ){
-          melhorDentro = d;
+
+          melhorDentro =
+            d;
         }
       });
   }
@@ -3422,17 +3709,22 @@ function classificarSnapshot(
         p.centro1
       );
 
+
     if(
       d <= 1 &&
       d < melhorDentro
     ){
-      melhorDentro = d;
+
+      melhorDentro =
+        d;
     }
   }
 
 
   const green =
-    Array.isArray(p.numeros) &&
+    Array.isArray(
+      p.numeros
+    ) &&
     p.numeros.includes(
       numero
     );
@@ -3472,11 +3764,6 @@ function classificarSnapshot(
   }
 
 
-  /*
-    LOSS:
-    distância real até a borda
-    do bloco.
-  */
   let melhorFora = 99;
 
 
@@ -3495,11 +3782,14 @@ function classificarSnapshot(
             c
           ) - 2;
 
+
         if(
           d > 0 &&
           d < melhorFora
         ){
-          melhorFora = d;
+
+          melhorFora =
+            d;
         }
       });
   }
@@ -3516,11 +3806,14 @@ function classificarSnapshot(
         p.centro1
       ) - 1;
 
+
     if(
       d > 0 &&
       d < melhorFora
     ){
-      melhorFora = d;
+
+      melhorFora =
+        d;
     }
   }
 
@@ -3552,8 +3845,7 @@ function classificarSnapshot(
   return {
     green:false,
     tipo:"FORA",
-    distancia:
-      melhorFora
+    distancia:melhorFora
   };
 }
 
@@ -3585,7 +3877,7 @@ function avaliarPendentes(
       if(
         p.assinatura &&
         p.assinatura !==
-          sigAntes
+        sigAntes
       ){
 
         estado.pendentes[chave] =
@@ -3649,6 +3941,9 @@ function avaliarPendentes(
                   .slice()
               : [],
 
+          trioTaxa14:
+            p.trioTaxa14 || 0,
+
           hora:
             Date.now()
         });
@@ -3684,7 +3979,7 @@ function statsTimeline(lista){
 
     return (
       arr.filter(
-        x=>x.green
+        x => x.green
       ).length /
       arr.length *
       100
@@ -3701,7 +3996,9 @@ function statsTimeline(lista){
     i--
   ){
 
-    if(lista[i].green){
+    if(
+      lista[i].green
+    ){
       break;
     }
 
@@ -3736,7 +4033,7 @@ function statsTimeline(lista){
 
 
 /* =========================================================
-   RAIO X — 8 IDS
+   8 IDS RX
 ========================================================= */
 
 function montarOitoIds(rx){
@@ -3763,7 +4060,10 @@ function montarOitoIds(rx){
 
     TODOS_IDS.forEach(
       id =>
-        contagem.set(id,0)
+        contagem.set(
+          id,
+          0
+        )
     );
 
 
@@ -3776,7 +4076,10 @@ function montarOitoIds(rx){
 
             contagem.set(
               id,
-              (contagem.get(id)||0)+1
+              (
+                contagem.get(id) ||
+                0
+              ) + 1
             );
           });
       });
@@ -3785,14 +4088,17 @@ function montarOitoIds(rx){
     TODOS_IDS
       .map(id => ({
         id,
+
         ocorrencias:
-          contagem.get(id)||0
+          contagem.get(id) ||
+          0
       }))
       .filter(
-        x=>x.ocorrencias>0
+        x =>
+          x.ocorrencias > 0
       )
       .sort(
-        (a,b)=>
+        (a,b) =>
           b.ocorrencias -
           a.ocorrencias
       )
@@ -3800,12 +4106,18 @@ function montarOitoIds(rx){
 
         if(
           !ranking.some(
-            r=>r.id===x.id
+            r =>
+              r.id === x.id
           )
         ){
 
           ranking.push({
-            ...x,
+
+            id:x.id,
+
+            ocorrencias:
+              x.ocorrencias,
+
             origem:"MESA"
           });
         }
@@ -3814,18 +4126,23 @@ function montarOitoIds(rx){
 
 
   const primeiros =
-    ranking.slice(0,9);
+    ranking.slice(
+      0,
+      9
+    );
 
 
   const pos0 =
     primeiros.findIndex(
-      x=>x.id===0
+      x =>
+        x.id === 0
     );
 
 
   const pos26 =
     primeiros.findIndex(
-      x=>x.id===26
+      x =>
+        x.id === 26
     );
 
 
@@ -3858,22 +4175,37 @@ function montarOitoIds(rx){
 
           const i0 =
             ranking.find(
-              x=>x.id===0
+              x =>
+                x.id === 0
             );
+
 
           const i26 =
             ranking.find(
-              x=>x.id===26
+              x =>
+                x.id === 26
             );
 
+
           saida.push({
+
             tipo:"ZERO26",
+
             label:"0 + 3",
 
             ocorrencias:
-              (i0 ? i0.ocorrencias : 0) +
-              (i26 ? i26.ocorrencias : 0)
+              (
+                i0
+                  ? i0.ocorrencias
+                  : 0
+              ) +
+              (
+                i26
+                  ? i26.ocorrencias
+                  : 0
+              )
           });
+
 
           combinado = true;
         }
@@ -3882,8 +4214,17 @@ function montarOitoIds(rx){
       else{
 
         saida.push({
+
           tipo:"ID",
-          ...item
+
+          id:item.id,
+
+          ocorrencias:
+            item.ocorrencias,
+
+          origem:
+            item.origem ||
+            "RX"
         });
       }
 
@@ -3903,14 +4244,26 @@ function montarOitoIds(rx){
       .forEach(item => {
 
         saida.push({
+
           tipo:"ID",
-          ...item
+
+          id:item.id,
+
+          ocorrencias:
+            item.ocorrencias,
+
+          origem:
+            item.origem ||
+            "RX"
         });
       });
   }
 
 
-  return saida.slice(0,8);
+  return saida.slice(
+    0,
+    8
+  );
 }
 
 
@@ -3924,14 +4277,17 @@ function adicionarNumero(numero){
     numero
   );
 
+
   historico.push(
     numero
   );
+
 
   historico =
     historico.slice(
       -MAX_HISTORICO
     );
+
 
   salvarHistorico();
 
@@ -3956,8 +4312,8 @@ function extrairNumeros(texto){
     .map(Number)
     .filter(
       n =>
-        n>=0 &&
-        n<=36
+        n >= 0 &&
+        n <= 36
     )
     .slice(
       -MAX_HISTORICO
@@ -4011,6 +4367,7 @@ function inserirHistorico(){
 
 
   salvarHistorico();
+
   salvarEstado();
 
 
@@ -4022,9 +4379,7 @@ function inserirHistorico(){
 
 function apagarUltimo(){
 
-  if(
-    !historico.length
-  ){
+  if(!historico.length){
     return;
   }
 
@@ -4041,6 +4396,7 @@ function apagarUltimo(){
 
 
   salvarHistorico();
+
   salvarEstado();
 
   render();
@@ -4064,6 +4420,7 @@ function apagarTudo(){
   estado = {
 
     modo:"AUTO",
+
     manualRX:6,
 
     pendentes:{
@@ -4085,6 +4442,7 @@ function apagarTudo(){
 
 
   salvarHistorico();
+
   salvarEstado();
 
   render();
@@ -4100,17 +4458,22 @@ document.body.innerHTML = "";
 document.body.style.margin = "0";
 document.body.style.background = "#101010";
 document.body.style.color = "#fff";
-document.body.style.fontFamily = "Arial,sans-serif";
+document.body.style.fontFamily =
+  "Arial,sans-serif";
 
 
 const app =
-  document.createElement("div");
+  document.createElement(
+    "div"
+  );
 
 
 app.innerHTML = `
 <style>
 
-*{box-sizing:border-box}
+*{
+box-sizing:border-box
+}
 
 button,textarea{
 font-family:Arial,sans-serif
@@ -4173,8 +4536,13 @@ padding:7px 9px;
 font-weight:900
 }
 
-.verde{background:#146238}
-.vermelho{background:#762832}
+.verde{
+background:#146238
+}
+
+.vermelho{
+background:#762832
+}
 
 .status{
 font-size:10px;
@@ -4240,9 +4608,17 @@ font-size:14px;
 margin-top:3px
 }
 
-.ok90{color:#00e676}
-.warn{color:#ffc107}
-.bad{color:#ff5252}
+.ok90{
+color:#00e676
+}
+
+.warn{
+color:#ffc107
+}
+
+.bad{
+color:#ff5252
+}
 
 .momento{
 display:grid;
@@ -4268,6 +4644,11 @@ font-weight:900
 
 .momentoBox strong{
 font-size:14px
+}
+
+.trioPerfeito{
+border-color:#00e676;
+box-shadow:0 0 5px rgba(0,230,118,.25)
 }
 
 .timelineLinha{
@@ -4337,7 +4718,9 @@ gap:3px;
 overflow-x:auto
 }
 
-.bola,.regiaoBox,.idBox{
+.bola,
+.regiaoBox,
+.idBox{
 min-width:33px;
 height:33px;
 display:flex;
@@ -4514,21 +4897,29 @@ placeholder="Cole o histórico do mais antigo para o mais recente..."
 
 <div class="acoes">
 
-<button id="btnInserir" class="btn verde">
+<button
+id="btnInserir"
+class="btn verde">
 Inserir histórico
 </button>
 
-<button id="btnApagarUltimo" class="btn">
+<button
+id="btnApagarUltimo"
+class="btn">
 Apagar último
 </button>
 
-<button id="btnApagarTudo" class="btn vermelho">
+<button
+id="btnApagarTudo"
+class="btn vermelho">
 Apagar tudo
 </button>
 
 </div>
 
-<div id="statusArea" class="status">
+<div
+id="statusArea"
+class="status">
 Pronto.
 </div>
 
@@ -4543,19 +4934,27 @@ MOTOR ADAPTATIVO
 
 <div class="controle">
 
-<button id="auto" class="modo">
+<button
+id="auto"
+class="modo">
 AUTO
 </button>
 
-<button id="rx4" class="modo">
+<button
+id="rx4"
+class="modo">
 4
 </button>
 
-<button id="rx5" class="modo">
+<button
+id="rx5"
+class="modo">
 5
 </button>
 
-<button id="rx6" class="modo">
+<button
+id="rx6"
+class="modo">
 6
 </button>
 
@@ -4780,8 +5179,10 @@ for(
   btn.className =
     "numeroBtn";
 
+
   btn.textContent =
     numero;
+
 
   btn.style.background =
     corRoleta(numero);
@@ -4808,8 +5209,10 @@ const btnZero =
 btnZero.className =
   "numeroBtn zeroBtn";
 
+
 btnZero.textContent =
   "0";
+
 
 btnZero.style.background =
   "#087c48";
@@ -4971,8 +5374,7 @@ function renderMomento(){
 
   const m =
     analisarMomento(
-      historico,
-      JANELA_MOMENTO
+      historico
     );
 
 
@@ -5018,10 +5420,21 @@ function renderMomento(){
     trio.length
       ? trio
           .map(
-            t=>"T"+t
+            t => "T"+t
           )
           .join(" • ")
       : "—";
+
+
+  const taxaTrio =
+    m.trioTerminais
+      .taxa14;
+
+
+  const classe =
+    taxaTrio >= 99.999
+      ? "momentoBox trioPerfeito"
+      : "momentoBox";
 
 
   document
@@ -5031,7 +5444,7 @@ function renderMomento(){
     .innerHTML =
 
     '<div class="momentoBox">'+
-    '<small>BAIXO 1–18</small>'+
+    '<small>BAIXO 1–18 • 14</small>'+
     '<strong>'+
     baixo.toFixed(0)+
     '%</strong>'+
@@ -5039,7 +5452,7 @@ function renderMomento(){
 
 
     '<div class="momentoBox">'+
-    '<small>ALTO 19–36</small>'+
+    '<small>ALTO 19–36 • 14</small>'+
     '<strong>'+
     alto.toFixed(0)+
     '%</strong>'+
@@ -5047,7 +5460,7 @@ function renderMomento(){
 
 
     '<div class="momentoBox">'+
-    '<small>VERMELHO</small>'+
+    '<small>VERMELHO • 14</small>'+
     '<strong>'+
     red.toFixed(0)+
     '%</strong>'+
@@ -5055,24 +5468,46 @@ function renderMomento(){
 
 
     '<div class="momentoBox">'+
-    '<small>PRETO</small>'+
+    '<small>PRETO • 14</small>'+
     '<strong>'+
     black.toFixed(0)+
     '%</strong>'+
     '</div>'+
 
 
-    '<div class="momentoBox">'+
-    '<small>TRIO TERMINAIS</small>'+
+    '<div class="'+
+    classe+
+    '">'+
+
+    '<small>TRIO TERMINAIS • 14</small>'+
+
     '<strong style="font-size:11px">'+
     trioTexto+
     '</strong>'+
+
+    '<div style="font-size:8px;margin-top:3px;color:'+
+    (
+      taxaTrio >= 99.999
+        ? "#00e676"
+        : "#ffc107"
+    )+
+    '">'+
+    taxaTrio.toFixed(0)+
+    '% • '+
+    m.trioTerminais
+      .direto14+
+    ' DIRETO • '+
+    m.trioTerminais
+      .vizinho14+
+    ' VIZ.'+
+    '</div>'+
+
     '</div>';
 }
 
 
 /* =========================================================
-   RENDER ÚLTIMOS 14
+   RENDER 14
 ========================================================= */
 
 function render14(){
@@ -5111,6 +5546,7 @@ function render14(){
 
         const r =
           regiao(n);
+
 
         return (
 
@@ -5175,7 +5611,7 @@ function render14(){
 
 
 /* =========================================================
-   RENDER MOTOR
+   TAXA / MOTOR
 ========================================================= */
 
 function classeTaxa(taxa){
@@ -5341,7 +5777,8 @@ function renderControle(auto){
 
 
   if(
-    estado.modo === "AUTO"
+    estado.modo ===
+    "AUTO"
   ){
 
     document
@@ -5393,10 +5830,12 @@ function renderRaioX(config){
       "rxTitulo"
     );
 
+
   const sinais =
     document.getElementById(
       "sinais"
     );
+
 
   const areaIds =
     document.getElementById(
@@ -5412,7 +5851,9 @@ function renderRaioX(config){
     titulo.textContent =
       "RAIO X — AGUARDANDO";
 
+
     sinais.innerHTML = "";
+
     areaIds.innerHTML = "";
 
     return;
@@ -5420,6 +5861,7 @@ function renderRaioX(config){
 
 
   titulo.textContent =
+
     "RAIO X "+
     config.rx+
     (
@@ -5531,6 +5973,15 @@ function renderJogada(config){
   }
 
 
+  const trio =
+    config.jogada
+      .trioTerminais
+      .map(
+        t => "T"+t
+      )
+      .join("•");
+
+
   jogadaInfo.textContent =
 
     "RX"+
@@ -5545,6 +5996,14 @@ function renderJogada(config){
     " • BT20 "+
     config.backtest
       .taxa20
+      .toFixed(0)+
+    "%"+
+
+    " • "+
+    trio+
+    " "+
+    config.jogada
+      .trioTaxa14
       .toFixed(0)+
     "%";
 
@@ -5655,175 +6114,194 @@ function render(){
   );
 
 
-  setTimeout(() => {
+  setTimeout(
+    () => {
 
-    if(
-      meuToken !==
-      renderToken
-    ){
-      return;
-    }
-
-
-    try{
-
-      const configs = {};
+      if(
+        meuToken !==
+        renderToken
+      ){
+        return;
+      }
 
 
-      RX_LIST.forEach(rx => {
+      try{
 
-        configs[rx] =
-          melhorDoRX(
-            historico,
-            rx
+        const configs = {};
+
+
+        RX_LIST.forEach(rx => {
+
+          configs[rx] =
+            melhorDoRX(
+              historico,
+              rx
+            );
+        });
+
+
+        const auto =
+          escolherAuto(
+            configs
           );
-      });
 
 
-      const auto =
-        escolherAuto(
-          configs
+        garantirPendentes(
+          configs,
+          auto
         );
 
 
-      garantirPendentes(
-        configs,
-        auto
-      );
+        let ativa = null;
 
 
-      let ativa = null;
+        if(
+          estado.modo ===
+          "AUTO"
+        ){
 
-
-      if(
-        estado.modo ===
-        "AUTO"
-      ){
-
-        ativa =
-          auto;
-      }
-
-      else{
-
-        ativa =
-          configs[
-            estado.manualRX
-          ];
-      }
-
-
-      const diagnostico =
-        diagnosticarLossAtual();
-
-
-      estado.ultimaEscolha =
-        auto
-          ? {
-              rx:
-                auto.rx,
-
-              contexto:
-                auto.contexto,
-
-              bt10:
-                auto.backtest
-                  .taxa10,
-
-              bt20:
-                auto.backtest
-                  .taxa20,
-
-              trio:
-                auto.jogada
-                  .trioTerminais
-                  .slice(),
-
-              diagnostico:
-                diagnostico.tipo
-            }
-          : null;
-
-
-      salvarEstado();
-
-
-      renderControle(
-        auto
-      );
-
-
-      renderMotor(
-        configs,
-        auto
-      );
-
-
-      renderRaioX(
-        ativa
-      );
-
-
-      renderJogada(
-        ativa
-      );
-
-
-      setStatus(
-        historico.length+
-        " números • cálculo concluído.",
-        "#00e676"
-      );
-
-
-      console.log(
-        "ANALISADOR 0/6/9",
-        {
-
-          AUTO:
-            auto,
-
-          RX4:
-            configs[4],
-
-          RX5:
-            configs[5],
-
-          RX6:
-            configs[6],
-
-          TRIO:
-            calcularTrioTerminais(
-              historico.slice(-20)
-            ),
-
-          DIAGNOSTICO_LOSS:
-            diagnostico
+          ativa =
+            auto;
         }
-      );
 
-    }
+        else{
 
-    catch(erro){
+          ativa =
+            configs[
+              estado.manualRX
+            ];
+        }
 
-      console.error(
-        erro
-      );
+
+        const trioAtual =
+          calcularTrioTerminais(
+            historico
+          );
 
 
-      setStatus(
-        "Erro: "+
-        (
-          erro &&
-          erro.message
-            ? erro.message
-            : String(erro)
-        ),
-        "#ff5252"
-      );
-    }
+        const diagnostico =
+          diagnosticarLossAtual();
 
-  },0);
+
+        estado.ultimaEscolha =
+          auto
+            ? {
+
+                rx:
+                  auto.rx,
+
+                contexto:
+                  auto.contexto,
+
+                bt10:
+                  auto.backtest
+                    .taxa10,
+
+                bt20:
+                  auto.backtest
+                    .taxa20,
+
+                trio:
+                  trioAtual
+                    .trio
+                    .slice(),
+
+                trioTaxa14:
+                  trioAtual
+                    .taxa14,
+
+                candidatos100:
+                  trioAtual
+                    .candidatos100,
+
+                diagnostico:
+                  diagnostico.tipo
+              }
+            : null;
+
+
+        salvarEstado();
+
+
+        renderControle(
+          auto
+        );
+
+
+        renderMotor(
+          configs,
+          auto
+        );
+
+
+        renderRaioX(
+          ativa
+        );
+
+
+        renderJogada(
+          ativa
+        );
+
+
+        setStatus(
+          historico.length+
+          " números • trio recalculado nos últimos 14 • cálculo concluído.",
+          "#00e676"
+        );
+
+
+        console.log(
+          "ANALISADOR 0/6/9 V10.4",
+          {
+
+            ULTIMOS_14:
+              historico.slice(-14),
+
+            TRIO_14:
+              trioAtual,
+
+            AUTO:
+              auto,
+
+            RX4:
+              configs[4],
+
+            RX5:
+              configs[5],
+
+            RX6:
+              configs[6],
+
+            DIAGNOSTICO_LOSS:
+              diagnostico
+          }
+        );
+
+      }
+
+      catch(erro){
+
+        console.error(
+          erro
+        );
+
+
+        setStatus(
+          "Erro: "+
+          (
+            erro &&
+            erro.message
+              ? erro.message
+              : String(erro)
+          ),
+          "#ff5252"
+        );
+      }
+
+    },
+    0
+  );
 }
 
 
