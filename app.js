@@ -11,6 +11,13 @@ const STORAGE_KEY =
 const STORAGE_ENGINE =
 "ANALISADOR_069_ENGINE_COMPLETO_V10";
 
+/*
+   NOVO STORAGE SOMENTE VISUAL.
+   NÃO PARTICIPA DO MOTOR.
+*/
+const STORAGE_DUPLAS =
+"ANALISADOR_069_DUPLAS_VISUAIS_V1";
+
 const MAX_HISTORICO = 35;
 const JANELA_MOMENTO = 14;
 const MAX_TIMELINE = 300;
@@ -381,8 +388,10 @@ return [];
 
 }
 
+
 let historico=
 carregarHistorico();
+
 
 let estado={
 
@@ -405,6 +414,7 @@ AUTO:[],
 }
 
 };
+
 
 function carregarEstado(){
 
@@ -471,6 +481,7 @@ x.pendentes
 
 carregarEstado();
 
+
 function salvarHistorico(){
 
 historico=
@@ -487,6 +498,7 @@ JSON.stringify(historico)
 
 }
 
+
 function salvarEstado(){
 
 try{
@@ -499,6 +511,98 @@ JSON.stringify(estado)
 }catch(e){}
 
 }
+
+
+/* ============================================================
+   DUPLAS VISUAIS FIXAS
+   NÃO PARTICIPAM DO MOTOR
+============================================================ */
+
+let duplasVisual=[];
+
+
+function carregarDuplasVisual(){
+
+try{
+
+const raw=
+localStorage.getItem(
+STORAGE_DUPLAS
+);
+
+if(raw){
+
+const arr=
+JSON.parse(raw);
+
+if(Array.isArray(arr)){
+
+duplasVisual=
+arr.slice(-7);
+
+return;
+
+}
+
+}
+
+}catch(e){}
+
+
+/*
+   PRIMEIRA EXECUÇÃO DA NOVA VERSÃO.
+
+   Cria as duplas usando os últimos números
+   existentes, uma única vez.
+
+   Depois disso elas ficam persistentes.
+*/
+
+const ultimos=
+historico.slice(-14);
+
+duplasVisual=[];
+
+for(let i=0;i<ultimos.length;i+=2){
+
+duplasVisual.push({
+
+gatilho:ultimos[i],
+
+resultado:
+i+1<ultimos.length
+?ultimos[i+1]
+:null,
+
+avaliacao:null
+
+});
+
+}
+
+salvarDuplasVisual();
+
+}
+
+
+function salvarDuplasVisual(){
+
+duplasVisual=
+duplasVisual.slice(-7);
+
+try{
+
+localStorage.setItem(
+STORAGE_DUPLAS,
+JSON.stringify(duplasVisual)
+);
+
+}catch(e){}
+
+}
+
+
+carregarDuplasVisual();
 
 
 /* ============================================================
@@ -536,9 +640,7 @@ if(tn===t){
 direto++;
 score+=2.20*recencia;
 
-if(
-i>=janela.length-5
-){
+if(i>=janela.length-5){
 
 direto5++;
 score+=.95;
@@ -553,9 +655,7 @@ tn===terminalSeguinte(t)
 vizinho++;
 score+=.62*recencia;
 
-if(
-i>=janela.length-5
-){
+if(i>=janela.length-5){
 
 vizinho5++;
 score+=.20;
@@ -614,15 +714,19 @@ cobertura++;
 });
 
 return {
+
 ranking,
 trio,
+
 taxa:
 janela.length
-? cobertura/janela.length*100
+?cobertura/janela.length*100
 :0
+
 };
 
 }
+
 
 function scoreTerminalNumero(numero,momento){
 
@@ -715,6 +819,7 @@ janela.length>1
 };
 
 }
+
 
 function scoreCorNumero(numero,momento){
 
@@ -838,6 +943,7 @@ for(let i=seq.length-1;i>=0;i--){
 
 if(seq[i]===atual)
 repeticaoAtual++;
+
 else
 break;
 
@@ -846,6 +952,7 @@ break;
 }
 
 return {
+
 contagem,
 transicoes,
 atual,
@@ -855,9 +962,11 @@ pctAlternancia:
 seq.length>1
 ?alternancias/(seq.length-1)*100
 :0
+
 };
 
 }
+
 
 function scoreZonaNumero(numero,momento){
 
@@ -949,7 +1058,7 @@ Math.max(1,janela.length))
 if(d<=1){
 
 miolo++;
-score+=1*recencia;
+score+=recencia;
 
 }else if(d<=3){
 
@@ -979,9 +1088,7 @@ ponta>=lateral
 )
 perfil="PONTA";
 
-else if(
-lateral>miolo
-)
+else if(lateral>miolo)
 perfil="LATERAL";
 
 let direcao=0;
@@ -1031,6 +1138,7 @@ principal:ranking[0]||null
 
 }
 
+
 function scoreCorredorNumero(numero,momento){
 
 const fortes=
@@ -1077,9 +1185,7 @@ local=.50;
 else
 local=.34;
 
-}else if(
-c.perfil==="LATERAL"
-){
+}else if(c.perfil==="LATERAL"){
 
 if(d===2 || d===3)
 local=1;
@@ -1202,19 +1308,22 @@ score:mapa.get(n)||0
 );
 
 return {
+
 mapa,
 ranking,
+
 centro:
 ranking.length
 ?ranking[0].numero
 :null
+
 };
 
 }
 
 
 /* ============================================================
-   MOMENTO 14
+   MOMENTO
 ============================================================ */
 
 function analisarMomento(base){
@@ -1245,6 +1354,7 @@ analisarDensidade(base)
 };
 
 }
+
 
 function scoreMomentoNumero(numero,momento){
 
@@ -1278,6 +1388,7 @@ momento.densidade.mapa
 );
 
 }
+
 
 function direcaoMomento(centro,momento){
 
@@ -1359,8 +1470,7 @@ base.length
 );
 
 for(let i=0;i<base.length;i++)
-eventos[i]=
-eventoNumero(base[i]);
+eventos[i]=eventoNumero(base[i]);
 
 return {
 base,
@@ -1368,6 +1478,7 @@ eventos
 };
 
 }
+
 
 function similaridadeJanelas(
 cache,
@@ -1424,15 +1535,13 @@ forma*.20;
 
 }
 
+
 function analisarRX(base,rx){
 
 base=
 limitar35(base);
 
-if(
-base.length<
-rx*2+4
-){
+if(base.length<rx*2+4){
 
 return {
 valido:false,
@@ -1452,11 +1561,7 @@ base.length-rx;
 
 const candidatos=[];
 
-for(
-let i=0;
-i+rx<atualInicio;
-i++
-){
+for(let i=0;i+rx<atualInicio;i++){
 
 const proximo=
 base[i+rx];
@@ -1574,8 +1679,10 @@ TODOS_IDS
 .map((id,ordem)=>({
 
 id,
+
 ocorrencias:
 contagem.get(id)||0,
+
 ordem
 
 }))
@@ -1605,7 +1712,7 @@ replicas.reduce(
 
 
 /* ============================================================
-   FREQUÊNCIA RX
+   FREQUÊNCIA
 ============================================================ */
 
 function frequenciaReplicas(replicas){
@@ -1647,18 +1754,12 @@ x=>!x.semJogada
 
 const losses=[];
 
-for(
-let i=validos.length-1;
-i>=0;
-i--
-){
+for(let i=validos.length-1;i>=0;i--){
 
 if(validos[i].green)
 break;
 
-losses.unshift(
-validos[i]
-);
+losses.unshift(validos[i]);
 
 }
 
@@ -1749,7 +1850,7 @@ forca
 
 
 /* ============================================================
-   SCORE SETORES
+   SCORE
 ============================================================ */
 
 function scoreRXPuro(
@@ -1800,6 +1901,7 @@ numeros
 
 }
 
+
 function scoreMomentoSetor(
 centro,
 qtd,
@@ -1845,7 +1947,7 @@ numeros.length;
 
 
 /* ============================================================
-   GIRADA DINÂMICA
+   GIRADA
 ============================================================ */
 
 function avaliarCentroComGiradas(
@@ -1975,6 +2077,7 @@ return melhor;
 
 }
 
+
 function gerarCandidatos(
 qtd,
 freq,
@@ -1985,8 +2088,7 @@ diagnostico
 const mapa=
 new Map();
 
-track.forEach(
-centroOriginal=>{
+track.forEach(centroOriginal=>{
 
 const c=
 avaliarCentroComGiradas(
@@ -2093,10 +2195,7 @@ const dois=[];
 let score=
 um.score;
 
-for(
-const candidato
-of candidatos2
-){
+for(const candidato of candidatos2){
 
 const conflito=
 candidato.numeros
@@ -2107,9 +2206,7 @@ n=>usados.has(n)
 if(conflito)
 continue;
 
-dois.push(
-candidato
-);
+dois.push(candidato);
 
 score+=
 candidato.score;
@@ -2211,7 +2308,7 @@ raioX.similaridade
 
 
 /* ============================================================
-   RESULTADO
+   CLASSIFICAÇÃO
 ============================================================ */
 
 function classificarJogada(
@@ -2295,6 +2392,7 @@ gap<melhor.gap
 
 melhor={
 gap,
+
 lado:
 Math.sign(
 deltaRoda(
@@ -2302,6 +2400,7 @@ b.centro,
 numero
 )
 )
+
 };
 
 }
@@ -2351,10 +2450,7 @@ x=>!x.semJogada
 
 }
 
-function taxa(
-arr,
-qtd
-){
+function taxa(arr,qtd){
 
 const v=
 validos(arr)
@@ -2376,11 +2472,7 @@ validos(lista);
 
 let loss=0;
 
-for(
-let i=lista.length-1;
-i>=0;
-i--
-){
+for(let i=lista.length-1;i>=0;i--){
 
 const x=lista[i];
 
@@ -2446,11 +2538,7 @@ minimo,
 base.length-20
 );
 
-for(
-let i=inicio;
-i<base.length;
-i++
-){
+for(let i=inicio;i<base.length;i++){
 
 const passado=
 base.slice(0,i);
@@ -2599,6 +2687,7 @@ score
 
 }
 
+
 function escolherAuto(configs){
 
 const lista=
@@ -2639,6 +2728,7 @@ historico.join(",")
 
 }
 
+
 function snapshot(config){
 
 if(
@@ -2668,6 +2758,7 @@ config.jogada.blocos1[0]
 };
 
 }
+
 
 function classificarSnapshot(
 numero,
@@ -2720,6 +2811,7 @@ blocos1
 
 }
 
+
 function garantirPendentes(
 configs,
 auto
@@ -2758,6 +2850,11 @@ snapshot(auto);
 salvarEstado();
 
 }
+
+
+/* ============================================================
+   AVALIA PENDENTES
+============================================================ */
 
 function avaliarPendentes(numero){
 
@@ -2850,14 +2947,234 @@ salvarEstado();
 
 
 /* ============================================================
+   VISUAL — SNAPSHOT DA DUPLA
+============================================================ */
+
+function chaveVisualAtual(){
+
+return estado.modo==="AUTO"
+?"AUTO"
+:estado.manualRX;
+
+}
+
+
+function resultadoVisualAtual(numero){
+
+const chave=
+chaveVisualAtual();
+
+const lista=
+estado.timelines[chave] || [];
+
+const item=
+lista[
+lista.length-1
+];
+
+if(
+!item ||
+item.resultado!==numero
+){
+
+return null;
+
+}
+
+if(item.semJogada)
+return "SEM";
+
+return item.green
+?"GREEN"
+:"LOSS";
+
+}
+
+
+/* ============================================================
+   ATUALIZA DUPLA VISUAL NA INSERÇÃO
+
+   IMPORTANTE:
+   - NÃO REAGRUPA
+   - NÃO USA SLICE(-14) PARA FORMAR PARES
+============================================================ */
+
+function registrarNumeroDupla(numero){
+
+if(!duplasVisual.length){
+
+duplasVisual.push({
+
+gatilho:numero,
+resultado:null,
+avaliacao:null
+
+});
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+const ultima=
+duplasVisual[
+duplasVisual.length-1
+];
+
+
+/*
+   EXISTE GATILHO AGUARDANDO.
+   O NÚMERO NOVO FECHA ESSA DUPLA.
+*/
+
+if(
+ultima.resultado===null ||
+ultima.resultado===undefined
+){
+
+ultima.resultado=
+numero;
+
+ultima.avaliacao=
+resultadoVisualAtual(
+numero
+);
+
+}
+
+/*
+   ÚLTIMA DUPLA JÁ ESTÁ FECHADA.
+
+   NÚMERO NOVO É NOVO GATILHO.
+*/
+
+else{
+
+duplasVisual.push({
+
+gatilho:numero,
+resultado:null,
+avaliacao:null
+
+});
+
+}
+
+
+/*
+   7 QUADRADOS VISÍVEIS.
+*/
+
+duplasVisual=
+duplasVisual.slice(-7);
+
+salvarDuplasVisual();
+
+}
+
+
+/* ============================================================
+   APAGAR VISUAL
+
+   NÃO REAGRUPA DUPLAS ANTERIORES.
+============================================================ */
+
+function apagarUltimoDaDupla(numero){
+
+if(!duplasVisual.length)
+return;
+
+const ultima=
+duplasVisual[
+duplasVisual.length-1
+];
+
+
+/*
+   SE O NÚMERO APAGADO ERA RESULTADO,
+   MANTÉM O GATILHO E ABRE NOVAMENTE
+   A SEGUNDA POSIÇÃO.
+*/
+
+if(
+ultima.resultado===numero
+){
+
+ultima.resultado=null;
+ultima.avaliacao=null;
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+
+/*
+   SE ERA UM GATILHO NOVO AINDA
+   SEM RESULTADO, REMOVE SÓ ELE.
+*/
+
+if(
+(
+ultima.resultado===null ||
+ultima.resultado===undefined
+) &&
+ultima.gatilho===numero
+){
+
+duplasVisual.pop();
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+
+/*
+   NÃO REAGRUPA NADA.
+*/
+
+salvarDuplasVisual();
+
+}
+
+
+/* ============================================================
    INSERÇÃO
 ============================================================ */
 
 function adicionarNumero(numero){
 
+/*
+   PRIMEIRO:
+   avalia a jogada que já estava congelada.
+*/
+
 avaliarPendentes(
 numero
 );
+
+
+/*
+   SEGUNDO:
+   registra o número na dupla visual.
+
+   Assim, se ele for resultado,
+   usa exatamente a avaliação congelada.
+*/
+
+registrarNumeroDupla(
+numero
+);
+
+
+/*
+   TERCEIRO:
+   entra no histórico do motor.
+*/
 
 historico.push(numero);
 
@@ -2869,6 +3186,7 @@ salvarHistorico();
 render();
 
 }
+
 
 function extrairNumeros(texto){
 
@@ -2885,6 +3203,7 @@ return encontrados
 .slice(-35);
 
 }
+
 
 function inserirHistorico(){
 
@@ -2918,6 +3237,35 @@ AUTO:[],
 6:[]
 };
 
+
+/*
+   HISTÓRICO COLADO:
+   monta inicialmente as duplas uma única vez.
+*/
+
+duplasVisual=[];
+
+const visual=
+historico.slice(-14);
+
+for(let i=0;i<visual.length;i+=2){
+
+duplasVisual.push({
+
+gatilho:visual[i],
+
+resultado:
+i+1<visual.length
+?visual[i+1]
+:null,
+
+avaliacao:null
+
+});
+
+}
+
+salvarDuplasVisual();
 salvarHistorico();
 salvarEstado();
 
@@ -2927,10 +3275,28 @@ render();
 
 }
 
+
 function apagarUltimo(){
 
 if(!historico.length)
 return;
+
+const removido=
+historico[
+historico.length-1
+];
+
+
+/*
+   VISUAL:
+   desfaz SOMENTE a última digitação.
+   NÃO REAGRUPA as outras duplas.
+*/
+
+apagarUltimoDaDupla(
+removido
+);
+
 
 historico.pop();
 
@@ -2948,6 +3314,7 @@ render();
 
 }
 
+
 function apagarTudo(){
 
 if(
@@ -2958,6 +3325,8 @@ if(
 return;
 
 historico=[];
+
+duplasVisual=[];
 
 estado.pendentes={
 AUTO:null,
@@ -2973,6 +3342,7 @@ AUTO:[],
 6:[]
 };
 
+salvarDuplasVisual();
 salvarHistorico();
 salvarEstado();
 
@@ -3000,7 +3370,9 @@ app.innerHTML=`
 
 <style>
 
-*{box-sizing:border-box}
+*{
+box-sizing:border-box
+}
 
 body{
 background:#101010
@@ -3225,7 +3597,7 @@ text-align:right
 
 
 /* ============================================================
-   ÚLTIMOS 14 — DUPLAS
+   DUPLAS FIXAS
 ============================================================ */
 
 .duplas14{
@@ -3262,6 +3634,12 @@ background:#292929;
 border-color:#666
 }
 
+.dupla14.aberta{
+background:#202020;
+border-color:#777;
+border-style:dashed
+}
+
 .bolaDupla{
 width:29px;
 height:29px;
@@ -3281,11 +3659,6 @@ font-size:10px;
 font-weight:900;
 color:#aaa
 }
-
-
-/* ============================================================
-   JOGADA
-============================================================ */
 
 .jogada{
 display:flex;
@@ -3369,7 +3742,6 @@ grid-template-columns:repeat(4,1fr)
 
 <h2>ANÁLISE 0 • 6 • 9</h2>
 
-
 <div class="painel">
 
 <textarea
@@ -3402,7 +3774,9 @@ PRONTO
 
 <div class="painel">
 
-<div class="titulo">MOTOR</div>
+<div class="titulo">
+MOTOR
+</div>
 
 <div class="modos">
 
@@ -3424,17 +3798,13 @@ AUTO
 
 </div>
 
-
 <div id="resumo" class="resumo"></div>
 
 <div id="trio" class="trio"></div>
 
 <div id="timelineAUTO" class="timelineRow"></div>
-
 <div id="timeline4" class="timelineRow"></div>
-
 <div id="timeline5" class="timelineRow"></div>
-
 <div id="timeline6" class="timelineRow"></div>
 
 </div>
@@ -3443,7 +3813,7 @@ AUTO
 <div class="painel">
 
 <div class="titulo">
-ÚLTIMOS 14
+ÚLTIMOS 14 • DUPLAS
 </div>
 
 <div
@@ -3471,7 +3841,10 @@ JOGADA
 TECLADO
 </div>
 
-<div id="teclado" class="teclado"></div>
+<div
+id="teclado"
+class="teclado">
+</div>
 
 </div>
 
@@ -3487,22 +3860,27 @@ document.body.appendChild(app);
 
 document
 .getElementById("inserir")
-.onclick=inserirHistorico;
+.onclick=
+inserirHistorico;
 
 document
 .getElementById("apagar")
-.onclick=apagarUltimo;
+.onclick=
+apagarUltimo;
 
 document
 .getElementById("limpar")
-.onclick=apagarTudo;
+.onclick=
+apagarTudo;
 
 document
 .getElementById("auto")
 .onclick=()=>{
 
 estado.modo="AUTO";
+
 salvarEstado();
+
 render();
 
 };
@@ -3516,9 +3894,11 @@ document
 .onclick=()=>{
 
 estado.modo="MANUAL";
+
 estado.manualRX=rx;
 
 salvarEstado();
+
 render();
 
 };
@@ -3543,6 +3923,7 @@ document.createElement(
 );
 
 b.className="numero";
+
 b.textContent=n;
 
 b.style.background=
@@ -3751,13 +4132,7 @@ um+
 
 
 /* ============================================================
-   NOVO VISUAL
-   14 NÚMEROS = 7 DUPLAS
-
-   [GATILHO RESULTADO]
-   [GATILHO RESULTADO]
-
-   SEM TEXTO GATILHO/RESULTADO.
+   RENDER DAS DUPLAS FIXAS
 ============================================================ */
 
 function renderDuplas14(){
@@ -3767,165 +4142,39 @@ document.getElementById(
 "ultimos14"
 );
 
-const numeros=
-historico.slice(-14);
-
-
-/*
-   TIMELINE QUE DEVE SER USADA
-   PARA COLORIR O QUADRO.
-
-   NÃO ALTERA MOTOR.
-*/
-
-const chaveTimeline=
-estado.modo==="AUTO"
-?"AUTO"
-:estado.manualRX;
-
-const timeline=
-estado.timelines[
-chaveTimeline
-] || [];
-
-
-/*
-   Precisamos dos resultados correspondentes
-   aos números mostrados.
-
-   Cada item da timeline é o resultado de uma
-   jogada formada ANTES daquele número.
-*/
-
-function encontrarResultadoTimeline(
-numero,
-indiceResultado
-){
-
-/*
-   O histórico e a timeline podem ter tamanhos
-   diferentes porque a timeline pode chegar a 300.
-
-   Alinhamos pelo final.
-*/
-
-const quantidadeHistorico=
-historico.length;
-
-const posicaoAbsoluta=
-quantidadeHistorico-
-numeros.length+
-indiceResultado;
-
-const distanciaDoFim=
-quantidadeHistorico-
-1-
-posicaoAbsoluta;
-
-const posTimeline=
-timeline.length-
-1-
-distanciaDoFim;
-
-if(
-posTimeline<0 ||
-posTimeline>=timeline.length
-)
-return null;
-
-const item=
-timeline[posTimeline];
-
-
-/*
-   Segurança visual.
-*/
-
-if(
-!item ||
-item.resultado!==numero
-)
-return null;
-
-return item;
-
-}
-
+const lista=
+duplasVisual.slice(-7);
 
 let html="";
 
-
-/*
-   PARES FECHADOS:
-   0+1
-   2+3
-   4+5
-   ...
-*/
-
-for(
-let i=0;
-i<numeros.length;
-i+=2
-){
-
-const gatilho=
-numeros[i];
-
-const temResultado=
-i+1<numeros.length;
-
-const resultado=
-temResultado
-?numeros[i+1]
-:null;
-
+lista.forEach(d=>{
 
 let classe="sem";
 
+if(
+d.resultado===null ||
+d.resultado===undefined
+){
 
-if(temResultado){
+classe="aberta";
 
-/*
-   O segundo número é o resultado.
-   É ele que consulta a timeline.
-*/
-
-const item=
-encontrarResultadoTimeline(
-resultado,
-i+1
-);
-
-
-if(item){
-
-if(item.semJogada){
-
-classe="sem";
-
-}else if(item.green){
+}else if(
+d.avaliacao==="GREEN"
+){
 
 classe="green";
 
-}else{
+}else if(
+d.avaliacao==="LOSS"
+){
 
 classe="loss";
 
-}
+}else{
+
+classe="sem";
 
 }
-
-}
-
-
-/*
-   PRIMEIRA BOLINHA:
-   GATILHO
-
-   SEGUNDA BOLINHA:
-   RESULTADO
-*/
 
 html+=
 
@@ -3933,32 +4182,29 @@ html+=
 classe+
 '">'+
 
-'<div class="bolaDupla" '+
-'style="background:'+
-corRoleta(gatilho)+
+'<div class="bolaDupla" style="background:'+
+corRoleta(d.gatilho)+
 '">'+
-gatilho+
+d.gatilho+
 '</div>'+
 
 '<span class="setaDupla">›</span>'+
 
-
 (
-temResultado
+d.resultado!==null &&
+d.resultado!==undefined
 
 ?
 
-'<div class="bolaDupla" '+
-'style="background:'+
-corRoleta(resultado)+
+'<div class="bolaDupla" style="background:'+
+corRoleta(d.resultado)+
 '">'+
-resultado+
+d.resultado+
 '</div>'
 
 :
 
-'<div class="bolaDupla" '+
-'style="background:#444;color:#999">'+
+'<div class="bolaDupla" style="background:#444;color:#999">'+
 '—'+
 '</div>'
 
@@ -3966,8 +4212,7 @@ resultado+
 
 '</div>';
 
-}
-
+});
 
 area.innerHTML=html;
 
@@ -4114,7 +4359,6 @@ renderTrio(
 momento
 );
 
-
 renderTimeline(
 "timelineAUTO",
 "AUTO",
@@ -4141,10 +4385,9 @@ estado.timelines[6]
 
 
 /*
-   ÚNICA MUDANÇA VISUAL:
-   ÚLTIMOS 14 EM 7 DUPLAS.
+   DUPLAS PERSISTENTES.
+   NÃO SÃO REAGRUPADAS.
 */
-
 renderDuplas14();
 
 
