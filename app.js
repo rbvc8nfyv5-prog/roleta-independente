@@ -3,57 +3,7 @@
 
 /* ============================================================
    ANALISADOR 0 • 6 • 9 — V12
-   ============================================================
-
-   BASE ESTRUTURAL:
-   - últimos 35 números
-   - RX4 / RX5 / RX6
-
-   MOMENTO:
-   - últimos 14 DENTRO dos 35
-
-   CRUZAMENTO:
-   - RX encontra a estrutura
-   - momento 14 exerce peso real
-   - permite pequena "girada" física
-   - SEM OFFSET FIXO
-
-   AUXILIARES INTERNOS:
-   - trio terminal
-   - vizinho terminal
-   - vermelho/preto/verde
-   - zonas
-   - alternância
-   - corredores físicos ±5
-   - miolo/laterais/pontas
-   - direção física
-   - LOSS / FORA1 / FORA2
-
-   JOGADA:
-   - 5 setores 2V
-   - 1 setor 1V
-   - 28 números únicos
-
-   LINHA DO TEMPO:
-   - G = GREEN
-   - L = LOSS
-   - — = SEM JOGADA
-   - — não conta como Green
-   - — não conta como Loss
-   - — não entra no percentual
-
-   VISUAL:
-   - não mostra RX mais forte
-   - não mostra zona
-   - não mostra borda
-   - não mostra alto/baixo
-   - não mostra lateral/ponta
-============================================================ */
-
-
-/* ============================================================
-   CONFIGURAÇÃO
-============================================================ */
+   ============================================================ */
 
 const STORAGE_KEY =
 "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
@@ -62,22 +12,18 @@ const STORAGE_ENGINE =
 "ANALISADOR_069_ENGINE_COMPLETO_V10";
 
 const MAX_HISTORICO = 35;
-
 const JANELA_MOMENTO = 14;
-
 const MAX_TIMELINE = 300;
 
 const RX_LIST = [4,5,6];
-
 const MAX_REPLICAS = 40;
 
 const PESO_MOMENTO = .34;
-
 const MAX_GIRADA = 2;
 
 
 /* ============================================================
-   ROLETA EUROPEIA
+   ROLETA
 ============================================================ */
 
 const track = [
@@ -117,16 +63,9 @@ TIERS:new Set([
 
 };
 
-const coresRegioes = {
-ZERO:"#7cb342",
-VOISINS:"#7b1fa2",
-ORPHELINS:"#176436",
-TIERS:"#3949ab"
-};
-
 
 /* ============================================================
-   IDS 0 / 6 / 9
+   IDS
 ============================================================ */
 
 const BASES = [
@@ -154,72 +93,44 @@ const ESPECIAIS = {
 
 function limitar35(base){
 
-if(!Array.isArray(base)){
+if(!Array.isArray(base))
 return [];
-}
 
 return base.slice(-MAX_HISTORICO);
 
 }
 
-
 function indice(n){
-
 return track.indexOf(n);
-
 }
 
+function numeroOffset(centro,offset){
 
-function numeroOffset(
-centro,
-offset
-){
+const i=indice(centro);
 
-const i =
-indice(centro);
-
-if(i < 0){
+if(i<0)
 return centro;
-}
 
 return track[
-(
-i+offset+
-track.length
-) %
-track.length
+(i+offset+37)%37
 ];
 
 }
 
+function setor(centro,qtd){
 
-function setor(
-centro,
-qtd
-){
+const i=indice(centro);
 
-const i =
-indice(centro);
-
-if(i < 0){
+if(i<0)
 return [];
-}
 
 const r=[];
 
-for(
-let d=-qtd;
-d<=qtd;
-d++
-){
+for(let d=-qtd;d<=qtd;d++){
 
 r.push(
 track[
-(
-i+d+
-track.length
-) %
-track.length
+(i+d+37)%37
 ]
 );
 
@@ -229,138 +140,83 @@ return r;
 
 }
 
-
-function vizinhos(
-numero,
-qtd=1
-){
-
-return setor(
-numero,
-qtd
-);
-
+function vizinhos(numero,qtd=1){
+return setor(numero,qtd);
 }
 
+function distanciaRoda(a,b){
 
-function distanciaRoda(
-a,
-b
-){
+const ia=indice(a);
+const ib=indice(b);
 
-const ia =
-indice(a);
-
-const ib =
-indice(b);
-
-if(
-ia < 0 ||
-ib < 0
-){
+if(ia<0 || ib<0)
 return 99;
-}
 
-const d =
-Math.abs(
-ia-ib
-);
+const d=Math.abs(ia-ib);
 
 return Math.min(
 d,
-track.length-d
+37-d
 );
 
 }
 
+function deltaRoda(centro,numero){
 
-function deltaRoda(
-centro,
-numero
-){
+const a=indice(centro);
+const b=indice(numero);
 
-const a =
-indice(centro);
-
-const b =
-indice(numero);
-
-if(
-a < 0 ||
-b < 0
-){
+if(a<0 || b<0)
 return 0;
-}
 
-let d =
-(
-b-a+
-track.length
-) %
-track.length;
+let d=(b-a+37)%37;
 
-if(d > 18){
-d -= 37;
-}
+if(d>18)
+d-=37;
 
 return d;
 
 }
 
-
 function terminal(n){
-
 return n%10;
-
 }
-
 
 function terminalAnterior(t){
-
 return (t+9)%10;
-
 }
 
-
 function terminalSeguinte(t){
-
 return (t+1)%10;
-
 }
 
 
 /* ============================================================
-   CARACTERÍSTICAS
+   COR / REGIÃO
 ============================================================ */
 
 function regiao(n){
 
-if(regioes.ZERO.has(n)){
+if(regioes.ZERO.has(n))
 return "ZERO";
-}
 
-if(regioes.VOISINS.has(n)){
+if(regioes.VOISINS.has(n))
 return "VOISINS";
-}
 
-if(regioes.ORPHELINS.has(n)){
+if(regioes.ORPHELINS.has(n))
 return "ORPHELINS";
-}
 
-if(regioes.TIERS.has(n)){
+if(regioes.TIERS.has(n))
 return "TIERS";
-}
 
 return null;
 
 }
 
-
 function tipoCor(n){
 
-if(n === 0){
+if(n===0)
 return "VERDE";
-}
 
 return vermelhos.has(n)
 ? "VERMELHO"
@@ -368,12 +224,10 @@ return vermelhos.has(n)
 
 }
 
-
 function corRoleta(n){
 
-if(n === 0){
+if(n===0)
 return "#087c48";
-}
 
 return vermelhos.has(n)
 ? "#c6283d"
@@ -386,57 +240,52 @@ return vermelhos.has(n)
    IDS
 ============================================================ */
 
-const coberturaIds = {};
+const coberturaIds={};
 
-BASES.forEach(base => {
+BASES.forEach(base=>{
 
-coberturaIds[base] =
+coberturaIds[base]=
 new Set(
 vizinhos(base,1)
 );
 
 });
 
-
 function familia(id){
 
 if(
-id === 0 ||
-id === 10 ||
-id === 20 ||
-id === 30
-){
+id===0 ||
+id===10 ||
+id===20 ||
+id===30
+)
 return 0;
-}
 
 if(
-id === 6 ||
-id === 16 ||
-id === 26 ||
-id === 36
-){
+id===6 ||
+id===16 ||
+id===26 ||
+id===36
+)
 return 6;
-}
 
 if(
-id === 9 ||
-id === 19 ||
-id === 29 ||
-id === 39
-){
+id===9 ||
+id===19 ||
+id===29 ||
+id===39
+)
 return 9;
-}
 
 return null;
 
 }
 
-
 function idsQueBatem(numero){
 
 const ids=[];
 
-BASES.forEach(base => {
+BASES.forEach(base=>{
 
 if(
 coberturaIds[base]
@@ -449,7 +298,6 @@ ids.push(base);
 
 });
 
-
 if(
 Object.prototype
 .hasOwnProperty.call(
@@ -459,11 +307,10 @@ numero
 ){
 
 ESPECIAIS[numero]
-.forEach(id => {
+.forEach(id=>{
 
-if(!ids.includes(id)){
+if(!ids.includes(id))
 ids.push(id);
-}
 
 });
 
@@ -473,35 +320,71 @@ return ids;
 
 }
 
-
 function eventoNumero(numero){
 
-const fs =
+const fs=
 new Set(
 idsQueBatem(numero)
 .map(familia)
-.filter(
-x => x !== null
-)
+.filter(x=>x!==null)
 );
 
 return (
-(fs.has(0) ? 1 : 0) |
-(fs.has(6) ? 2 : 0) |
-(fs.has(9) ? 4 : 0)
+(fs.has(0)?1:0) |
+(fs.has(6)?2:0) |
+(fs.has(9)?4:0)
 );
 
 }
 
 
 /* ============================================================
-   ESTADO
+   STORAGE / ESTADO
 ============================================================ */
 
-let historico =
+function carregarHistorico(){
+
+try{
+
+const raw=
+localStorage.getItem(
+STORAGE_KEY
+);
+
+if(!raw)
+return [];
+
+const arr=
+JSON.parse(raw);
+
+if(!Array.isArray(arr))
+return [];
+
+return limitar35(
+
+arr
+.map(Number)
+.filter(
+n=>
+Number.isInteger(n) &&
+n>=0 &&
+n<=36
+)
+
+);
+
+}catch(e){
+
+return [];
+
+}
+
+}
+
+let historico=
 carregarHistorico();
 
-let estado = {
+let estado={
 
 modo:"AUTO",
 
@@ -523,58 +406,74 @@ AUTO:[],
 
 };
 
-carregarEstado();
-
-
-/* ============================================================
-   STORAGE
-============================================================ */
-
-function carregarHistorico(){
+function carregarEstado(){
 
 try{
 
-const raw =
+const raw=
 localStorage.getItem(
-STORAGE_KEY
+STORAGE_ENGINE
 );
 
-if(!raw){
-return [];
-}
+if(!raw)
+return;
 
-const arr =
+const x=
 JSON.parse(raw);
 
-if(!Array.isArray(arr)){
-return [];
+if(
+x.modo==="AUTO" ||
+x.modo==="MANUAL"
+)
+estado.modo=x.modo;
+
+if(
+RX_LIST.includes(
+x.manualRX
+)
+)
+estado.manualRX=x.manualRX;
+
+if(x.timelines){
+
+["AUTO",4,5,6]
+.forEach(k=>{
+
+if(
+Array.isArray(
+x.timelines[k]
+)
+){
+
+estado.timelines[k]=
+x.timelines[k]
+.slice(-MAX_TIMELINE);
+
 }
 
-return limitar35(
+});
 
-arr
-.map(Number)
-.filter(
-n =>
-Number.isInteger(n) &&
-n >= 0 &&
-n <= 36
-)
+}
 
+if(x.pendentes){
+
+estado.pendentes=
+Object.assign(
+estado.pendentes,
+x.pendentes
 );
 
-}catch(e){
+}
 
-return [];
+}catch(e){}
 
 }
 
-}
-
+carregarEstado();
 
 function salvarHistorico(){
 
-historico =
+historico=
 limitar35(historico);
 
 try{
@@ -587,80 +486,6 @@ JSON.stringify(historico)
 }catch(e){}
 
 }
-
-
-function carregarEstado(){
-
-try{
-
-const raw =
-localStorage.getItem(
-STORAGE_ENGINE
-);
-
-if(!raw){
-return;
-}
-
-const x =
-JSON.parse(raw);
-
-if(
-x.modo === "AUTO" ||
-x.modo === "MANUAL"
-){
-
-estado.modo =
-x.modo;
-
-}
-
-if(
-RX_LIST.includes(
-x.manualRX
-)
-){
-
-estado.manualRX =
-x.manualRX;
-
-}
-
-if(x.timelines){
-
-["AUTO",4,5,6]
-.forEach(k => {
-
-if(
-Array.isArray(
-x.timelines[k]
-)
-){
-
-estado.timelines[k] =
-x.timelines[k]
-.slice(-MAX_TIMELINE);
-
-}
-
-});
-
-}
-
-if(x.pendentes){
-
-estado.pendentes =
-Object.assign(
-estado.pendentes,
-x.pendentes
-);
-
-}
-
-}catch(e){}
-
-}
-
 
 function salvarEstado(){
 
@@ -682,82 +507,58 @@ JSON.stringify(estado)
 
 function analisarTerminais(base){
 
-const janela =
+const janela=
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
 const ranking=[];
 
-for(
-let t=0;
-t<=9;
-t++
-){
+for(let t=0;t<=9;t++){
 
 let direto=0;
 let vizinho=0;
-
 let direto5=0;
 let vizinho5=0;
-
 let score=0;
 
-janela.forEach(
-(n,i) => {
+janela.forEach((n,i)=>{
 
-const tn =
-terminal(n);
+const tn=terminal(n);
 
-const recencia =
-.50 +
-(
-(i+1) /
-Math.max(
-1,
-janela.length
-)
-)*.50;
+const recencia=
+.50+
+((i+1)/
+Math.max(1,janela.length))
+*.50;
 
-if(tn === t){
+if(tn===t){
 
 direto++;
-
-score +=
-2.20*
-recencia;
+score+=2.20*recencia;
 
 if(
-i >=
-janela.length-5
+i>=janela.length-5
 ){
 
 direto5++;
-
-score += .95;
-
-}
+score+=.95;
 
 }
 
-else if(
-tn === terminalAnterior(t) ||
-tn === terminalSeguinte(t)
+}else if(
+tn===terminalAnterior(t) ||
+tn===terminalSeguinte(t)
 ){
 
 vizinho++;
-
-score +=
-.62*
-recencia;
+score+=.62*recencia;
 
 if(
-i >=
-janela.length-5
+i>=janela.length-5
 ){
 
 vizinho5++;
-
-score += .20;
+score+=.20;
 
 }
 
@@ -766,142 +567,99 @@ score += .20;
 });
 
 ranking.push({
-
 terminal:t,
-
 direto,
-
 vizinho,
-
 direto5,
-
 vizinho5,
-
 score
-
 });
 
 }
 
 ranking.sort(
-(a,b) =>
-
+(a,b)=>
 b.score-a.score ||
-
 b.direto5-a.direto5 ||
-
 b.direto-a.direto ||
-
 b.vizinho-a.vizinho
 );
 
-const trio =
+const trio=
 ranking
 .slice(0,3)
 .map(x=>x.terminal);
 
 let cobertura=0;
 
-janela.forEach(n => {
+janela.forEach(n=>{
 
-const t =
-terminal(n);
+const t=terminal(n);
 
-if(
-trio.includes(t)
-){
+if(trio.includes(t)){
 
 cobertura++;
-
 return;
 
 }
 
 if(
-trio.some(c =>
-
-t === terminalAnterior(c) ||
-
-t === terminalSeguinte(c)
-
+trio.some(c=>
+t===terminalAnterior(c) ||
+t===terminalSeguinte(c)
 )
-){
-
+)
 cobertura++;
-
-}
 
 });
 
 return {
-
 ranking,
-
 trio,
-
 taxa:
 janela.length
-? cobertura/
-janela.length*
-100
-: 0
-
+? cobertura/janela.length*100
+:0
 };
 
 }
 
+function scoreTerminalNumero(numero,momento){
 
-/* ============================================================
-   SCORE TERMINAL
-============================================================ */
-
-function scoreTerminalNumero(
-numero,
-momento
-){
-
-const trio =
+const trio=
 momento.terminais.trio;
 
-if(!trio.length){
+if(!trio.length)
 return 0;
-}
 
-const t =
-terminal(numero);
+const t=terminal(numero);
 
-if(t === trio[0]){
-return 1.00;
-}
+if(t===trio[0])
+return 1;
 
-if(t === trio[1]){
+if(t===trio[1])
 return .88;
-}
 
-if(t === trio[2]){
+if(t===trio[2])
 return .78;
-}
 
 if(
-t === terminalAnterior(trio[0]) ||
-t === terminalSeguinte(trio[0])
-){
+t===terminalAnterior(trio[0]) ||
+t===terminalSeguinte(trio[0])
+)
 return .46;
-}
 
 if(
-t === terminalAnterior(trio[1]) ||
-t === terminalSeguinte(trio[1])
-){
+t===terminalAnterior(trio[1]) ||
+t===terminalSeguinte(trio[1])
+)
 return .40;
-}
 
 if(
-t === terminalAnterior(trio[2]) ||
-t === terminalSeguinte(trio[2])
-){
+t===terminalAnterior(trio[2]) ||
+t===terminalSeguinte(trio[2])
+)
 return .34;
-}
 
 return 0;
 
@@ -914,114 +672,82 @@ return 0;
 
 function analisarCores(base){
 
-const janela =
+const janela=
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
-const contagem = {
-
+const contagem={
 VERMELHO:0,
 PRETO:0,
 VERDE:0
-
 };
 
-janela.forEach(n => {
-
-contagem[
-tipoCor(n)
-]++;
-
+janela.forEach(n=>{
+contagem[tipoCor(n)]++;
 });
 
 let alternancias=0;
 
-for(
-let i=1;
-i<janela.length;
-i++
-){
+for(let i=1;i<janela.length;i++){
 
 if(
-tipoCor(janela[i]) !==
+tipoCor(janela[i])!==
 tipoCor(janela[i-1])
-){
-
+)
 alternancias++;
 
 }
-
-}
-
-const ultima =
-janela.length
-? tipoCor(
-janela[
-janela.length-1
-]
-)
-: null;
 
 return {
 
 contagem,
 
-ultima,
+ultima:
+janela.length
+?tipoCor(janela[janela.length-1])
+:null,
 
 pctAlternancia:
 janela.length>1
-? alternancias/
-(janela.length-1)*100
-: 0
+?alternancias/(janela.length-1)*100
+:0
 
 };
 
 }
 
+function scoreCorNumero(numero,momento){
 
-function scoreCorNumero(
-numero,
-momento
-){
+const info=momento.cores;
 
-const info =
-momento.cores;
-
-const total =
+const total=
 Math.max(
 1,
 momento.janela.length
 );
 
-const cor =
+const cor=
 tipoCor(numero);
 
-let score =
-info.contagem[cor] /
-total;
+let score=
+info.contagem[cor]/total;
 
 if(
-info.pctAlternancia >= 60 &&
+info.pctAlternancia>=60 &&
 info.ultima
 ){
 
 if(
-info.ultima === "VERMELHO" &&
-cor === "PRETO"
-){
-
-score += .18;
-
-}
+info.ultima==="VERMELHO" &&
+cor==="PRETO"
+)
+score+=.18;
 
 else if(
-info.ultima === "PRETO" &&
-cor === "VERMELHO"
-){
-
-score += .18;
-
-}
+info.ultima==="PRETO" &&
+cor==="VERMELHO"
+)
+score+=.18;
 
 }
 
@@ -1036,31 +762,26 @@ return score;
 
 function analisarZonas(base){
 
-const janela =
+const janela=
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
-const seq =
+const seq=
 janela.map(regiao);
 
-const contagem = {
-
+const contagem={
 ZERO:0,
 VOISINS:0,
 ORPHELINS:0,
 TIERS:0
-
 };
 
-seq.forEach(z => {
-
-if(z){
+seq.forEach(z=>{
+if(z)
 contagem[z]++;
-}
-
 });
 
-const transicoes = {
+const transicoes={
 
 ZERO:{
 ZERO:0,
@@ -1094,146 +815,87 @@ TIERS:0
 
 let alternancias=0;
 
-for(
-let i=1;
-i<seq.length;
-i++
-){
+for(let i=1;i<seq.length;i++){
 
-if(
-seq[i] !==
-seq[i-1]
-){
-
+if(seq[i]!==seq[i-1])
 alternancias++;
 
-}
-
-if(
-seq[i-1] &&
-seq[i]
-){
-
-transicoes[
-seq[i-1]
-][
-seq[i]
-]++;
+if(seq[i-1] && seq[i])
+transicoes[seq[i-1]][seq[i]]++;
 
 }
 
-}
-
-const atual =
+const atual=
 seq.length
-? seq[
-seq.length-1
-]
-: null;
+?seq[seq.length-1]
+:null;
 
 let repeticaoAtual=0;
 
 if(atual){
 
-for(
-let i=seq.length-1;
-i>=0;
-i--
-){
+for(let i=seq.length-1;i>=0;i--){
 
-if(seq[i] === atual){
+if(seq[i]===atual)
 repeticaoAtual++;
-}
-
-else{
+else
 break;
-}
 
 }
 
 }
 
 return {
-
 contagem,
-
 transicoes,
-
 atual,
-
 repeticaoAtual,
 
 pctAlternancia:
 seq.length>1
-? alternancias/
-(seq.length-1)*100
-: 0
-
+?alternancias/(seq.length-1)*100
+:0
 };
 
 }
 
+function scoreZonaNumero(numero,momento){
 
-function scoreZonaNumero(
-numero,
-momento
-){
+const info=momento.zonas;
+const z=regiao(numero);
 
-const info =
-momento.zonas;
-
-const z =
-regiao(numero);
-
-if(!z){
+if(!z)
 return 0;
-}
 
-const total =
+const total=
 Math.max(
 1,
 momento.janela.length
 );
 
-let score =
-info.contagem[z] /
-total;
+let score=
+info.contagem[z]/total;
 
 if(info.atual){
 
-const linha =
-info.transicoes[
-info.atual
-];
+const linha=
+info.transicoes[info.atual];
 
-const soma =
+const soma=
 Object.values(linha)
-.reduce(
-(a,b)=>a+b,
-0
-);
+.reduce((a,b)=>a+b,0);
 
-if(soma){
-
-score +=
-(
-linha[z] || 0
-) /
-soma *
-.45;
-
-}
+if(soma)
+score+=
+((linha[z]||0)/soma)*.45;
 
 }
 
 if(
-z === info.atual &&
-info.repeticaoAtual >= 2
-){
-
-score += .10;
-
-}
+z===info.atual &&
+info.repeticaoAtual>=2
+)
+score+=.10;
 
 return score;
 
@@ -1241,164 +903,112 @@ return score;
 
 
 /* ============================================================
-   CORREDORES FÍSICOS ±5
+   CORREDORES
 ============================================================ */
 
 function analisarCorredores(base){
 
-const janela =
+const janela=
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
 const ranking=[];
 
-track.forEach(centro => {
+track.forEach(centro=>{
 
 let dentro=0;
-
 let miolo=0;
 let lateral=0;
 let ponta=0;
-
 let esquerda=0;
 let direita=0;
-
 let score=0;
 
-janela.forEach(
-(numero,i) => {
+janela.forEach((numero,i)=>{
 
-const delta =
+const delta=
 deltaRoda(
 centro,
 numero
 );
 
-const d =
+const d=
 Math.abs(delta);
 
-if(d > 5){
+if(d>5)
 return;
-}
 
 dentro++;
 
-const recencia =
-.50 +
-(
-(i+1) /
-Math.max(
-1,
-janela.length
-)
-)*.50;
+const recencia=
+.50+
+((i+1)/
+Math.max(1,janela.length))
+*.50;
 
-if(d <= 1){
+if(d<=1){
 
 miolo++;
+score+=1*recencia;
 
-score +=
-1.00*
-recencia;
-
-}
-
-else if(d <= 3){
+}else if(d<=3){
 
 lateral++;
+score+=.92*recencia;
 
-score +=
-.92*
-recencia;
-
-}
-
-else{
+}else{
 
 ponta++;
-
-score +=
-.86*
-recencia;
+score+=.86*recencia;
 
 }
 
-if(delta < 0){
+if(delta<0)
 esquerda++;
-}
 
-else if(delta > 0){
+else if(delta>0)
 direita++;
-}
 
 });
 
-let perfil =
-"MIOLO";
+let perfil="MIOLO";
 
 if(
-ponta > miolo &&
-ponta >= lateral
-){
-
-perfil =
-"PONTA";
-
-}
+ponta>miolo &&
+ponta>=lateral
+)
+perfil="PONTA";
 
 else if(
-lateral > miolo
-){
-
-perfil =
-"LATERAL";
-
-}
+lateral>miolo
+)
+perfil="LATERAL";
 
 let direcao=0;
 
-if(
-direita >
-esquerda+1
-){
-
+if(direita>esquerda+1)
 direcao=1;
 
-}
-
-else if(
-esquerda >
-direita+1
-){
-
+else if(esquerda>direita+1)
 direcao=-1;
-
-}
 
 ranking.push({
 
 centro,
-
 dentro,
 
 taxa:
 janela.length
-? dentro/
-janela.length*
-100
-: 0,
+?dentro/janela.length*100
+:0,
 
 miolo,
 lateral,
 ponta,
-
 esquerda,
 direita,
-
 direcao,
-
 perfil,
-
 score
 
 });
@@ -1407,150 +1017,107 @@ score
 
 ranking.sort(
 (a,b)=>
-
 b.score-a.score ||
-
 b.dentro-a.dentro
 );
 
 return {
 
 ranking,
-
-fortes:
-ranking.slice(0,5),
-
-principal:
-ranking[0] || null
+fortes:ranking.slice(0,5),
+principal:ranking[0]||null
 
 };
 
 }
 
+function scoreCorredorNumero(numero,momento){
 
-/* ============================================================
-   SCORE CORREDOR
-============================================================ */
-
-function scoreCorredorNumero(
-numero,
-momento
-){
-
-const fortes =
+const fortes=
 momento.corredores.fortes;
 
-if(!fortes.length){
+if(!fortes.length)
 return 0;
-}
 
 let score=0;
 
-fortes.forEach(
-(c,pos) => {
+fortes.forEach((c,pos)=>{
 
-const delta =
+const delta=
 deltaRoda(
 c.centro,
 numero
 );
 
-const d =
+const d=
 Math.abs(delta);
 
-if(d > 5){
+if(d>5)
 return;
-}
 
-const rankingPeso =
+const rankingPeso=
 [1,.78,.60,.46,.34][pos];
 
-const confianca =
+const confianca=
 c.taxa/100;
 
 let local=0;
 
-if(c.perfil === "PONTA"){
+if(c.perfil==="PONTA"){
 
-if(d>=4){
+if(d>=4)
 local=1;
-}
 
-else if(d===3){
+else if(d===3)
 local=.72;
-}
 
-else if(d===2){
+else if(d===2)
 local=.50;
-}
 
-else{
+else
 local=.34;
-}
 
-}
-
-else if(
-c.perfil === "LATERAL"
+}else if(
+c.perfil==="LATERAL"
 ){
 
-if(
-d===2 ||
-d===3
-){
+if(d===2 || d===3)
 local=1;
-}
 
-else if(d===4){
+else if(d===4)
 local=.70;
-}
 
-else if(d===1){
+else if(d===1)
 local=.62;
-}
 
-else{
+else
 local=.45;
-}
 
-}
+}else{
 
-else{
-
-if(d<=1){
+if(d<=1)
 local=1;
-}
 
-else if(d===2){
+else if(d===2)
 local=.72;
-}
 
-else if(d===3){
+else if(d===3)
 local=.48;
-}
 
-else{
+else
 local=.28;
-}
 
 }
 
 if(
-c.direcao !== 0 &&
-Math.sign(delta) ===
-c.direcao
-){
+c.direcao!==0 &&
+Math.sign(delta)===c.direcao
+)
+local*=1.08;
 
-local *= 1.08;
-
-}
-
-score +=
-
-rankingPeso *
-
-confianca *
-
+score+=
+rankingPeso*
+confianca*
 local;
 
 });
@@ -1561,38 +1128,33 @@ return score;
 
 
 /* ============================================================
-   DENSIDADE FÍSICA
+   DENSIDADE
 ============================================================ */
 
 function analisarDensidade(base){
 
-const janela =
+const janela=
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
-const mapa =
+const mapa=
 new Map();
 
-track.forEach(n =>
+track.forEach(n=>
 mapa.set(n,0)
 );
 
-janela.forEach(
-(numero,i) => {
+janela.forEach((numero,i)=>{
 
-const recencia =
-.50 +
-(
-(i+1) /
-Math.max(
-1,
-janela.length
-)
-)*.50;
+const recencia=
+.50+
+((i+1)/
+Math.max(1,janela.length))
+*.50;
 
-track.forEach(alvo => {
+track.forEach(alvo=>{
 
-const d =
+const d=
 distanciaRoda(
 numero,
 alvo
@@ -1600,35 +1162,27 @@ alvo
 
 let peso=0;
 
-if(d===0){
+if(d===0)
 peso=1;
-}
 
-else if(d===1){
+else if(d===1)
 peso=.68;
-}
 
-else if(d===2){
+else if(d===2)
 peso=.40;
-}
 
-else if(d===3){
+else if(d===3)
 peso=.20;
-}
 
-else if(d===4){
+else if(d===4)
 peso=.08;
-}
 
 if(peso){
 
 mapa.set(
 alvo,
-(
-mapa.get(alvo) || 0
-)+
-peso*
-recencia
+(mapa.get(alvo)||0)+
+peso*recencia
 );
 
 }
@@ -1637,31 +1191,23 @@ recencia
 
 });
 
-const ranking =
+const ranking=
 track
 .map(n=>({
-
 numero:n,
-
-score:
-mapa.get(n)||0
-
+score:mapa.get(n)||0
 }))
 .sort(
 (a,b)=>b.score-a.score
 );
 
 return {
-
 mapa,
-
 ranking,
-
 centro:
 ranking.length
-? ranking[0].numero
-: null
-
+?ranking[0].numero
+:null
 };
 
 }
@@ -1673,17 +1219,13 @@ ranking.length
 
 function analisarMomento(base){
 
-base =
+base=
 limitar35(base);
-
-const janela =
-base.slice(
--JANELA_MOMENTO
-);
 
 return {
 
-janela,
+janela:
+base.slice(-14),
 
 terminais:
 analisarTerminais(base),
@@ -1704,155 +1246,101 @@ analisarDensidade(base)
 
 }
 
-
-/* ============================================================
-   SCORE MOMENTO
-============================================================ */
-
-function scoreMomentoNumero(
-numero,
-momento
-){
-
-const terminalScore =
-scoreTerminalNumero(
-numero,
-momento
-);
-
-const corScore =
-scoreCorNumero(
-numero,
-momento
-);
-
-const zonaScore =
-scoreZonaNumero(
-numero,
-momento
-);
-
-const corredorScore =
-scoreCorredorNumero(
-numero,
-momento
-);
-
-const densidade =
-momento.densidade.mapa
-.get(numero) || 0;
+function scoreMomentoNumero(numero,momento){
 
 return (
 
-terminalScore*.31 +
+scoreTerminalNumero(
+numero,
+momento
+)*.31 +
 
-corScore*.10 +
+scoreCorNumero(
+numero,
+momento
+)*.10 +
 
-zonaScore*.13 +
+scoreZonaNumero(
+numero,
+momento
+)*.13 +
 
-corredorScore*.30 +
+scoreCorredorNumero(
+numero,
+momento
+)*.30 +
 
-densidade*.055
+(
+momento.densidade.mapa
+.get(numero)||0
+)*.055
 
 );
 
 }
 
-
-/* ============================================================
-   DIREÇÃO DO MOMENTO
-============================================================ */
-
-function direcaoMomento(
-centro,
-momento
-){
+function direcaoMomento(centro,momento){
 
 let esquerda=0;
 let direita=0;
 
-momento.janela.forEach(
-(numero,i) => {
+momento.janela.forEach((numero,i)=>{
 
-const delta =
+const delta=
 deltaRoda(
 centro,
 numero
 );
 
-const d =
+const d=
 Math.abs(delta);
 
-if(d > 7){
+if(d>7)
 return;
-}
 
-const recencia =
-.55 +
-(
-(i+1) /
-Math.max(
-1,
-momento.janela.length
-)
-)*.45;
+const recencia=
+.55+
+((i+1)/
+Math.max(1,momento.janela.length))
+*.45;
 
-const proximidade =
+const proximidade=
 Math.max(
 0,
 1-d/8
 );
 
-const peso =
+const peso=
 recencia*
 proximidade;
 
-if(delta < 0){
+if(delta<0)
+esquerda+=peso;
 
-esquerda += peso;
-
-}
-
-else if(delta > 0){
-
-direita += peso;
-
-}
+else if(delta>0)
+direita+=peso;
 
 });
 
-const total =
-esquerda+
-direita;
+const total=
+esquerda+direita;
 
-if(!total){
-
+if(!total)
 return {
 direcao:0,
 forca:0
 };
 
-}
-
-const diferenca =
-Math.abs(
-direita-esquerda
-) /
-total;
-
 return {
 
 direcao:
 direita>esquerda
-? 1
-: (
-esquerda>direita
-? -1
-: 0
-),
+?1
+:(esquerda>direita?-1:0),
 
 forca:
-diferenca
+Math.abs(direita-esquerda)/
+total
 
 };
 
@@ -1865,23 +1353,14 @@ diferenca
 
 function construirCache(base){
 
-const eventos =
+const eventos=
 new Uint8Array(
 base.length
 );
 
-for(
-let i=0;
-i<base.length;
-i++
-){
-
-eventos[i] =
-eventoNumero(
-base[i]
-);
-
-}
+for(let i=0;i<base.length;i++)
+eventos[i]=
+eventoNumero(base[i]);
 
 return {
 base,
@@ -1889,11 +1368,6 @@ eventos
 };
 
 }
-
-
-/* ============================================================
-   SIMILARIDADE 80/20
-============================================================ */
 
 function similaridadeJanelas(
 cache,
@@ -1903,114 +1377,77 @@ tamanho
 ){
 
 let iguais=0;
-
 let erro=0;
 
 let a0=0,a6=0,a9=0;
 let b0=0,b6=0,b9=0;
 
-for(
-let k=0;
-k<tamanho;
-k++
-){
+for(let k=0;k<tamanho;k++){
 
-const ea =
+const ea=
 cache.eventos[a+k];
 
-const eb =
+const eb=
 cache.eventos[b+k];
 
-if(ea === eb){
+if(ea===eb)
 iguais++;
-}
 
-if(ea&1) a0++;
-if(ea&2) a6++;
-if(ea&4) a9++;
+if(ea&1)a0++;
+if(ea&2)a6++;
+if(ea&4)a9++;
 
-if(eb&1) b0++;
-if(eb&2) b6++;
-if(eb&4) b9++;
+if(eb&1)b0++;
+if(eb&2)b6++;
+if(eb&4)b9++;
 
-erro +=
-Math.abs(a0-b0);
-
-erro +=
-Math.abs(a6-b6);
-
-erro +=
-Math.abs(a9-b9);
+erro+=Math.abs(a0-b0);
+erro+=Math.abs(a6-b6);
+erro+=Math.abs(a9-b9);
 
 }
 
-const eventos =
-iguais/
-tamanho*
-100;
+const eventos=
+iguais/tamanho*100;
 
-const maxErro =
-tamanho*
-tamanho*
-3;
+const maxErro=
+tamanho*tamanho*3;
 
-const forma =
+const forma=
 Math.max(
 0,
-1-
-erro/
-maxErro
-)*
-100;
+1-erro/maxErro
+)*100;
 
-return (
-
-eventos*.80 +
-
-forma*.20
-
-);
+return eventos*.80+
+forma*.20;
 
 }
 
+function analisarRX(base,rx){
 
-/* ============================================================
-   ANALISAR RX
-============================================================ */
-
-function analisarRX(
-base,
-rx
-){
-
-base =
+base=
 limitar35(base);
 
 if(
-base.length <
+base.length<
 rx*2+4
 ){
 
 return {
-
 valido:false,
-
 rx,
-
 replicas:[],
-
 rankingIds:[],
-
 similaridade:0
-
 };
 
 }
 
-const cache =
+const cache=
 construirCache(base);
 
-const atualInicio =
+const atualInicio=
 base.length-rx;
 
 const candidatos=[];
@@ -2021,19 +1458,15 @@ i+rx<atualInicio;
 i++
 ){
 
-const proximo =
+const proximo=
 base[i+rx];
 
-if(
-proximo === undefined
-){
+if(proximo===undefined)
 continue;
-}
 
 candidatos.push({
 
 inicio:i,
-
 proximo,
 
 similaridade:
@@ -2050,56 +1483,41 @@ rx
 
 candidatos.sort(
 (a,b)=>
-
-b.similaridade-
-a.similaridade ||
-
+b.similaridade-a.similaridade ||
 b.inicio-a.inicio
 );
 
 if(!candidatos.length){
 
 return {
-
 valido:false,
-
 rx,
-
 replicas:[],
-
 rankingIds:[],
-
 similaridade:0
-
 };
 
 }
 
-let qtd =
+let qtd=
 Math.ceil(
 candidatos.length*.10
 );
 
-qtd =
-Math.max(
-4,
-qtd
-);
+qtd=
+Math.max(4,qtd);
 
-qtd =
+qtd=
 Math.min(
 qtd,
 MAX_REPLICAS,
 candidatos.length
 );
 
-const replicas =
-candidatos.slice(
-0,
-qtd
-);
+const replicas=
+candidatos.slice(0,qtd);
 
-const contagem =
+const contagem=
 new Map();
 
 TODOS_IDS.forEach(
@@ -2111,31 +1529,25 @@ function contar(rep){
 idsQueBatem(
 rep.proximo
 )
-.forEach(id => {
+.forEach(id=>{
 
 contagem.set(
 id,
-(
-contagem.get(id)||0
-)+1
+(contagem.get(id)||0)+1
 );
 
 });
 
 }
 
-replicas.forEach(
-contar
-);
+replicas.forEach(contar);
 
 function positivos(){
 
 return TODOS_IDS
 .filter(
-id =>
-(
-contagem.get(id)||0
-)>0
+id=>
+(contagem.get(id)||0)>0
 )
 .length;
 
@@ -2149,56 +1561,43 @@ pos<candidatos.length &&
 replicas.length<MAX_REPLICAS
 ){
 
-const rep =
+const rep=
 candidatos[pos++];
 
 replicas.push(rep);
-
 contar(rep);
 
 }
 
-const rankingIds =
+const rankingIds=
 TODOS_IDS
 .map((id,ordem)=>({
 
 id,
-
 ocorrencias:
 contagem.get(id)||0,
-
 ordem
 
 }))
-.filter(
-x=>x.ocorrencias>0
-)
+.filter(x=>x.ocorrencias>0)
 .sort(
 (a,b)=>
-
-b.ocorrencias-
-a.ocorrencias ||
-
+b.ocorrencias-a.ocorrencias ||
 a.ordem-b.ordem
 );
 
 return {
 
 valido:true,
-
 rx,
-
 replicas,
-
 rankingIds,
 
 similaridade:
 replicas.reduce(
-(s,r)=>
-s+r.similaridade,
+(s,r)=>s+r.similaridade,
 0
-) /
-replicas.length
+)/replicas.length
 
 };
 
@@ -2206,27 +1605,23 @@ replicas.length
 
 
 /* ============================================================
-   FREQUÊNCIA DOS PRÓXIMOS
+   FREQUÊNCIA RX
 ============================================================ */
 
-function frequenciaReplicas(
-replicas
-){
+function frequenciaReplicas(replicas){
 
-const freq =
+const freq=
 new Map();
 
 track.forEach(
 n=>freq.set(n,0)
 );
 
-replicas.forEach(rep => {
+replicas.forEach(rep=>{
 
 freq.set(
 rep.proximo,
-(
-freq.get(rep.proximo)||0
-)+1
+(freq.get(rep.proximo)||0)+1
 );
 
 });
@@ -2240,25 +1635,15 @@ return freq;
    LOSS
 ============================================================ */
 
-function diagnosticarLosses(
-lista
-){
+function diagnosticarLosses(lista){
 
-if(!Array.isArray(lista)){
+if(!Array.isArray(lista))
 lista=[];
-}
 
-
-/*
-   SEM JOGADA NÃO PARTICIPA
-   DO DIAGNÓSTICO DE LOSS.
-*/
-
-const validos =
+const validos=
 lista.filter(
-x => !x.semJogada
+x=>!x.semJogada
 );
-
 
 const losses=[];
 
@@ -2268,9 +1653,8 @@ i>=0;
 i--
 ){
 
-if(validos[i].green){
+if(validos[i].green)
 break;
-}
 
 losses.unshift(
 validos[i]
@@ -2281,48 +1665,36 @@ validos[i]
 if(!losses.length){
 
 return {
-
 ativo:false,
-
 seq:0,
-
 tipo:"ESTAVEL",
-
 lado:0,
-
 forca:0
-
 };
 
 }
 
-const recentes =
+const recentes=
 losses.slice(-3);
 
 let fora1=0;
-
 let esquerda=0;
 let direita=0;
 
-recentes.forEach(x => {
+recentes.forEach(x=>{
 
-if(x.tipo==="FORA1"){
+if(x.tipo==="FORA1")
 fora1++;
-}
 
-if(x.lado<0){
+if(x.lado<0)
 esquerda++;
-}
 
-if(x.lado>0){
+if(x.lado>0)
 direita++;
-}
 
 });
 
-let tipo =
-"ISOLADO";
-
+let tipo="ISOLADO";
 let forca=.10;
 
 if(
@@ -2331,45 +1703,29 @@ fora1===1
 ){
 
 tipo="BORDA";
-
 forca=.10;
 
-}
-
-else if(
+}else if(
 fora1>=2 &&
-Math.max(
-esquerda,
-direita
-)>=2
+Math.max(esquerda,direita)>=2
 ){
 
 tipo="BORDA_REPETIDA";
-
 forca=.35;
 
-}
-
-else if(
+}else if(
 losses.length>=2 &&
-Math.max(
-esquerda,
-direita
-)>=2
+Math.max(esquerda,direita)>=2
 ){
 
 tipo="DESLOCAMENTO";
-
 forca=.50;
 
-}
-
-else if(
+}else if(
 losses.length>=3
 ){
 
 tipo="QUEBRA";
-
 forca=.60;
 
 }
@@ -2377,20 +1733,13 @@ forca=.60;
 return {
 
 ativo:true,
-
-seq:
-losses.length,
-
+seq:losses.length,
 tipo,
 
 lado:
 direita>esquerda
-? 1
-: (
-esquerda>direita
-? -1
-: 0
-),
+?1
+:(esquerda>direita?-1:0),
 
 forca
 
@@ -2400,7 +1749,7 @@ forca
 
 
 /* ============================================================
-   SCORE RX PURO
+   SCORE SETORES
 ============================================================ */
 
 function scoreRXPuro(
@@ -2409,7 +1758,7 @@ qtd,
 freq
 ){
 
-const numeros =
+const numeros=
 setor(
 centro,
 qtd
@@ -2418,14 +1767,14 @@ qtd
 let score=0;
 let suporte=0;
 
-numeros.forEach(n => {
+numeros.forEach(n=>{
 
-const f =
+const f=
 freq.get(n)||0;
 
-suporte += f;
+suporte+=f;
 
-const d =
+const d=
 distanciaRoda(
 centro,
 n
@@ -2433,40 +1782,23 @@ n
 
 let peso=1;
 
-if(d===0){
+if(d===0)
 peso=1.45;
-}
 
-else if(d===1){
+else if(d===1)
 peso=1.22;
-}
 
-else{
-peso=1;
-}
-
-score +=
-f*
-peso;
+score+=f*peso;
 
 });
 
 return {
-
 score,
-
 suporte,
-
 numeros
-
 };
 
 }
-
-
-/* ============================================================
-   SCORE MOMENTO DO SETOR
-============================================================ */
 
 function scoreMomentoSetor(
 centro,
@@ -2474,7 +1806,7 @@ qtd,
 momento
 ){
 
-const numeros =
+const numeros=
 setor(
 centro,
 qtd
@@ -2482,9 +1814,9 @@ qtd
 
 let score=0;
 
-numeros.forEach(n => {
+numeros.forEach(n=>{
 
-const d =
+const d=
 distanciaRoda(
 centro,
 n
@@ -2492,22 +1824,17 @@ n
 
 let peso=1;
 
-if(d===0){
+if(d===0)
 peso=1.20;
-}
 
-else if(d===1){
+else if(d===1)
 peso=1.08;
-}
 
-score +=
-
+score+=
 scoreMomentoNumero(
 n,
 momento
-)*
-
-peso;
+)*peso;
 
 });
 
@@ -2537,31 +1864,30 @@ offset<=MAX_GIRADA;
 offset++
 ){
 
-const centro =
+const centro=
 numeroOffset(
 centroOriginal,
 offset
 );
 
-const rx =
+const rx=
 scoreRXPuro(
 centro,
 qtd,
 freq
 );
 
-if(rx.suporte<=0){
+if(rx.suporte<=0)
 continue;
-}
 
-const momentoScore =
+const momentoScore=
 scoreMomentoSetor(
 centro,
 qtd,
 momento
 );
 
-const custoGirada =
+const custoGirada=
 Math.abs(offset)*
 .15*
 Math.max(
@@ -2569,7 +1895,7 @@ Math.max(
 rx.suporte
 );
 
-const direcao =
+const direcao=
 direcaoMomento(
 centroOriginal,
 momento
@@ -2579,18 +1905,14 @@ let bonusDirecao=0;
 
 if(
 offset!==0 &&
-direcao.direcao!==
-0 &&
+direcao.direcao!==0 &&
 Math.sign(offset)===
 direcao.direcao
 ){
 
-bonusDirecao =
-
-direcao.forca *
-
-rx.suporte *
-
+bonusDirecao=
+direcao.forca*
+rx.suporte*
 .18;
 
 }
@@ -2606,81 +1928,52 @@ Math.sign(offset)===
 diagnostico.lado
 ){
 
-bonusLoss =
-
-diagnostico.forca *
-
-rx.suporte *
-
+bonusLoss=
+diagnostico.forca*
+rx.suporte*
 .22;
 
 }
 
-const scoreFinal =
+const scoreFinal=
 
-rx.score +
+rx.score+
 
 (
-momentoScore *
-
-rx.suporte *
-
+momentoScore*
+rx.suporte*
 PESO_MOMENTO
-) +
+)+
 
-bonusDirecao +
-
-bonusLoss -
-
+bonusDirecao+
+bonusLoss-
 custoGirada;
 
-const item = {
+const item={
 
 centroOriginal,
-
 centro,
-
 offset,
-
 qtd,
-
-numeros:
-rx.numeros,
-
-suporte:
-rx.suporte,
-
-scoreRX:
-rx.score,
-
-scoreMomento:
-momentoScore,
-
-score:
-scoreFinal
+numeros:rx.numeros,
+suporte:rx.suporte,
+scoreRX:rx.score,
+scoreMomento:momentoScore,
+score:scoreFinal
 
 };
 
 if(
 !melhor ||
-item.score >
-melhor.score
-){
-
+item.score>melhor.score
+)
 melhor=item;
-
-}
 
 }
 
 return melhor;
 
 }
-
-
-/* ============================================================
-   CANDIDATOS
-============================================================ */
 
 function gerarCandidatos(
 qtd,
@@ -2689,13 +1982,13 @@ momento,
 diagnostico
 ){
 
-const mapa =
+const mapa=
 new Map();
 
 track.forEach(
-centroOriginal => {
+centroOriginal=>{
 
-const c =
+const c=
 avaliarCentroComGiradas(
 centroOriginal,
 qtd,
@@ -2704,27 +1997,20 @@ momento,
 diagnostico
 );
 
-if(!c){
+if(!c)
 return;
-}
 
-const existente =
-mapa.get(
-c.centro
-);
+const existente=
+mapa.get(c.centro);
 
 if(
 !existente ||
-c.score >
-existente.score
-){
-
+c.score>existente.score
+)
 mapa.set(
 c.centro,
 c
 );
-
-}
 
 });
 
@@ -2733,11 +2019,8 @@ mapa.values()
 )
 .sort(
 (a,b)=>
-
 b.score-a.score ||
-
 b.suporte-a.suporte ||
-
 Math.abs(a.offset)-
 Math.abs(b.offset)
 );
@@ -2746,7 +2029,7 @@ Math.abs(b.offset)
 
 
 /* ============================================================
-   MONTA JOGADA
+   JOGADA
 ============================================================ */
 
 function montarJogada(
@@ -2761,32 +2044,26 @@ if(
 ){
 
 return {
-
 valido:false,
-
 blocos2:[],
-
 blocos1:[],
-
-numeros:
-new Set()
-
+numeros:new Set()
 };
 
 }
 
-base =
+base=
 limitar35(base);
 
-const momento =
+const momento=
 analisarMomento(base);
 
-const freq =
+const freq=
 frequenciaReplicas(
 raioX.replicas
 );
 
-const candidatos2 =
+const candidatos2=
 gerarCandidatos(
 2,
 freq,
@@ -2794,7 +2071,7 @@ momento,
 diagnostico
 );
 
-const candidatos1 =
+const candidatos1=
 gerarCandidatos(
 1,
 freq,
@@ -2804,18 +2081,16 @@ diagnostico
 
 let melhor=null;
 
-for(
-const um of candidatos1
-){
+for(const um of candidatos1){
 
-const usados =
+const usados=
 new Set(
 um.numeros
 );
 
 const dois=[];
 
-let score =
+let score=
 um.score;
 
 for(
@@ -2823,21 +2098,20 @@ const candidato
 of candidatos2
 ){
 
-const conflito =
+const conflito=
 candidato.numeros
 .some(
 n=>usados.has(n)
 );
 
-if(conflito){
+if(conflito)
 continue;
-}
 
 dois.push(
 candidato
 );
 
-score +=
+score+=
 candidato.score;
 
 candidato.numeros
@@ -2845,9 +2119,8 @@ candidato.numeros
 n=>usados.add(n)
 );
 
-if(dois.length===5){
+if(dois.length===5)
 break;
-}
 
 }
 
@@ -2858,26 +2131,16 @@ usados.size===28
 
 if(
 !melhor ||
-score >
-melhor.score
+score>melhor.score
 ){
 
 melhor={
 
 valido:true,
-
-blocos2:
-dois,
-
-blocos1:[
-um
-],
-
-numeros:
-usados,
-
+blocos2:dois,
+blocos1:[um],
+numeros:usados,
 score,
-
 momento
 
 };
@@ -2891,14 +2154,9 @@ momento
 return melhor || {
 
 valido:false,
-
 blocos2:[],
-
 blocos1:[],
-
-numeros:
-new Set(),
-
+numeros:new Set(),
 momento
 
 };
@@ -2907,7 +2165,7 @@ momento
 
 
 /* ============================================================
-   CONFIGURAÇÃO RX
+   CONFIG
 ============================================================ */
 
 function gerarConfig(
@@ -2916,28 +2174,22 @@ rxTam,
 diagnostico=null
 ){
 
-base =
+base=
 limitar35(base);
 
-const raioX =
+const raioX=
 analisarRX(
 base,
 rxTam
 );
 
-if(!raioX.valido){
-
+if(!raioX.valido)
 return {
-
 valido:false,
-
 rx:rxTam
-
 };
 
-}
-
-const jogada =
+const jogada=
 montarJogada(
 raioX,
 base,
@@ -2946,16 +2198,10 @@ diagnostico
 
 return {
 
-valido:
-jogada.valido,
-
-rx:
-rxTam,
-
+valido:jogada.valido,
+rx:rxTam,
 raioX,
-
 jogada,
-
 similaridade:
 raioX.similaridade
 
@@ -2965,7 +2211,7 @@ raioX.similaridade
 
 
 /* ============================================================
-   CLASSIFICAÇÃO
+   RESULTADO
 ============================================================ */
 
 function classificarJogada(
@@ -2979,36 +2225,25 @@ if(
 ){
 
 return {
-
 green:false,
-
 tipo:"FORA",
-
 lado:0
-
 };
 
 }
 
-const blocos = [
-
+const blocos=[
 ...jogada.blocos2,
-
 ...jogada.blocos1
-
 ];
 
-for(
-const b of blocos
-){
+for(const b of blocos){
 
 if(
-b.numeros.includes(
-numero
-)
+b.numeros.includes(numero)
 ){
 
-const d =
+const d=
 distanciaRoda(
 numero,
 b.centro
@@ -3020,12 +2255,8 @@ green:true,
 
 tipo:
 d===0
-? "ALVO"
-: (
-d===1
-? "V1"
-: "V2"
-),
+?"ALVO"
+:(d===1?"V1":"V2"),
 
 lado:
 Math.sign(
@@ -3043,15 +2274,15 @@ numero
 
 let melhor=null;
 
-blocos.forEach(b => {
+blocos.forEach(b=>{
 
-const d =
+const d=
 distanciaRoda(
 numero,
 b.centro
 );
 
-const gap =
+const gap=
 d-b.qtd;
 
 if(
@@ -3063,9 +2294,7 @@ gap<melhor.gap
 ){
 
 melhor={
-
 gap,
-
 lado:
 Math.sign(
 deltaRoda(
@@ -3073,7 +2302,6 @@ b.centro,
 numero
 )
 )
-
 };
 
 }
@@ -3083,13 +2311,9 @@ numero
 if(!melhor){
 
 return {
-
 green:false,
-
 tipo:"FORA",
-
 lado:0
-
 };
 
 }
@@ -3100,12 +2324,10 @@ green:false,
 
 tipo:
 melhor.gap===1
-? "FORA1"
-: (
-melhor.gap===2
-? "FORA2"
-: "FORA"
-),
+?"FORA1"
+:(melhor.gap===2
+?"FORA2"
+:"FORA"),
 
 lado:
 melhor.lado
@@ -3117,7 +2339,6 @@ melhor.lado
 
 /* ============================================================
    STATS
-   AJUSTE: — NÃO CONTA
 ============================================================ */
 
 function statsTimeline(lista){
@@ -3125,41 +2346,32 @@ function statsTimeline(lista){
 function validos(arr){
 
 return arr.filter(
-x => !x.semJogada
+x=>!x.semJogada
 );
 
 }
 
-
-function taxaUltimosValidos(
+function taxa(
 arr,
-quantidade
+qtd
 ){
 
-const v =
+const v=
 validos(arr)
-.slice(-quantidade);
+.slice(-qtd);
 
-if(!v.length){
+if(!v.length)
 return 0;
-}
 
 return (
-
-v.filter(
-x=>x.green
-).length /
-
-v.length *
-
+v.filter(x=>x.green).length/
+v.length*
 100
-
 );
 
 }
 
-
-const todosValidos =
+const todosValidos=
 validos(lista);
 
 let loss=0;
@@ -3170,28 +2382,17 @@ i>=0;
 i--
 ){
 
-const x =
-lista[i];
+const x=lista[i];
 
-
-/*
-   Tracinho é ignorado.
-*/
-
-if(x.semJogada){
+if(x.semJogada)
 continue;
-}
 
-
-if(x.green){
+if(x.green)
 break;
-}
-
 
 loss++;
 
 }
-
 
 return {
 
@@ -3202,28 +2403,17 @@ totalLinha:
 lista.length,
 
 taxa5:
-taxaUltimosValidos(
-lista,
-5
-),
+taxa(lista,5),
 
 taxa10:
-taxaUltimosValidos(
-lista,
-10
-),
+taxa(lista,10),
 
 taxa20:
-taxaUltimosValidos(
-lista,
-20
-),
+taxa(lista,20),
 
-lossSeguidos:
-loss,
+lossSeguidos:loss,
 
-timeline:
-lista
+timeline:lista
 
 };
 
@@ -3231,7 +2421,7 @@ lista
 
 
 /* ============================================================
-   BACKTEST WALK-FORWARD
+   BACKTEST
 ============================================================ */
 
 function backtest(
@@ -3239,18 +2429,18 @@ base,
 rxTam
 ){
 
-base =
+base=
 limitar35(base);
 
 const timeline=[];
 
-const minimo =
+const minimo=
 Math.max(
 14,
 rxTam*2+4
 );
 
-const inicio =
+const inicio=
 Math.max(
 minimo,
 base.length-20
@@ -3262,40 +2452,29 @@ i<base.length;
 i++
 ){
 
-const passado =
+const passado=
 base.slice(0,i);
 
-const diag =
+const diag=
 diagnosticarLosses(
 timeline
 );
 
-const cfg =
+const cfg=
 gerarConfig(
 passado,
 rxTam,
 diag
 );
 
-
-/*
-   Se naquele ponto do backtest
-   não existia jogada, registra —.
-*/
-
 if(!cfg.valido){
 
 timeline.push({
 
-resultado:
-base[i],
-
+resultado:base[i],
 semJogada:true,
-
 green:null,
-
 tipo:"SEM_JOGADA",
-
 lado:0
 
 });
@@ -3304,11 +2483,10 @@ continue;
 
 }
 
-
-const resultado =
+const resultado=
 base[i];
 
-const r =
+const r=
 classificarJogada(
 resultado,
 cfg.jogada
@@ -3317,17 +2495,10 @@ cfg.jogada
 timeline.push({
 
 resultado,
-
 semJogada:false,
-
-green:
-r.green,
-
-tipo:
-r.tipo,
-
-lado:
-r.lado
+green:r.green,
+tipo:r.tipo,
+lado:r.lado
 
 });
 
@@ -3341,7 +2512,7 @@ timeline
 
 
 /* ============================================================
-   MELHOR RX
+   RX / AUTO
 ============================================================ */
 
 function melhorDoRX(
@@ -3349,48 +2520,42 @@ base,
 rxTam
 ){
 
-const diag =
+const diag=
 diagnosticarLosses(
 estado.timelines[rxTam]
 );
 
-const cfg =
+const cfg=
 gerarConfig(
 base,
 rxTam,
 diag
 );
 
-if(!cfg.valido){
+if(!cfg.valido)
 return null;
-}
 
-const bt =
+const bt=
 backtest(
 base,
 rxTam
 );
 
-let score =
+let score=
 
-bt.taxa5*.42 +
-
-bt.taxa10*.32 +
-
-bt.taxa20*.20 +
-
+bt.taxa5*.42+
+bt.taxa10*.32+
+bt.taxa20*.20+
 cfg.similaridade*.06;
 
-if(
-bt.lossSeguidos===1
-){
+if(bt.lossSeguidos===1){
 
-const validos =
+const validos=
 bt.timeline.filter(
 x=>!x.semJogada
 );
 
-const ultimo =
+const ultimo=
 validos[
 validos.length-1
 ];
@@ -3398,31 +2563,23 @@ validos.length-1
 if(
 ultimo &&
 ultimo.tipo==="FORA1"
-){
+)
+score-=1;
 
-score -= 1;
-
-}
-
-else{
-
-score -= 3;
+else
+score-=3;
 
 }
 
-}
-
-const live =
+const live=
 statsTimeline(
 estado.timelines[rxTam]
 );
 
 if(live.total){
 
-score +=
-
-live.taxa10*.05 +
-
+score+=
+live.taxa10*.05+
 live.taxa20*.025;
 
 }
@@ -3430,58 +2587,35 @@ live.taxa20*.025;
 return {
 
 valido:true,
-
-rx:
-rxTam,
-
-raioX:
-cfg.raioX,
-
-jogada:
-cfg.jogada,
-
-similaridade:
-cfg.similaridade,
-
-backtest:
-bt,
-
+rx:rxTam,
+raioX:cfg.raioX,
+jogada:cfg.jogada,
+similaridade:cfg.similaridade,
+backtest:bt,
 live,
-
 score
 
 };
 
 }
 
+function escolherAuto(configs){
 
-/* ============================================================
-   AUTO
-============================================================ */
-
-function escolherAuto(
-configs
-){
-
-const lista =
+const lista=
 RX_LIST
 .map(rx=>configs[rx])
 .filter(
 x=>x && x.valido
 );
 
-if(!lista.length){
+if(!lista.length)
 return null;
-}
 
 lista.sort(
 (a,b)=>
-
 b.score-a.score ||
-
 b.backtest.taxa10-
 a.backtest.taxa10 ||
-
 b.backtest.taxa20-
 a.backtest.taxa20
 );
@@ -3505,15 +2639,13 @@ historico.join(",")
 
 }
 
-
 function snapshot(config){
 
 if(
 !config ||
 !config.valido
-){
+)
 return null;
-}
 
 return {
 
@@ -3529,16 +2661,13 @@ config.jogada
 .map(x=>x.centro),
 
 centro1:
-config.jogada
-.blocos1[0]
-? config.jogada
-.blocos1[0].centro
-: null
+config.jogada.blocos1[0]
+?config.jogada.blocos1[0].centro
+:null
 
 };
 
 }
-
 
 function classificarSnapshot(
 numero,
@@ -3548,91 +2677,67 @@ p
 if(!p){
 
 return {
-
 green:false,
 tipo:"FORA",
 lado:0
-
 };
 
 }
 
-const blocos2 =
+const blocos2=
 (p.centros2||[])
 .map(c=>({
 
 centro:c,
-
 qtd:2,
-
-numeros:
-setor(c,2)
+numeros:setor(c,2)
 
 }));
 
-const blocos1 =
-p.centro1 !== null &&
-p.centro1 !== undefined
+const blocos1=
+p.centro1!==null &&
+p.centro1!==undefined
 
-? [{
+?[{
 
-centro:
-p.centro1,
-
+centro:p.centro1,
 qtd:1,
-
 numeros:
-setor(
-p.centro1,
-1
-)
+setor(p.centro1,1)
 
 }]
 
-: [];
+:[];
 
 return classificarJogada(
 numero,
 {
-
 valido:true,
-
 blocos2,
-
 blocos1
-
 }
 );
 
 }
-
-
-/* ============================================================
-   PENDENTES
-
-   AJUSTE:
-   se não havia jogada -> registra —
-============================================================ */
 
 function garantirPendentes(
 configs,
 auto
 ){
 
-const sig =
+const sig=
 assinatura();
 
-RX_LIST.forEach(rx => {
+RX_LIST.forEach(rx=>{
 
 if(
 estado.pendentes[rx] &&
 estado.pendentes[rx]
-.assinatura === sig
-){
+.assinatura===sig
+)
 return;
-}
 
-estado.pendentes[rx] =
+estado.pendentes[rx]=
 snapshot(
 configs[rx]
 );
@@ -3640,18 +2745,12 @@ configs[rx]
 });
 
 if(
-estado.pendentes.AUTO &&
+!estado.pendentes.AUTO ||
 estado.pendentes.AUTO
-.assinatura === sig
+.assinatura!==sig
 ){
 
-/* mantém */
-
-}
-
-else{
-
-estado.pendentes.AUTO =
+estado.pendentes.AUTO=
 snapshot(auto);
 
 }
@@ -3660,54 +2759,32 @@ salvarEstado();
 
 }
 
+function avaliarPendentes(numero){
 
-/* ============================================================
-   AVALIA PENDENTES
-   AJUSTE DO TRACINHO
-============================================================ */
-
-function avaliarPendentes(
-numero
-){
-
-const sig =
+const sig=
 assinatura();
 
 ["AUTO",4,5,6]
-.forEach(k => {
+.forEach(k=>{
 
-const p =
+const p=
 estado.pendentes[k];
-
-
-/*
-   NÃO HAVIA JOGADA.
-
-   Registra apenas —.
-*/
 
 if(!p){
 
 estado.timelines[k]
 .push({
 
-resultado:
-numero,
-
+resultado:numero,
 semJogada:true,
-
 green:null,
-
 tipo:"SEM_JOGADA",
-
 lado:0,
-
-hora:
-Date.now()
+hora:Date.now()
 
 });
 
-estado.timelines[k] =
+estado.timelines[k]=
 estado.timelines[k]
 .slice(-MAX_TIMELINE);
 
@@ -3715,38 +2792,23 @@ return;
 
 }
 
-
-/*
-   Snapshot não corresponde ao
-   estado atual.
-
-   Também não transforma em LOSS.
-*/
-
 if(
-p.assinatura !== sig
+p.assinatura!==sig
 ){
 
 estado.timelines[k]
 .push({
 
-resultado:
-numero,
-
+resultado:numero,
 semJogada:true,
-
 green:null,
-
 tipo:"SEM_JOGADA",
-
 lado:0,
-
-hora:
-Date.now()
+hora:Date.now()
 
 });
 
-estado.timelines[k] =
+estado.timelines[k]=
 estado.timelines[k]
 .slice(-MAX_TIMELINE);
 
@@ -3756,12 +2818,7 @@ return;
 
 }
 
-
-/*
-   HAVIA JOGADA.
-*/
-
-const r =
+const r=
 classificarSnapshot(
 numero,
 p
@@ -3770,26 +2827,16 @@ p
 estado.timelines[k]
 .push({
 
-resultado:
-numero,
-
+resultado:numero,
 semJogada:false,
-
-green:
-r.green,
-
-tipo:
-r.tipo,
-
-lado:
-r.lado,
-
-hora:
-Date.now()
+green:r.green,
+tipo:r.tipo,
+lado:r.lado,
+hora:Date.now()
 
 });
 
-estado.timelines[k] =
+estado.timelines[k]=
 estado.timelines[k]
 .slice(-MAX_TIMELINE);
 
@@ -3806,19 +2853,15 @@ salvarEstado();
    INSERÇÃO
 ============================================================ */
 
-function adicionarNumero(
-numero
-){
+function adicionarNumero(numero){
 
 avaliarPendentes(
 numero
 );
 
-historico.push(
-numero
-);
+historico.push(numero);
 
-historico =
+historico=
 historico.slice(-35);
 
 salvarHistorico();
@@ -3827,19 +2870,15 @@ render();
 
 }
 
+function extrairNumeros(texto){
 
-function extrairNumeros(
-texto
-){
-
-const encontrados =
+const encontrados=
 texto.match(
 /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
 );
 
-if(!encontrados){
+if(!encontrados)
 return [];
-}
 
 return encontrados
 .map(Number)
@@ -3847,46 +2886,39 @@ return encontrados
 
 }
 
-
 function inserirHistorico(){
 
-const campo =
+const campo=
 document.getElementById(
 "entradaHistorico"
 );
 
-const numeros =
+const numeros=
 extrairNumeros(
 campo.value
 );
 
-if(!numeros.length){
+if(!numeros.length)
 return;
-}
 
-historico =
+historico=
 numeros.slice(-35);
 
-estado.pendentes = {
-
+estado.pendentes={
 AUTO:null,
 4:null,
 5:null,
 6:null
-
 };
 
-estado.timelines = {
-
+estado.timelines={
 AUTO:[],
 4:[],
 5:[],
 6:[]
-
 };
 
 salvarHistorico();
-
 salvarEstado();
 
 campo.value="";
@@ -3895,32 +2927,26 @@ render();
 
 }
 
-
 function apagarUltimo(){
 
-if(!historico.length){
+if(!historico.length)
 return;
-}
 
 historico.pop();
 
-estado.pendentes = {
-
+estado.pendentes={
 AUTO:null,
 4:null,
 5:null,
 6:null
-
 };
 
 salvarHistorico();
-
 salvarEstado();
 
 render();
 
 }
-
 
 function apagarTudo(){
 
@@ -3928,32 +2954,26 @@ if(
 !confirm(
 "Apagar histórico?"
 )
-){
+)
 return;
-}
 
 historico=[];
 
 estado.pendentes={
-
 AUTO:null,
 4:null,
 5:null,
 6:null
-
 };
 
 estado.timelines={
-
 AUTO:[],
 4:[],
 5:[],
 6:[]
-
 };
 
 salvarHistorico();
-
 salvarEstado();
 
 render();
@@ -3967,27 +2987,20 @@ render();
 
 document.body.innerHTML="";
 
-document.body.style.cssText =
-
+document.body.style.cssText=
 "margin:0;"+
 "background:#101010;"+
 "color:#fff;"+
 "font-family:Arial,sans-serif;";
 
-
-const app =
-document.createElement(
-"div"
-);
-
+const app=
+document.createElement("div");
 
 app.innerHTML=`
 
 <style>
 
-*{
-box-sizing:border-box
-}
+*{box-sizing:border-box}
 
 body{
 background:#101010
@@ -4188,11 +3201,6 @@ background:#00994d
 background:#c62828
 }
 
-/*
-   NOVO SOMENTE VISUAL:
-   SEM JOGADA
-*/
-
 .semJogadaGL{
 width:15px;
 height:15px;
@@ -4215,24 +3223,69 @@ font-weight:900
 text-align:right
 }
 
-.historico{
-display:flex;
-gap:3px;
-overflow-x:auto
+
+/* ============================================================
+   ÚLTIMOS 14 — DUPLAS
+============================================================ */
+
+.duplas14{
+display:grid;
+grid-template-columns:repeat(7,1fr);
+gap:5px;
+width:100%
 }
 
-.bola{
-width:31px;
-height:31px;
-min-width:31px;
+.dupla14{
+min-width:0;
+height:48px;
+border-radius:7px;
+display:flex;
+align-items:center;
+justify-content:center;
+gap:4px;
+background:#272727;
+border:2px solid #555
+}
+
+.dupla14.green{
+background:rgba(0,153,77,.18);
+border-color:#00b85c
+}
+
+.dupla14.loss{
+background:rgba(198,40,40,.18);
+border-color:#d93a3a
+}
+
+.dupla14.sem{
+background:#292929;
+border-color:#666
+}
+
+.bolaDupla{
+width:29px;
+height:29px;
+min-width:29px;
 border-radius:50%;
 display:flex;
 align-items:center;
 justify-content:center;
-border:2px solid #999;
 font-size:10px;
-font-weight:900
+font-weight:900;
+color:#fff;
+border:2px solid #aaa
 }
+
+.setaDupla{
+font-size:10px;
+font-weight:900;
+color:#aaa
+}
+
+
+/* ============================================================
+   JOGADA
+============================================================ */
 
 .jogada{
 display:flex;
@@ -4303,6 +3356,10 @@ margin-top:5px
 grid-template-columns:repeat(2,1fr)
 }
 
+.duplas14{
+grid-template-columns:repeat(4,1fr)
+}
+
 }
 
 </style>
@@ -4322,29 +3379,21 @@ placeholder="Cole o histórico — serão mantidos somente os últimos 35"
 
 <div class="botoes">
 
-<button
-id="inserir"
-class="btn verde">
+<button id="inserir" class="btn verde">
 INSERIR
 </button>
 
-<button
-id="apagar"
-class="btn">
+<button id="apagar" class="btn">
 APAGAR ÚLTIMO
 </button>
 
-<button
-id="limpar"
-class="btn red">
+<button id="limpar" class="btn red">
 APAGAR TUDO
 </button>
 
 </div>
 
-<div
-id="status"
-class="status">
+<div id="status" class="status">
 PRONTO
 </div>
 
@@ -4353,70 +3402,40 @@ PRONTO
 
 <div class="painel">
 
-<div class="titulo">
-MOTOR
-</div>
+<div class="titulo">MOTOR</div>
 
 <div class="modos">
 
-<button
-id="auto"
-class="modo">
+<button id="auto" class="modo">
 AUTO
 </button>
 
-<button
-id="rx4"
-class="modo">
+<button id="rx4" class="modo">
 4
 </button>
 
-<button
-id="rx5"
-class="modo">
+<button id="rx5" class="modo">
 5
 </button>
 
-<button
-id="rx6"
-class="modo">
+<button id="rx6" class="modo">
 6
 </button>
 
 </div>
 
 
-<div
-id="resumo"
-class="resumo">
-</div>
+<div id="resumo" class="resumo"></div>
 
+<div id="trio" class="trio"></div>
 
-<div
-id="trio"
-class="trio">
-</div>
+<div id="timelineAUTO" class="timelineRow"></div>
 
+<div id="timeline4" class="timelineRow"></div>
 
-<div
-id="timelineAUTO"
-class="timelineRow">
-</div>
+<div id="timeline5" class="timelineRow"></div>
 
-<div
-id="timeline4"
-class="timelineRow">
-</div>
-
-<div
-id="timeline5"
-class="timelineRow">
-</div>
-
-<div
-id="timeline6"
-class="timelineRow">
-</div>
+<div id="timeline6" class="timelineRow"></div>
 
 </div>
 
@@ -4429,7 +3448,7 @@ class="timelineRow">
 
 <div
 id="ultimos14"
-class="historico">
+class="duplas14">
 </div>
 
 </div>
@@ -4452,21 +3471,14 @@ JOGADA
 TECLADO
 </div>
 
-<div
-id="teclado"
-class="teclado">
-</div>
+<div id="teclado" class="teclado"></div>
 
 </div>
 
 </div>
-
 `;
 
-
-document.body.appendChild(
-app
-);
+document.body.appendChild(app);
 
 
 /* ============================================================
@@ -4475,49 +3487,38 @@ app
 
 document
 .getElementById("inserir")
-.onclick =
-inserirHistorico;
-
+.onclick=inserirHistorico;
 
 document
 .getElementById("apagar")
-.onclick =
-apagarUltimo;
-
+.onclick=apagarUltimo;
 
 document
 .getElementById("limpar")
-.onclick =
-apagarTudo;
-
+.onclick=apagarTudo;
 
 document
 .getElementById("auto")
-.onclick = () => {
+.onclick=()=>{
 
 estado.modo="AUTO";
-
 salvarEstado();
-
 render();
 
 };
 
-
-RX_LIST.forEach(rx => {
+RX_LIST.forEach(rx=>{
 
 document
 .getElementById(
 "rx"+rx
 )
-.onclick = () => {
+.onclick=()=>{
 
 estado.modo="MANUAL";
-
 estado.manualRX=rx;
 
 salvarEstado();
-
 render();
 
 };
@@ -4529,29 +3530,22 @@ render();
    TECLADO
 ============================================================ */
 
-const teclado =
+const teclado=
 document.getElementById(
 "teclado"
 );
 
+for(let n=1;n<=36;n++){
 
-for(
-let n=1;
-n<=36;
-n++
-){
-
-const b =
+const b=
 document.createElement(
 "button"
 );
 
-b.className =
-"numero";
-
+b.className="numero";
 b.textContent=n;
 
-b.style.background =
+b.style.background=
 corRoleta(n);
 
 b.onclick=()=>
@@ -4561,18 +3555,17 @@ teclado.appendChild(b);
 
 }
 
-
-const zero =
+const zero=
 document.createElement(
 "button"
 );
 
-zero.className =
+zero.className=
 "numero zero";
 
 zero.textContent="0";
 
-zero.style.background =
+zero.style.background=
 corRoleta(0);
 
 zero.onclick=()=>
@@ -4582,8 +3575,7 @@ teclado.appendChild(zero);
 
 
 /* ============================================================
-   RENDER TIMELINE
-   AJUSTE: MOSTRA —
+   TIMELINE
 ============================================================ */
 
 function renderTimeline(
@@ -4592,10 +3584,10 @@ nome,
 lista
 ){
 
-const st =
+const st=
 statsTimeline(lista);
 
-const ultimos =
+const ultimos=
 lista.slice(-20);
 
 document
@@ -4613,14 +3605,7 @@ ultimos.map(x=>{
 if(x.semJogada){
 
 return (
-
-'<span class="semJogadaGL" '+
-'title="'+
-x.resultado+
-' • SEM JOGADA">'+
-'—'+
-'</span>'
-
+'<span class="semJogadaGL">—</span>'
 );
 
 }
@@ -4629,10 +3614,6 @@ return (
 
 '<span class="gl '+
 (x.green?"g":"l")+
-'" title="'+
-x.resultado+
-' • '+
-x.tipo+
 '">'+
 (x.green?"G":"L")+
 '</span>'
@@ -4646,8 +3627,8 @@ x.tipo+
 '<div class="taxaTL">'+
 (
 st.total
-? st.taxa20.toFixed(0)+"%"
-: "—"
+?st.taxa20.toFixed(0)+"%"
+:"—"
 )+
 '</div>';
 
@@ -4655,21 +3636,15 @@ st.total
 
 
 /* ============================================================
-   RENDER TRIO
+   TRIO
 ============================================================ */
 
-function renderTrio(
-momento
-){
+function renderTrio(momento){
 
-const info =
-momento.terminais;
-
-const ranking =
-info.ranking;
-
-const itens =
-ranking.slice(0,3);
+const itens=
+momento.terminais
+.ranking
+.slice(0,3);
 
 document
 .getElementById("trio")
@@ -4686,12 +3661,10 @@ itens.map((x,i)=>
 '<div class="terminal '+
 (
 i===0
-? "primeiro"
-: (
-i===1
-? "segundo"
-: "terceiro"
-)
+?"primeiro"
+:(i===1
+?"segundo"
+:"terceiro")
 )+
 '">'+
 
@@ -4712,14 +3685,12 @@ x.score.toFixed(1)+
 
 
 /* ============================================================
-   RENDER JOGADA
+   JOGADA
 ============================================================ */
 
-function renderJogada(
-config
-){
+function renderJogada(config){
 
-const area =
+const area=
 document.getElementById(
 "jogada"
 );
@@ -4736,16 +3707,14 @@ return;
 
 }
 
-const dois =
+const dois=
 config.jogada
 .blocos2
 .map(b=>
 
 '<div class="bloco">'+
 '<small>2 VIZINHOS DO</small>'+
-'<strong>'+
-b.centro+
-'</strong>'+
+'<strong>'+b.centro+'</strong>'+
 '<div class="numeros">'+
 b.numeros.join(" • ")+
 '</div>'+
@@ -4753,24 +3722,20 @@ b.numeros.join(" • ")+
 
 ).join("");
 
-
-const um =
+const um=
 config.jogada
 .blocos1
 .map(b=>
 
 '<div class="bloco um">'+
 '<small>1 VIZINHO DO</small>'+
-'<strong>'+
-b.centro+
-'</strong>'+
+'<strong>'+b.centro+'</strong>'+
 '<div class="numeros">'+
 b.numeros.join(" • ")+
 '</div>'+
 '</div>'
 
 ).join("");
-
 
 area.innerHTML=
 
@@ -4786,27 +3751,251 @@ um+
 
 
 /* ============================================================
-   RENDER PRINCIPAL
+   NOVO VISUAL
+   14 NÚMEROS = 7 DUPLAS
+
+   [GATILHO RESULTADO]
+   [GATILHO RESULTADO]
+
+   SEM TEXTO GATILHO/RESULTADO.
+============================================================ */
+
+function renderDuplas14(){
+
+const area=
+document.getElementById(
+"ultimos14"
+);
+
+const numeros=
+historico.slice(-14);
+
+
+/*
+   TIMELINE QUE DEVE SER USADA
+   PARA COLORIR O QUADRO.
+
+   NÃO ALTERA MOTOR.
+*/
+
+const chaveTimeline=
+estado.modo==="AUTO"
+?"AUTO"
+:estado.manualRX;
+
+const timeline=
+estado.timelines[
+chaveTimeline
+] || [];
+
+
+/*
+   Precisamos dos resultados correspondentes
+   aos números mostrados.
+
+   Cada item da timeline é o resultado de uma
+   jogada formada ANTES daquele número.
+*/
+
+function encontrarResultadoTimeline(
+numero,
+indiceResultado
+){
+
+/*
+   O histórico e a timeline podem ter tamanhos
+   diferentes porque a timeline pode chegar a 300.
+
+   Alinhamos pelo final.
+*/
+
+const quantidadeHistorico=
+historico.length;
+
+const posicaoAbsoluta=
+quantidadeHistorico-
+numeros.length+
+indiceResultado;
+
+const distanciaDoFim=
+quantidadeHistorico-
+1-
+posicaoAbsoluta;
+
+const posTimeline=
+timeline.length-
+1-
+distanciaDoFim;
+
+if(
+posTimeline<0 ||
+posTimeline>=timeline.length
+)
+return null;
+
+const item=
+timeline[posTimeline];
+
+
+/*
+   Segurança visual.
+*/
+
+if(
+!item ||
+item.resultado!==numero
+)
+return null;
+
+return item;
+
+}
+
+
+let html="";
+
+
+/*
+   PARES FECHADOS:
+   0+1
+   2+3
+   4+5
+   ...
+*/
+
+for(
+let i=0;
+i<numeros.length;
+i+=2
+){
+
+const gatilho=
+numeros[i];
+
+const temResultado=
+i+1<numeros.length;
+
+const resultado=
+temResultado
+?numeros[i+1]
+:null;
+
+
+let classe="sem";
+
+
+if(temResultado){
+
+/*
+   O segundo número é o resultado.
+   É ele que consulta a timeline.
+*/
+
+const item=
+encontrarResultadoTimeline(
+resultado,
+i+1
+);
+
+
+if(item){
+
+if(item.semJogada){
+
+classe="sem";
+
+}else if(item.green){
+
+classe="green";
+
+}else{
+
+classe="loss";
+
+}
+
+}
+
+}
+
+
+/*
+   PRIMEIRA BOLINHA:
+   GATILHO
+
+   SEGUNDA BOLINHA:
+   RESULTADO
+*/
+
+html+=
+
+'<div class="dupla14 '+
+classe+
+'">'+
+
+'<div class="bolaDupla" '+
+'style="background:'+
+corRoleta(gatilho)+
+'">'+
+gatilho+
+'</div>'+
+
+'<span class="setaDupla">›</span>'+
+
+
+(
+temResultado
+
+?
+
+'<div class="bolaDupla" '+
+'style="background:'+
+corRoleta(resultado)+
+'">'+
+resultado+
+'</div>'
+
+:
+
+'<div class="bolaDupla" '+
+'style="background:#444;color:#999">'+
+'—'+
+'</div>'
+
+)+
+
+'</div>';
+
+}
+
+
+area.innerHTML=html;
+
+}
+
+
+/* ============================================================
+   RENDER
 ============================================================ */
 
 function render(){
 
-historico =
+historico=
 historico.slice(-35);
 
 salvarHistorico();
 
-const base =
+const base=
 historico.slice(-35);
 
-const momento =
+const momento=
 analisarMomento(base);
 
 const configs={};
 
-RX_LIST.forEach(rx => {
+RX_LIST.forEach(rx=>{
 
-configs[rx] =
+configs[rx]=
 melhorDoRX(
 base,
 rx
@@ -4814,7 +4003,7 @@ rx
 
 });
 
-const auto =
+const auto=
 escolherAuto(
 configs
 );
@@ -4824,28 +4013,25 @@ configs,
 auto
 );
 
-const ativa =
+const ativa=
 
 estado.modo==="AUTO"
 
-? auto
+?auto
 
-: configs[
+:configs[
 estado.manualRX
 ];
 
 
 ["auto","rx4","rx5","rx6"]
-.forEach(id => {
+.forEach(id=>{
 
 document
 .getElementById(id)
-.classList.remove(
-"ativo"
-);
+.classList.remove("ativo");
 
 });
-
 
 if(
 estado.modo==="AUTO"
@@ -4855,9 +4041,7 @@ document
 .getElementById("auto")
 .classList.add("ativo");
 
-}
-
-else{
+}else{
 
 document
 .getElementById(
@@ -4872,11 +4056,10 @@ document
    RESUMO
 ============================================================ */
 
-const live =
+const live=
 statsTimeline(
 estado.timelines.AUTO
 );
-
 
 document
 .getElementById("resumo")
@@ -4887,8 +4070,8 @@ document
 '<strong>'+
 (
 auto
-? auto.backtest.taxa10.toFixed(0)+"%"
-: "—"
+?auto.backtest.taxa10.toFixed(0)+"%"
+:"—"
 )+
 '</strong>'+
 '</div>'+
@@ -4898,8 +4081,8 @@ auto
 '<strong>'+
 (
 auto
-? auto.backtest.taxa20.toFixed(0)+"%"
-: "—"
+?auto.backtest.taxa20.toFixed(0)+"%"
+:"—"
 )+
 '</strong>'+
 '</div>'+
@@ -4909,8 +4092,8 @@ auto
 '<strong>'+
 (
 live.total
-? live.taxa10.toFixed(0)+"%"
-: "—"
+?live.taxa10.toFixed(0)+"%"
+:"—"
 )+
 '</strong>'+
 '</div>'+
@@ -4920,8 +4103,8 @@ live.total
 '<strong>'+
 (
 live.total
-? live.taxa20.toFixed(0)+"%"
-: "—"
+?live.taxa20.toFixed(0)+"%"
+:"—"
 )+
 '</strong>'+
 '</div>';
@@ -4938,20 +4121,17 @@ renderTimeline(
 estado.timelines.AUTO
 );
 
-
 renderTimeline(
 "timeline4",
 "RX4",
 estado.timelines[4]
 );
 
-
 renderTimeline(
 "timeline5",
 "RX5",
 estado.timelines[5]
 );
-
 
 renderTimeline(
 "timeline6",
@@ -4960,25 +4140,12 @@ estado.timelines[6]
 );
 
 
-/* ============================================================
-   ÚLTIMOS 14
-============================================================ */
+/*
+   ÚNICA MUDANÇA VISUAL:
+   ÚLTIMOS 14 EM 7 DUPLAS.
+*/
 
-document
-.getElementById("ultimos14")
-.innerHTML=
-
-base
-.slice(-14)
-.map(n=>
-
-'<div class="bola" style="background:'+
-corRoleta(n)+
-'">'+
-n+
-'</div>'
-
-).join("");
+renderDuplas14();
 
 
 renderJogada(
@@ -4992,44 +4159,6 @@ document
 
 base.length+
 "/35 • MOMENTO 14 • CRUZAMENTO 35×14 ATIVO";
-
-
-console.log(
-"V12 • MOTOR INTERNO",
-{
-
-base35:
-base,
-
-momento14:
-momento,
-
-corredores:
-momento.corredores,
-
-cores:
-momento.cores,
-
-zonas:
-momento.zonas,
-
-terminais:
-momento.terminais,
-
-RX4:
-configs[4],
-
-RX5:
-configs[5],
-
-RX6:
-configs[6],
-
-AUTO:
-auto
-
-}
-);
 
 }
 
