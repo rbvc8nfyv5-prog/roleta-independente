@@ -2,7 +2,8 @@
 "use strict";
 
 /* ============================================================
-   ANALISADOR 0 • 6 • 9 — V12
+   ANALISADOR 0 • 6 • 9
+   RAIO X + MOMENTO 14 + CONCENTRAÇÃO FÍSICA DAS DÚZIAS
    ============================================================ */
 
 const STORAGE_KEY =
@@ -11,10 +12,6 @@ const STORAGE_KEY =
 const STORAGE_ENGINE =
 "ANALISADOR_069_ENGINE_COMPLETO_V10";
 
-/*
-   NOVO STORAGE SOMENTE VISUAL.
-   NÃO PARTICIPA DO MOTOR.
-*/
 const STORAGE_DUPLAS =
 "ANALISADOR_069_DUPLAS_VISUAIS_V1";
 
@@ -30,7 +27,18 @@ const MAX_GIRADA = 2;
 
 
 /* ============================================================
-   ROLETA
+   NOVO:
+   PESO DA CONCENTRAÇÃO FÍSICA DAS DÚZIAS
+
+   É AUXILIAR.
+   NÃO SUBSTITUI O RAIO X.
+============================================================ */
+
+const PESO_DUZIA_FISICA = .16;
+
+
+/* ============================================================
+   ROLETA EUROPEIA FÍSICA
 ============================================================ */
 
 const track = [
@@ -66,6 +74,124 @@ ORPHELINS:new Set([
 
 TIERS:new Set([
 27,13,36,11,30,8,23,10,5,24,16,33
+])
+
+};
+
+
+/* ============================================================
+   DÚZIAS
+============================================================ */
+
+function duzia(numero){
+
+if(numero>=1 && numero<=12)
+return 1;
+
+if(numero>=13 && numero<=24)
+return 2;
+
+if(numero>=25 && numero<=36)
+return 3;
+
+return 0;
+
+}
+
+
+/* ============================================================
+   MAPA FÍSICO DAS DÚZIAS
+
+   IMPORTANTE:
+   NÃO ESTAMOS DIZENDO QUE ESSES NÚMEROS
+   "PERTENCEM" A OUTRA DÚZIA.
+
+   O MAPA REPRESENTA CONFLUÊNCIA FÍSICA NA RODA.
+
+   Quanto maior o peso, mais representativo é
+   aquele número/área para o bolsão físico da dúzia.
+============================================================ */
+
+const MAPA_DUZIA_FISICA = {
+
+1: new Map([
+
+/* 3 • 12 • 7 — concentração próxima 26/29 */
+[3,1.00],
+[12,1.00],
+[7,.95],
+
+/* 4 • 2 — concentração próxima do 21 */
+[4,.92],
+[2,.92],
+
+/* 11 • 8 • 5 */
+[11,.82],
+[8,.86],
+[5,.86],
+
+/* mais isolados */
+[6,.40],
+[1,.36],
+[9,.36],
+
+/* 10 intermediário */
+[10,.58]
+
+]),
+
+
+2: new Map([
+
+/* concentração forte */
+[15,1.00],
+[19,1.00],
+[21,.98],
+
+/* quebra / continuidade */
+[17,.70],
+[13,.72],
+
+/* bloco 23 • 24 • 16 */
+[23,.96],
+[24,.94],
+[16,.94],
+
+/* área 13/14/20 */
+[14,.88],
+[20,.88],
+
+/* 28/18 — 18 pertence à 2ª;
+   28 funciona como vizinhança física auxiliar */
+[18,.92]
+
+]),
+
+
+3: new Map([
+
+/* região 29–32 */
+[29,1.00],
+[30,1.00],
+[32,.96],
+
+/* região 25–30 */
+[25,.94],
+[27,.88],
+[28,.92],
+[29,1.00],
+[30,1.00],
+
+/* outros com sustentação física */
+[26,.80],
+[35,.72],
+[36,.68],
+[34,.64],
+
+/* mais perdidos */
+[33,.42],
+[31,.40]
+
 ])
 
 };
@@ -306,8 +432,7 @@ ids.push(base);
 });
 
 if(
-Object.prototype
-.hasOwnProperty.call(
+Object.prototype.hasOwnProperty.call(
 ESPECIAIS,
 numero
 )
@@ -388,10 +513,8 @@ return [];
 
 }
 
-
 let historico=
 carregarHistorico();
-
 
 let estado={
 
@@ -414,7 +537,6 @@ AUTO:[],
 }
 
 };
-
 
 function carregarEstado(){
 
@@ -449,11 +571,7 @@ if(x.timelines){
 ["AUTO",4,5,6]
 .forEach(k=>{
 
-if(
-Array.isArray(
-x.timelines[k]
-)
-){
+if(Array.isArray(x.timelines[k])){
 
 estado.timelines[k]=
 x.timelines[k]
@@ -481,7 +599,6 @@ x.pendentes
 
 carregarEstado();
 
-
 function salvarHistorico(){
 
 historico=
@@ -497,7 +614,6 @@ JSON.stringify(historico)
 }catch(e){}
 
 }
-
 
 function salvarEstado(){
 
@@ -515,11 +631,25 @@ JSON.stringify(estado)
 
 /* ============================================================
    DUPLAS VISUAIS FIXAS
-   NÃO PARTICIPAM DO MOTOR
 ============================================================ */
 
 let duplasVisual=[];
 
+function salvarDuplasVisual(){
+
+duplasVisual=
+duplasVisual.slice(-7);
+
+try{
+
+localStorage.setItem(
+STORAGE_DUPLAS,
+JSON.stringify(duplasVisual)
+);
+
+}catch(e){}
+
+}
 
 function carregarDuplasVisual(){
 
@@ -548,16 +678,6 @@ return;
 
 }catch(e){}
 
-
-/*
-   PRIMEIRA EXECUÇÃO DA NOVA VERSÃO.
-
-   Cria as duplas usando os últimos números
-   existentes, uma única vez.
-
-   Depois disso elas ficam persistentes.
-*/
-
 const ultimos=
 historico.slice(-14);
 
@@ -574,7 +694,12 @@ i+1<ultimos.length
 ?ultimos[i+1]
 :null,
 
-avaliacao:null
+avaliacoes:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+}
 
 });
 
@@ -583,24 +708,6 @@ avaliacao:null
 salvarDuplasVisual();
 
 }
-
-
-function salvarDuplasVisual(){
-
-duplasVisual=
-duplasVisual.slice(-7);
-
-try{
-
-localStorage.setItem(
-STORAGE_DUPLAS,
-JSON.stringify(duplasVisual)
-);
-
-}catch(e){}
-
-}
-
 
 carregarDuplasVisual();
 
@@ -727,7 +834,6 @@ janela.length
 
 }
 
-
 function scoreTerminalNumero(numero,momento){
 
 const trio=
@@ -819,7 +925,6 @@ janela.length>1
 };
 
 }
-
 
 function scoreCorNumero(numero,momento){
 
@@ -967,7 +1072,6 @@ seq.length>1
 
 }
 
-
 function scoreZonaNumero(numero,momento){
 
 const info=momento.zonas;
@@ -1007,6 +1111,393 @@ info.repeticaoAtual>=2
 score+=.10;
 
 return score;
+
+}
+
+
+/* ============================================================
+   NOVO MOTOR AUXILIAR:
+   CONCENTRAÇÃO FÍSICA DAS DÚZIAS
+============================================================ */
+
+function analisarDuziasFisicas(base){
+
+const janela=
+limitar35(base)
+.slice(-JANELA_MOMENTO);
+
+
+/*
+   FORÇA BASE DAS TRÊS DÚZIAS NO MOMENTO.
+*/
+
+const forca={
+1:0,
+2:0,
+3:0
+};
+
+const contagem={
+1:0,
+2:0,
+3:0
+};
+
+
+/*
+   MATRIZ DE CALOR FÍSICA.
+
+   Cada resultado aquece sua posição real na roda
+   e as casas próximas.
+*/
+
+const calor=new Map();
+
+track.forEach(n=>
+calor.set(n,0)
+);
+
+
+janela.forEach((numero,i)=>{
+
+const d=duzia(numero);
+
+if(d)
+contagem[d]++;
+
+
+/*
+   RESULTADOS MAIS NOVOS PESAM MAIS.
+*/
+
+const recencia=
+.45+
+((i+1)/
+Math.max(1,janela.length))
+*.55;
+
+
+/*
+   Peso natural da dúzia do resultado.
+*/
+
+if(d){
+
+const mapa=
+MAPA_DUZIA_FISICA[d];
+
+const estrutural=
+mapa && mapa.has(numero)
+?mapa.get(numero)
+:.55;
+
+forca[d]+=
+recencia*
+(.55+.45*estrutural);
+
+}
+
+
+/*
+   CALOR NA RODA.
+*/
+
+track.forEach(alvo=>{
+
+const dist=
+distanciaRoda(
+numero,
+alvo
+);
+
+let peso=0;
+
+if(dist===0)
+peso=1;
+
+else if(dist===1)
+peso=.72;
+
+else if(dist===2)
+peso=.46;
+
+else if(dist===3)
+peso=.26;
+
+else if(dist===4)
+peso=.12;
+
+else if(dist===5)
+peso=.05;
+
+if(peso){
+
+calor.set(
+alvo,
+(calor.get(alvo)||0)+
+peso*recencia
+);
+
+}
+
+});
+
+});
+
+
+/*
+   Agora verificamos quanto cada dúzia
+   está fisicamente alinhada com esse calor.
+*/
+
+const confluencia={
+1:0,
+2:0,
+3:0
+};
+
+[1,2,3].forEach(d=>{
+
+const mapa=
+MAPA_DUZIA_FISICA[d];
+
+let soma=0;
+let pesoTotal=0;
+
+mapa.forEach((peso,numero)=>{
+
+soma+=
+(calor.get(numero)||0)*
+peso;
+
+pesoTotal+=peso;
+
+});
+
+confluencia[d]=
+pesoTotal
+?soma/pesoTotal
+:0;
+
+});
+
+
+/*
+   NORMALIZAÇÃO.
+*/
+
+const maxForca=
+Math.max(
+forca[1],
+forca[2],
+forca[3],
+.0001
+);
+
+const maxConfluencia=
+Math.max(
+confluencia[1],
+confluencia[2],
+confluencia[3],
+.0001
+);
+
+
+const ranking=
+[1,2,3]
+.map(d=>{
+
+const frequencia=
+janela.length
+?contagem[d]/janela.length
+:0;
+
+const momento=
+forca[d]/maxForca;
+
+const fisica=
+confluencia[d]/
+maxConfluencia;
+
+
+/*
+   Não usamos apenas frequência.
+
+   35% presença da dúzia
+   65% concentração física real.
+*/
+
+const score=
+frequencia*.35+
+fisica*.45+
+momento*.20;
+
+return {
+
+duzia:d,
+contagem:contagem[d],
+frequencia,
+momento,
+fisica,
+score
+
+};
+
+})
+.sort(
+(a,b)=>
+b.score-a.score
+);
+
+
+return {
+
+janela,
+calor,
+forca,
+contagem,
+confluencia,
+ranking,
+
+dominante:
+ranking[0] || null,
+
+segunda:
+ranking[1] || null
+
+};
+
+}
+
+
+/* ============================================================
+   SCORE DA DÚZIA PARA UM NÚMERO
+
+   IMPORTANTE:
+   O NÚMERO RECEBE REFORÇO SE:
+   1. sua própria dúzia está forte;
+   2. sua posição física está em um bolsão forte;
+   3. está perto de uma concentração daquela dúzia.
+============================================================ */
+
+function scoreDuziaFisicaNumero(
+numero,
+momento
+){
+
+const analise=
+momento.duziasFisicas;
+
+if(!analise)
+return 0;
+
+const d=
+duzia(numero);
+
+if(!d)
+return 0;
+
+const item=
+analise.ranking.find(
+x=>x.duzia===d
+);
+
+if(!item)
+return 0;
+
+
+/*
+   Peso estrutural do número
+   dentro da concentração da própria dúzia.
+*/
+
+const mapa=
+MAPA_DUZIA_FISICA[d];
+
+const estrutural=
+mapa && mapa.has(numero)
+?mapa.get(numero)
+:.48;
+
+
+/*
+   Calor físico atual.
+*/
+
+const calorAtual=
+analise.calor.get(numero)||0;
+
+let maxCalor=0;
+
+analise.calor.forEach(v=>{
+
+if(v>maxCalor)
+maxCalor=v;
+
+});
+
+const calorNorm=
+maxCalor
+?calorAtual/maxCalor
+:0;
+
+
+/*
+   Procura também proximidade física com
+   os principais números estruturais da dúzia.
+*/
+
+let proximidade=0;
+
+if(mapa){
+
+mapa.forEach((peso,alvo)=>{
+
+const dist=
+distanciaRoda(
+numero,
+alvo
+);
+
+let p=0;
+
+if(dist===0)
+p=1;
+
+else if(dist===1)
+p=.78;
+
+else if(dist===2)
+p=.52;
+
+else if(dist===3)
+p=.28;
+
+else if(dist===4)
+p=.12;
+
+p*=peso;
+
+if(p>proximidade)
+proximidade=p;
+
+});
+
+}
+
+
+/*
+   SCORE AUXILIAR.
+*/
+
+return (
+
+item.score*.44 +
+estrutural*.22 +
+calorNorm*.22 +
+proximidade*.12
+
+);
 
 }
 
@@ -1138,7 +1629,6 @@ principal:ranking[0]||null
 
 }
 
-
 function scoreCorredorNumero(numero,momento){
 
 const fortes=
@@ -1185,7 +1675,9 @@ local=.50;
 else
 local=.34;
 
-}else if(c.perfil==="LATERAL"){
+}else if(
+c.perfil==="LATERAL"
+){
 
 if(d===2 || d===3)
 local=1;
@@ -1323,7 +1815,7 @@ ranking.length
 
 
 /* ============================================================
-   MOMENTO
+   MOMENTO 14
 ============================================================ */
 
 function analisarMomento(base){
@@ -1349,16 +1841,30 @@ corredores:
 analisarCorredores(base),
 
 densidade:
-analisarDensidade(base)
+analisarDensidade(base),
+
+/*
+   NOVO AUXILIAR
+*/
+duziasFisicas:
+analisarDuziasFisicas(base)
 
 };
 
 }
 
 
+/* ============================================================
+   SCORE DO MOMENTO
+
+   RAIO X NÃO ESTÁ AQUI.
+   Esse score é apenas o AUXILIAR usado depois
+   sobre os candidatos produzidos pelo Raio X.
+============================================================ */
+
 function scoreMomentoNumero(numero,momento){
 
-return (
+const scoreBase=(
 
 scoreTerminalNumero(
 numero,
@@ -1385,6 +1891,24 @@ momento.densidade.mapa
 .get(numero)||0
 )*.055
 
+);
+
+
+/*
+   NOVA CONFLUÊNCIA DA DÚZIA.
+*/
+
+const scoreDuzia=
+scoreDuziaFisicaNumero(
+numero,
+momento
+);
+
+
+return (
+scoreBase +
+scoreDuzia*
+PESO_DUZIA_FISICA
 );
 
 }
@@ -1470,7 +1994,8 @@ base.length
 );
 
 for(let i=0;i<base.length;i++)
-eventos[i]=eventoNumero(base[i]);
+eventos[i]=
+eventoNumero(base[i]);
 
 return {
 base,
@@ -1541,7 +2066,10 @@ function analisarRX(base,rx){
 base=
 limitar35(base);
 
-if(base.length<rx*2+4){
+if(
+base.length<
+rx*2+4
+){
 
 return {
 valido:false,
@@ -1561,7 +2089,11 @@ base.length-rx;
 
 const candidatos=[];
 
-for(let i=0;i+rx<atualInicio;i++){
+for(
+let i=0;
+i+rx<atualInicio;
+i++
+){
 
 const proximo=
 base[i+rx];
@@ -1712,7 +2244,7 @@ replicas.reduce(
 
 
 /* ============================================================
-   FREQUÊNCIA
+   FREQUÊNCIA DAS RÉPLICAS
 ============================================================ */
 
 function frequenciaReplicas(replicas){
@@ -1754,12 +2286,18 @@ x=>!x.semJogada
 
 const losses=[];
 
-for(let i=validos.length-1;i>=0;i--){
+for(
+let i=validos.length-1;
+i>=0;
+i--
+){
 
 if(validos[i].green)
 break;
 
-losses.unshift(validos[i]);
+losses.unshift(
+validos[i]
+);
 
 }
 
@@ -1850,7 +2388,7 @@ forca
 
 
 /* ============================================================
-   SCORE
+   SCORE RX PURO
 ============================================================ */
 
 function scoreRXPuro(
@@ -1902,6 +2440,10 @@ numeros
 }
 
 
+/* ============================================================
+   SCORE AUXILIAR DO MOMENTO PARA O SETOR
+============================================================ */
+
 function scoreMomentoSetor(
 centro,
 qtd,
@@ -1947,7 +2489,7 @@ numeros.length;
 
 
 /* ============================================================
-   GIRADA
+   GIRADA DINÂMICA
 ============================================================ */
 
 function avaliarCentroComGiradas(
@@ -1979,8 +2521,16 @@ qtd,
 freq
 );
 
+
+/*
+   REGRA FUNDAMENTAL:
+   SEM SUPORTE DO RAIO X,
+   A DÚZIA NÃO CRIA UMA JOGADA SOZINHA.
+*/
+
 if(rx.suporte<=0)
 continue;
+
 
 const momentoScore=
 scoreMomentoSetor(
@@ -2037,6 +2587,11 @@ rx.suporte*
 
 }
 
+
+/*
+   RX CONTINUA SENDO A BASE.
+*/
+
 const scoreFinal=
 
 rx.score+
@@ -2050,6 +2605,7 @@ PESO_MOMENTO
 bonusDirecao+
 bonusLoss-
 custoGirada;
+
 
 const item={
 
@@ -2088,7 +2644,8 @@ diagnostico
 const mapa=
 new Map();
 
-track.forEach(centroOriginal=>{
+track.forEach(
+centroOriginal=>{
 
 const c=
 avaliarCentroComGiradas(
@@ -2195,7 +2752,10 @@ const dois=[];
 let score=
 um.score;
 
-for(const candidato of candidatos2){
+for(
+const candidato
+of candidatos2
+){
 
 const conflito=
 candidato.numeros
@@ -2206,7 +2766,9 @@ n=>usados.has(n)
 if(conflito)
 continue;
 
-dois.push(candidato);
+dois.push(
+candidato
+);
 
 score+=
 candidato.score;
@@ -2308,7 +2870,7 @@ raioX.similaridade
 
 
 /* ============================================================
-   CLASSIFICAÇÃO
+   RESULTADO
 ============================================================ */
 
 function classificarJogada(
@@ -2450,7 +3012,10 @@ x=>!x.semJogada
 
 }
 
-function taxa(arr,qtd){
+function taxa(
+arr,
+qtd
+){
 
 const v=
 validos(arr)
@@ -2472,7 +3037,11 @@ validos(lista);
 
 let loss=0;
 
-for(let i=lista.length-1;i>=0;i--){
+for(
+let i=lista.length-1;
+i>=0;
+i--
+){
 
 const x=lista[i];
 
@@ -2538,7 +3107,11 @@ minimo,
 base.length-20
 );
 
-for(let i=inicio;i<base.length;i++){
+for(
+let i=inicio;
+i<base.length;
+i++
+){
 
 const passado=
 base.slice(0,i);
@@ -2947,25 +3520,20 @@ salvarEstado();
 
 
 /* ============================================================
-   VISUAL — SNAPSHOT DA DUPLA
+   DUPLAS VISUAIS
 ============================================================ */
 
-function chaveVisualAtual(){
+function capturarAvaliacoesDoResultado(
+numero
+){
 
-return estado.modo==="AUTO"
-?"AUTO"
-:estado.manualRX;
+const resultado={};
 
-}
-
-
-function resultadoVisualAtual(numero){
-
-const chave=
-chaveVisualAtual();
+["AUTO",4,5,6]
+.forEach(k=>{
 
 const lista=
-estado.timelines[chave] || [];
+estado.timelines[k]||[];
 
 const item=
 lista[
@@ -2977,27 +3545,30 @@ if(
 item.resultado!==numero
 ){
 
-return null;
+resultado[k]=null;
+return;
 
 }
 
-if(item.semJogada)
-return "SEM";
+if(item.semJogada){
 
-return item.green
+resultado[k]="SEM";
+
+}else{
+
+resultado[k]=
+item.green
 ?"GREEN"
 :"LOSS";
 
 }
 
+});
 
-/* ============================================================
-   ATUALIZA DUPLA VISUAL NA INSERÇÃO
+return resultado;
 
-   IMPORTANTE:
-   - NÃO REAGRUPA
-   - NÃO USA SLICE(-14) PARA FORMAR PARES
-============================================================ */
+}
+
 
 function registrarNumeroDupla(numero){
 
@@ -3007,7 +3578,13 @@ duplasVisual.push({
 
 gatilho:numero,
 resultado:null,
-avaliacao:null
+
+avaliacoes:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+}
 
 });
 
@@ -3022,12 +3599,6 @@ duplasVisual[
 duplasVisual.length-1
 ];
 
-
-/*
-   EXISTE GATILHO AGUARDANDO.
-   O NÚMERO NOVO FECHA ESSA DUPLA.
-*/
-
 if(
 ultima.resultado===null ||
 ultima.resultado===undefined
@@ -3036,35 +3607,28 @@ ultima.resultado===undefined
 ultima.resultado=
 numero;
 
-ultima.avaliacao=
-resultadoVisualAtual(
+ultima.avaliacoes=
+capturarAvaliacoesDoResultado(
 numero
 );
 
-}
-
-/*
-   ÚLTIMA DUPLA JÁ ESTÁ FECHADA.
-
-   NÚMERO NOVO É NOVO GATILHO.
-*/
-
-else{
+}else{
 
 duplasVisual.push({
 
 gatilho:numero,
 resultado:null,
-avaliacao:null
+
+avaliacoes:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+}
 
 });
 
 }
-
-
-/*
-   7 QUADRADOS VISÍVEIS.
-*/
 
 duplasVisual=
 duplasVisual.slice(-7);
@@ -3073,12 +3637,6 @@ salvarDuplasVisual();
 
 }
 
-
-/* ============================================================
-   APAGAR VISUAL
-
-   NÃO REAGRUPA DUPLAS ANTERIORES.
-============================================================ */
 
 function apagarUltimoDaDupla(numero){
 
@@ -3090,31 +3648,24 @@ duplasVisual[
 duplasVisual.length-1
 ];
 
-
-/*
-   SE O NÚMERO APAGADO ERA RESULTADO,
-   MANTÉM O GATILHO E ABRE NOVAMENTE
-   A SEGUNDA POSIÇÃO.
-*/
-
 if(
 ultima.resultado===numero
 ){
 
 ultima.resultado=null;
-ultima.avaliacao=null;
+
+ultima.avaliacoes={
+AUTO:null,
+4:null,
+5:null,
+6:null
+};
 
 salvarDuplasVisual();
 
 return;
 
 }
-
-
-/*
-   SE ERA UM GATILHO NOVO AINDA
-   SEM RESULTADO, REMOVE SÓ ELE.
-*/
 
 if(
 (
@@ -3132,11 +3683,6 @@ return;
 
 }
 
-
-/*
-   NÃO REAGRUPA NADA.
-*/
-
 salvarDuplasVisual();
 
 }
@@ -3148,33 +3694,13 @@ salvarDuplasVisual();
 
 function adicionarNumero(numero){
 
-/*
-   PRIMEIRO:
-   avalia a jogada que já estava congelada.
-*/
-
 avaliarPendentes(
 numero
 );
 
-
-/*
-   SEGUNDO:
-   registra o número na dupla visual.
-
-   Assim, se ele for resultado,
-   usa exatamente a avaliação congelada.
-*/
-
 registrarNumeroDupla(
 numero
 );
-
-
-/*
-   TERCEIRO:
-   entra no histórico do motor.
-*/
 
 historico.push(numero);
 
@@ -3237,18 +3763,16 @@ AUTO:[],
 6:[]
 };
 
-
-/*
-   HISTÓRICO COLADO:
-   monta inicialmente as duplas uma única vez.
-*/
-
 duplasVisual=[];
 
 const visual=
 historico.slice(-14);
 
-for(let i=0;i<visual.length;i+=2){
+for(
+let i=0;
+i<visual.length;
+i+=2
+){
 
 duplasVisual.push({
 
@@ -3259,7 +3783,12 @@ i+1<visual.length
 ?visual[i+1]
 :null,
 
-avaliacao:null
+avaliacoes:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+}
 
 });
 
@@ -3286,17 +3815,9 @@ historico[
 historico.length-1
 ];
 
-
-/*
-   VISUAL:
-   desfaz SOMENTE a última digitação.
-   NÃO REAGRUPA as outras duplas.
-*/
-
 apagarUltimoDaDupla(
 removido
 );
-
 
 historico.pop();
 
@@ -3325,7 +3846,6 @@ if(
 return;
 
 historico=[];
-
 duplasVisual=[];
 
 estado.pendentes={
@@ -3370,9 +3890,7 @@ app.innerHTML=`
 
 <style>
 
-*{
-box-sizing:border-box
-}
+*{box-sizing:border-box}
 
 body{
 background:#101010
@@ -3596,9 +4114,7 @@ text-align:right
 }
 
 
-/* ============================================================
-   DUPLAS FIXAS
-============================================================ */
+/* DUPLAS */
 
 .duplas14{
 display:grid;
@@ -3659,6 +4175,56 @@ font-size:10px;
 font-weight:900;
 color:#aaa
 }
+
+
+/* DÚZIAS */
+
+.duziasBox{
+margin-top:7px;
+background:#111;
+border:1px solid #333;
+border-radius:8px;
+padding:7px
+}
+
+.duziasLinha{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:4px
+}
+
+.duziaCard{
+background:#1d1d1d;
+border:1px solid #444;
+border-radius:7px;
+padding:6px;
+text-align:center
+}
+
+.duziaCard.forte{
+border-color:#00e676
+}
+
+.duziaCard small{
+display:block;
+font-size:7px;
+color:#888;
+font-weight:900
+}
+
+.duziaCard strong{
+font-size:14px
+}
+
+.duziaCard span{
+display:block;
+font-size:7px;
+color:#aaa;
+margin-top:2px
+}
+
+
+/* JOGADA */
 
 .jogada{
 display:flex;
@@ -3742,6 +4308,7 @@ grid-template-columns:repeat(4,1fr)
 
 <h2>ANÁLISE 0 • 6 • 9</h2>
 
+
 <div class="painel">
 
 <textarea
@@ -3798,9 +4365,12 @@ AUTO
 
 </div>
 
+
 <div id="resumo" class="resumo"></div>
 
 <div id="trio" class="trio"></div>
+
+<div id="duzias" class="duziasBox"></div>
 
 <div id="timelineAUTO" class="timelineRow"></div>
 <div id="timeline4" class="timelineRow"></div>
@@ -3880,7 +4450,6 @@ document
 estado.modo="AUTO";
 
 salvarEstado();
-
 render();
 
 };
@@ -3894,11 +4463,9 @@ document
 .onclick=()=>{
 
 estado.modo="MANUAL";
-
 estado.manualRX=rx;
 
 salvarEstado();
-
 render();
 
 };
@@ -3923,7 +4490,6 @@ document.createElement(
 );
 
 b.className="numero";
-
 b.textContent=n;
 
 b.style.background=
@@ -4066,6 +4632,60 @@ x.score.toFixed(1)+
 
 
 /* ============================================================
+   DÚZIAS
+============================================================ */
+
+function renderDuzias(momento){
+
+const info=
+momento.duziasFisicas;
+
+const ranking=
+info.ranking;
+
+document
+.getElementById("duzias")
+.innerHTML=
+
+'<div class="trioTitulo">'+
+'CONCENTRAÇÃO FÍSICA DAS DÚZIAS • AUXILIAR DO RAIO X'+
+'</div>'+
+
+'<div class="duziasLinha">'+
+
+ranking.map((x,i)=>
+
+'<div class="duziaCard '+
+(i===0?"forte":"")+
+'">'+
+
+'<small>'+
+x.duzia+
+'ª DÚZIA'+
+'</small>'+
+
+'<strong>'+
+(x.score*100).toFixed(0)+
+'%'+
+'</strong>'+
+
+'<span>'+
+x.contagem+
+'/14 • FÍSICA '+
+(x.fisica*100).toFixed(0)+
+'%'+
+'</span>'+
+
+'</div>'
+
+).join("")+
+
+'</div>';
+
+}
+
+
+/* ============================================================
    JOGADA
 ============================================================ */
 
@@ -4132,7 +4752,7 @@ um+
 
 
 /* ============================================================
-   RENDER DAS DUPLAS FIXAS
+   DUPLAS FIXAS
 ============================================================ */
 
 function renderDuplas14(){
@@ -4144,6 +4764,11 @@ document.getElementById(
 
 const lista=
 duplasVisual.slice(-7);
+
+const chave=
+estado.modo==="AUTO"
+?"AUTO"
+:estado.manualRX;
 
 let html="";
 
@@ -4158,20 +4783,23 @@ d.resultado===undefined
 
 classe="aberta";
 
-}else if(
-d.avaliacao==="GREEN"
-){
-
-classe="green";
-
-}else if(
-d.avaliacao==="LOSS"
-){
-
-classe="loss";
-
 }else{
 
+const avaliacoes=
+d.avaliacoes||{};
+
+const avaliacao=
+avaliacoes[chave] ||
+d.avaliacao ||
+null;
+
+if(avaliacao==="GREEN")
+classe="green";
+
+else if(avaliacao==="LOSS")
+classe="loss";
+
+else
 classe="sem";
 
 }
@@ -4297,9 +4925,7 @@ document
 }
 
 
-/* ============================================================
-   RESUMO
-============================================================ */
+/* RESUMO */
 
 const live=
 statsTimeline(
@@ -4359,6 +4985,10 @@ renderTrio(
 momento
 );
 
+renderDuzias(
+momento
+);
+
 renderTimeline(
 "timelineAUTO",
 "AUTO",
@@ -4383,25 +5013,32 @@ renderTimeline(
 estado.timelines[6]
 );
 
-
-/*
-   DUPLAS PERSISTENTES.
-   NÃO SÃO REAGRUPADAS.
-*/
 renderDuplas14();
-
 
 renderJogada(
 ativa
 );
 
 
+/*
+   MOSTRA QUAL DÚZIA ESTÁ MAIS FORTE,
+   MAS ELA NÃO É A DONA DA JOGADA.
+*/
+
+const df=
+momento.duziasFisicas.dominante;
+
 document
 .getElementById("status")
 .textContent=
 
 base.length+
-"/35 • MOMENTO 14 • CRUZAMENTO 35×14 ATIVO";
+"/35 • MOMENTO 14 • 35×14 ATIVO"+
+(
+df
+?" • CONCENTRAÇÃO: "+df.duzia+"ª DÚZIA"
+:""
+);
 
 }
 
