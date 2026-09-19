@@ -632,13 +632,110 @@ JSON.stringify(estado)
 /* ============================================================
    DUPLAS VISUAIS FIXAS
 ============================================================ */
+/* ============================================================
+   DUPLAS VISUAIS FIXAS + G1 CONGELADO
+============================================================ */
 
 let duplasVisual=[];
+let proximoGatilhoVisual=null;
+
+
+/* ============================================================
+   AVALIAÇÕES VAZIAS
+============================================================ */
+
+function avaliacoesVazias(){
+
+return {
+AUTO:null,
+4:null,
+5:null,
+6:null
+};
+
+}
+
+
+/* ============================================================
+   NORMALIZA DUPLA SALVA
+============================================================ */
+
+function normalizarDuplaVisual(d){
+
+if(!d || typeof d!=="object")
+return null;
+
+return {
+
+gatilho:Number(d.gatilho),
+
+resultado:
+d.resultado===null ||
+d.resultado===undefined
+?null
+:Number(d.resultado),
+
+g1:
+d.g1===null ||
+d.g1===undefined
+?null
+:Number(d.g1),
+
+avaliacoes:
+d.avaliacoes &&
+typeof d.avaliacoes==="object"
+?Object.assign(
+avaliacoesVazias(),
+d.avaliacoes
+)
+:avaliacoesVazias(),
+
+avaliacoesG1:
+d.avaliacoesG1 &&
+typeof d.avaliacoesG1==="object"
+?Object.assign(
+avaliacoesVazias(),
+d.avaliacoesG1
+)
+:avaliacoesVazias(),
+
+snapshots:
+d.snapshots &&
+typeof d.snapshots==="object"
+?d.snapshots
+:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+},
+
+snapshotsResultado:
+d.snapshotsResultado &&
+typeof d.snapshotsResultado==="object"
+?d.snapshotsResultado
+:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+}
+
+};
+
+}
+
+
+/* ============================================================
+   SALVAR DUPLAS
+============================================================ */
 
 function salvarDuplasVisual(){
 
 duplasVisual=
-duplasVisual.slice(-7);
+duplasVisual
+.filter(Boolean)
+.slice(-7);
 
 try{
 
@@ -650,6 +747,11 @@ JSON.stringify(duplasVisual)
 }catch(e){}
 
 }
+
+
+/* ============================================================
+   CARREGAR DUPLAS
+============================================================ */
 
 function carregarDuplasVisual(){
 
@@ -668,7 +770,10 @@ JSON.parse(raw);
 if(Array.isArray(arr)){
 
 duplasVisual=
-arr.slice(-7);
+arr
+.map(normalizarDuplaVisual)
+.filter(Boolean)
+.slice(-7);
 
 return;
 
@@ -678,23 +783,49 @@ return;
 
 }catch(e){}
 
+
+/*
+   Se ainda não houver histórico visual salvo,
+   monta as duplas antigas de forma neutra.
+*/
+
 const ultimos=
 historico.slice(-14);
 
 duplasVisual=[];
 
-for(let i=0;i<ultimos.length;i+=2){
+for(
+let i=0;
+i<ultimos.length;
+i+=2
+){
 
 duplasVisual.push({
 
-gatilho:ultimos[i],
+gatilho:
+ultimos[i],
 
 resultado:
 i+1<ultimos.length
 ?ultimos[i+1]
 :null,
 
-avaliacoes:{
+g1:null,
+
+avaliacoes:
+avaliacoesVazias(),
+
+avaliacoesG1:
+avaliacoesVazias(),
+
+snapshots:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+},
+
+snapshotsResultado:{
 AUTO:null,
 4:null,
 5:null,
@@ -710,6 +841,628 @@ salvarDuplasVisual();
 }
 
 carregarDuplasVisual();
+
+
+/* ============================================================
+   MODO VISUAL ATUAL
+============================================================ */
+
+function chaveVisualAtual(){
+
+return estado.modo==="AUTO"
+?"AUTO"
+:estado.manualRX;
+
+}
+
+
+/* ============================================================
+   COPIAR SNAPSHOT
+============================================================ */
+
+function copiarSnapshot(p){
+
+if(!p)
+return null;
+
+return {
+
+assinatura:p.assinatura,
+
+rx:p.rx,
+
+centros2:
+Array.isArray(p.centros2)
+?p.centros2.slice()
+:[],
+
+centro1:
+p.centro1===undefined
+?null
+:p.centro1
+
+};
+
+}
+
+
+/* ============================================================
+   CAPTURAR JOGADAS CONGELADAS ATUAIS
+============================================================ */
+
+function capturarSnapshotsAtuais(){
+
+return {
+
+AUTO:
+copiarSnapshot(
+estado.pendentes.AUTO
+),
+
+4:
+copiarSnapshot(
+estado.pendentes[4]
+),
+
+5:
+copiarSnapshot(
+estado.pendentes[5]
+),
+
+6:
+copiarSnapshot(
+estado.pendentes[6]
+)
+
+};
+
+}
+
+
+/* ============================================================
+   AVALIAR NÚMERO CONTRA JOGADA CONGELADA
+============================================================ */
+
+function avaliarContraSnapshots(
+numero,
+snapshots
+){
+
+const out=
+avaliacoesVazias();
+
+["AUTO",4,5,6]
+.forEach(k=>{
+
+const p=
+snapshots
+?snapshots[k]
+:null;
+
+if(!p){
+
+out[k]="SEM";
+return;
+
+}
+
+const r=
+classificarSnapshot(
+numero,
+p
+);
+
+out[k]=
+r.green
+?"GREEN"
+:"LOSS";
+
+});
+
+return out;
+
+}
+
+
+/* ============================================================
+   ESTADO VISUAL DA DUPLA
+============================================================ */
+
+function estadoDuplaNoModo(
+d,
+chave
+){
+
+if(!d)
+return "SEM";
+
+if(
+d.resultado===null ||
+d.resultado===undefined
+)
+return "ABERTA";
+
+const primeira=
+d.avaliacoes
+?d.avaliacoes[chave]
+:null;
+
+
+/*
+   ACERTO DIRETO
+*/
+
+if(primeira==="GREEN")
+return "GREEN";
+
+
+/*
+   SEM JOGADA
+*/
+
+if(
+primeira===null ||
+primeira==="SEM"
+)
+return "SEM";
+
+
+/*
+   PRIMEIRO RESULTADO FOI LOSS
+*/
+
+if(primeira==="LOSS"){
+
+if(
+d.g1===null ||
+d.g1===undefined
+)
+return "AGUARDANDO_G1";
+
+const segunda=
+d.avaliacoesG1
+?d.avaliacoesG1[chave]
+:null;
+
+if(segunda==="GREEN")
+return "G1_GREEN";
+
+if(segunda==="LOSS")
+return "G1_LOSS";
+
+return "SEM";
+
+}
+
+return "SEM";
+
+}
+
+
+/* ============================================================
+   VERIFICA SE ESTÁ ESPERANDO G1
+============================================================ */
+
+function duplaPrecisaG1(d){
+
+const chave=
+chaveVisualAtual();
+
+return (
+estadoDuplaNoModo(
+d,
+chave
+)==="AGUARDANDO_G1"
+);
+
+}
+
+
+/* ============================================================
+   CRIAR NOVO GATILHO
+============================================================ */
+
+function criarDuplaGatilho(
+numero,
+snapshots
+){
+
+return {
+
+gatilho:numero,
+
+resultado:null,
+
+g1:null,
+
+avaliacoes:
+avaliacoesVazias(),
+
+avaliacoesG1:
+avaliacoesVazias(),
+
+snapshots:
+snapshots || {
+AUTO:null,
+4:null,
+5:null,
+6:null
+},
+
+snapshotsResultado:{
+AUTO:null,
+4:null,
+5:null,
+6:null
+}
+
+};
+
+}
+
+
+/* ============================================================
+   REGISTRAR NÚMERO ANTES DO MOTOR CONSUMIR A JOGADA
+
+   EXEMPLO:
+
+   20 = GATILHO
+
+   jogada do 20 fica congelada.
+
+   Sai 27:
+   testa 27 contra a jogada do 20.
+
+   Se perder:
+   continua no mesmo quadro.
+
+   Sai próximo número:
+   testa novamente contra a MESMA jogada do 20.
+============================================================ */
+
+function registrarNumeroDuplaAntes(numero){
+
+const snapshotsAntes=
+capturarSnapshotsAtuais();
+
+
+/*
+   PRIMEIRO GATILHO
+*/
+
+if(!duplasVisual.length){
+
+duplasVisual.push(
+
+criarDuplaGatilho(
+numero,
+snapshotsAntes
+)
+
+);
+
+salvarDuplasVisual();
+
+return {
+tipo:"NOVO_GATILHO"
+};
+
+}
+
+
+const ultima=
+duplasVisual[
+duplasVisual.length-1
+];
+
+
+/*
+   GATILHO JÁ EXISTE.
+   ESTE NÚMERO É O PRIMEIRO RESULTADO.
+*/
+
+if(
+ultima.resultado===null ||
+ultima.resultado===undefined
+){
+
+ultima.resultado=
+numero;
+
+
+/*
+   TESTA CONTRA JOGADA CONGELADA
+   DO GATILHO.
+*/
+
+ultima.avaliacoes=
+avaliarContraSnapshots(
+numero,
+ultima.snapshots
+);
+
+
+/*
+   GUARDA A JOGADA QUE EXISTIA
+   QUANDO ESTE RESULTADO SAIU.
+
+   Se ele for LOSS, depois será
+   usado como próximo gatilho.
+*/
+
+ultima.snapshotsResultado=
+snapshotsAntes;
+
+salvarDuplasVisual();
+
+return {
+tipo:"RESULTADO",
+dupla:ultima
+};
+
+}
+
+
+/*
+   PRIMEIRO RESULTADO FOI LOSS.
+
+   ESTE NÚMERO É O G1.
+
+   CONTINUA TESTANDO CONTRA
+   A MESMA JOGADA DO GATILHO.
+*/
+
+if(
+duplaPrecisaG1(
+ultima
+)
+){
+
+ultima.g1=
+numero;
+
+ultima.avaliacoesG1=
+avaliarContraSnapshots(
+numero,
+ultima.snapshots
+);
+
+salvarDuplasVisual();
+
+return {
+tipo:"G1",
+dupla:ultima
+};
+
+}
+
+
+/*
+   DUPLA ANTERIOR JÁ TERMINOU.
+   NÚMERO NOVO VIRA GATILHO.
+*/
+
+duplasVisual.push(
+
+criarDuplaGatilho(
+numero,
+snapshotsAntes
+)
+
+);
+
+duplasVisual=
+duplasVisual.slice(-7);
+
+salvarDuplasVisual();
+
+return {
+tipo:"NOVO_GATILHO"
+};
+
+}
+
+
+/* ============================================================
+   FINALIZAR G1
+
+   EXEMPLO:
+
+   20 → 27 → 8
+
+   O quadro do 20 termina.
+
+   27 fica preparado para ser
+   o próximo gatilho.
+
+   A jogada do 27 já estava congelada
+   quando o 27 apareceu.
+============================================================ */
+
+function finalizarNumeroDuplaDepois(
+numero,
+controle
+){
+
+if(
+!controle ||
+controle.tipo!=="G1"
+)
+return;
+
+const d=
+controle.dupla;
+
+if(!d)
+return;
+
+proximoGatilhoVisual={
+
+numero:
+d.resultado,
+
+snapshots:
+d.snapshotsResultado || {
+AUTO:null,
+4:null,
+5:null,
+6:null
+}
+
+};
+
+salvarDuplasVisual();
+
+}
+
+
+/* ============================================================
+   ABRIR PRÓXIMO GATILHO
+============================================================ */
+
+function garantirProximoGatilhoVisual(){
+
+if(!proximoGatilhoVisual)
+return;
+
+const ultima=
+duplasVisual[
+duplasVisual.length-1
+];
+
+if(
+ultima &&
+ultima.gatilho===
+proximoGatilhoVisual.numero &&
+(
+ultima.resultado===null ||
+ultima.resultado===undefined
+)
+){
+
+proximoGatilhoVisual=null;
+return;
+
+}
+
+duplasVisual.push(
+
+criarDuplaGatilho(
+
+proximoGatilhoVisual.numero,
+
+proximoGatilhoVisual.snapshots
+
+)
+
+);
+
+duplasVisual=
+duplasVisual.slice(-7);
+
+proximoGatilhoVisual=null;
+
+salvarDuplasVisual();
+
+}
+
+
+/* ============================================================
+   APAGAR ÚLTIMO DA DUPLA
+============================================================ */
+
+function apagarUltimoDaDupla(numero){
+
+proximoGatilhoVisual=null;
+
+if(!duplasVisual.length)
+return;
+
+const ultima=
+duplasVisual[
+duplasVisual.length-1
+];
+
+
+/*
+   GATILHO ABERTO
+*/
+
+if(
+(
+ultima.resultado===null ||
+ultima.resultado===undefined
+) &&
+ultima.gatilho===numero
+){
+
+duplasVisual.pop();
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+
+/*
+   APAGANDO G1
+*/
+
+if(
+ultima.g1!==null &&
+ultima.g1!==undefined &&
+ultima.g1===numero
+){
+
+ultima.g1=null;
+
+ultima.avaliacoesG1=
+avaliacoesVazias();
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+
+/*
+   APAGANDO PRIMEIRO RESULTADO
+*/
+
+if(
+ultima.resultado!==null &&
+ultima.resultado!==undefined &&
+ultima.resultado===numero
+){
+
+ultima.resultado=null;
+ultima.g1=null;
+
+ultima.avaliacoes=
+avaliacoesVazias();
+
+ultima.avaliacoesG1=
+avaliacoesVazias();
+
+ultima.snapshotsResultado={
+AUTO:null,
+4:null,
+5:null,
+6:null
+};
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+salvarDuplasVisual();
+
+}
+
 
 
 /* ============================================================
