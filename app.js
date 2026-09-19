@@ -4,7 +4,7 @@
 /* ============================================================
    ANALISADOR 0 • 6 • 9
    RAIO X + MOMENTO 14 + CONCENTRAÇÃO FÍSICA DAS DÚZIAS
-   ============================================================ */
+============================================================ */
 
 const STORAGE_KEY =
 "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
@@ -24,21 +24,11 @@ const MAX_REPLICAS = 40;
 
 const PESO_MOMENTO = .34;
 const MAX_GIRADA = 2;
-
-
-/* ============================================================
-   NOVO:
-   PESO DA CONCENTRAÇÃO FÍSICA DAS DÚZIAS
-
-   É AUXILIAR.
-   NÃO SUBSTITUI O RAIO X.
-============================================================ */
-
 const PESO_DUZIA_FISICA = .16;
 
 
 /* ============================================================
-   ROLETA EUROPEIA FÍSICA
+   ROLETA EUROPEIA
 ============================================================ */
 
 const track = [
@@ -52,11 +42,6 @@ const vermelhos = new Set([
 1,3,5,7,9,12,14,16,18,
 19,21,23,25,27,30,32,34,36
 ]);
-
-
-/* ============================================================
-   REGIÕES
-============================================================ */
 
 const regioes = {
 
@@ -98,100 +83,29 @@ return 0;
 
 }
 
-
-/* ============================================================
-   MAPA FÍSICO DAS DÚZIAS
-
-   IMPORTANTE:
-   NÃO ESTAMOS DIZENDO QUE ESSES NÚMEROS
-   "PERTENCEM" A OUTRA DÚZIA.
-
-   O MAPA REPRESENTA CONFLUÊNCIA FÍSICA NA RODA.
-
-   Quanto maior o peso, mais representativo é
-   aquele número/área para o bolsão físico da dúzia.
-============================================================ */
-
 const MAPA_DUZIA_FISICA = {
 
-1: new Map([
-
-/* 3 • 12 • 7 — concentração próxima 26/29 */
-[3,1.00],
-[12,1.00],
-[7,.95],
-
-/* 4 • 2 — concentração próxima do 21 */
-[4,.92],
-[2,.92],
-
-/* 11 • 8 • 5 */
-[11,.82],
-[8,.86],
-[5,.86],
-
-/* mais isolados */
-[6,.40],
-[1,.36],
-[9,.36],
-
-/* 10 intermediário */
+1:new Map([
+[3,1],[12,1],[7,.95],
+[4,.92],[2,.92],
+[11,.82],[8,.86],[5,.86],
+[6,.40],[1,.36],[9,.36],
 [10,.58]
-
 ]),
 
-
-2: new Map([
-
-/* concentração forte */
-[15,1.00],
-[19,1.00],
-[21,.98],
-
-/* quebra / continuidade */
-[17,.70],
-[13,.72],
-
-/* bloco 23 • 24 • 16 */
-[23,.96],
-[24,.94],
-[16,.94],
-
-/* área 13/14/20 */
-[14,.88],
-[20,.88],
-
-/* 28/18 — 18 pertence à 2ª;
-   28 funciona como vizinhança física auxiliar */
+2:new Map([
+[15,1],[19,1],[21,.98],
+[17,.70],[13,.72],
+[23,.96],[24,.94],[16,.94],
+[14,.88],[20,.88],
 [18,.92]
-
 ]),
 
-
-3: new Map([
-
-/* região 29–32 */
-[29,1.00],
-[30,1.00],
-[32,.96],
-
-/* região 25–30 */
-[25,.94],
-[27,.88],
-[28,.92],
-[29,1.00],
-[30,1.00],
-
-/* outros com sustentação física */
-[26,.80],
-[35,.72],
-[36,.68],
-[34,.64],
-
-/* mais perdidos */
-[33,.42],
-[31,.40]
-
+3:new Map([
+[29,1],[30,1],[32,.96],
+[25,.94],[27,.88],[28,.92],
+[26,.80],[35,.72],[36,.68],[34,.64],
+[33,.42],[31,.40]
 ])
 
 };
@@ -370,14 +284,14 @@ return vermelhos.has(n)
 
 
 /* ============================================================
-   IDS
+   COBERTURA DOS IDS
 ============================================================ */
 
-const coberturaIds={};
+const coberturaIds = {};
 
 BASES.forEach(base=>{
 
-coberturaIds[base]=
+coberturaIds[base] =
 new Set(
 vizinhos(base,1)
 );
@@ -423,11 +337,8 @@ BASES.forEach(base=>{
 if(
 coberturaIds[base]
 .has(numero)
-){
-
+)
 ids.push(base);
-
-}
 
 });
 
@@ -454,7 +365,7 @@ return ids;
 
 function eventoNumero(numero){
 
-const fs=
+const fs =
 new Set(
 idsQueBatem(numero)
 .map(familia)
@@ -478,7 +389,7 @@ function carregarHistorico(){
 
 try{
 
-const raw=
+const raw =
 localStorage.getItem(
 STORAGE_KEY
 );
@@ -486,7 +397,7 @@ STORAGE_KEY
 if(!raw)
 return [];
 
-const arr=
+const arr =
 JSON.parse(raw);
 
 if(!Array.isArray(arr))
@@ -513,10 +424,10 @@ return [];
 
 }
 
-let historico=
+let historico =
 carregarHistorico();
 
-let estado={
+let estado = {
 
 modo:"AUTO",
 
@@ -542,7 +453,7 @@ function carregarEstado(){
 
 try{
 
-const raw=
+const raw =
 localStorage.getItem(
 STORAGE_ENGINE
 );
@@ -550,7 +461,7 @@ STORAGE_ENGINE
 if(!raw)
 return;
 
-const x=
+const x =
 JSON.parse(raw);
 
 if(
@@ -571,9 +482,13 @@ if(x.timelines){
 ["AUTO",4,5,6]
 .forEach(k=>{
 
-if(Array.isArray(x.timelines[k])){
+if(
+Array.isArray(
+x.timelines[k]
+)
+){
 
-estado.timelines[k]=
+estado.timelines[k] =
 x.timelines[k]
 .slice(-MAX_TIMELINE);
 
@@ -585,7 +500,7 @@ x.timelines[k]
 
 if(x.pendentes){
 
-estado.pendentes=
+estado.pendentes =
 Object.assign(
 estado.pendentes,
 x.pendentes
@@ -601,7 +516,7 @@ carregarEstado();
 
 function salvarHistorico(){
 
-historico=
+historico =
 limitar35(historico);
 
 try{
@@ -629,17 +544,46 @@ JSON.stringify(estado)
 }
 
 
-/
 /* ============================================================
-   DUPLAS VISUAIS FIXAS + G1 CONGELADO
+   DUPLAS VISUAIS
+   REGRA:
+
+   20 gera jogada.
+
+   27 fecha/testa a jogada do 20.
+
+   Se 27 perder:
+   20 → 27 fica vermelho.
+
+   8 é SOMENTE G1 do quadro do 20.
+
+   Se 8 acertar:
+   20 → 27 → 8 fica amarelo.
+
+   A jogada gerada pelo 27 ficou guardada.
+
+   Depois do fechamento do quadro anterior,
+   o próximo número, por exemplo 15,
+   abre/testa o quadro do 27:
+
+   27 → 15
+
+   Se 15 perder:
+   próximo número é G1:
+
+   27 → 15 → X
+
+   O X NÃO vai para frente.
+
+   Depois:
+   15 será a base do quadro seguinte.
 ============================================================ */
 
-let duplasVisual=[];
-let proximoGatilhoVisual=null;
+let duplasVisual = [];
 
 
 /* ============================================================
-   AVALIAÇÕES VAZIAS
+   ESTRUTURAS VISUAIS
 ============================================================ */
 
 function avaliacoesVazias(){
@@ -653,19 +597,171 @@ AUTO:null,
 
 }
 
+function snapshotsVazios(){
 
-/* ============================================================
-   NORMALIZA DUPLA SALVA
-============================================================ */
+return {
+AUTO:null,
+4:null,
+5:null,
+6:null
+};
+
+}
+
+function copiarSnapshotVisual(p){
+
+if(!p)
+return null;
+
+return {
+
+assinatura:
+p.assinatura,
+
+rx:
+p.rx,
+
+centros2:
+Array.isArray(p.centros2)
+?p.centros2.slice()
+:[],
+
+centro1:
+p.centro1===undefined
+?null
+:p.centro1
+
+};
+
+}
+
+function copiarPacoteSnapshots(pacote){
+
+const out =
+snapshotsVazios();
+
+["AUTO",4,5,6]
+.forEach(k=>{
+
+out[k] =
+copiarSnapshotVisual(
+pacote
+?pacote[k]
+:null
+);
+
+});
+
+return out;
+
+}
+
+function capturarSnapshotsAtuais(){
+
+return {
+
+AUTO:
+copiarSnapshotVisual(
+estado.pendentes.AUTO
+),
+
+4:
+copiarSnapshotVisual(
+estado.pendentes[4]
+),
+
+5:
+copiarSnapshotVisual(
+estado.pendentes[5]
+),
+
+6:
+copiarSnapshotVisual(
+estado.pendentes[6]
+)
+
+};
+
+}
+
+function pacoteTemSnapshot(pacote){
+
+if(!pacote)
+return false;
+
+return ["AUTO",4,5,6]
+.some(k=>!!pacote[k]);
+
+}
+
+function criarQuadroVisual(
+gatilho,
+snapshotGatilho
+){
+
+return {
+
+gatilho:Number(gatilho),
+
+resultado:null,
+
+g1:null,
+
+avaliacoes:
+avaliacoesVazias(),
+
+avaliacoesG1:
+avaliacoesVazias(),
+
+snapshotGatilho:
+copiarPacoteSnapshots(
+snapshotGatilho ||
+snapshotsVazios()
+),
+
+/*
+   Aqui será guardada a jogada
+   gerada pelo PRIMEIRO RESULTADO.
+
+   Exemplo:
+   20 → 27
+
+   snapshotResultado = jogada do 27.
+*/
+
+snapshotResultado:
+snapshotsVazios(),
+
+/*
+   Quando o quadro termina no G1,
+   esse primeiro resultado vira
+   a base preparada do próximo quadro.
+*/
+
+proximoPreparado:false
+
+};
+
+}
 
 function normalizarDuplaVisual(d){
 
 if(!d || typeof d!=="object")
 return null;
 
+const gatilho =
+Number(d.gatilho);
+
+if(
+!Number.isInteger(gatilho) ||
+gatilho<0 ||
+gatilho>36
+)
+return null;
+
 return {
 
-gatilho:Number(d.gatilho),
+gatilho,
 
 resultado:
 d.resultado===null ||
@@ -680,57 +776,41 @@ d.g1===undefined
 :Number(d.g1),
 
 avaliacoes:
-d.avaliacoes &&
-typeof d.avaliacoes==="object"
-?Object.assign(
+Object.assign(
 avaliacoesVazias(),
-d.avaliacoes
-)
-:avaliacoesVazias(),
+d.avaliacoes||{}
+),
 
 avaliacoesG1:
-d.avaliacoesG1 &&
-typeof d.avaliacoesG1==="object"
-?Object.assign(
+Object.assign(
 avaliacoesVazias(),
-d.avaliacoesG1
-)
-:avaliacoesVazias(),
+d.avaliacoesG1||{}
+),
 
-snapshots:
-d.snapshots &&
-typeof d.snapshots==="object"
-?d.snapshots
-:{
-AUTO:null,
-4:null,
-5:null,
-6:null
-},
+snapshotGatilho:
+copiarPacoteSnapshots(
+d.snapshotGatilho ||
+d.snapshots ||
+snapshotsVazios()
+),
 
-snapshotsResultado:
-d.snapshotsResultado &&
-typeof d.snapshotsResultado==="object"
-?d.snapshotsResultado
-:{
-AUTO:null,
-4:null,
-5:null,
-6:null
-}
+snapshotResultado:
+copiarPacoteSnapshots(
+d.snapshotResultado ||
+d.snapshotsResultado ||
+snapshotsVazios()
+),
+
+proximoPreparado:
+!!d.proximoPreparado
 
 };
 
 }
 
-
-/* ============================================================
-   SALVAR DUPLAS
-============================================================ */
-
 function salvarDuplasVisual(){
 
-duplasVisual=
+duplasVisual =
 duplasVisual
 .filter(Boolean)
 .slice(-7);
@@ -739,35 +819,32 @@ try{
 
 localStorage.setItem(
 STORAGE_DUPLAS,
-JSON.stringify(duplasVisual)
+JSON.stringify(
+duplasVisual
+)
 );
 
 }catch(e){}
 
 }
 
-
-/* ============================================================
-   CARREGAR DUPLAS
-============================================================ */
-
 function carregarDuplasVisual(){
 
 try{
 
-const raw=
+const raw =
 localStorage.getItem(
 STORAGE_DUPLAS
 );
 
 if(raw){
 
-const arr=
+const arr =
 JSON.parse(raw);
 
 if(Array.isArray(arr)){
 
-duplasVisual=
+duplasVisual =
 arr
 .map(normalizarDuplaVisual)
 .filter(Boolean)
@@ -783,11 +860,14 @@ return;
 
 
 /*
-   Se ainda não houver histórico visual salvo,
-   monta as duplas antigas de forma neutra.
+   Caso ainda não exista histórico visual,
+   criamos apenas uma referência simples.
+
+   Os snapshots corretos passam a existir
+   nos novos números inseridos.
 */
 
-const ultimos=
+const ultimos =
 historico.slice(-14);
 
 duplasVisual=[];
@@ -816,23 +896,20 @@ avaliacoesVazias(),
 avaliacoesG1:
 avaliacoesVazias(),
 
-snapshots:{
-AUTO:null,
-4:null,
-5:null,
-6:null
-},
+snapshotGatilho:
+snapshotsVazios(),
 
-snapshotsResultado:{
-AUTO:null,
-4:null,
-5:null,
-6:null
-}
+snapshotResultado:
+snapshotsVazios(),
+
+proximoPreparado:false
 
 });
 
 }
+
+duplasVisual =
+duplasVisual.slice(-7);
 
 salvarDuplasVisual();
 
@@ -842,634 +919,12 @@ carregarDuplasVisual();
 
 
 /* ============================================================
-   MODO VISUAL ATUAL
-============================================================ */
-
-function chaveVisualAtual(){
-
-return estado.modo==="AUTO"
-?"AUTO"
-:estado.manualRX;
-
-}
-
-
-/* ============================================================
-   COPIAR SNAPSHOT
-============================================================ */
-
-function copiarSnapshot(p){
-
-if(!p)
-return null;
-
-return {
-
-assinatura:p.assinatura,
-
-rx:p.rx,
-
-centros2:
-Array.isArray(p.centros2)
-?p.centros2.slice()
-:[],
-
-centro1:
-p.centro1===undefined
-?null
-:p.centro1
-
-};
-
-}
-
-
-/* ============================================================
-   CAPTURAR JOGADAS CONGELADAS ATUAIS
-============================================================ */
-
-function capturarSnapshotsAtuais(){
-
-return {
-
-AUTO:
-copiarSnapshot(
-estado.pendentes.AUTO
-),
-
-4:
-copiarSnapshot(
-estado.pendentes[4]
-),
-
-5:
-copiarSnapshot(
-estado.pendentes[5]
-),
-
-6:
-copiarSnapshot(
-estado.pendentes[6]
-)
-
-};
-
-}
-
-
-/* ============================================================
-   AVALIAR NÚMERO CONTRA JOGADA CONGELADA
-============================================================ */
-
-function avaliarContraSnapshots(
-numero,
-snapshots
-){
-
-const out=
-avaliacoesVazias();
-
-["AUTO",4,5,6]
-.forEach(k=>{
-
-const p=
-snapshots
-?snapshots[k]
-:null;
-
-if(!p){
-
-out[k]="SEM";
-return;
-
-}
-
-const r=
-classificarSnapshot(
-numero,
-p
-);
-
-out[k]=
-r.green
-?"GREEN"
-:"LOSS";
-
-});
-
-return out;
-
-}
-
-
-/* ============================================================
-   ESTADO VISUAL DA DUPLA
-============================================================ */
-
-function estadoDuplaNoModo(
-d,
-chave
-){
-
-if(!d)
-return "SEM";
-
-if(
-d.resultado===null ||
-d.resultado===undefined
-)
-return "ABERTA";
-
-const primeira=
-d.avaliacoes
-?d.avaliacoes[chave]
-:null;
-
-
-/*
-   ACERTO DIRETO
-*/
-
-if(primeira==="GREEN")
-return "GREEN";
-
-
-/*
-   SEM JOGADA
-*/
-
-if(
-primeira===null ||
-primeira==="SEM"
-)
-return "SEM";
-
-
-/*
-   PRIMEIRO RESULTADO FOI LOSS
-*/
-
-if(primeira==="LOSS"){
-
-if(
-d.g1===null ||
-d.g1===undefined
-)
-return "AGUARDANDO_G1";
-
-const segunda=
-d.avaliacoesG1
-?d.avaliacoesG1[chave]
-:null;
-
-if(segunda==="GREEN")
-return "G1_GREEN";
-
-if(segunda==="LOSS")
-return "G1_LOSS";
-
-return "SEM";
-
-}
-
-return "SEM";
-
-}
-
-
-/* ============================================================
-   VERIFICA SE ESTÁ ESPERANDO G1
-============================================================ */
-
-function duplaPrecisaG1(d){
-
-const chave=
-chaveVisualAtual();
-
-return (
-estadoDuplaNoModo(
-d,
-chave
-)==="AGUARDANDO_G1"
-);
-
-}
-
-
-/* ============================================================
-   CRIAR NOVO GATILHO
-============================================================ */
-
-function criarDuplaGatilho(
-numero,
-snapshots
-){
-
-return {
-
-gatilho:numero,
-
-resultado:null,
-
-g1:null,
-
-avaliacoes:
-avaliacoesVazias(),
-
-avaliacoesG1:
-avaliacoesVazias(),
-
-snapshots:
-snapshots || {
-AUTO:null,
-4:null,
-5:null,
-6:null
-},
-
-snapshotsResultado:{
-AUTO:null,
-4:null,
-5:null,
-6:null
-}
-
-};
-
-}
-
-
-/* ============================================================
-   REGISTRAR NÚMERO ANTES DO MOTOR CONSUMIR A JOGADA
-
-   EXEMPLO:
-
-   20 = GATILHO
-
-   jogada do 20 fica congelada.
-
-   Sai 27:
-   testa 27 contra a jogada do 20.
-
-   Se perder:
-   continua no mesmo quadro.
-
-   Sai próximo número:
-   testa novamente contra a MESMA jogada do 20.
-============================================================ */
-
-function registrarNumeroDuplaAntes(numero){
-
-const snapshotsAntes=
-capturarSnapshotsAtuais();
-
-
-/*
-   PRIMEIRO GATILHO
-*/
-
-if(!duplasVisual.length){
-
-duplasVisual.push(
-
-criarDuplaGatilho(
-numero,
-snapshotsAntes
-)
-
-);
-
-salvarDuplasVisual();
-
-return {
-tipo:"NOVO_GATILHO"
-};
-
-}
-
-
-const ultima=
-duplasVisual[
-duplasVisual.length-1
-];
-
-
-/*
-   GATILHO JÁ EXISTE.
-   ESTE NÚMERO É O PRIMEIRO RESULTADO.
-*/
-
-if(
-ultima.resultado===null ||
-ultima.resultado===undefined
-){
-
-ultima.resultado=
-numero;
-
-
-/*
-   TESTA CONTRA JOGADA CONGELADA
-   DO GATILHO.
-*/
-
-ultima.avaliacoes=
-avaliarContraSnapshots(
-numero,
-ultima.snapshots
-);
-
-
-/*
-   GUARDA A JOGADA QUE EXISTIA
-   QUANDO ESTE RESULTADO SAIU.
-
-   Se ele for LOSS, depois será
-   usado como próximo gatilho.
-*/
-
-ultima.snapshotsResultado=
-snapshotsAntes;
-
-salvarDuplasVisual();
-
-return {
-tipo:"RESULTADO",
-dupla:ultima
-};
-
-}
-
-
-/*
-   PRIMEIRO RESULTADO FOI LOSS.
-
-   ESTE NÚMERO É O G1.
-
-   CONTINUA TESTANDO CONTRA
-   A MESMA JOGADA DO GATILHO.
-*/
-
-if(
-duplaPrecisaG1(
-ultima
-)
-){
-
-ultima.g1=
-numero;
-
-ultima.avaliacoesG1=
-avaliarContraSnapshots(
-numero,
-ultima.snapshots
-);
-
-salvarDuplasVisual();
-
-return {
-tipo:"G1",
-dupla:ultima
-};
-
-}
-
-
-/*
-   DUPLA ANTERIOR JÁ TERMINOU.
-   NÚMERO NOVO VIRA GATILHO.
-*/
-
-duplasVisual.push(
-
-criarDuplaGatilho(
-numero,
-snapshotsAntes
-)
-
-);
-
-duplasVisual=
-duplasVisual.slice(-7);
-
-salvarDuplasVisual();
-
-return {
-tipo:"NOVO_GATILHO"
-};
-
-}
-
-
-/* ============================================================
-   FINALIZAR G1
-
-   EXEMPLO:
-
-   20 → 27 → 8
-
-   O quadro do 20 termina.
-
-   27 fica preparado para ser
-   o próximo gatilho.
-
-   A jogada do 27 já estava congelada
-   quando o 27 apareceu.
-============================================================ */
-
-function finalizarNumeroDuplaDepois(
-numero,
-controle
-){
-
-if(
-!controle ||
-controle.tipo!=="G1"
-)
-return;
-
-const d=
-controle.dupla;
-
-if(!d)
-return;
-
-proximoGatilhoVisual={
-
-numero:
-d.resultado,
-
-snapshots:
-d.snapshotsResultado || {
-AUTO:null,
-4:null,
-5:null,
-6:null
-}
-
-};
-
-salvarDuplasVisual();
-
-}
-
-
-/* ============================================================
-   ABRIR PRÓXIMO GATILHO
-============================================================ */
-
-function garantirProximoGatilhoVisual(){
-
-if(!proximoGatilhoVisual)
-return;
-
-const ultima=
-duplasVisual[
-duplasVisual.length-1
-];
-
-if(
-ultima &&
-ultima.gatilho===
-proximoGatilhoVisual.numero &&
-(
-ultima.resultado===null ||
-ultima.resultado===undefined
-)
-){
-
-proximoGatilhoVisual=null;
-return;
-
-}
-
-duplasVisual.push(
-
-criarDuplaGatilho(
-
-proximoGatilhoVisual.numero,
-
-proximoGatilhoVisual.snapshots
-
-)
-
-);
-
-duplasVisual=
-duplasVisual.slice(-7);
-
-proximoGatilhoVisual=null;
-
-salvarDuplasVisual();
-
-}
-
-
-/* ============================================================
-   APAGAR ÚLTIMO DA DUPLA
-============================================================ */
-
-function apagarUltimoDaDupla(numero){
-
-proximoGatilhoVisual=null;
-
-if(!duplasVisual.length)
-return;
-
-const ultima=
-duplasVisual[
-duplasVisual.length-1
-];
-
-
-/*
-   GATILHO ABERTO
-*/
-
-if(
-(
-ultima.resultado===null ||
-ultima.resultado===undefined
-) &&
-ultima.gatilho===numero
-){
-
-duplasVisual.pop();
-
-salvarDuplasVisual();
-
-return;
-
-}
-
-
-/*
-   APAGANDO G1
-*/
-
-if(
-ultima.g1!==null &&
-ultima.g1!==undefined &&
-ultima.g1===numero
-){
-
-ultima.g1=null;
-
-ultima.avaliacoesG1=
-avaliacoesVazias();
-
-salvarDuplasVisual();
-
-return;
-
-}
-
-
-/*
-   APAGANDO PRIMEIRO RESULTADO
-*/
-
-if(
-ultima.resultado!==null &&
-ultima.resultado!==undefined &&
-ultima.resultado===numero
-){
-
-ultima.resultado=null;
-ultima.g1=null;
-
-ultima.avaliacoes=
-avaliacoesVazias();
-
-ultima.avaliacoesG1=
-avaliacoesVazias();
-
-ultima.snapshotsResultado={
-AUTO:null,
-4:null,
-5:null,
-6:null
-};
-
-salvarDuplasVisual();
-
-return;
-
-}
-
-salvarDuplasVisual();
-
-}
-
-
-
-/* ============================================================
    TERMINAIS
 ============================================================ */
 
 function analisarTerminais(base){
 
-const janela=
+const janela =
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
@@ -1485,9 +940,10 @@ let score=0;
 
 janela.forEach((n,i)=>{
 
-const tn=terminal(n);
+const tn =
+terminal(n);
 
-const recencia=
+const recencia =
 .50+
 ((i+1)/
 Math.max(1,janela.length))
@@ -1496,12 +952,17 @@ Math.max(1,janela.length))
 if(tn===t){
 
 direto++;
-score+=2.20*recencia;
 
-if(i>=janela.length-5){
+score +=
+2.20*recencia;
+
+if(
+i>=janela.length-5
+){
 
 direto5++;
-score+=.95;
+
+score += .95;
 
 }
 
@@ -1511,12 +972,17 @@ tn===terminalSeguinte(t)
 ){
 
 vizinho++;
-score+=.62*recencia;
 
-if(i>=janela.length-5){
+score +=
+.62*recencia;
+
+if(
+i>=janela.length-5
+){
 
 vizinho5++;
-score+=.20;
+
+score += .20;
 
 }
 
@@ -1543,7 +1009,7 @@ b.direto-a.direto ||
 b.vizinho-a.vizinho
 );
 
-const trio=
+const trio =
 ranking
 .slice(0,3)
 .map(x=>x.terminal);
@@ -1552,9 +1018,12 @@ let cobertura=0;
 
 janela.forEach(n=>{
 
-const t=terminal(n);
+const t =
+terminal(n);
 
-if(trio.includes(t)){
+if(
+trio.includes(t)
+){
 
 cobertura++;
 return;
@@ -1585,15 +1054,19 @@ janela.length
 
 }
 
-function scoreTerminalNumero(numero,momento){
+function scoreTerminalNumero(
+numero,
+momento
+){
 
-const trio=
+const trio =
 momento.terminais.trio;
 
 if(!trio.length)
 return 0;
 
-const t=terminal(numero);
+const t =
+terminal(numero);
 
 if(t===trio[0])
 return 1;
@@ -1633,26 +1106,34 @@ return 0;
 
 function analisarCores(base){
 
-const janela=
+const janela =
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
-const contagem={
+const contagem = {
 VERMELHO:0,
 PRETO:0,
 VERDE:0
 };
 
 janela.forEach(n=>{
-contagem[tipoCor(n)]++;
+
+contagem[
+tipoCor(n)
+]++;
+
 });
 
 let alternancias=0;
 
-for(let i=1;i<janela.length;i++){
+for(
+let i=1;
+i<janela.length;
+i++
+){
 
 if(
-tipoCor(janela[i])!==
+tipoCor(janela[i]) !==
 tipoCor(janela[i-1])
 )
 alternancias++;
@@ -1665,33 +1146,41 @@ contagem,
 
 ultima:
 janela.length
-?tipoCor(janela[janela.length-1])
+?tipoCor(
+janela[janela.length-1]
+)
 :null,
 
 pctAlternancia:
 janela.length>1
-?alternancias/(janela.length-1)*100
+?alternancias/
+(janela.length-1)*100
 :0
 
 };
 
 }
 
-function scoreCorNumero(numero,momento){
+function scoreCorNumero(
+numero,
+momento
+){
 
-const info=momento.cores;
+const info =
+momento.cores;
 
-const total=
+const total =
 Math.max(
 1,
 momento.janela.length
 );
 
-const cor=
+const cor =
 tipoCor(numero);
 
-let score=
-info.contagem[cor]/total;
+let score =
+info.contagem[cor]/
+total;
 
 if(
 info.pctAlternancia>=60 &&
@@ -1702,13 +1191,13 @@ if(
 info.ultima==="VERMELHO" &&
 cor==="PRETO"
 )
-score+=.18;
+score += .18;
 
 else if(
 info.ultima==="PRETO" &&
 cor==="VERMELHO"
 )
-score+=.18;
+score += .18;
 
 }
 
@@ -1723,14 +1212,14 @@ return score;
 
 function analisarZonas(base){
 
-const janela=
+const janela =
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
-const seq=
+const seq =
 janela.map(regiao);
 
-const contagem={
+const contagem = {
 ZERO:0,
 VOISINS:0,
 ORPHELINS:0,
@@ -1738,11 +1227,13 @@ TIERS:0
 };
 
 seq.forEach(z=>{
+
 if(z)
 contagem[z]++;
+
 });
 
-const transicoes={
+const transicoes = {
 
 ZERO:{
 ZERO:0,
@@ -1776,28 +1267,50 @@ TIERS:0
 
 let alternancias=0;
 
-for(let i=1;i<seq.length;i++){
+for(
+let i=1;
+i<seq.length;
+i++
+){
 
-if(seq[i]!==seq[i-1])
+if(
+seq[i] !==
+seq[i-1]
+)
 alternancias++;
 
-if(seq[i-1] && seq[i])
-transicoes[seq[i-1]][seq[i]]++;
+if(
+seq[i-1] &&
+seq[i]
+)
+transicoes[
+seq[i-1]
+][
+seq[i]
+]++;
 
 }
 
-const atual=
+const atual =
 seq.length
-?seq[seq.length-1]
+?seq[
+seq.length-1
+]
 :null;
 
 let repeticaoAtual=0;
 
 if(atual){
 
-for(let i=seq.length-1;i>=0;i--){
+for(
+let i=seq.length-1;
+i>=0;
+i--
+){
 
-if(seq[i]===atual)
+if(
+seq[i]===atual
+)
 repeticaoAtual++;
 
 else
@@ -1816,42 +1329,56 @@ repeticaoAtual,
 
 pctAlternancia:
 seq.length>1
-?alternancias/(seq.length-1)*100
+?alternancias/
+(seq.length-1)*100
 :0
 
 };
 
 }
 
-function scoreZonaNumero(numero,momento){
+function scoreZonaNumero(
+numero,
+momento
+){
 
-const info=momento.zonas;
-const z=regiao(numero);
+const info =
+momento.zonas;
+
+const z =
+regiao(numero);
 
 if(!z)
 return 0;
 
-const total=
+const total =
 Math.max(
 1,
 momento.janela.length
 );
 
-let score=
-info.contagem[z]/total;
+let score =
+info.contagem[z]/
+total;
 
 if(info.atual){
 
-const linha=
-info.transicoes[info.atual];
+const linha =
+info.transicoes[
+info.atual
+];
 
-const soma=
+const soma =
 Object.values(linha)
-.reduce((a,b)=>a+b,0);
+.reduce(
+(a,b)=>a+b,
+0
+);
 
 if(soma)
-score+=
-((linha[z]||0)/soma)*.45;
+score +=
+((linha[z]||0)/soma)
+*.45;
 
 }
 
@@ -1859,7 +1386,7 @@ if(
 z===info.atual &&
 info.repeticaoAtual>=2
 )
-score+=.10;
+score += .10;
 
 return score;
 
@@ -1867,2173 +1394,468 @@ return score;
 
 
 /* ============================================================
-   NOVO MOTOR AUXILIAR:
    CONCENTRAÇÃO FÍSICA DAS DÚZIAS
 ============================================================ */
 
 function analisarDuziasFisicas(base){
 
-const janela=
+const janela =
 limitar35(base)
 .slice(-JANELA_MOMENTO);
 
-
-/*
-   FORÇA BASE DAS TRÊS DÚZIAS NO MOMENTO.
-*/
-
-const forca={
+const forca = {
 1:0,
 2:0,
 3:0
 };
 
-const contagem={
+const quantidade = {
 1:0,
 2:0,
 3:0
 };
-
-
-/*
-   MATRIZ DE CALOR FÍSICA.
-
-   Cada resultado aquece sua posição real na roda
-   e as casas próximas.
-*/
-
-const calor=new Map();
-
-track.forEach(n=>
-calor.set(n,0)
-);
-
 
 janela.forEach((numero,i)=>{
 
-const d=duzia(numero);
+const d =
+duzia(numero);
 
-if(d)
-contagem[d]++;
+if(!d)
+return;
 
+quantidade[d]++;
 
-/*
-   RESULTADOS MAIS NOVOS PESAM MAIS.
-*/
-
-const recencia=
-.45+
-((i+1)/
-Math.max(1,janela.length))
-*.55;
-
-
-/*
-   Peso natural da dúzia do resultado.
-*/
-
-if(d){
-
-const mapa=
+const mapa =
 MAPA_DUZIA_FISICA[d];
 
-const estrutural=
-mapa && mapa.has(numero)
+const pesoFisico =
+mapa.has(numero)
 ?mapa.get(numero)
-:.55;
+:.25;
 
-forca[d]+=
-recencia*
-(.55+.45*estrutural);
-
-}
-
-
-/*
-   CALOR NA RODA.
-*/
-
-track.forEach(alvo=>{
-
-const dist=
-distanciaRoda(
-numero,
-alvo
-);
-
-let peso=0;
-
-if(dist===0)
-peso=1;
-
-else if(dist===1)
-peso=.72;
-
-else if(dist===2)
-peso=.46;
-
-else if(dist===3)
-peso=.26;
-
-else if(dist===4)
-peso=.12;
-
-else if(dist===5)
-peso=.05;
-
-if(peso){
-
-calor.set(
-alvo,
-(calor.get(alvo)||0)+
-peso*recencia
-);
-
-}
-
-});
-
-});
-
-
-/*
-   Agora verificamos quanto cada dúzia
-   está fisicamente alinhada com esse calor.
-*/
-
-const confluencia={
-1:0,
-2:0,
-3:0
-};
-
-[1,2,3].forEach(d=>{
-
-const mapa=
-MAPA_DUZIA_FISICA[d];
-
-let soma=0;
-let pesoTotal=0;
-
-mapa.forEach((peso,numero)=>{
-
-soma+=
-(calor.get(numero)||0)*
-peso;
-
-pesoTotal+=peso;
-
-});
-
-confluencia[d]=
-pesoTotal
-?soma/pesoTotal
-:0;
-
-});
-
-
-/*
-   NORMALIZAÇÃO.
-*/
-
-const maxForca=
+const recencia =
+.50+
+((i+1)/
 Math.max(
-forca[1],
-forca[2],
-forca[3],
-.0001
-);
-
-const maxConfluencia=
-Math.max(
-confluencia[1],
-confluencia[2],
-confluencia[3],
-.0001
-);
-
-
-const ranking=
-[1,2,3]
-.map(d=>{
-
-const frequencia=
+1,
 janela.length
-?contagem[d]/janela.length
-:0;
+))
+*.50;
 
-const momento=
-forca[d]/maxForca;
+forca[d] +=
+pesoFisico*
+recencia;
 
-const fisica=
-confluencia[d]/
-maxConfluencia;
+});
 
-
-/*
-   Não usamos apenas frequência.
-
-   35% presença da dúzia
-   65% concentração física real.
-*/
-
-const score=
-frequencia*.35+
-fisica*.45+
-momento*.20;
-
-return {
+const ranking =
+[1,2,3]
+.map(d=>({
 
 duzia:d,
-contagem:contagem[d],
-frequencia,
-momento,
-fisica,
-score
+forca:forca[d],
+quantidade:quantidade[d]
 
-};
-
-})
+}))
 .sort(
 (a,b)=>
-b.score-a.score
+b.forca-a.forca ||
+b.quantidade-a.quantidade
 );
 
-
 return {
-
-janela,
-calor,
 forca,
-contagem,
-confluencia,
-ranking,
-
-dominante:
-ranking[0] || null,
-
-segunda:
-ranking[1] || null
-
+quantidade,
+ranking
 };
 
 }
 
-
-/* ============================================================
-   SCORE DA DÚZIA PARA UM NÚMERO
-
-   IMPORTANTE:
-   O NÚMERO RECEBE REFORÇO SE:
-   1. sua própria dúzia está forte;
-   2. sua posição física está em um bolsão forte;
-   3. está perto de uma concentração daquela dúzia.
-============================================================ */
-
-function scoreDuziaFisicaNumero(
+function scoreDuziaNumero(
 numero,
 momento
 ){
 
-const analise=
-momento.duziasFisicas;
-
-if(!analise)
-return 0;
-
-const d=
+const d =
 duzia(numero);
 
 if(!d)
 return 0;
 
-const item=
-analise.ranking.find(
-x=>x.duzia===d
+const info =
+momento.duzias;
+
+const maior =
+Math.max(
+info.forca[1],
+info.forca[2],
+info.forca[3],
+.0001
 );
 
-if(!item)
-return 0;
+const relativo =
+info.forca[d]/
+maior;
 
-
-/*
-   Peso estrutural do número
-   dentro da concentração da própria dúzia.
-*/
-
-const mapa=
+const mapa =
 MAPA_DUZIA_FISICA[d];
 
-const estrutural=
-mapa && mapa.has(numero)
+const fisico =
+mapa.has(numero)
 ?mapa.get(numero)
-:.48;
-
-
-/*
-   Calor físico atual.
-*/
-
-const calorAtual=
-analise.calor.get(numero)||0;
-
-let maxCalor=0;
-
-analise.calor.forEach(v=>{
-
-if(v>maxCalor)
-maxCalor=v;
-
-});
-
-const calorNorm=
-maxCalor
-?calorAtual/maxCalor
-:0;
-
-
-/*
-   Procura também proximidade física com
-   os principais números estruturais da dúzia.
-*/
-
-let proximidade=0;
-
-if(mapa){
-
-mapa.forEach((peso,alvo)=>{
-
-const dist=
-distanciaRoda(
-numero,
-alvo
-);
-
-let p=0;
-
-if(dist===0)
-p=1;
-
-else if(dist===1)
-p=.78;
-
-else if(dist===2)
-p=.52;
-
-else if(dist===3)
-p=.28;
-
-else if(dist===4)
-p=.12;
-
-p*=peso;
-
-if(p>proximidade)
-proximidade=p;
-
-});
-
-}
-
-
-/*
-   SCORE AUXILIAR.
-*/
+:.25;
 
 return (
-
-item.score*.44 +
-estrutural*.22 +
-calorNorm*.22 +
-proximidade*.12
-
+relativo*.55 +
+fisico*.45
 );
 
 }
 
 
 /* ============================================================
-   CORREDORES
-============================================================ */
-
-function analisarCorredores(base){
-
-const janela=
-limitar35(base)
-.slice(-JANELA_MOMENTO);
-
-const ranking=[];
-
-track.forEach(centro=>{
-
-let dentro=0;
-let miolo=0;
-let lateral=0;
-let ponta=0;
-let esquerda=0;
-let direita=0;
-let score=0;
-
-janela.forEach((numero,i)=>{
-
-const delta=
-deltaRoda(
-centro,
-numero
-);
-
-const d=
-Math.abs(delta);
-
-if(d>5)
-return;
-
-dentro++;
-
-const recencia=
-.50+
-((i+1)/
-Math.max(1,janela.length))
-*.50;
-
-if(d<=1){
-
-miolo++;
-score+=recencia;
-
-}else if(d<=3){
-
-lateral++;
-score+=.92*recencia;
-
-}else{
-
-ponta++;
-score+=.86*recencia;
-
-}
-
-if(delta<0)
-esquerda++;
-
-else if(delta>0)
-direita++;
-
-});
-
-let perfil="MIOLO";
-
-if(
-ponta>miolo &&
-ponta>=lateral
-)
-perfil="PONTA";
-
-else if(lateral>miolo)
-perfil="LATERAL";
-
-let direcao=0;
-
-if(direita>esquerda+1)
-direcao=1;
-
-else if(esquerda>direita+1)
-direcao=-1;
-
-ranking.push({
-
-centro,
-dentro,
-
-taxa:
-janela.length
-?dentro/janela.length*100
-:0,
-
-miolo,
-lateral,
-ponta,
-esquerda,
-direita,
-direcao,
-perfil,
-score
-
-});
-
-});
-
-ranking.sort(
-(a,b)=>
-b.score-a.score ||
-b.dentro-a.dentro
-);
-
-return {
-
-ranking,
-fortes:ranking.slice(0,5),
-principal:ranking[0]||null
-
-};
-
-}
-
-function scoreCorredorNumero(numero,momento){
-
-const fortes=
-momento.corredores.fortes;
-
-if(!fortes.length)
-return 0;
-
-let score=0;
-
-fortes.forEach((c,pos)=>{
-
-const delta=
-deltaRoda(
-c.centro,
-numero
-);
-
-const d=
-Math.abs(delta);
-
-if(d>5)
-return;
-
-const rankingPeso=
-[1,.78,.60,.46,.34][pos];
-
-const confianca=
-c.taxa/100;
-
-let local=0;
-
-if(c.perfil==="PONTA"){
-
-if(d>=4)
-local=1;
-
-else if(d===3)
-local=.72;
-
-else if(d===2)
-local=.50;
-
-else
-local=.34;
-
-}else if(
-c.perfil==="LATERAL"
-){
-
-if(d===2 || d===3)
-local=1;
-
-else if(d===4)
-local=.70;
-
-else if(d===1)
-local=.62;
-
-else
-local=.45;
-
-}else{
-
-if(d<=1)
-local=1;
-
-else if(d===2)
-local=.72;
-
-else if(d===3)
-local=.48;
-
-else
-local=.28;
-
-}
-
-if(
-c.direcao!==0 &&
-Math.sign(delta)===c.direcao
-)
-local*=1.08;
-
-score+=
-rankingPeso*
-confianca*
-local;
-
-});
-
-return score;
-
-}
-
-
-/* ============================================================
-   DENSIDADE
-============================================================ */
-
-function analisarDensidade(base){
-
-const janela=
-limitar35(base)
-.slice(-JANELA_MOMENTO);
-
-const mapa=
-new Map();
-
-track.forEach(n=>
-mapa.set(n,0)
-);
-
-janela.forEach((numero,i)=>{
-
-const recencia=
-.50+
-((i+1)/
-Math.max(1,janela.length))
-*.50;
-
-track.forEach(alvo=>{
-
-const d=
-distanciaRoda(
-numero,
-alvo
-);
-
-let peso=0;
-
-if(d===0)
-peso=1;
-
-else if(d===1)
-peso=.68;
-
-else if(d===2)
-peso=.40;
-
-else if(d===3)
-peso=.20;
-
-else if(d===4)
-peso=.08;
-
-if(peso){
-
-mapa.set(
-alvo,
-(mapa.get(alvo)||0)+
-peso*recencia
-);
-
-}
-
-});
-
-});
-
-const ranking=
-track
-.map(n=>({
-numero:n,
-score:mapa.get(n)||0
-}))
-.sort(
-(a,b)=>b.score-a.score
-);
-
-return {
-
-mapa,
-ranking,
-
-centro:
-ranking.length
-?ranking[0].numero
-:null
-
-};
-
-}
-
-
-/* ============================================================
-   MOMENTO 14
+   MOMENTO
 ============================================================ */
 
 function analisarMomento(base){
 
-base=
-limitar35(base);
+const janela =
+limitar35(base)
+.slice(-JANELA_MOMENTO);
 
-return {
+const momento = {
 
-janela:
-base.slice(-14),
+janela,
 
 terminais:
-analisarTerminais(base),
+null,
 
 cores:
-analisarCores(base),
+null,
 
 zonas:
-analisarZonas(base),
+null,
 
-corredores:
-analisarCorredores(base),
-
-densidade:
-analisarDensidade(base),
-
-/*
-   NOVO AUXILIAR
-*/
-duziasFisicas:
-analisarDuziasFisicas(base)
+duzias:
+null
 
 };
 
+momento.terminais =
+analisarTerminais(janela);
+
+momento.cores =
+analisarCores(janela);
+
+momento.zonas =
+analisarZonas(janela);
+
+momento.duzias =
+analisarDuziasFisicas(janela);
+
+return momento;
+
 }
 
+function scoreMomentoNumero(
+numero,
+momento
+){
 
-/* ============================================================
-   SCORE DO MOMENTO
-
-   RAIO X NÃO ESTÁ AQUI.
-   Esse score é apenas o AUXILIAR usado depois
-   sobre os candidatos produzidos pelo Raio X.
-============================================================ */
-
-function scoreMomentoNumero(numero,momento){
-
-const scoreBase=(
-
+const st =
 scoreTerminalNumero(
 numero,
 momento
-)*.31 +
+);
 
+const sc =
 scoreCorNumero(
 numero,
 momento
-)*.10 +
+);
 
+const sz =
 scoreZonaNumero(
 numero,
 momento
-)*.13 +
-
-scoreCorredorNumero(
-numero,
-momento
-)*.30 +
-
-(
-momento.densidade.mapa
-.get(numero)||0
-)*.055
-
 );
 
-
-/*
-   NOVA CONFLUÊNCIA DA DÚZIA.
-*/
-
-const scoreDuzia=
-scoreDuziaFisicaNumero(
+const sd =
+scoreDuziaNumero(
 numero,
 momento
 );
-
 
 return (
-scoreBase +
-scoreDuzia*
-PESO_DUZIA_FISICA
+st*.36 +
+sc*.20 +
+sz*.28 +
+sd*PESO_DUZIA_FISICA
 );
-
-}
-
-
-function direcaoMomento(centro,momento){
-
-let esquerda=0;
-let direita=0;
-
-momento.janela.forEach((numero,i)=>{
-
-const delta=
-deltaRoda(
-centro,
-numero
-);
-
-const d=
-Math.abs(delta);
-
-if(d>7)
-return;
-
-const recencia=
-.55+
-((i+1)/
-Math.max(1,momento.janela.length))
-*.45;
-
-const proximidade=
-Math.max(
-0,
-1-d/8
-);
-
-const peso=
-recencia*
-proximidade;
-
-if(delta<0)
-esquerda+=peso;
-
-else if(delta>0)
-direita+=peso;
-
-});
-
-const total=
-esquerda+direita;
-
-if(!total)
-return {
-direcao:0,
-forca:0
-};
-
-return {
-
-direcao:
-direita>esquerda
-?1
-:(esquerda>direita?-1:0),
-
-forca:
-Math.abs(direita-esquerda)/
-total
-
-};
 
 }
 
 
 /* ============================================================
-   RX
+   ASSINATURA DO HISTÓRICO
 ============================================================ */
 
-function construirCache(base){
+function assinaturaHistorico(base){
 
-const eventos=
-new Uint8Array(
-base.length
-);
-
-for(let i=0;i<base.length;i++)
-eventos[i]=
-eventoNumero(base[i]);
-
-return {
-base,
-eventos
-};
+return limitar35(base)
+.join(",");
 
 }
 
 
-function similaridadeJanelas(
-cache,
-a,
-b,
-tamanho
-){
+/* ============================================================
+   CONTAGEM IDS
+============================================================ */
 
-let iguais=0;
-let erro=0;
+function contarIds(base){
 
-let a0=0,a6=0,a9=0;
-let b0=0,b6=0,b9=0;
+const contagem={};
 
-for(let k=0;k<tamanho;k++){
-
-const ea=
-cache.eventos[a+k];
-
-const eb=
-cache.eventos[b+k];
-
-if(ea===eb)
-iguais++;
-
-if(ea&1)a0++;
-if(ea&2)a6++;
-if(ea&4)a9++;
-
-if(eb&1)b0++;
-if(eb&2)b6++;
-if(eb&4)b9++;
-
-erro+=Math.abs(a0-b0);
-erro+=Math.abs(a6-b6);
-erro+=Math.abs(a9-b9);
-
-}
-
-const eventos=
-iguais/tamanho*100;
-
-const maxErro=
-tamanho*tamanho*3;
-
-const forma=
-Math.max(
-0,
-1-erro/maxErro
-)*100;
-
-return eventos*.80+
-forma*.20;
-
-}
-
-
-function analisarRX(base,rx){
-
-base=
-limitar35(base);
-
-if(
-base.length<
-rx*2+4
-){
-
-return {
-valido:false,
-rx,
-replicas:[],
-rankingIds:[],
-similaridade:0
-};
-
-}
-
-const cache=
-construirCache(base);
-
-const atualInicio=
-base.length-rx;
-
-const candidatos=[];
-
-for(
-let i=0;
-i+rx<atualInicio;
-i++
-){
-
-const proximo=
-base[i+rx];
-
-if(proximo===undefined)
-continue;
-
-candidatos.push({
-
-inicio:i,
-proximo,
-
-similaridade:
-similaridadeJanelas(
-cache,
-atualInicio,
-i,
-rx
-)
-
+TODOS_IDS.forEach(id=>{
+contagem[id]=0;
 });
 
-}
+limitar35(base)
+.forEach(numero=>{
 
-candidatos.sort(
-(a,b)=>
-b.similaridade-a.similaridade ||
-b.inicio-a.inicio
-);
-
-if(!candidatos.length){
-
-return {
-valido:false,
-rx,
-replicas:[],
-rankingIds:[],
-similaridade:0
-};
-
-}
-
-let qtd=
-Math.ceil(
-candidatos.length*.10
-);
-
-qtd=
-Math.max(4,qtd);
-
-qtd=
-Math.min(
-qtd,
-MAX_REPLICAS,
-candidatos.length
-);
-
-const replicas=
-candidatos.slice(0,qtd);
-
-const contagem=
-new Map();
-
-TODOS_IDS.forEach(
-id=>contagem.set(id,0)
-);
-
-function contar(rep){
-
-idsQueBatem(
-rep.proximo
-)
+idsQueBatem(numero)
 .forEach(id=>{
 
-contagem.set(
-id,
-(contagem.get(id)||0)+1
-);
-
-});
-
-}
-
-replicas.forEach(contar);
-
-function positivos(){
-
-return TODOS_IDS
-.filter(
-id=>
-(contagem.get(id)||0)>0
+if(
+Object.prototype.hasOwnProperty.call(
+contagem,
+id
 )
-.length;
+)
+contagem[id]++;
 
-}
+});
 
-let pos=qtd;
+});
 
-while(
-positivos()<8 &&
-pos<candidatos.length &&
-replicas.length<MAX_REPLICAS
-){
-
-const rep=
-candidatos[pos++];
-
-replicas.push(rep);
-contar(rep);
-
-}
-
-const rankingIds=
-TODOS_IDS
-.map((id,ordem)=>({
-
-id,
-
-ocorrencias:
-contagem.get(id)||0,
-
-ordem
-
-}))
-.filter(x=>x.ocorrencias>0)
-.sort(
-(a,b)=>
-b.ocorrencias-a.ocorrencias ||
-a.ordem-b.ordem
-);
-
-return {
-
-valido:true,
-rx,
-replicas,
-rankingIds,
-
-similaridade:
-replicas.reduce(
-(s,r)=>s+r.similaridade,
-0
-)/replicas.length
-
-};
+return contagem;
 
 }
 
 
 /* ============================================================
-   FREQUÊNCIA DAS RÉPLICAS
+   SCORE DE IDS
 ============================================================ */
 
-function frequenciaReplicas(replicas){
+function scoreIds(base){
 
-const freq=
-new Map();
+const janela =
+limitar35(base);
 
-track.forEach(
-n=>freq.set(n,0)
-);
+const momento =
+analisarMomento(janela);
 
-replicas.forEach(rep=>{
+const contagem =
+contarIds(janela);
 
-freq.set(
-rep.proximo,
-(freq.get(rep.proximo)||0)+1
-);
+const scores=[];
 
-});
+TODOS_IDS.forEach(id=>{
 
-return freq;
+const fam =
+familia(id);
 
-}
-
-
-/* ============================================================
-   LOSS
-============================================================ */
-
-function diagnosticarLosses(lista){
-
-if(!Array.isArray(lista))
-lista=[];
-
-const validos=
-lista.filter(
-x=>!x.semJogada
-);
-
-const losses=[];
-
-for(
-let i=validos.length-1;
-i>=0;
-i--
-){
-
-if(validos[i].green)
-break;
-
-losses.unshift(
-validos[i]
-);
-
-}
-
-if(!losses.length){
-
-return {
-ativo:false,
-seq:0,
-tipo:"ESTAVEL",
-lado:0,
-forca:0
-};
-
-}
-
-const recentes=
-losses.slice(-3);
-
-let fora1=0;
-let esquerda=0;
-let direita=0;
-
-recentes.forEach(x=>{
-
-if(x.tipo==="FORA1")
-fora1++;
-
-if(x.lado<0)
-esquerda++;
-
-if(x.lado>0)
-direita++;
-
-});
-
-let tipo="ISOLADO";
-let forca=.10;
+let score =
+contagem[id]||0;
 
 if(
-losses.length===1 &&
-fora1===1
+BASES.includes(id)
 ){
 
-tipo="BORDA";
-forca=.10;
-
-}else if(
-fora1>=2 &&
-Math.max(esquerda,direita)>=2
-){
-
-tipo="BORDA_REPETIDA";
-forca=.35;
-
-}else if(
-losses.length>=2 &&
-Math.max(esquerda,direita)>=2
-){
-
-tipo="DESLOCAMENTO";
-forca=.50;
-
-}else if(
-losses.length>=3
-){
-
-tipo="QUEBRA";
-forca=.60;
-
-}
-
-return {
-
-ativo:true,
-seq:losses.length,
-tipo,
-
-lado:
-direita>esquerda
-?1
-:(esquerda>direita?-1:0),
-
-forca
-
-};
-
-}
-
-
-/* ============================================================
-   SCORE RX PURO
-============================================================ */
-
-function scoreRXPuro(
-centro,
-qtd,
-freq
-){
-
-const numeros=
-setor(
-centro,
-qtd
+const nums =
+Array.from(
+coberturaIds[id]
 );
 
-let score=0;
-let suporte=0;
+let bonusMomento=0;
 
-numeros.forEach(n=>{
+nums.forEach(n=>{
 
-const f=
-freq.get(n)||0;
-
-suporte+=f;
-
-const d=
-distanciaRoda(
-centro,
-n
-);
-
-let peso=1;
-
-if(d===0)
-peso=1.45;
-
-else if(d===1)
-peso=1.22;
-
-score+=f*peso;
-
-});
-
-return {
-score,
-suporte,
-numeros
-};
-
-}
-
-
-/* ============================================================
-   SCORE AUXILIAR DO MOMENTO PARA O SETOR
-============================================================ */
-
-function scoreMomentoSetor(
-centro,
-qtd,
-momento
-){
-
-const numeros=
-setor(
-centro,
-qtd
-);
-
-let score=0;
-
-numeros.forEach(n=>{
-
-const d=
-distanciaRoda(
-centro,
-n
-);
-
-let peso=1;
-
-if(d===0)
-peso=1.20;
-
-else if(d===1)
-peso=1.08;
-
-score+=
+bonusMomento +=
 scoreMomentoNumero(
 n,
 momento
-)*peso;
+);
 
 });
 
-return score/
-numeros.length;
-
-}
-
-
-/* ============================================================
-   GIRADA DINÂMICA
-============================================================ */
-
-function avaliarCentroComGiradas(
-centroOriginal,
-qtd,
-freq,
-momento,
-diagnostico
-){
-
-let melhor=null;
-
-for(
-let offset=-MAX_GIRADA;
-offset<=MAX_GIRADA;
-offset++
-){
-
-const centro=
-numeroOffset(
-centroOriginal,
-offset
-);
-
-const rx=
-scoreRXPuro(
-centro,
-qtd,
-freq
-);
-
-
-/*
-   REGRA FUNDAMENTAL:
-   SEM SUPORTE DO RAIO X,
-   A DÚZIA NÃO CRIA UMA JOGADA SOZINHA.
-*/
-
-if(rx.suporte<=0)
-continue;
-
-
-const momentoScore=
-scoreMomentoSetor(
-centro,
-qtd,
-momento
-);
-
-const custoGirada=
-Math.abs(offset)*
-.15*
+bonusMomento /=
 Math.max(
 1,
-rx.suporte
+nums.length
 );
 
-const direcao=
-direcaoMomento(
-centroOriginal,
-momento
-);
-
-let bonusDirecao=0;
-
-if(
-offset!==0 &&
-direcao.direcao!==0 &&
-Math.sign(offset)===
-direcao.direcao
-){
-
-bonusDirecao=
-direcao.forca*
-rx.suporte*
-.18;
+score +=
+bonusMomento*
+PESO_MOMENTO*
+10;
 
 }
 
-let bonusLoss=0;
-
-if(
-diagnostico &&
-diagnostico.ativo &&
-diagnostico.lado!==0 &&
-offset!==0 &&
-Math.sign(offset)===
-diagnostico.lado
-){
-
-bonusLoss=
-diagnostico.forca*
-rx.suporte*
-.22;
-
-}
-
-
-/*
-   RX CONTINUA SENDO A BASE.
-*/
-
-const scoreFinal=
-
-rx.score+
-
-(
-momentoScore*
-rx.suporte*
-PESO_MOMENTO
-)+
-
-bonusDirecao+
-bonusLoss-
-custoGirada;
-
-
-const item={
-
-centroOriginal,
-centro,
-offset,
-qtd,
-numeros:rx.numeros,
-suporte:rx.suporte,
-scoreRX:rx.score,
-scoreMomento:momentoScore,
-score:scoreFinal
-
-};
-
-if(
-!melhor ||
-item.score>melhor.score
-)
-melhor=item;
-
-}
-
-return melhor;
-
-}
-
-
-function gerarCandidatos(
-qtd,
-freq,
-momento,
-diagnostico
-){
-
-const mapa=
-new Map();
-
-track.forEach(
-centroOriginal=>{
-
-const c=
-avaliarCentroComGiradas(
-centroOriginal,
-qtd,
-freq,
-momento,
-diagnostico
-);
-
-if(!c)
-return;
-
-const existente=
-mapa.get(c.centro);
-
-if(
-!existente ||
-c.score>existente.score
-)
-mapa.set(
-c.centro,
-c
-);
-
-});
-
-return Array.from(
-mapa.values()
-)
-.sort(
-(a,b)=>
-b.score-a.score ||
-b.suporte-a.suporte ||
-Math.abs(a.offset)-
-Math.abs(b.offset)
-);
-
-}
-
-
-/* ============================================================
-   JOGADA
-============================================================ */
-
-function montarJogada(
-raioX,
-base,
-diagnostico=null
-){
-
-if(
-!raioX ||
-!raioX.valido
-){
-
-return {
-valido:false,
-blocos2:[],
-blocos1:[],
-numeros:new Set()
-};
-
-}
-
-base=
-limitar35(base);
-
-const momento=
-analisarMomento(base);
-
-const freq=
-frequenciaReplicas(
-raioX.replicas
-);
-
-const candidatos2=
-gerarCandidatos(
-2,
-freq,
-momento,
-diagnostico
-);
-
-const candidatos1=
-gerarCandidatos(
-1,
-freq,
-momento,
-diagnostico
-);
-
-let melhor=null;
-
-for(const um of candidatos1){
-
-const usados=
-new Set(
-um.numeros
-);
-
-const dois=[];
-
-let score=
-um.score;
-
-for(
-const candidato
-of candidatos2
-){
-
-const conflito=
-candidato.numeros
-.some(
-n=>usados.has(n)
-);
-
-if(conflito)
-continue;
-
-dois.push(
-candidato
-);
-
-score+=
-candidato.score;
-
-candidato.numeros
-.forEach(
-n=>usados.add(n)
-);
-
-if(dois.length===5)
-break;
-
-}
-
-if(
-dois.length===5 &&
-usados.size===28
-){
-
-if(
-!melhor ||
-score>melhor.score
-){
-
-melhor={
-
-valido:true,
-blocos2:dois,
-blocos1:[um],
-numeros:usados,
+scores.push({
+id,
+familia:fam,
 score,
-momento
-
-};
-
-}
-
-}
-
-}
-
-return melhor || {
-
-valido:false,
-blocos2:[],
-blocos1:[],
-numeros:new Set(),
-momento
-
-};
-
-}
-
-
-/* ============================================================
-   CONFIG
-============================================================ */
-
-function gerarConfig(
-base,
-rxTam,
-diagnostico=null
-){
-
-base=
-limitar35(base);
-
-const raioX=
-analisarRX(
-base,
-rxTam
-);
-
-if(!raioX.valido)
-return {
-valido:false,
-rx:rxTam
-};
-
-const jogada=
-montarJogada(
-raioX,
-base,
-diagnostico
-);
-
-return {
-
-valido:jogada.valido,
-rx:rxTam,
-raioX,
-jogada,
-similaridade:
-raioX.similaridade
-
-};
-
-}
-
-
-/* ============================================================
-   RESULTADO
-============================================================ */
-
-function classificarJogada(
-numero,
-jogada
-){
-
-if(
-!jogada ||
-!jogada.valido
-){
-
-return {
-green:false,
-tipo:"FORA",
-lado:0
-};
-
-}
-
-const blocos=[
-...jogada.blocos2,
-...jogada.blocos1
-];
-
-for(const b of blocos){
-
-if(
-b.numeros.includes(numero)
-){
-
-const d=
-distanciaRoda(
-numero,
-b.centro
-);
-
-return {
-
-green:true,
-
-tipo:
-d===0
-?"ALVO"
-:(d===1?"V1":"V2"),
-
-lado:
-Math.sign(
-deltaRoda(
-b.centro,
-numero
-)
-)
-
-};
-
-}
-
-}
-
-let melhor=null;
-
-blocos.forEach(b=>{
-
-const d=
-distanciaRoda(
-numero,
-b.centro
-);
-
-const gap=
-d-b.qtd;
-
-if(
-gap>0 &&
-(
-!melhor ||
-gap<melhor.gap
-)
-){
-
-melhor={
-gap,
-
-lado:
-Math.sign(
-deltaRoda(
-b.centro,
-numero
-)
-)
-
-};
-
-}
+contagem:
+contagem[id]||0
+});
 
 });
 
-if(!melhor){
-
-return {
-green:false,
-tipo:"FORA",
-lado:0
-};
-
-}
-
-return {
-
-green:false,
-
-tipo:
-melhor.gap===1
-?"FORA1"
-:(melhor.gap===2
-?"FORA2"
-:"FORA"),
-
-lado:
-melhor.lado
-
-};
-
-}
-
-
-/* ============================================================
-   STATS
-============================================================ */
-
-function statsTimeline(lista){
-
-function validos(arr){
-
-return arr.filter(
-x=>!x.semJogada
-);
-
-}
-
-function taxa(
-arr,
-qtd
-){
-
-const v=
-validos(arr)
-.slice(-qtd);
-
-if(!v.length)
-return 0;
-
-return (
-v.filter(x=>x.green).length/
-v.length*
-100
-);
-
-}
-
-const todosValidos=
-validos(lista);
-
-let loss=0;
-
-for(
-let i=lista.length-1;
-i>=0;
-i--
-){
-
-const x=lista[i];
-
-if(x.semJogada)
-continue;
-
-if(x.green)
-break;
-
-loss++;
-
-}
-
-return {
-
-total:
-todosValidos.length,
-
-totalLinha:
-lista.length,
-
-taxa5:
-taxa(lista,5),
-
-taxa10:
-taxa(lista,10),
-
-taxa20:
-taxa(lista,20),
-
-lossSeguidos:loss,
-
-timeline:lista
-
-};
-
-}
-
-
-/* ============================================================
-   BACKTEST
-============================================================ */
-
-function backtest(
-base,
-rxTam
-){
-
-base=
-limitar35(base);
-
-const timeline=[];
-
-const minimo=
-Math.max(
-14,
-rxTam*2+4
-);
-
-const inicio=
-Math.max(
-minimo,
-base.length-20
-);
-
-for(
-let i=inicio;
-i<base.length;
-i++
-){
-
-const passado=
-base.slice(0,i);
-
-const diag=
-diagnosticarLosses(
-timeline
-);
-
-const cfg=
-gerarConfig(
-passado,
-rxTam,
-diag
-);
-
-if(!cfg.valido){
-
-timeline.push({
-
-resultado:base[i],
-semJogada:true,
-green:null,
-tipo:"SEM_JOGADA",
-lado:0
-
-});
-
-continue;
-
-}
-
-const resultado=
-base[i];
-
-const r=
-classificarJogada(
-resultado,
-cfg.jogada
-);
-
-timeline.push({
-
-resultado,
-semJogada:false,
-green:r.green,
-tipo:r.tipo,
-lado:r.lado
-
-});
-
-}
-
-return statsTimeline(
-timeline
-);
-
-}
-
-
-/* ============================================================
-   RX / AUTO
-============================================================ */
-
-function melhorDoRX(
-base,
-rxTam
-){
-
-const diag=
-diagnosticarLosses(
-estado.timelines[rxTam]
-);
-
-const cfg=
-gerarConfig(
-base,
-rxTam,
-diag
-);
-
-if(!cfg.valido)
-return null;
-
-const bt=
-backtest(
-base,
-rxTam
-);
-
-let score=
-
-bt.taxa5*.42+
-bt.taxa10*.32+
-bt.taxa20*.20+
-cfg.similaridade*.06;
-
-if(bt.lossSeguidos===1){
-
-const validos=
-bt.timeline.filter(
-x=>!x.semJogada
-);
-
-const ultimo=
-validos[
-validos.length-1
-];
-
-if(
-ultimo &&
-ultimo.tipo==="FORA1"
-)
-score-=1;
-
-else
-score-=3;
-
-}
-
-const live=
-statsTimeline(
-estado.timelines[rxTam]
-);
-
-if(live.total){
-
-score+=
-live.taxa10*.05+
-live.taxa20*.025;
-
-}
-
-return {
-
-valido:true,
-rx:rxTam,
-raioX:cfg.raioX,
-jogada:cfg.jogada,
-similaridade:cfg.similaridade,
-backtest:bt,
-live,
-score
-
-};
-
-}
-
-
-function escolherAuto(configs){
-
-const lista=
-RX_LIST
-.map(rx=>configs[rx])
-.filter(
-x=>x && x.valido
-);
-
-if(!lista.length)
-return null;
-
-lista.sort(
+scores.sort(
 (a,b)=>
 b.score-a.score ||
-b.backtest.taxa10-
-a.backtest.taxa10 ||
-b.backtest.taxa20-
-a.backtest.taxa20
+b.contagem-a.contagem ||
+a.id-b.id
 );
 
-return lista[0];
+return {
+scores,
+momento,
+contagem
+};
+
+}
+
+
+/* ============================================================
+   CENTROS POR RX
+============================================================ */
+
+function gerarCentrosRX(
+base,
+rx
+){
+
+const analise =
+scoreIds(base);
+
+const candidatos =
+analise.scores
+.filter(x=>
+BASES.includes(x.id)
+);
+
+const centros=[];
+
+for(const c of candidatos){
+
+if(
+centros.length>=2
+)
+break;
+
+if(
+centros.every(x=>
+distanciaRoda(
+x,
+c.id
+)>rx
+)
+){
+
+centros.push(
+c.id
+);
+
+}
+
+}
+
+if(
+centros.length<2
+){
+
+for(const c of candidatos){
+
+if(
+centros.length>=2
+)
+break;
+
+if(
+!centros.includes(c.id)
+)
+centros.push(c.id);
+
+}
+
+}
+
+return {
+
+centros2:
+centros.slice(0,2),
+
+centro1:
+centros.length
+?centros[0]
+:null,
+
+analise
+
+};
+
+}
+
+
+/* ============================================================
+   COBERTURA DE UMA JOGADA
+============================================================ */
+
+function numerosDaJogada(
+centros2,
+centro1,
+rx
+){
+
+const set =
+new Set();
+
+if(
+Array.isArray(centros2)
+){
+
+centros2.forEach(c=>{
+
+setor(c,rx)
+.forEach(n=>
+set.add(n)
+);
+
+});
+
+}
+
+if(
+centro1!==null &&
+centro1!==undefined
+){
+
+setor(
+centro1,
+Math.max(
+1,
+rx-1
+)
+)
+.forEach(n=>
+set.add(n)
+);
+
+}
+
+return Array.from(set);
 
 }
 
@@ -4042,134 +1864,254 @@ return lista[0];
    SNAPSHOT
 ============================================================ */
 
-function assinatura(){
-
-return (
-historico.length+
-"|"+
-historico.join(",")
-);
-
-}
-
-
-function snapshot(config){
+function criarSnapshot(
+base,
+rx
+){
 
 if(
-!config ||
-!config.valido
+!Array.isArray(base) ||
+!base.length
 )
 return null;
+
+const g =
+gerarCentrosRX(
+base,
+rx
+);
 
 return {
 
 assinatura:
-assinatura(),
+assinaturaHistorico(base),
 
-rx:
-config.rx,
+rx,
 
 centros2:
-config.jogada
-.blocos2
-.map(x=>x.centro),
+g.centros2.slice(),
 
 centro1:
-config.jogada.blocos1[0]
-?config.jogada.blocos1[0].centro
-:null
+g.centro1
 
 };
 
 }
 
+
+/* ============================================================
+   CLASSIFICAR RESULTADO
+============================================================ */
 
 function classificarSnapshot(
 numero,
-p
+snapshot
 ){
 
-if(!p){
+if(!snapshot){
 
 return {
 green:false,
-tipo:"FORA",
-lado:0
+tipo:"SEM"
 };
 
 }
 
-const blocos2=
-(p.centros2||[])
-.map(c=>({
-
-centro:c,
-qtd:2,
-numeros:setor(c,2)
-
-}));
-
-const blocos1=
-p.centro1!==null &&
-p.centro1!==undefined
-
-?[{
-
-centro:p.centro1,
-qtd:1,
-numeros:
-setor(p.centro1,1)
-
-}]
-
-:[];
-
-return classificarJogada(
-numero,
-{
-valido:true,
-blocos2,
-blocos1
-}
+const cobertura =
+numerosDaJogada(
+snapshot.centros2,
+snapshot.centro1,
+snapshot.rx
 );
 
+const green =
+cobertura.includes(
+numero
+);
+
+return {
+
+green,
+
+tipo:
+green
+?"GREEN"
+:"LOSS"
+
+};
+
 }
 
 
-function garantirPendentes(
-configs,
-auto
+/* ============================================================
+   BACKTEST RX
+============================================================ */
+
+function backtestRX(
+base,
+rx
 ){
 
-const sig=
-assinatura();
+const arr =
+limitar35(base);
+
+if(arr.length<4){
+
+return {
+rx,
+greens:0,
+loss:0,
+total:0,
+taxa:0,
+score:0
+};
+
+}
+
+let greens=0;
+let loss=0;
+
+const inicio =
+Math.max(
+1,
+arr.length-JANELA_MOMENTO
+);
+
+for(
+let i=inicio;
+i<arr.length;
+i++
+){
+
+const passado =
+arr.slice(
+0,
+i
+);
+
+const snap =
+criarSnapshot(
+passado,
+rx
+);
+
+if(!snap)
+continue;
+
+const r =
+classificarSnapshot(
+arr[i],
+snap
+);
+
+if(r.green)
+greens++;
+
+else
+loss++;
+
+}
+
+const total =
+greens+loss;
+
+const taxa =
+total
+?greens/total*100
+:0;
+
+const score =
+greens-
+loss*.90+
+taxa*.03;
+
+return {
+rx,
+greens,
+loss,
+total,
+taxa,
+score
+};
+
+}
+
+
+/* ============================================================
+   ESCOLHA AUTOMÁTICA RX
+============================================================ */
+
+function escolherRXAutomatico(base){
+
+const resultados =
+RX_LIST
+.map(rx=>
+backtestRX(
+base,
+rx
+)
+);
+
+resultados.sort(
+(a,b)=>
+b.score-a.score ||
+b.taxa-a.taxa ||
+a.rx-b.rx
+);
+
+return {
+
+rx:
+resultados.length
+?resultados[0].rx
+:6,
+
+resultados
+
+};
+
+}
+
+
+/* ============================================================
+   CRIA TODOS OS PENDENTES
+============================================================ */
+
+function gerarPendentesAtuais(){
+
+if(!historico.length){
+
+estado.pendentes.AUTO=null;
+
+RX_LIST.forEach(rx=>{
+estado.pendentes[rx]=null;
+});
+
+salvarEstado();
+return;
+
+}
+
+const auto =
+escolherRXAutomatico(
+historico
+);
+
+estado.pendentes.AUTO =
+criarSnapshot(
+historico,
+auto.rx
+);
 
 RX_LIST.forEach(rx=>{
 
-if(
-estado.pendentes[rx] &&
-estado.pendentes[rx]
-.assinatura===sig
-)
-return;
-
-estado.pendentes[rx]=
-snapshot(
-configs[rx]
+estado.pendentes[rx] =
+criarSnapshot(
+historico,
+rx
 );
 
 });
-
-if(
-!estado.pendentes.AUTO ||
-estado.pendentes.AUTO
-.assinatura!==sig
-){
-
-estado.pendentes.AUTO=
-snapshot(auto);
-
-}
 
 salvarEstado();
 
@@ -4177,91 +2119,100 @@ salvarEstado();
 
 
 /* ============================================================
-   AVALIA PENDENTES
+   GARANTIR PENDENTES
+============================================================ */
+
+function garantirPendentes(){
+
+const assinatura =
+assinaturaHistorico(
+historico
+);
+
+const p =
+estado.pendentes.AUTO;
+
+if(
+!p ||
+p.assinatura!==assinatura
+){
+
+gerarPendentesAtuais();
+
+}
+
+}
+
+
+/* ============================================================
+   TIMELINE
+============================================================ */
+
+function adicionarTimeline(
+chave,
+registro
+){
+
+if(
+!Array.isArray(
+estado.timelines[chave]
+)
+)
+estado.timelines[chave]=[];
+
+estado.timelines[chave]
+.push(registro);
+
+estado.timelines[chave] =
+estado.timelines[chave]
+.slice(-MAX_TIMELINE);
+
+}
+
+
+/* ============================================================
+   AVALIAR PENDENTES
 ============================================================ */
 
 function avaliarPendentes(numero){
 
-const sig=
-assinatura();
-
 ["AUTO",4,5,6]
-.forEach(k=>{
+.forEach(chave=>{
 
-const p=
-estado.pendentes[k];
+const p =
+estado.pendentes[chave];
 
-if(!p){
-
-estado.timelines[k]
-.push({
-
-resultado:numero,
-semJogada:true,
-green:null,
-tipo:"SEM_JOGADA",
-lado:0,
-hora:Date.now()
-
-});
-
-estado.timelines[k]=
-estado.timelines[k]
-.slice(-MAX_TIMELINE);
-
+if(!p)
 return;
 
-}
-
-if(
-p.assinatura!==sig
-){
-
-estado.timelines[k]
-.push({
-
-resultado:numero,
-semJogada:true,
-green:null,
-tipo:"SEM_JOGADA",
-lado:0,
-hora:Date.now()
-
-});
-
-estado.timelines[k]=
-estado.timelines[k]
-.slice(-MAX_TIMELINE);
-
-estado.pendentes[k]=null;
-
-return;
-
-}
-
-const r=
+const r =
 classificarSnapshot(
 numero,
 p
 );
 
-estado.timelines[k]
-.push({
+adicionarTimeline(
+chave,
+{
 
-resultado:numero,
-semJogada:false,
-green:r.green,
-tipo:r.tipo,
-lado:r.lado,
-hora:Date.now()
+numero,
 
-});
+resultado:
+r.tipo,
 
-estado.timelines[k]=
-estado.timelines[k]
-.slice(-MAX_TIMELINE);
+rx:
+p.rx,
 
-estado.pendentes[k]=null;
+centros2:
+Array.isArray(p.centros2)
+?p.centros2.slice()
+:[],
+
+centro1:
+p.centro1
+
+}
+);
 
 });
 
@@ -4271,48 +2222,55 @@ salvarEstado();
 
 
 /* ============================================================
-   DUPLAS VISUAIS
+   VISUAL — CHAVE ATUAL
 ============================================================ */
 
-function capturarAvaliacoesDoResultado(
-numero
+function chaveVisualAtual(){
+
+return estado.modo==="AUTO"
+?"AUTO"
+:estado.manualRX;
+
+}
+
+
+/* ============================================================
+   AVALIAR CONTRA SNAPSHOT CONGELADO
+============================================================ */
+
+function avaliarContraSnapshots(
+numero,
+snapshots
 ){
 
-const resultado={};
+const resultado =
+avaliacoesVazias();
 
 ["AUTO",4,5,6]
 .forEach(k=>{
 
-const lista=
-estado.timelines[k]||[];
+const p =
+snapshots
+?snapshots[k]
+:null;
 
-const item=
-lista[
-lista.length-1
-];
+if(!p){
 
-if(
-!item ||
-item.resultado!==numero
-){
-
-resultado[k]=null;
+resultado[k]="SEM";
 return;
 
 }
 
-if(item.semJogada){
+const r =
+classificarSnapshot(
+numero,
+p
+);
 
-resultado[k]="SEM";
-
-}else{
-
-resultado[k]=
-item.green
+resultado[k] =
+r.green
 ?"GREEN"
 :"LOSS";
-
-}
 
 });
 
@@ -4321,102 +2279,597 @@ return resultado;
 }
 
 
-function registrarNumeroDupla(numero){
+/* ============================================================
+   ESTADO VISUAL DA DUPLA
+============================================================ */
+
+function estadoDuplaVisual(
+d,
+chave
+){
+
+if(!d)
+return "SEM";
+
+if(
+d.resultado===null ||
+d.resultado===undefined
+)
+return "ABERTA";
+
+const primeira =
+d.avaliacoes
+?d.avaliacoes[chave]
+:null;
+
+if(primeira==="GREEN")
+return "GREEN";
+
+if(
+primeira===null ||
+primeira==="SEM"
+)
+return "SEM";
+
+if(primeira==="LOSS"){
+
+if(
+d.g1===null ||
+d.g1===undefined
+)
+return "AGUARDANDO_G1";
+
+const segunda =
+d.avaliacoesG1
+?d.avaliacoesG1[chave]
+:null;
+
+if(segunda==="GREEN")
+return "G1_GREEN";
+
+if(segunda==="LOSS")
+return "G1_LOSS";
+
+return "SEM";
+
+}
+
+return "SEM";
+
+}
+
+
+/* ============================================================
+   CONTROLE VISUAL ANTES DO MOTOR
+============================================================ */
+
+function processarVisualAntes(numero){
+
+const chave =
+chaveVisualAtual();
+
+const snapshotsAntes =
+capturarSnapshotsAtuais();
+
+
+/*
+   NÃO EXISTE QUADRO.
+   O número atual será a primeira base.
+*/
 
 if(!duplasVisual.length){
 
-duplasVisual.push({
+return {
 
-gatilho:numero,
-resultado:null,
+tipo:"CRIAR_BASE",
 
-avaliacoes:{
-AUTO:null,
-4:null,
-5:null,
-6:null
-}
+numero
 
-});
-
-salvarDuplasVisual();
-
-return;
+};
 
 }
 
-const ultima=
+const ultima =
 duplasVisual[
 duplasVisual.length-1
 ];
+
+
+/*
+   QUADRO ABERTO.
+
+   Exemplo:
+   quadro está 20 → —
+
+   entra 27.
+
+   O 27 testa a jogada congelada do 20.
+*/
 
 if(
 ultima.resultado===null ||
 ultima.resultado===undefined
 ){
 
-ultima.resultado=
-numero;
+/*
+   Se o snapshot ainda não existia,
+   usa o pendente que estava ativo
+   imediatamente antes do número atual.
+*/
 
-ultima.avaliacoes=
-capturarAvaliacoesDoResultado(
-numero
+if(
+!pacoteTemSnapshot(
+ultima.snapshotGatilho
+)
+){
+
+ultima.snapshotGatilho =
+copiarPacoteSnapshots(
+snapshotsAntes
 );
 
-}else{
-
-duplasVisual.push({
-
-gatilho:numero,
-resultado:null,
-
-avaliacoes:{
-AUTO:null,
-4:null,
-5:null,
-6:null
 }
 
-});
+ultima.resultado =
+numero;
+
+ultima.avaliacoes =
+avaliarContraSnapshots(
+numero,
+ultima.snapshotGatilho
+);
+
+/*
+   IMPORTANTE:
+
+   Ainda NÃO temos aqui a jogada do número
+   que acabou de sair.
+
+   Exemplo:
+   entrou 27.
+
+   A jogada do 27 só será criada depois que
+   o motor processar o 27 e fizer o render.
+
+   Então snapshotResultado será preenchido
+   em processarVisualDepois().
+*/
+
+salvarDuplasVisual();
+
+return {
+
+tipo:"PRIMEIRO_RESULTADO",
+
+numero,
+
+quadro:ultima,
+
+chave
+
+};
 
 }
 
-duplasVisual=
+
+/*
+   QUADRO JÁ TEM PRIMEIRO RESULTADO.
+
+   Se perdeu de primeira e ainda não possui G1,
+   o número atual será SOMENTE o G1 desse quadro.
+*/
+
+const situacao =
+estadoDuplaVisual(
+ultima,
+chave
+);
+
+if(
+situacao==="AGUARDANDO_G1"
+){
+
+ultima.g1 =
+numero;
+
+/*
+   O G1 testa a MESMA jogada congelada
+   do gatilho original.
+
+   Exemplo:
+   20 → 27 perdeu.
+   entra 8.
+
+   O 8 testa a jogada do 20.
+*/
+
+ultima.avaliacoesG1 =
+avaliarContraSnapshots(
+numero,
+ultima.snapshotGatilho
+);
+
+salvarDuplasVisual();
+
+return {
+
+tipo:"G1",
+
+numero,
+
+quadro:ultima,
+
+/*
+   O primeiro resultado será a base
+   do próximo quadro.
+
+   20 → 27 → 8
+        ↑
+        27 será a próxima base.
+*/
+
+proximoGatilho:
+ultima.resultado,
+
+snapshotProximo:
+copiarPacoteSnapshots(
+ultima.snapshotResultado
+)
+
+};
+
+}
+
+
+/*
+   Se chegou aqui, o quadro anterior
+   já terminou sem precisar de G1
+   ou já está fechado.
+
+   O número atual vira uma base normal.
+*/
+
+return {
+
+tipo:"CRIAR_BASE",
+
+numero
+
+};
+
+}
+
+
+/* ============================================================
+   CONTROLE VISUAL DEPOIS DO MOTOR
+============================================================ */
+
+function processarVisualDepois(
+numero,
+controle
+){
+
+if(!controle)
+return;
+
+
+/*
+   NOVA BASE NORMAL.
+
+   Depois que o motor processou o número,
+   estado.pendentes contém a jogada
+   gerada por esse próprio número.
+
+   Exemplo:
+   entrou 20.
+   congelamos agora a jogada do 20.
+*/
+
+if(
+controle.tipo==="CRIAR_BASE"
+){
+
+const snapshots =
+capturarSnapshotsAtuais();
+
+duplasVisual.push(
+
+criarQuadroVisual(
+numero,
+snapshots
+)
+
+);
+
+duplasVisual =
 duplasVisual.slice(-7);
 
 salvarDuplasVisual();
 
+return;
+
 }
 
+
+/*
+   PRIMEIRO RESULTADO.
+
+   Exemplo:
+   20 → 27
+
+   Depois do motor processar o 27,
+   estado.pendentes contém a jogada
+   gerada pelo 27.
+
+   Guardamos essa jogada AGORA,
+   porque se o quadro do 20 precisar
+   de G1, o 27 será a próxima base.
+*/
+
+if(
+controle.tipo===
+"PRIMEIRO_RESULTADO"
+){
+
+const snapshotsDoResultado =
+capturarSnapshotsAtuais();
+
+controle.quadro.snapshotResultado =
+copiarPacoteSnapshots(
+snapshotsDoResultado
+);
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+
+/*
+   G1 TERMINOU.
+
+   Exemplo:
+
+   20 → 27 → 8
+
+   O 8 serviu SOMENTE para fechar
+   o quadro do 20.
+
+   Agora abrimos:
+
+   27 → —
+
+   usando a jogada do 27 que já havia
+   sido congelada quando o 27 saiu.
+
+   O 8 NÃO entra nesse novo quadro.
+*/
+
+if(
+controle.tipo==="G1"
+){
+
+duplasVisual.push(
+
+criarQuadroVisual(
+controle.proximoGatilho,
+controle.snapshotProximo
+)
+
+);
+
+duplasVisual =
+duplasVisual.slice(-7);
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+}
+
+
+/* ============================================================
+   ADICIONAR NÚMERO
+============================================================ */
+
+function adicionarNumero(numero){
+
+numero =
+Number(numero);
+
+if(
+!Number.isInteger(numero) ||
+numero<0 ||
+numero>36
+)
+return;
+
+
+/*
+   1 — O VISUAL CAPTURA O ESTADO ANTES
+       DO MOTOR CONSUMIR A JOGADA.
+*/
+
+const controleVisual =
+processarVisualAntes(
+numero
+);
+
+
+/*
+   2 — MOTOR ORIGINAL AVALIA O NÚMERO.
+*/
+
+avaliarPendentes(
+numero
+);
+
+
+/*
+   3 — ENTRA NO HISTÓRICO.
+*/
+
+historico.push(
+numero
+);
+
+historico =
+historico.slice(
+-MAX_HISTORICO
+);
+
+salvarHistorico();
+
+
+/*
+   4 — GERA AS NOVAS JOGADAS
+       PARA O NÚMERO QUE ACABOU DE SAIR.
+*/
+
+gerarPendentesAtuais();
+
+
+/*
+   5 — GUARDA A JOGADA DO NÚMERO
+       OU ABRE O PRÓXIMO QUADRO.
+*/
+
+processarVisualDepois(
+numero,
+controleVisual
+);
+
+salvarEstado();
+
+render();
+
+}
+
+
+/* ============================================================
+   APAGAR ÚLTIMO NÚMERO DO VISUAL
+============================================================ */
 
 function apagarUltimoDaDupla(numero){
 
 if(!duplasVisual.length)
 return;
 
-const ultima=
+const ultima =
 duplasVisual[
 duplasVisual.length-1
 ];
 
+
+/*
+   CASO:
+
+   20 → 27 → 8
+   27 → —
+
+   Se apagar o 8, o quadro 27 → —
+   precisa desaparecer e o quadro anterior
+   volta para:
+
+   20 → 27
+*/
+
 if(
-ultima.resultado===numero
+(
+ultima.resultado===null ||
+ultima.resultado===undefined
+) &&
+duplasVisual.length>=2
 ){
 
-ultima.resultado=null;
+const anterior =
+duplasVisual[
+duplasVisual.length-2
+];
 
-ultima.avaliacoes={
-AUTO:null,
-4:null,
-5:null,
-6:null
-};
+if(
+anterior &&
+anterior.g1===numero &&
+ultima.gatilho===
+anterior.resultado
+){
+
+duplasVisual.pop();
+
+anterior.g1=null;
+
+anterior.avaliacoesG1 =
+avaliacoesVazias();
+
+anterior.proximoPreparado=false;
 
 salvarDuplasVisual();
 
 return;
 
 }
+
+}
+
+
+/*
+   G1 DO ÚLTIMO QUADRO.
+*/
+
+if(
+ultima.g1!==null &&
+ultima.g1!==undefined &&
+ultima.g1===numero
+){
+
+ultima.g1=null;
+
+ultima.avaliacoesG1 =
+avaliacoesVazias();
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+
+/*
+   PRIMEIRO RESULTADO.
+*/
+
+if(
+ultima.resultado!==null &&
+ultima.resultado!==undefined &&
+ultima.resultado===numero
+){
+
+ultima.resultado=null;
+
+ultima.g1=null;
+
+ultima.avaliacoes =
+avaliacoesVazias();
+
+ultima.avaliacoesG1 =
+avaliacoesVazias();
+
+ultima.snapshotResultado =
+snapshotsVazios();
+
+salvarDuplasVisual();
+
+return;
+
+}
+
+
+/*
+   BASE ABERTA.
+*/
 
 if(
 (
@@ -4434,90 +2887,121 @@ return;
 
 }
 
-salvarDuplasVisual();
-
 }
 
 
 /* ============================================================
-   INSERÇÃO
+   APAGAR ÚLTIMO
 ============================================================ */
 
-function adicionarNumero(numero){
+function apagarUltimo(){
 
-avaliarPendentes(
-numero
-);
+if(!historico.length)
+return;
 
-registrarNumeroDupla(
-numero
-);
+const numero =
+historico[
+historico.length-1
+];
 
-historico.push(numero);
-
-historico=
-historico.slice(-35);
+historico.pop();
 
 salvarHistorico();
+
+apagarUltimoDaDupla(
+numero
+);
+
+/*
+   O pendente atual precisa voltar
+   a representar o histórico restante.
+*/
+
+gerarPendentesAtuais();
 
 render();
 
 }
 
 
-function extrairNumeros(texto){
+/* ============================================================
+   APAGAR TUDO
+============================================================ */
 
-const encontrados=
-texto.match(
-/\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
-);
+function apagarTudo(){
 
-if(!encontrados)
-return [];
+historico=[];
 
-return encontrados
-.map(Number)
-.slice(-35);
+duplasVisual=[];
 
-}
-
-
-function inserirHistorico(){
-
-const campo=
-document.getElementById(
-"entradaHistorico"
-);
-
-const numeros=
-extrairNumeros(
-campo.value
-);
-
-if(!numeros.length)
-return;
-
-historico=
-numeros.slice(-35);
-
-estado.pendentes={
+estado.pendentes = {
 AUTO:null,
 4:null,
 5:null,
 6:null
 };
 
-estado.timelines={
+estado.timelines = {
 AUTO:[],
 4:[],
 5:[],
 6:[]
 };
 
-duplasVisual=[];
+salvarHistorico();
+salvarDuplasVisual();
+salvarEstado();
 
-const visual=
+render();
+
+}
+
+
+/* ============================================================
+   INSERIR HISTÓRICO
+============================================================ */
+
+function inserirHistorico(texto){
+
+if(
+typeof texto!=="string"
+)
+return;
+
+const nums =
+texto
+.split(/[^0-9]+/)
+.map(Number)
+.filter(
+n=>
+Number.isInteger(n) &&
+n>=0 &&
+n<=36
+);
+
+if(!nums.length)
+return;
+
+historico =
+nums.slice(
+-MAX_HISTORICO
+);
+
+salvarHistorico();
+
+
+/*
+   Histórico colado não possui os snapshots
+   históricos originais de cada giro.
+
+   Portanto não inventamos G1.
+   Apenas montamos referência visual simples.
+*/
+
+const visual =
 historico.slice(-14);
+
+duplasVisual=[];
 
 for(
 let i=0;
@@ -4527,95 +3011,40 @@ i+=2
 
 duplasVisual.push({
 
-gatilho:visual[i],
+gatilho:
+visual[i],
 
 resultado:
 i+1<visual.length
 ?visual[i+1]
 :null,
 
-avaliacoes:{
-AUTO:null,
-4:null,
-5:null,
-6:null
-}
+g1:null,
+
+avaliacoes:
+avaliacoesVazias(),
+
+avaliacoesG1:
+avaliacoesVazias(),
+
+snapshotGatilho:
+snapshotsVazios(),
+
+snapshotResultado:
+snapshotsVazios(),
+
+proximoPreparado:false
 
 });
 
 }
 
-salvarDuplasVisual();
-salvarHistorico();
-salvarEstado();
-
-campo.value="";
-
-render();
-
-}
-
-
-function apagarUltimo(){
-
-if(!historico.length)
-return;
-
-const removido=
-historico[
-historico.length-1
-];
-
-apagarUltimoDaDupla(
-removido
-);
-
-historico.pop();
-
-estado.pendentes={
-AUTO:null,
-4:null,
-5:null,
-6:null
-};
-
-salvarHistorico();
-salvarEstado();
-
-render();
-
-}
-
-
-function apagarTudo(){
-
-if(
-!confirm(
-"Apagar histórico?"
-)
-)
-return;
-
-historico=[];
-duplasVisual=[];
-
-estado.pendentes={
-AUTO:null,
-4:null,
-5:null,
-6:null
-};
-
-estado.timelines={
-AUTO:[],
-4:[],
-5:[],
-6:[]
-};
+duplasVisual =
+duplasVisual.slice(-7);
 
 salvarDuplasVisual();
-salvarHistorico();
-salvarEstado();
+
+gerarPendentesAtuais();
 
 render();
 
@@ -4623,267 +3052,243 @@ render();
 
 
 /* ============================================================
-   INTERFACE
+   ESTATÍSTICAS DA TIMELINE
 ============================================================ */
 
-document.body.innerHTML="";
+function estatisticasTimeline(
+chave
+){
 
-document.body.style.cssText=
-"margin:0;"+
-"background:#101010;"+
-"color:#fff;"+
-"font-family:Arial,sans-serif;";
+const lista =
+estado.timelines[chave]||[];
 
-const app=
-document.createElement("div");
+let greens=0;
+let loss=0;
 
-app.innerHTML=`
+lista.forEach(x=>{
 
-<style>
+if(x.resultado==="GREEN")
+greens++;
 
-*{box-sizing:border-box}
+else if(
+x.resultado==="LOSS"
+)
+loss++;
 
-body{
-background:#101010
+});
+
+const total =
+greens+loss;
+
+return {
+
+greens,
+loss,
+total,
+
+taxa:
+total
+?greens/total*100
+:0
+
+};
+
 }
 
-.app{
-max-width:900px;
-margin:auto;
-padding:7px
+
+/* ============================================================
+   JOGADA ATUAL
+============================================================ */
+
+function jogadaAtual(){
+
+garantirPendentes();
+
+const chave =
+chaveVisualAtual();
+
+return estado.pendentes[
+chave
+];
+
 }
 
-h2{
-text-align:center;
-font-size:20px;
-margin:5px
+
+/* ============================================================
+   TEXTO DA JOGADA
+============================================================ */
+
+function textoJogada(snapshot){
+
+if(!snapshot)
+return "SEM JOGADA";
+
+const c2 =
+Array.isArray(snapshot.centros2)
+?snapshot.centros2
+:[];
+
+const partes=[];
+
+if(c2.length){
+
+partes.push(
+"ALVOS: "+
+c2.join(" • ")
+);
+
 }
 
-.painel{
-background:#1c1c1f;
-border:1px solid #414141;
-border-radius:10px;
-padding:8px;
-margin-bottom:7px
+if(
+snapshot.centro1!==null &&
+snapshot.centro1!==undefined
+){
+
+partes.push(
+"APOIO: "+
+snapshot.centro1
+);
+
 }
 
-.titulo{
-font-size:9px;
-font-weight:900;
-color:#888;
-margin-bottom:5px
+partes.push(
+"RX "+snapshot.rx
+);
+
+return partes.join(
+" | "
+);
+
 }
 
-textarea{
-width:100%;
-height:60px;
-background:#111;
-color:#fff;
-border:1px solid #555;
-border-radius:7px;
-padding:7px
+
+/* ============================================================
+   CSS
+============================================================ */
+
+function instalarCSS(){
+
+if(
+document.getElementById(
+"analisa069-css"
+)
+)
+return;
+
+const style =
+document.createElement(
+"style"
+);
+
+style.id =
+"analisa069-css";
+
+style.textContent = `
+
+#analisa069{
+position:fixed;
+z-index:2147483647;
+left:50%;
+bottom:8px;
+transform:translateX(-50%);
+width:min(980px,96vw);
+max-height:94vh;
+overflow:auto;
+box-sizing:border-box;
+font-family:Arial,Helvetica,sans-serif;
+background:#0d1014;
+color:#f2f2f2;
+border:1px solid #343b45;
+border-radius:12px;
+box-shadow:0 8px 30px rgba(0,0,0,.55);
+padding:10px;
+font-size:12px
 }
 
-.botoes{
+#analisa069 *{
+box-sizing:border-box
+}
+
+.a069-top{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:8px;
+margin-bottom:8px
+}
+
+.a069-title{
+font-size:15px;
+font-weight:800;
+letter-spacing:.4px
+}
+
+.a069-actions{
 display:flex;
 gap:5px;
-flex-wrap:wrap;
-margin-top:5px
+flex-wrap:wrap
 }
 
-button{
-cursor:pointer;
-font-family:Arial;
-font-weight:900
-}
-
-.btn{
-border:1px solid #555;
-background:#333;
+.a069-btn{
+border:1px solid #3b424d;
+background:#171c22;
 color:#fff;
 border-radius:7px;
-padding:7px 10px
+padding:6px 9px;
+font-size:11px;
+font-weight:700;
+cursor:pointer
 }
 
-.btn.verde{
-background:#17643b
+.a069-btn:hover{
+background:#222932
 }
 
-.btn.red{
-background:#762832
+.a069-btn.active{
+background:#f2f2f2;
+color:#111;
+border-color:#fff
 }
 
-.modos{
-display:flex;
-gap:4px
-}
-
-.modo{
-background:#222;
-color:#999;
-border:1px solid #555;
-border-radius:7px;
-padding:7px 11px
-}
-
-.modo.ativo{
-background:#007d98;
-border-color:#00e5ff;
-color:#fff
-}
-
-.resumo{
-display:grid;
-grid-template-columns:repeat(4,1fr);
-gap:4px;
+.a069-section{
+background:#12171d;
+border:1px solid #2c333d;
+border-radius:9px;
+padding:8px;
 margin-top:7px
 }
 
-.card{
-background:#111;
-border:1px solid #333;
-border-radius:7px;
-padding:7px;
-text-align:center
-}
-
-.card small{
-display:block;
-font-size:7px;
-color:#777;
-font-weight:900
-}
-
-.card strong{
-font-size:13px
-}
-
-.trio{
-margin-top:7px;
-background:#111;
-border:1px solid #333;
-border-radius:8px;
-padding:8px
-}
-
-.trioTitulo{
-font-size:7px;
-font-weight:900;
-color:#777;
+.a069-label{
+font-size:10px;
+font-weight:800;
+color:#9ea8b5;
+letter-spacing:.7px;
+text-transform:uppercase;
 margin-bottom:6px
 }
 
-.trioLinha{
-display:flex;
-gap:6px
-}
-
-.terminal{
-flex:1;
-border-radius:7px;
-padding:7px;
-text-align:center;
-font-size:18px;
-font-weight:900;
-background:#202020
-}
-
-.terminal.primeiro{
-border:1px solid #00e676
-}
-
-.terminal.segundo{
-border:1px solid #00b0ff
-}
-
-.terminal.terceiro{
-border:1px solid #ffc107
-}
-
-.terminal small{
-display:block;
-font-size:7px;
-color:#888;
-margin-top:3px
-}
-
-.timelineRow{
+#ultimos14{
 display:grid;
-grid-template-columns:40px 1fr 42px;
-gap:4px;
-align-items:center;
-margin-top:4px
-}
-
-.timeline{
-display:flex;
-gap:2px;
-justify-content:flex-end;
-overflow:hidden
-}
-
-.gl{
-width:15px;
-height:15px;
-min-width:15px;
-border-radius:3px;
-font-size:7px;
-display:flex;
-align-items:center;
-justify-content:center;
-font-weight:900
-}
-
-.g{
-background:#00994d
-}
-
-.l{
-background:#c62828
-}
-
-.semJogadaGL{
-width:15px;
-height:15px;
-min-width:15px;
-display:flex;
-align-items:center;
-justify-content:center;
-font-size:11px;
-font-weight:900;
-color:#777
-}
-
-.nomeTL,
-.taxaTL{
-font-size:8px;
-font-weight:900
-}
-
-.taxaTL{
-text-align:right
-}
-
-
-/* DUPLAS */
-
-.duplas14{
-display:grid;
-grid-template-columns:repeat(7,1fr);
-gap:5px;
-width:100%
+grid-template-columns:repeat(7,minmax(0,1fr));
+gap:5px
 }
 
 .dupla14{
 min-width:0;
 height:48px;
-border-radius:7px;
+border:2px solid #424a55;
+background:#181d24;
+border-radius:8px;
 display:flex;
 align-items:center;
 justify-content:center;
-gap:4px;
-background:#272727;
-border:2px solid #555
+gap:3px;
+padding:3px
+}
+
+.dupla14.aberta{
+border-color:#5e6876;
+background:#181d24
 }
 
 .dupla14.green{
@@ -4892,912 +3297,1123 @@ border-color:#00b85c
 }
 
 .dupla14.loss{
-background:rgba(198,40,40,.18);
-border-color:#d93a3a
+background:rgba(214,40,57,.18);
+border-color:#d62839
+}
+
+.dupla14.g1{
+background:rgba(255,193,7,.20);
+border-color:#ffc107
 }
 
 .dupla14.sem{
-background:#292929;
-border-color:#666
-}
-
-.dupla14.aberta{
-background:#202020;
-border-color:#777;
-border-style:dashed
+background:#181d24;
+border-color:#424a55
 }
 
 .bolaDupla{
-width:29px;
-height:29px;
-min-width:29px;
+width:27px;
+height:27px;
+min-width:27px;
 border-radius:50%;
 display:flex;
 align-items:center;
 justify-content:center;
 font-size:10px;
-font-weight:900;
+font-weight:800;
 color:#fff;
-border:2px solid #aaa
+border:1px solid rgba(255,255,255,.18)
 }
 
 .setaDupla{
 font-size:10px;
 font-weight:900;
-color:#aaa
+color:#aab2bd
 }
 
+.a069-keyboard{
+display:grid;
+grid-template-columns:repeat(10,1fr);
+gap:4px
+}
 
-/* DÚZIAS */
+.a069-num{
+height:31px;
+border:1px solid rgba(255,255,255,.14);
+border-radius:6px;
+color:#fff;
+font-size:11px;
+font-weight:800;
+cursor:pointer
+}
 
-.duziasBox{
-margin-top:7px;
-background:#111;
-border:1px solid #333;
+.a069-num.zero{
+grid-column:span 10
+}
+
+.a069-grid{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:7px
+}
+
+.a069-card{
+background:#0f1318;
+border:1px solid #29303a;
 border-radius:8px;
 padding:7px
 }
 
-.duziasLinha{
-display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:4px
+.a069-value{
+font-size:13px;
+font-weight:800;
+line-height:1.35
 }
 
-.duziaCard{
-background:#1d1d1d;
-border:1px solid #444;
-border-radius:7px;
-padding:6px;
-text-align:center
+.a069-small{
+font-size:10px;
+color:#a8b1bd;
+line-height:1.45
 }
 
-.duziaCard.forte{
-border-color:#00e676
-}
-
-.duziaCard small{
-display:block;
-font-size:7px;
-color:#888;
-font-weight:900
-}
-
-.duziaCard strong{
-font-size:14px
-}
-
-.duziaCard span{
-display:block;
-font-size:7px;
-color:#aaa;
-margin-top:2px
-}
-
-
-/* JOGADA */
-
-.jogada{
+.a069-timeline{
 display:flex;
-gap:5px;
-overflow-x:auto;
-margin-top:5px
+gap:3px;
+flex-wrap:wrap
 }
 
-.bloco{
-min-width:135px;
-background:#111;
-border:1px solid #00e5ff;
-border-radius:8px;
-padding:7px;
-text-align:center
-}
-
-.bloco.um{
-border-color:#ffc107
-}
-
-.bloco small{
-font-size:7px;
-font-weight:900;
-color:#888
-}
-
-.bloco strong{
-display:block;
-font-size:22px;
-margin:3px
-}
-
-.numeros{
-border-top:1px solid #333;
-padding-top:4px;
-font-size:9px;
-font-weight:900
-}
-
-.teclado{
-display:grid;
-grid-template-columns:repeat(6,1fr);
-gap:4px
-}
-
-.numero{
-height:37px;
-border:1px solid #666;
-border-radius:6px;
+.a069-tl{
+width:22px;
+height:22px;
+border-radius:50%;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:8px;
+font-weight:800;
 color:#fff
 }
 
-.zero{
-grid-column:span 6
+.a069-green{
+outline:2px solid #00c66b
 }
 
-.status{
-font-size:9px;
-font-weight:900;
-color:#00e676;
-margin-top:5px
+.a069-loss{
+outline:2px solid #e33648
 }
 
-@media(max-width:600px){
-
-.resumo{
-grid-template-columns:repeat(2,1fr)
+.a069-input{
+width:100%;
+min-height:52px;
+resize:vertical;
+background:#090c10;
+border:1px solid #343c47;
+border-radius:7px;
+color:#fff;
+padding:7px;
+font-size:11px
 }
 
-.duplas14{
-grid-template-columns:repeat(4,1fr)
+.a069-row{
+display:flex;
+gap:5px;
+align-items:center;
+flex-wrap:wrap
+}
+
+.a069-badge{
+display:inline-block;
+padding:3px 6px;
+border-radius:5px;
+background:#242b34;
+font-size:10px;
+font-weight:800
+}
+
+@media(max-width:650px){
+
+#analisa069{
+width:98vw;
+bottom:3px;
+padding:6px
+}
+
+#ultimos14{
+grid-template-columns:repeat(4,minmax(0,1fr))
+}
+
+.dupla14{
+height:43px;
+gap:2px;
+padding:2px
+}
+
+.bolaDupla{
+width:22px;
+height:22px;
+min-width:22px;
+font-size:8px
+}
+
+.setaDupla{
+font-size:8px
+}
+
+.a069-grid{
+grid-template-columns:1fr
+}
+
+.a069-keyboard{
+grid-template-columns:repeat(8,1fr)
+}
+
+.a069-num.zero{
+grid-column:span 8
 }
 
 }
 
-</style>
+`;
+
+document.head.appendChild(
+style
+);
+
+}
 
 
-<div class="app">
+/* ============================================================
+   HTML
+============================================================ */
 
-<h2>ANÁLISE 0 • 6 • 9</h2>
+function instalarHTML(){
 
+if(
+document.getElementById(
+"analisa069"
+)
+)
+return;
 
-<div class="painel">
+const root =
+document.createElement(
+"div"
+);
 
-<textarea
-id="entradaHistorico"
-placeholder="Cole o histórico — serão mantidos somente os últimos 35"
-></textarea>
+root.id =
+"analisa069";
 
-<div class="botoes">
+root.innerHTML = `
 
-<button id="inserir" class="btn verde">
-INSERIR
-</button>
+<div class="a069-top">
 
-<button id="apagar" class="btn">
-APAGAR ÚLTIMO
-</button>
-
-<button id="limpar" class="btn red">
-APAGAR TUDO
-</button>
-
+<div class="a069-title">
+ANALISADOR 0 • 6 • 9
 </div>
 
-<div id="status" class="status">
-PRONTO
-</div>
+<div class="a069-actions">
 
-</div>
-
-
-<div class="painel">
-
-<div class="titulo">
-MOTOR
-</div>
-
-<div class="modos">
-
-<button id="auto" class="modo">
+<button
+class="a069-btn"
+id="modoAuto"
+>
 AUTO
 </button>
 
-<button id="rx4" class="modo">
-4
+<button
+class="a069-btn"
+id="rx4"
+>
+RX4
 </button>
 
-<button id="rx5" class="modo">
-5
+<button
+class="a069-btn"
+id="rx5"
+>
+RX5
 </button>
 
-<button id="rx6" class="modo">
-6
+<button
+class="a069-btn"
+id="rx6"
+>
+RX6
+</button>
+
+<button
+class="a069-btn"
+id="apagarUltimo"
+>
+⌫
+</button>
+
+<button
+class="a069-btn"
+id="apagarTudo"
+>
+LIMPAR
 </button>
 
 </div>
 
+</div>
 
-<div id="resumo" class="resumo"></div>
 
-<div id="trio" class="trio"></div>
+<div class="a069-section">
 
-<div id="duzias" class="duziasBox"></div>
+<div class="a069-label">
+7 QUADROS — GREEN / LOSS / G1
+</div>
 
-<div id="timelineAUTO" class="timelineRow"></div>
-<div id="timeline4" class="timelineRow"></div>
-<div id="timeline5" class="timelineRow"></div>
-<div id="timeline6" class="timelineRow"></div>
+<div id="ultimos14"></div>
 
 </div>
 
 
-<div class="painel">
+<div class="a069-section">
 
-<div class="titulo">
-ÚLTIMOS 14 • DUPLAS
+<div class="a069-label">
+JOGADA ATUAL
 </div>
 
 <div
-id="ultimos14"
-class="duplas14">
+class="a069-value"
+id="jogadaAtual"
+>
+—
+</div>
+
+<div
+class="a069-small"
+id="infoAtual"
+>
+—
 </div>
 
 </div>
 
 
-<div class="painel">
+<div class="a069-section">
 
-<div class="titulo">
-JOGADA
-</div>
-
-<div id="jogada"></div>
-
-</div>
-
-
-<div class="painel">
-
-<div class="titulo">
+<div class="a069-label">
 TECLADO
 </div>
 
 <div
-id="teclado"
-class="teclado">
+class="a069-keyboard"
+id="teclado069"
+></div>
+
 </div>
+
+
+<div class="a069-grid">
+
+<div class="a069-section">
+
+<div class="a069-label">
+MOMENTO 14
+</div>
+
+<div
+class="a069-small"
+id="momento14"
+></div>
+
+</div>
+
+
+<div class="a069-section">
+
+<div class="a069-label">
+DESEMPENHO
+</div>
+
+<div
+class="a069-small"
+id="desempenho"
+></div>
 
 </div>
 
 </div>
+
+
+<div class="a069-section">
+
+<div class="a069-label">
+TIMELINE
+</div>
+
+<div
+class="a069-timeline"
+id="timeline069"
+></div>
+
+</div>
+
+
+<div class="a069-section">
+
+<div class="a069-label">
+COLAR HISTÓRICO
+</div>
+
+<textarea
+class="a069-input"
+id="historicoInput"
+placeholder="Cole números separados por espaço, vírgula ou quebra de linha..."
+></textarea>
+
+<div
+class="a069-row"
+style="margin-top:5px"
+>
+
+<button
+class="a069-btn"
+id="inserirHistorico"
+>
+INSERIR
+</button>
+
+<span
+class="a069-small"
+id="qtdHistorico"
+></span>
+
+</div>
+
+</div>
+
 `;
 
-document.body.appendChild(app);
+document.body.appendChild(
+root
+);
 
-
-/* ============================================================
-   EVENTOS
-============================================================ */
-
-document
-.getElementById("inserir")
-.onclick=
-inserirHistorico;
-
-document
-.getElementById("apagar")
-.onclick=
-apagarUltimo;
-
-document
-.getElementById("limpar")
-.onclick=
-apagarTudo;
-
-document
-.getElementById("auto")
-.onclick=()=>{
-
-estado.modo="AUTO";
-
-salvarEstado();
-render();
-
-};
-
-RX_LIST.forEach(rx=>{
-
-document
-.getElementById(
-"rx"+rx
-)
-.onclick=()=>{
-
-estado.modo="MANUAL";
-estado.manualRX=rx;
-
-salvarEstado();
-render();
-
-};
-
-});
+}
 
 
 /* ============================================================
    TECLADO
 ============================================================ */
 
-const teclado=
+function montarTeclado(){
+
+const area =
 document.getElementById(
-"teclado"
+"teclado069"
 );
+
+if(!area)
+return;
+
+area.innerHTML="";
 
 for(let n=1;n<=36;n++){
 
-const b=
+const b =
 document.createElement(
 "button"
 );
 
-b.className="numero";
-b.textContent=n;
+b.className =
+"a069-num";
 
-b.style.background=
+b.textContent =
+String(n);
+
+b.style.background =
 corRoleta(n);
 
-b.onclick=()=>
-adicionarNumero(n);
+b.addEventListener(
+"click",
+()=>adicionarNumero(n)
+);
 
-teclado.appendChild(b);
+area.appendChild(
+b
+);
 
 }
 
-const zero=
+const zero =
 document.createElement(
 "button"
 );
 
-zero.className=
-"numero zero";
+zero.className =
+"a069-num zero";
 
-zero.textContent="0";
+zero.textContent =
+"0";
 
-zero.style.background=
+zero.style.background =
 corRoleta(0);
 
-zero.onclick=()=>
-adicionarNumero(0);
+zero.addEventListener(
+"click",
+()=>adicionarNumero(0)
+);
 
-teclado.appendChild(zero);
-
-
-/* ============================================================
-   TIMELINE
-============================================================ */
-
-function renderTimeline(
-id,
-nome,
-lista
-){
-
-const st=
-statsTimeline(lista);
-
-const ultimos=
-lista.slice(-20);
-
-document
-.getElementById(id)
-.innerHTML=
-
-'<div class="nomeTL">'+
-nome+
-'</div>'+
-
-'<div class="timeline">'+
-
-ultimos.map(x=>{
-
-if(x.semJogada){
-
-return (
-'<span class="semJogadaGL">—</span>'
+area.appendChild(
+zero
 );
 
 }
 
-return (
-
-'<span class="gl '+
-(x.green?"g":"l")+
-'">'+
-(x.green?"G":"L")+
-'</span>'
-
-);
-
-}).join("")+
-
-'</div>'+
-
-'<div class="taxaTL">'+
-(
-st.total
-?st.taxa20.toFixed(0)+"%"
-:"—"
-)+
-'</div>';
-
-}
-
 
 /* ============================================================
-   TRIO
-============================================================ */
-
-function renderTrio(momento){
-
-const itens=
-momento.terminais
-.ranking
-.slice(0,3);
-
-document
-.getElementById("trio")
-.innerHTML=
-
-'<div class="trioTitulo">'+
-'TERMINAIS DO MOMENTO • COM 1 VIZINHO DE CADA LADO'+
-'</div>'+
-
-'<div class="trioLinha">'+
-
-itens.map((x,i)=>
-
-'<div class="terminal '+
-(
-i===0
-?"primeiro"
-:(i===1
-?"segundo"
-:"terceiro")
-)+
-'">'+
-
-x.terminal+
-
-'<small>'+
-'FORÇA '+
-x.score.toFixed(1)+
-'</small>'+
-
-'</div>'
-
-).join("")+
-
-'</div>';
-
-}
-
-
-/* ============================================================
-   DÚZIAS
-============================================================ */
-
-function renderDuzias(momento){
-
-const info=
-momento.duziasFisicas;
-
-const ranking=
-info.ranking;
-
-document
-.getElementById("duzias")
-.innerHTML=
-
-'<div class="trioTitulo">'+
-'CONCENTRAÇÃO FÍSICA DAS DÚZIAS • AUXILIAR DO RAIO X'+
-'</div>'+
-
-'<div class="duziasLinha">'+
-
-ranking.map((x,i)=>
-
-'<div class="duziaCard '+
-(i===0?"forte":"")+
-'">'+
-
-'<small>'+
-x.duzia+
-'ª DÚZIA'+
-'</small>'+
-
-'<strong>'+
-(x.score*100).toFixed(0)+
-'%'+
-'</strong>'+
-
-'<span>'+
-x.contagem+
-'/14 • FÍSICA '+
-(x.fisica*100).toFixed(0)+
-'%'+
-'</span>'+
-
-'</div>'
-
-).join("")+
-
-'</div>';
-
-}
-
-
-/* ============================================================
-   JOGADA
-============================================================ */
-
-function renderJogada(config){
-
-const area=
-document.getElementById(
-"jogada"
-);
-
-if(
-!config ||
-!config.valido
-){
-
-area.innerHTML=
-'<div style="color:#777">AGUARDANDO DADOS</div>';
-
-return;
-
-}
-
-const dois=
-config.jogada
-.blocos2
-.map(b=>
-
-'<div class="bloco">'+
-'<small>2 VIZINHOS DO</small>'+
-'<strong>'+b.centro+'</strong>'+
-'<div class="numeros">'+
-b.numeros.join(" • ")+
-'</div>'+
-'</div>'
-
-).join("");
-
-const um=
-config.jogada
-.blocos1
-.map(b=>
-
-'<div class="bloco um">'+
-'<small>1 VIZINHO DO</small>'+
-'<strong>'+b.centro+'</strong>'+
-'<div class="numeros">'+
-b.numeros.join(" • ")+
-'</div>'+
-'</div>'
-
-).join("");
-
-area.innerHTML=
-
-'<div class="jogada">'+
-dois+
-'</div>'+
-
-'<div class="jogada">'+
-um+
-'</div>';
-
-}
-
-
-/* ============================================================
-   DUPLAS FIXAS
+   RENDER DAS DUPLAS
 ============================================================ */
 
 function renderDuplas14(){
 
-const area=
+const area =
 document.getElementById(
 "ultimos14"
 );
 
-const lista=
+if(!area)
+return;
+
+const lista =
 duplasVisual.slice(-7);
 
-const chave=
-estado.modo==="AUTO"
-?"AUTO"
-:estado.manualRX;
+const chave =
+chaveVisualAtual();
 
 let html="";
 
 lista.forEach(d=>{
 
+const situacao =
+estadoDuplaVisual(
+d,
+chave
+);
+
 let classe="sem";
 
 if(
-d.resultado===null ||
-d.resultado===undefined
-){
-
+situacao==="ABERTA"
+)
 classe="aberta";
 
-}else{
-
-const avaliacoes=
-d.avaliacoes||{};
-
-const avaliacao=
-avaliacoes[chave] ||
-d.avaliacao ||
-null;
-
-if(avaliacao==="GREEN")
+else if(
+situacao==="GREEN"
+)
 classe="green";
 
-else if(avaliacao==="LOSS")
+else if(
+situacao==="AGUARDANDO_G1"
+)
+classe="loss";
+
+else if(
+situacao==="G1_GREEN"
+)
+classe="g1";
+
+else if(
+situacao==="G1_LOSS"
+)
 classe="loss";
 
 else
 classe="sem";
 
-}
 
-html+=
-
+html +=
 '<div class="dupla14 '+
 classe+
-'">'+
+'">';
 
+
+/* BASE */
+
+html +=
 '<div class="bolaDupla" style="background:'+
 corRoleta(d.gatilho)+
 '">'+
 d.gatilho+
-'</div>'+
+'</div>';
 
-'<span class="setaDupla">›</span>'+
 
-(
+/* SETA + PRIMEIRO RESULTADO */
+
+html +=
+'<span class="setaDupla">›</span>';
+
+if(
 d.resultado!==null &&
 d.resultado!==undefined
+){
 
-?
-
+html +=
 '<div class="bolaDupla" style="background:'+
 corRoleta(d.resultado)+
 '">'+
 d.resultado+
-'</div>'
+'</div>';
 
-:
+}else{
 
+html +=
 '<div class="bolaDupla" style="background:#444;color:#999">'+
 '—'+
-'</div>'
+'</div>';
 
-)+
+}
 
+
+/* G1 */
+
+if(
+d.g1!==null &&
+d.g1!==undefined
+){
+
+html +=
+'<span class="setaDupla">›</span>';
+
+html +=
+'<div class="bolaDupla" style="background:'+
+corRoleta(d.g1)+
+'">'+
+d.g1+
+'</div>';
+
+}
+
+html +=
 '</div>';
 
 });
 
-area.innerHTML=html;
+area.innerHTML =
+html;
 
 }
 
 
 /* ============================================================
-   RENDER
+   RENDER JOGADA
+============================================================ */
+
+function renderJogada(){
+
+const el =
+document.getElementById(
+"jogadaAtual"
+);
+
+const info =
+document.getElementById(
+"infoAtual"
+);
+
+if(!el || !info)
+return;
+
+const snap =
+jogadaAtual();
+
+el.textContent =
+textoJogada(
+snap
+);
+
+const chave =
+chaveVisualAtual();
+
+const est =
+estatisticasTimeline(
+chave
+);
+
+info.innerHTML =
+
+'MODO: <b>'+
+(
+estado.modo==="AUTO"
+?"AUTO"
+:"RX"+estado.manualRX
+)+
+'</b>'+
+
+' &nbsp; | &nbsp; '+
+'GREEN: <b>'+
+est.greens+
+'</b>'+
+
+' &nbsp; LOSS: <b>'+
+est.loss+
+'</b>'+
+
+' &nbsp; TAXA: <b>'+
+est.taxa.toFixed(1)+
+'%</b>';
+
+}
+
+
+/* ============================================================
+   RENDER MOMENTO
+============================================================ */
+
+function renderMomento(){
+
+const el =
+document.getElementById(
+"momento14"
+);
+
+if(!el)
+return;
+
+const momento =
+analisarMomento(
+historico
+);
+
+const terminais =
+momento.terminais.ranking
+.slice(0,3)
+.map(x=>
+'T'+x.terminal
+)
+.join(" • ");
+
+const zona =
+momento.zonas.atual ||
+"—";
+
+const dz =
+momento.duzias.ranking
+.length
+?momento.duzias.ranking[0].duzia
+:"—";
+
+el.innerHTML =
+
+'TERMINAIS: <b>'+
+(
+terminais || "—"
+)+
+'</b><br>'+
+
+'COBERTURA TERMINAIS: <b>'+
+momento.terminais.taxa.toFixed(1)+
+'%</b><br>'+
+
+'ZONA ATUAL: <b>'+
+zona+
+'</b><br>'+
+
+'ALTERNÂNCIA ZONAS: <b>'+
+momento.zonas.pctAlternancia.toFixed(1)+
+'%</b><br>'+
+
+'DÚZIA FÍSICA MAIS FORTE: <b>'+
+dz+
+'ª</b>';
+
+}
+
+
+/* ============================================================
+   RENDER DESEMPENHO RX
+============================================================ */
+
+function renderDesempenho(){
+
+const el =
+document.getElementById(
+"desempenho"
+);
+
+if(!el)
+return;
+
+const auto =
+escolherRXAutomatico(
+historico
+);
+
+let html =
+'AUTO ATUAL: <b>RX'+
+auto.rx+
+'</b><br>';
+
+auto.resultados
+.forEach(r=>{
+
+html +=
+
+'RX'+
+r.rx+
+': '+
+'<b>'+
+r.greens+
+'G</b> / '+
+'<b>'+
+r.loss+
+'L</b> — '+
+r.taxa.toFixed(1)+
+'%<br>';
+
+});
+
+el.innerHTML =
+html;
+
+}
+
+
+/* ============================================================
+   RENDER TIMELINE
+============================================================ */
+
+function renderTimeline(){
+
+const area =
+document.getElementById(
+"timeline069"
+);
+
+if(!area)
+return;
+
+const chave =
+chaveVisualAtual();
+
+const lista =
+(
+estado.timelines[chave]||
+[]
+)
+.slice(-40);
+
+let html="";
+
+lista.forEach(x=>{
+
+const classe =
+x.resultado==="GREEN"
+?"a069-green"
+:"a069-loss";
+
+html +=
+
+'<div class="a069-tl '+
+classe+
+'" style="background:'+
+corRoleta(x.numero)+
+'">'+
+x.numero+
+'</div>';
+
+});
+
+area.innerHTML =
+html;
+
+}
+
+
+/* ============================================================
+   RENDER BOTÕES
+============================================================ */
+
+function renderBotoes(){
+
+const auto =
+document.getElementById(
+"modoAuto"
+);
+
+const r4 =
+document.getElementById(
+"rx4"
+);
+
+const r5 =
+document.getElementById(
+"rx5"
+);
+
+const r6 =
+document.getElementById(
+"rx6"
+);
+
+if(
+!auto ||
+!r4 ||
+!r5 ||
+!r6
+)
+return;
+
+auto.classList.toggle(
+"active",
+estado.modo==="AUTO"
+);
+
+r4.classList.toggle(
+"active",
+estado.modo==="MANUAL" &&
+estado.manualRX===4
+);
+
+r5.classList.toggle(
+"active",
+estado.modo==="MANUAL" &&
+estado.manualRX===5
+);
+
+r6.classList.toggle(
+"active",
+estado.modo==="MANUAL" &&
+estado.manualRX===6
+);
+
+}
+
+
+/* ============================================================
+   RENDER QUANTIDADE
+============================================================ */
+
+function renderQuantidade(){
+
+const el =
+document.getElementById(
+"qtdHistorico"
+);
+
+if(!el)
+return;
+
+el.textContent =
+historico.length+
+" / "+
+MAX_HISTORICO+
+" números";
+
+}
+
+
+/* ============================================================
+   RENDER GERAL
 ============================================================ */
 
 function render(){
 
-historico=
-historico.slice(-35);
+garantirPendentes();
 
-salvarHistorico();
+renderDuplas14();
+renderJogada();
+renderMomento();
+renderDesempenho();
+renderTimeline();
+renderBotoes();
+renderQuantidade();
 
-const base=
-historico.slice(-35);
-
-const momento=
-analisarMomento(base);
-
-const configs={};
-
-RX_LIST.forEach(rx=>{
-
-configs[rx]=
-melhorDoRX(
-base,
-rx
-);
-
-});
-
-const auto=
-escolherAuto(
-configs
-);
-
-garantirPendentes(
-configs,
-auto
-);
-
-const ativa=
-
-estado.modo==="AUTO"
-
-?auto
-
-:configs[
-estado.manualRX
-];
-
-
-["auto","rx4","rx5","rx6"]
-.forEach(id=>{
-
-document
-.getElementById(id)
-.classList.remove("ativo");
-
-});
-
-if(
-estado.modo==="AUTO"
-){
-
-document
-.getElementById("auto")
-.classList.add("ativo");
-
-}else{
-
-document
-.getElementById(
-"rx"+estado.manualRX
-)
-.classList.add("ativo");
+salvarEstado();
+salvarDuplasVisual();
 
 }
 
 
-/* RESUMO */
+/* ============================================================
+   EVENTOS
+============================================================ */
 
-const live=
-statsTimeline(
-estado.timelines.AUTO
+function instalarEventos(){
+
+const auto =
+document.getElementById(
+"modoAuto"
 );
 
-document
-.getElementById("resumo")
-.innerHTML=
-
-'<div class="card">'+
-'<small>BT10</small>'+
-'<strong>'+
-(
-auto
-?auto.backtest.taxa10.toFixed(0)+"%"
-:"—"
-)+
-'</strong>'+
-'</div>'+
-
-'<div class="card">'+
-'<small>BT20</small>'+
-'<strong>'+
-(
-auto
-?auto.backtest.taxa20.toFixed(0)+"%"
-:"—"
-)+
-'</strong>'+
-'</div>'+
-
-'<div class="card">'+
-'<small>REAL10</small>'+
-'<strong>'+
-(
-live.total
-?live.taxa10.toFixed(0)+"%"
-:"—"
-)+
-'</strong>'+
-'</div>'+
-
-'<div class="card">'+
-'<small>REAL20</small>'+
-'<strong>'+
-(
-live.total
-?live.taxa20.toFixed(0)+"%"
-:"—"
-)+
-'</strong>'+
-'</div>';
-
-
-renderTrio(
-momento
+const r4 =
+document.getElementById(
+"rx4"
 );
 
-renderDuzias(
-momento
+const r5 =
+document.getElementById(
+"rx5"
 );
 
-renderTimeline(
-"timelineAUTO",
-"AUTO",
-estado.timelines.AUTO
+const r6 =
+document.getElementById(
+"rx6"
 );
 
-renderTimeline(
-"timeline4",
-"RX4",
-estado.timelines[4]
+const del =
+document.getElementById(
+"apagarUltimo"
 );
 
-renderTimeline(
-"timeline5",
-"RX5",
-estado.timelines[5]
+const clear =
+document.getElementById(
+"apagarTudo"
 );
 
-renderTimeline(
-"timeline6",
-"RX6",
-estado.timelines[6]
+const inserir =
+document.getElementById(
+"inserirHistorico"
 );
 
-renderDuplas14();
-
-renderJogada(
-ativa
+const input =
+document.getElementById(
+"historicoInput"
 );
 
 
-/*
-   MOSTRA QUAL DÚZIA ESTÁ MAIS FORTE,
-   MAS ELA NÃO É A DONA DA JOGADA.
-*/
+auto.addEventListener(
+"click",
+()=>{
 
-const df=
-momento.duziasFisicas.dominante;
+estado.modo="AUTO";
 
-document
-.getElementById("status")
-.textContent=
+salvarEstado();
 
-base.length+
-"/35 • MOMENTO 14 • 35×14 ATIVO"+
-(
-df
-?" • CONCENTRAÇÃO: "+df.duzia+"ª DÚZIA"
-:""
+render();
+
+}
+);
+
+
+r4.addEventListener(
+"click",
+()=>{
+
+estado.modo="MANUAL";
+estado.manualRX=4;
+
+salvarEstado();
+
+render();
+
+}
+);
+
+
+r5.addEventListener(
+"click",
+()=>{
+
+estado.modo="MANUAL";
+estado.manualRX=5;
+
+salvarEstado();
+
+render();
+
+}
+);
+
+
+r6.addEventListener(
+"click",
+()=>{
+
+estado.modo="MANUAL";
+estado.manualRX=6;
+
+salvarEstado();
+
+render();
+
+}
+);
+
+
+del.addEventListener(
+"click",
+()=>{
+
+apagarUltimo();
+
+}
+);
+
+
+clear.addEventListener(
+"click",
+()=>{
+
+if(
+confirm(
+"Apagar todo o histórico e resultados?"
+)
+){
+
+apagarTudo();
+
+}
+
+}
+);
+
+
+inserir.addEventListener(
+"click",
+()=>{
+
+inserirHistorico(
+input.value
+);
+
+}
 );
 
 }
 
 
 /* ============================================================
-   START
+   INICIALIZAÇÃO
 ============================================================ */
 
+function iniciar(){
+
+instalarCSS();
+
+instalarHTML();
+
+montarTeclado();
+
+instalarEventos();
+
+garantirPendentes();
+
 render();
+
+}
+
+
+/* ============================================================
+   ESPERA BODY
+============================================================ */
+
+if(document.body){
+
+iniciar();
+
+}else{
+
+document.addEventListener(
+"DOMContentLoaded",
+iniciar,
+{once:true}
+);
+
+}
 
 })();
