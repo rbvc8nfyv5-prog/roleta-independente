@@ -3,7 +3,7 @@
 
 /* ============================================================
    ANALISADOR 0 • 6 • 9
-   RAIO X + MOMENTO 14 + MEMÓRIA ADAPTATIVA DE TRAJETÓRIA
+   RAIO X + MOMENTO 14 + MEMÓRIA ADAPTATIVA
 
    PRESERVADO:
    - Motor RX 4 / 5 / 6
@@ -17,54 +17,39 @@
    - Concentração física das dúzias
    - 5 blocos de 2 vizinhos + 1 bloco de 1 vizinho
    - 28 números cobertos
+   - G1 congelado
    - Histórico operacional limitado a 35
    - Ordem visual:
      TIERS → ORPHELINS → VOISINS → ZERO
-   - Backtest interno sem lookahead
-   - Memória walk-forward ao colar histórico
 
-   ALTERADO:
-   - G1 NÃO fica mais congelado.
-   - Depois do primeiro erro, o número entra normalmente nos 35.
-   - O cenário é recalculado antes do G1.
-   - O G1 pode sofrer correção leve de -2 / -1 / 0 / +1 / +2.
-   - A memória deixa de ser o "motor principal".
-   - O cenário atual dos 35 continua sendo a base da jogada.
-   - A memória aprende TRAJETÓRIAS:
-       GREEN direto → aumento de G1 → bordas → deslocamento → LOSS.
-   - A memória observa:
-       * FORA1 / FORA2 / FORA
-       * lado dos erros
-       * quantidade recente de G1
-       * quantidade recente de LOSS
-       * deslocamento do corredor
-       * deslocamento da densidade
-       * mudança de terminais
-       * mudança de região
-       * mudança de dúzia física
-       * microtendência últimos 5 x Momento 14
-   - A correção começa ANTES do LOSS quando existe confluência.
-   - Um único erro não provoca deslocamento agressivo.
-   - Memória antiga perde peso.
-   - Memória aprende também quando NÃO corrigir.
-   - O número usado como G1 também participa normalmente da
-     evolução do motor e pode iniciar a próxima leitura.
+   NOVO:
+   - Pode colar qualquer quantidade de números.
+   - TODO o histórico colado é percorrido cronologicamente.
+   - O sistema cria memória interna walk-forward.
+   - A memória aprende GREEN, G1 e LOSS.
+   - Aprende FORA1/FORA2/FORA, lado e deslocamento.
+   - Reconhece contextos semelhantes.
+   - Memória recente pesa mais.
+   - Só os últimos 35 ficam no motor operacional.
+   - Cada novo número continua alimentando a memória.
+   - BT10 / BT20 / REAL10 / REAL20 removidos da tela.
 
    IMPORTANTE:
-   A memória NÃO bloqueia jogadas.
-   Sem memória semelhante, o motor continua funcionando normalmente.
+   A memória adaptativa altera apenas a pontuação dos candidatos.
+   A estrutura original do motor e a cobertura de 28 números
+   permanecem preservadas.
 ============================================================ */
 
 const STORAGE_KEY="ANALISADOR_069_IDS_CORRESPONDENTES_V1";
 const STORAGE_ENGINE="ANALISADOR_069_ENGINE_COMPLETO_V10";
 const STORAGE_DUPLAS="ANALISADOR_069_DUPLAS_VISUAIS_V4";
 const STORAGE_FREEZE="ANALISADOR_069_JOGADA_CONGELADA_V1";
-const STORAGE_MEMORIA="ANALISADOR_069_MEMORIA_ADAPTATIVA_V2";
+const STORAGE_MEMORIA="ANALISADOR_069_MEMORIA_ADAPTATIVA_V1";
 
 const MAX_HISTORICO=35;
 const JANELA_MOMENTO=14;
 const MAX_TIMELINE=300;
-const MAX_MEMORIA=1400;
+const MAX_MEMORIA=1200;
 
 const RX_LIST=[4,5,6];
 const MAX_REPLICAS=40;
@@ -74,13 +59,12 @@ const PESO_DUZIA_FISICA=.16;
 const MAX_GIRADA=2;
 
 /*
-   Memória é auxiliar.
-   O cenário atual continua mandando.
+   A memória nunca domina sozinha a jogada.
+   Ela funciona como correção da pontuação original.
 */
-const PESO_MEMORIA=.105;
-const PESO_TRAJETORIA=.16;
-const MIN_SIM_MEMORIA=.60;
-const MAX_CENARIOS_USADOS=28;
+const PESO_MEMORIA=.22;
+const MIN_SIM_MEMORIA=.58;
+const MAX_CENARIOS_USADOS=24;
 
 
 /* ============================================================
@@ -163,10 +147,6 @@ function limitar35(base){
 return Array.isArray(base)?base.slice(-35):[];
 }
 
-function clamp(v,min,max){
-return Math.max(min,Math.min(max,v));
-}
-
 function indice(n){
 return track.indexOf(n);
 }
@@ -230,10 +210,6 @@ return blocos.slice().sort((a,b)=>{
 const ra=regiao(a.centro),rb=regiao(b.centro);
 return(ORDEM_REGIOES[ra]??99)-(ORDEM_REGIOES[rb]??99);
 });
-}
-
-function media(arr){
-return arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
 }
 
 
@@ -357,6 +333,294 @@ memoriaAdaptativa=[];
 salvarMemoria();
 }
 
+/*
+   Cria uma fotografia numérica do momento ANTES do resultado.
+   Não contém informação futura.
+*/
+function vetorContexto(base,momento,rx,diag){
+
+const janela=limitar35(base).slice(-14);
+
+const zonas=["ZERO","VOISINS","ORPHELINS","TIERS"];
+
+const zonaFreq=zonas.map(z=>
+janela.length
+?momento.zonas.contagem[z]/janela.length
+:0
+);
+
+const cores=[
+momento.cores.contagem.VERMELHO,
+momento.cores.contagem.PRETO,
+momento.cores.contagem.VERDE
+].map(v=>janela.length?v/janela.length:0);
+
+const duzias=[1,2,3].map(d=>
+janela.length
+?momento.duziasFisicas.contagem[d]/janela.length
+:0
+);
+
+const trio=momento.terminais.trio||[];
+
+const corredor=momento.corredores.principal;
+
+return[
+rx/6,
+Math.min(1,(diag?.seq||0)/4),
+diag?.lado===-1?1:0,
+diag?.lado===1?1:0,
+
+...zonaFreq,
+...cores,
+...duzias,
+
+momento.cores.pctAlternancia/100,
+momento.zonas.pctAlternancia/100,
+
+(trio[0]??0)/9,
+(trio[1]??0)/9,
+(trio[2]??0)/9,
+
+corredor?indice(corredor.centro)/36:0,
+corredor?corredor.taxa/100:0,
+
+momento.duziasFisicas.dominante
+?momento.duziasFisicas.dominante.duzia/3
+:0
+];
+
+}
+
+function similaridadeContexto(a,b){
+
+if(!a||!b||a.length!==b.length)return 0;
+
+let erro=0;
+
+for(let i=0;i<a.length;i++)
+erro+=Math.abs(a[i]-b[i]);
+
+return Math.max(0,1-erro/a.length);
+
+}
+
+function resumoJogadaMemoria(jogada){
+
+if(!jogada||!jogada.valido)return null;
+
+return{
+centros2:jogada.blocos2.map(x=>x.centro),
+centro1:jogada.blocos1[0]?.centro??null
+};
+
+}
+
+function numerosResumoJogada(j){
+
+if(!j)return new Set();
+
+const s=new Set();
+
+(j.centros2||[]).forEach(c=>{
+setor(c,2).forEach(n=>s.add(n));
+});
+
+if(j.centro1!==null&&j.centro1!==undefined)
+setor(j.centro1,1).forEach(n=>s.add(n));
+
+return s;
+}
+
+function registrarMemoria(registro){
+
+if(!registro)return;
+
+registro.ordem=Date.now()+memoriaAdaptativa.length/10000;
+
+memoriaAdaptativa.push(registro);
+
+if(memoriaAdaptativa.length>MAX_MEMORIA)
+memoriaAdaptativa=memoriaAdaptativa.slice(-MAX_MEMORIA);
+
+}
+
+/*
+   Analisa cenários antigos parecidos com o cenário atual.
+
+   Não pergunta apenas "deu GREEN ou LOSS".
+   Também observa onde o resultado apareceu fisicamente.
+
+   Isso permite favorecer deslocamentos que historicamente
+   responderam melhor em contextos semelhantes.
+*/
+function consultarMemoria(contexto){
+
+if(!contexto||memoriaAdaptativa.length<4){
+
+return{
+ativo:false,
+amostras:0,
+confianca:0,
+mapa:new Map(),
+lado:0,
+taxaLoss:0
+};
+
+}
+
+const semelhantes=[];
+
+for(let i=0;i<memoriaAdaptativa.length;i++){
+
+const m=memoriaAdaptativa[i];
+
+if(!m.contexto)continue;
+
+const sim=similaridadeContexto(contexto,m.contexto);
+
+if(sim<MIN_SIM_MEMORIA)continue;
+
+/*
+   Esquecimento gradual:
+   memória recente pesa mais.
+*/
+const idade=memoriaAdaptativa.length-i;
+
+const recencia=Math.max(
+.35,
+1-idade/Math.max(60,memoriaAdaptativa.length*1.35)
+);
+
+semelhantes.push({
+m,
+sim,
+peso:sim*recencia
+});
+
+}
+
+semelhantes.sort((a,b)=>b.peso-a.peso);
+
+const usados=semelhantes.slice(0,MAX_CENARIOS_USADOS);
+
+if( usados.length<3 ){
+
+return{
+ativo:false,
+amostras:usados.length,
+confianca:0,
+mapa:new Map(),
+lado:0,
+taxaLoss:0
+};
+
+}
+
+const mapa=new Map();
+track.forEach(n=>mapa.set(n,0));
+
+let pesoTotal=0;
+let perdas=0;
+let esquerda=0;
+let direita=0;
+
+usados.forEach(({m,peso})=>{
+
+pesoTotal+=peso;
+
+if(m.resultadoFinal==="LOSS")
+perdas+=peso;
+
+/*
+   Resultado real recebe calor.
+   Casas próximas recebem calor menor.
+*/
+track.forEach(n=>{
+
+const d=distanciaRoda(n,m.numero);
+
+let local=0;
+
+if(d===0)local=1;
+else if(d===1)local=.72;
+else if(d===2)local=.44;
+else if(d===3)local=.22;
+else if(d===4)local=.09;
+
+if(local)
+mapa.set(n,(mapa.get(n)||0)+local*peso);
+
+});
+
+if(m.lado<0)esquerda+=peso;
+if(m.lado>0)direita+=peso;
+
+});
+
+/*
+   Normalização.
+*/
+let max=0;
+mapa.forEach(v=>{if(v>max)max=v});
+
+if(max){
+mapa.forEach((v,k)=>mapa.set(k,v/max));
+}
+
+const taxaLoss=pesoTotal?perdas/pesoTotal:0;
+
+const lado=
+direita>esquerda*1.15
+?1
+:(esquerda>direita*1.15?-1:0);
+
+const confianca=
+Math.min(
+1,
+usados.length/12
+)*
+Math.min(
+1,
+usados.reduce((s,x)=>s+x.sim,0)/usados.length
+);
+
+return{
+ativo:true,
+amostras:usados.length,
+confianca,
+mapa,
+lado,
+taxaLoss
+};
+
+}
+
+function scoreMemoriaSetor(centro,qtd,consulta){
+
+if(!consulta||!consulta.ativo)return 0;
+
+const nums=setor(centro,qtd);
+
+let soma=0;
+
+nums.forEach(n=>{
+
+const d=distanciaRoda(centro,n);
+
+let peso=1;
+
+if(d===0)peso=1.18;
+else if(d===1)peso=1.08;
+
+soma+=(consulta.mapa.get(n)||0)*peso;
+
+});
+
+return(soma/nums.length)*consulta.confianca;
+
+}
+
 
 /* ============================================================
    ENTRADAS VISUAIS
@@ -397,7 +661,6 @@ g1:d.g1!==undefined?d.g1:null,
 avaliacoes:Object.assign(avaliacoesVazias(),d.avaliacoes||{}),
 avaliacoesG1:Object.assign(avaliacoesVazias(),d.avaliacoesG1||{}),
 snapshotEntrada:Object.assign(snapshotsVazios(),d.snapshotEntrada||{}),
-snapshotG1:Object.assign(snapshotsVazios(),d.snapshotG1||{}),
 fase:d.fase||"FINALIZADO"
 };
 }
@@ -415,19 +678,44 @@ gravarJSON(STORAGE_DUPLAS,duplasVisual);
 
 
 /* ============================================================
-   COMPATIBILIDADE COM STORAGE ANTIGO DE FREEZE
-
-   O G1 NÃO É MAIS CONGELADO.
+   JOGADA CONGELADA
 ============================================================ */
 
 let jogadaCongelada=null;
 
+(function carregarFreeze(){
+const x=lerJSON(STORAGE_FREEZE,null);
+if(x&&x.valido&&x.jogada)jogadaCongelada=x;
+})();
+
 function salvarJogadaCongelada(){
-jogadaCongelada=null;
-try{localStorage.removeItem(STORAGE_FREEZE)}catch(e){}
+gravarJSON(STORAGE_FREEZE,jogadaCongelada);
 }
 
-salvarJogadaCongelada();
+function copiarJogadaCongelada(config){
+
+if(!config||!config.valido||!config.jogada||!config.jogada.valido)
+return null;
+
+return{
+valido:true,
+rx:config.rx,
+jogada:{
+valido:true,
+blocos2:config.jogada.blocos2.map(b=>({
+centro:b.centro,
+qtd:2,
+numeros:b.numeros.slice()
+})),
+blocos1:config.jogada.blocos1.map(b=>({
+centro:b.centro,
+qtd:1,
+numeros:b.numeros.slice()
+}))
+}
+};
+
+}
 
 
 /* ============================================================
@@ -1057,152 +1345,6 @@ forca:Math.abs(direita-esquerda)/total
 
 
 /* ============================================================
-   MICRO MOVIMENTO DOS 35
-
-   Compara os últimos 5 com o restante do Momento 14.
-============================================================ */
-
-function centroFisicoPonderado(numeros){
-
-if(!numeros.length)return null;
-
-let melhor=null;
-
-track.forEach(c=>{
-
-let soma=0;
-
-numeros.forEach((n,i)=>{
-const rec=.65+((i+1)/numeros.length)*.35;
-soma+=distanciaRoda(c,n)*rec;
-});
-
-if(!melhor||soma<melhor.soma)
-melhor={centro:c,soma};
-
-});
-
-return melhor?melhor.centro:null;
-}
-
-function analisarOscilacao(base,momento){
-
-const janela=limitar35(base).slice(-14);
-const recentes=janela.slice(-5);
-const anteriores=janela.slice(0,Math.max(0,janela.length-5));
-
-const centroRec=centroFisicoPonderado(recentes);
-const centroAnt=centroFisicoPonderado(anteriores);
-
-let deslocamento=0;
-let direcao=0;
-
-if(centroRec!==null&&centroAnt!==null){
-deslocamento=Math.min(1,distanciaRoda(centroAnt,centroRec)/8);
-direcao=Math.sign(deltaRoda(centroAnt,centroRec));
-}
-
-const regioesLista=["ZERO","VOISINS","ORPHELINS","TIERS"];
-
-function distReg(nums){
-const r={ZERO:0,VOISINS:0,ORPHELINS:0,TIERS:0};
-nums.forEach(n=>{const z=regiao(n);if(z)r[z]++});
-const total=Math.max(1,nums.length);
-regioesLista.forEach(z=>r[z]/=total);
-return r;
-}
-
-const dr=distReg(recentes);
-const da=distReg(anteriores);
-
-let mudancaRegiao=0;
-
-regioesLista.forEach(z=>{
-mudancaRegiao+=Math.abs(dr[z]-da[z]);
-});
-
-mudancaRegiao=clamp(mudancaRegiao/2,0,1);
-
-const termRec=new Array(10).fill(0);
-const termAnt=new Array(10).fill(0);
-
-recentes.forEach(n=>termRec[terminal(n)]++);
-anteriores.forEach(n=>termAnt[terminal(n)]++);
-
-let mudancaTerminal=0;
-
-for(let t=0;t<10;t++){
-mudancaTerminal+=Math.abs(
-termRec[t]/Math.max(1,recentes.length)-
-termAnt[t]/Math.max(1,anteriores.length)
-);
-}
-
-mudancaTerminal=clamp(mudancaTerminal/2,0,1);
-
-const dRec={1:0,2:0,3:0};
-const dAnt={1:0,2:0,3:0};
-
-recentes.forEach(n=>{const d=duzia(n);if(d)dRec[d]++});
-anteriores.forEach(n=>{const d=duzia(n);if(d)dAnt[d]++});
-
-let mudancaDuzia=0;
-
-[1,2,3].forEach(d=>{
-mudancaDuzia+=Math.abs(
-dRec[d]/Math.max(1,recentes.length)-
-dAnt[d]/Math.max(1,anteriores.length)
-);
-});
-
-mudancaDuzia=clamp(mudancaDuzia/2,0,1);
-
-const corredor=momento.corredores.principal;
-const densidade=momento.densidade.centro;
-
-let alinhamento=0;
-
-if(corredor&&densidade!==null){
-
-const d=distanciaRoda(corredor.centro,densidade);
-
-alinhamento=clamp(1-d/9,0,1);
-
-if(
-direcao!==0&&
-corredor.direcao!==0&&
-direcao===corredor.direcao
-){
-alinhamento=clamp(alinhamento+.15,0,1);
-}
-
-}
-
-const intensidade=clamp(
-deslocamento*.34+
-mudancaRegiao*.20+
-mudancaTerminal*.18+
-mudancaDuzia*.12+
-(1-alinhamento)*.16,
-0,1
-);
-
-return{
-centroRec,
-centroAnt,
-deslocamento,
-direcao,
-mudancaRegiao,
-mudancaTerminal,
-mudancaDuzia,
-alinhamento,
-intensidade
-};
-
-}
-
-
-/* ============================================================
    RX
 ============================================================ */
 
@@ -1406,640 +1548,6 @@ forca
 
 
 /* ============================================================
-   DESEMPENHO RECENTE G / G1 / LOSS
-============================================================ */
-
-function desempenhoVisualRecente(chave,fonte=null){
-
-const lista=(fonte||duplasVisual)
-.map(d=>normalizarDuplaVisual(d))
-.slice(-8);
-
-let green1=0,g1=0,loss=0,aguarda=0;
-
-lista.forEach(d=>{
-
-const s=statusEntrada(d,chave);
-
-if(s.tipo==="GREEN1")green1++;
-else if(s.tipo==="GREENG1")g1++;
-else if(s.tipo==="LOSS")loss++;
-else if(s.tipo==="AGUARDA_G1")aguarda++;
-
-});
-
-const validos=green1+g1+loss;
-
-return{
-green1,
-g1,
-loss,
-aguarda,
-total:validos,
-taxaG1:validos?g1/validos:0,
-taxaLoss:validos?loss/validos:0,
-deterioracao:validos
-?clamp(
-(g1/validos)*.48+
-(loss/validos)*.80+
-(aguarda?0.14:0),
-0,1
-)
-:0
-};
-
-}
-
-
-/* ============================================================
-   MEMÓRIA DE TRAJETÓRIA
-============================================================ */
-
-function criarEstadoTrajetoria(
-base,
-momento,
-rx,
-diag,
-desempenho,
-oscilacao
-){
-
-const corredor=momento.corredores.principal;
-const densidade=momento.densidade.centro;
-const trio=momento.terminais.trio||[];
-
-return{
-rx,
-diagSeq:Math.min(4,diag?.seq||0),
-diagLado:diag?.lado||0,
-diagForca:diag?.forca||0,
-
-g1:desempenho?.taxaG1||0,
-loss:desempenho?.taxaLoss||0,
-deterioracao:desempenho?.deterioracao||0,
-
-oscInt:oscilacao?.intensidade||0,
-oscDir:oscilacao?.direcao||0,
-oscDesl:oscilacao?.deslocamento||0,
-mudReg:oscilacao?.mudancaRegiao||0,
-mudTerm:oscilacao?.mudancaTerminal||0,
-mudDuz:oscilacao?.mudancaDuzia||0,
-
-corCentro:corredor?corredor.centro:null,
-corDir:corredor?corredor.direcao:0,
-corTaxa:corredor?corredor.taxa/100:0,
-
-densCentro:densidade,
-
-term0:trio[0]??null,
-term1:trio[1]??null,
-term2:trio[2]??null,
-
-duzia:momento.duziasFisicas.dominante
-?momento.duziasFisicas.dominante.duzia
-:0,
-
-zona:momento.zonas.atual||null
-};
-
-}
-
-function vetorContexto(base,momento,rx,diag,desempenho=null,oscilacao=null){
-
-const janela=limitar35(base).slice(-14);
-
-const zonas=["ZERO","VOISINS","ORPHELINS","TIERS"];
-
-const zonaFreq=zonas.map(z=>
-janela.length
-?momento.zonas.contagem[z]/janela.length
-:0
-);
-
-const cores=[
-momento.cores.contagem.VERMELHO,
-momento.cores.contagem.PRETO,
-momento.cores.contagem.VERDE
-].map(v=>janela.length?v/janela.length:0);
-
-const duzias=[1,2,3].map(d=>
-janela.length
-?momento.duziasFisicas.contagem[d]/janela.length
-:0
-);
-
-const trio=momento.terminais.trio||[];
-const corredor=momento.corredores.principal;
-
-return[
-rx/6,
-
-Math.min(1,(diag?.seq||0)/4),
-diag?.lado===-1?1:0,
-diag?.lado===1?1:0,
-diag?.forca||0,
-
-desempenho?.taxaG1||0,
-desempenho?.taxaLoss||0,
-desempenho?.deterioracao||0,
-
-oscilacao?.intensidade||0,
-oscilacao?.deslocamento||0,
-oscilacao?.direcao===-1?1:0,
-oscilacao?.direcao===1?1:0,
-oscilacao?.mudancaRegiao||0,
-oscilacao?.mudancaTerminal||0,
-oscilacao?.mudancaDuzia||0,
-
-...zonaFreq,
-...cores,
-...duzias,
-
-momento.cores.pctAlternancia/100,
-momento.zonas.pctAlternancia/100,
-
-(trio[0]??0)/9,
-(trio[1]??0)/9,
-(trio[2]??0)/9,
-
-corredor?indice(corredor.centro)/36:0,
-corredor?corredor.taxa/100:0,
-
-momento.duziasFisicas.dominante
-?momento.duziasFisicas.dominante.duzia/3
-:0
-];
-
-}
-
-function similaridadeContexto(a,b){
-
-if(!a||!b||a.length!==b.length)return 0;
-
-let erro=0;
-
-for(let i=0;i<a.length;i++)
-erro+=Math.abs(a[i]-b[i]);
-
-return Math.max(0,1-erro/a.length);
-
-}
-
-function resumoJogadaMemoria(jogada){
-
-if(!jogada||!jogada.valido)return null;
-
-return{
-centros2:jogada.blocos2.map(x=>x.centro),
-centro1:jogada.blocos1[0]?.centro??null
-};
-
-}
-
-function registrarMemoria(registro){
-
-if(!registro)return;
-
-registro.ordem=Date.now()+memoriaAdaptativa.length/10000;
-
-memoriaAdaptativa.push(registro);
-
-if(memoriaAdaptativa.length>MAX_MEMORIA)
-memoriaAdaptativa=memoriaAdaptativa.slice(-MAX_MEMORIA);
-
-}
-
-
-/* ============================================================
-   QUAL CORREÇÃO TERIA AJUDADO?
-
-   Compara a jogada original com deslocamentos globais -2..+2.
-============================================================ */
-
-function deslocarJogadaResumo(jogada,offset){
-
-if(!jogada)return null;
-
-return{
-centros2:(jogada.centros2||[]).map(c=>numeroOffset(c,offset)),
-centro1:
-jogada.centro1!==null&&jogada.centro1!==undefined
-?numeroOffset(jogada.centro1,offset)
-:null
-};
-
-}
-
-function resumoParaJogada(j){
-
-if(!j)return null;
-
-return{
-valido:true,
-blocos2:(j.centros2||[]).map(c=>({
-centro:c,
-qtd:2,
-numeros:setor(c,2)
-})),
-blocos1:
-j.centro1!==null&&j.centro1!==undefined
-?[{
-centro:j.centro1,
-qtd:1,
-numeros:setor(j.centro1,1)
-}]
-:[]
-};
-
-}
-
-function melhorCorrecaoParaResultado(jogadaResumo,numero){
-
-if(!jogadaResumo)return 0;
-
-let melhor=null;
-
-for(let off=-2;off<=2;off++){
-
-const j=resumoParaJogada(
-deslocarJogadaResumo(jogadaResumo,off)
-);
-
-const r=classificarJogada(numero,j);
-
-let valor=0;
-
-if(r.green){
-valor=3-Math.abs(off)*.32;
-}else if(r.tipo==="FORA1"){
-valor=1.15-Math.abs(off)*.18;
-}else if(r.tipo==="FORA2"){
-valor=.50-Math.abs(off)*.12;
-}else{
-valor=-.20-Math.abs(off)*.08;
-}
-
-if(
-!melhor||
-valor>melhor.valor||
-(
-valor===melhor.valor&&
-Math.abs(off)<Math.abs(melhor.off)
-)
-){
-melhor={off,valor};
-}
-
-}
-
-return melhor?melhor.off:0;
-}
-
-
-/* ============================================================
-   CONSULTA DA MEMÓRIA
-
-   A memória retorna:
-   - mapa físico auxiliar
-   - pressão de correção
-   - direção provável de correção
-   - confiança
-   - risco de deterioração
-
-   Ela NÃO impede o motor de jogar.
-============================================================ */
-
-function consultarMemoria(contexto,trajetoria){
-
-const vazio={
-ativo:false,
-amostras:0,
-confianca:0,
-mapa:new Map(),
-lado:0,
-taxaLoss:0,
-taxaG1:0,
-pressao:0,
-correcao:0,
-risco:0
-};
-
-track.forEach(n=>vazio.mapa.set(n,0));
-
-if(!contexto||memoriaAdaptativa.length<4)return vazio;
-
-const semelhantes=[];
-
-for(let i=0;i<memoriaAdaptativa.length;i++){
-
-const m=memoriaAdaptativa[i];
-
-if(!m.contexto)continue;
-
-const sim=similaridadeContexto(contexto,m.contexto);
-
-if(sim<MIN_SIM_MEMORIA)continue;
-
-const idade=memoriaAdaptativa.length-i;
-
-const recencia=Math.max(
-.28,
-1-idade/Math.max(70,memoriaAdaptativa.length*1.25)
-);
-
-let ajusteTrajetoria=1;
-
-if(trajetoria&&m.trajetoria){
-
-if(
-trajetoria.oscDir!==0&&
-m.trajetoria.oscDir!==0&&
-trajetoria.oscDir===m.trajetoria.oscDir
-)ajusteTrajetoria+=.10;
-
-if(
-trajetoria.diagLado!==0&&
-m.trajetoria.diagLado!==0&&
-trajetoria.diagLado===m.trajetoria.diagLado
-)ajusteTrajetoria+=.08;
-
-ajusteTrajetoria+=
-(1-Math.abs(
-(trajetoria.deterioracao||0)-
-(m.trajetoria.deterioracao||0)
-))*.08;
-
-}
-
-semelhantes.push({
-m,
-sim,
-peso:sim*recencia*ajusteTrajetoria
-});
-
-}
-
-semelhantes.sort((a,b)=>b.peso-a.peso);
-
-const usados=semelhantes.slice(0,MAX_CENARIOS_USADOS);
-
-if(usados.length<3){
-vazio.amostras=usados.length;
-return vazio;
-}
-
-const mapa=new Map();
-track.forEach(n=>mapa.set(n,0));
-
-let pesoTotal=0;
-let perdas=0;
-let g1s=0;
-
-let corrNeg2=0;
-let corrNeg1=0;
-let corrZero=0;
-let corrPos1=0;
-let corrPos2=0;
-
-usados.forEach(({m,peso})=>{
-
-pesoTotal+=peso;
-
-if(m.resultadoFinal==="LOSS")perdas+=peso;
-if(m.resultadoFinal==="GREEN_G1")g1s+=peso;
-
-const numeroAlvo=
-m.g1!==null&&m.g1!==undefined
-?m.g1
-:m.numero;
-
-if(numeroAlvo!==null&&numeroAlvo!==undefined){
-
-track.forEach(n=>{
-
-const d=distanciaRoda(n,numeroAlvo);
-
-let local=0;
-
-if(d===0)local=1;
-else if(d===1)local=.66;
-else if(d===2)local=.38;
-else if(d===3)local=.18;
-else if(d===4)local=.07;
-
-if(local)
-mapa.set(n,(mapa.get(n)||0)+local*peso);
-
-});
-
-}
-
-const corr=
-Number.isInteger(m.correcaoIdeal)
-?m.correcaoIdeal
-:0;
-
-if(corr===-2)corrNeg2+=peso;
-else if(corr===-1)corrNeg1+=peso;
-else if(corr===1)corrPos1+=peso;
-else if(corr===2)corrPos2+=peso;
-else corrZero+=peso;
-
-});
-
-let max=0;
-mapa.forEach(v=>{if(v>max)max=v});
-
-if(max)
-mapa.forEach((v,k)=>mapa.set(k,v/max));
-
-const taxaLoss=pesoTotal?perdas/pesoTotal:0;
-const taxaG1=pesoTotal?g1s/pesoTotal:0;
-
-const correcoes=[
-{off:-2,p:corrNeg2},
-{off:-1,p:corrNeg1},
-{off:0,p:corrZero},
-{off:1,p:corrPos1},
-{off:2,p:corrPos2}
-].sort((a,b)=>b.p-a.p||Math.abs(a.off)-Math.abs(b.off));
-
-const principal=correcoes[0];
-
-const confianca=
-Math.min(1,usados.length/14)*
-Math.min(
-1,
-usados.reduce((s,x)=>s+x.sim,0)/usados.length
-);
-
-const risco=clamp(
-taxaLoss*.58+
-taxaG1*.30+
-(trajetoria?.deterioracao||0)*.34+
-(trajetoria?.oscInt||0)*.26,
-0,1
-);
-
-/*
-   Pressão só cresce de verdade quando:
-   - existe deterioração atual
-   - memória semelhante confirma
-   - ou cenário físico atual já está deslocando
-*/
-const pressao=clamp(
-(
-(trajetoria?.deterioracao||0)*.36+
-(trajetoria?.oscInt||0)*.30+
-taxaG1*.16+
-taxaLoss*.22
-)*
-confianca,
-0,1
-);
-
-let correcao=principal?principal.off:0;
-
-/*
-   Se a memória pede uma correção mas o cenário atual
-   aponta para o lado oposto com força, reduzimos.
-*/
-if(
-correcao!==0&&
-trajetoria?.oscDir&&
-Math.sign(correcao)!==trajetoria.oscDir&&
-trajetoria.oscInt>.45
-){
-correcao=0;
-}
-
-return{
-ativo:true,
-amostras:usados.length,
-confianca,
-mapa,
-lado:Math.sign(correcao),
-taxaLoss,
-taxaG1,
-pressao,
-correcao,
-risco
-};
-
-}
-
-function scoreMemoriaSetor(centro,qtd,consulta){
-
-if(!consulta||!consulta.ativo)return 0;
-
-const nums=setor(centro,qtd);
-
-let soma=0;
-
-nums.forEach(n=>{
-
-const d=distanciaRoda(centro,n);
-
-let peso=1;
-
-if(d===0)peso=1.18;
-else if(d===1)peso=1.08;
-
-soma+=(consulta.mapa.get(n)||0)*peso;
-
-});
-
-return(soma/nums.length)*consulta.confianca;
-
-}
-
-
-/* ============================================================
-   PRESSÃO PREVENTIVA DO CENÁRIO ATUAL
-============================================================ */
-
-function calcularPressaoPreventiva(
-momento,
-oscilacao,
-desempenho,
-diagnostico,
-consulta
-){
-
-let esquerda=0;
-let direita=0;
-
-function votar(dir,peso){
-if(dir<0)esquerda+=peso;
-else if(dir>0)direita+=peso;
-}
-
-if(oscilacao?.direcao)
-votar(
-oscilacao.direcao,
-oscilacao.intensidade*.36
-);
-
-const corredor=momento.corredores.principal;
-
-if(corredor?.direcao)
-votar(
-corredor.direcao,
-(corredor.taxa/100)*.22
-);
-
-if(diagnostico?.lado)
-votar(
-diagnostico.lado,
-diagnostico.forca*.26
-);
-
-if(consulta?.ativo&&consulta.correcao)
-votar(
-Math.sign(consulta.correcao),
-consulta.pressao*.32
-);
-
-const total=esquerda+direita;
-
-const direcao=
-direita>esquerda
-?1
-:(esquerda>direita?-1:0);
-
-const concordancia=
-total
-?Math.abs(direita-esquerda)/total
-:0;
-
-const deterioracao=desempenho?.deterioracao||0;
-
-const intensidade=clamp(
-(oscilacao?.intensidade||0)*.34+
-deterioracao*.30+
-(diagnostico?.forca||0)*.16+
-(consulta?.pressao||0)*.20,
-0,1
-);
-
-let nivel="ESTAVEL";
-
-if(intensidade>=.68&&concordancia>=.30)
-nivel="QUEBRA";
-else if(intensidade>=.36)
-nivel="ATENCAO";
-
-return{
-direcao,
-concordancia,
-intensidade,
-nivel
-};
-
-}
-
-
-/* ============================================================
    SCORES
 ============================================================ */
 
@@ -2094,9 +1602,7 @@ return score/numeros.length;
 
 
 /* ============================================================
-   GIRADA DINÂMICA
-   CENÁRIO ATUAL PRIMEIRO
-   MEMÓRIA COMO CORREÇÃO
+   GIRADA DINÂMICA + MEMÓRIA
 ============================================================ */
 
 function avaliarCentroComGiradas(
@@ -2105,9 +1611,7 @@ qtd,
 freq,
 momento,
 diagnostico,
-consultaMemoria=null,
-pressaoPreventiva=null,
-faseG1=false
+consultaMemoria=null
 ){
 
 let melhor=null;
@@ -2122,18 +1626,10 @@ if(rx.suporte<=0)continue;
 
 const momentoScore=scoreMomentoSetor(centro,qtd,momento);
 
-const direcao=direcaoMomento(centroOriginal,momento);
-
-/*
-   Em G1 permitimos um pouco mais de mobilidade,
-   mas continuamos limitados a ±2.
-*/
-const custoBase=faseG1?.115:.15;
-
 const custoGirada=
-Math.abs(offset)*
-custoBase*
-Math.max(1,rx.suporte);
+Math.abs(offset)*.15*Math.max(1,rx.suporte);
+
+const direcao=direcaoMomento(centroOriginal,momento);
 
 let bonusDirecao=0;
 
@@ -2142,10 +1638,7 @@ offset!==0&&
 direcao.direcao!==0&&
 Math.sign(offset)===direcao.direcao
 ){
-bonusDirecao=
-direcao.forca*
-rx.suporte*
-(faseG1?.24:.18);
+bonusDirecao=direcao.forca*rx.suporte*.18;
 }
 
 let bonusLoss=0;
@@ -2157,36 +1650,12 @@ diagnostico.lado!==0&&
 offset!==0&&
 Math.sign(offset)===diagnostico.lado
 ){
-bonusLoss=
-diagnostico.forca*
-rx.suporte*
-(faseG1?.31:.22);
+bonusLoss=diagnostico.forca*rx.suporte*.22;
 }
 
 /*
-   Cenário atual:
-   pressão preventiva pode agir mesmo SEM memória.
-*/
-let bonusPreventivo=0;
-
-if(
-pressaoPreventiva&&
-pressaoPreventiva.direcao!==0&&
-offset!==0&&
-Math.sign(offset)===pressaoPreventiva.direcao
-){
-
-bonusPreventivo=
-pressaoPreventiva.intensidade*
-pressaoPreventiva.concordancia*
-rx.suporte*
-(faseG1?.31:.20);
-
-}
-
-/*
-   Memória:
-   pequena correção, nunca condição para existir jogada.
+   NOVA CAMADA:
+   histórico de contextos semelhantes.
 */
 const memoriaScore=
 scoreMemoriaSetor(
@@ -2200,46 +1669,23 @@ memoriaScore*
 rx.suporte*
 PESO_MEMORIA;
 
+/*
+   Quando cenários semelhantes apresentaram muitos losses
+   e apontaram repetidamente para um mesmo lado físico,
+   a memória dá uma pequena preferência à correção nesse lado.
+*/
 if(
 consultaMemoria?.ativo&&
-consultaMemoria.correcao!==0&&
+consultaMemoria.taxaLoss>=.45&&
+consultaMemoria.lado!==0&&
 offset!==0&&
-Math.sign(offset)===Math.sign(consultaMemoria.correcao)
+Math.sign(offset)===consultaMemoria.lado
 ){
-
-const proximidade=
-1-Math.min(
-1,
-Math.abs(offset-consultaMemoria.correcao)/3
-);
-
 bonusMemoria+=
-consultaMemoria.pressao*
 consultaMemoria.confianca*
-proximidade*
+consultaMemoria.taxaLoss*
 rx.suporte*
-PESO_TRAJETORIA;
-
-}
-
-/*
-   Se cenário atual está estável, não deixamos memória antiga
-   puxar desnecessariamente a jogada.
-*/
-if(
-pressaoPreventiva&&
-pressaoPreventiva.nivel==="ESTAVEL"
-){
-bonusMemoria*=.55;
-}
-
-/*
-   Se estamos no G1, o erro recém-observado já entrou nos 35.
-   A correção preventiva pode trabalhar imediatamente.
-*/
-if(faseG1){
-bonusPreventivo*=1.18;
-bonusMemoria*=1.12;
+.08;
 }
 
 const scoreFinal=
@@ -2247,7 +1693,6 @@ rx.score+
 momentoScore*rx.suporte*PESO_MOMENTO+
 bonusDirecao+
 bonusLoss+
-bonusPreventivo+
 bonusMemoria-
 custoGirada;
 
@@ -2277,9 +1722,7 @@ qtd,
 freq,
 momento,
 diagnostico,
-consultaMemoria=null,
-pressaoPreventiva=null,
-faseG1=false
+consultaMemoria=null
 ){
 
 const mapa=new Map();
@@ -2292,9 +1735,7 @@ qtd,
 freq,
 momento,
 diagnostico,
-consultaMemoria,
-pressaoPreventiva,
-faseG1
+consultaMemoria
 );
 
 if(!c)return;
@@ -2323,8 +1764,7 @@ function montarJogada(
 raioX,
 base,
 diagnostico=null,
-usarMemoria=true,
-opcoes={}
+usarMemoria=true
 ){
 
 if(!raioX||!raioX.valido)
@@ -2335,64 +1775,25 @@ base=limitar35(base);
 const momento=analisarMomento(base);
 const freq=frequenciaReplicas(raioX.replicas);
 
-const desempenho=
-opcoes.desempenho||
-{green1:0,g1:0,loss:0,total:0,taxaG1:0,taxaLoss:0,deterioracao:0};
-
-const oscilacao=analisarOscilacao(base,momento);
-
 const contexto=
 vetorContexto(
 base,
 momento,
 raioX.rx,
-diagnostico||{ativo:false,seq:0,lado:0,forca:0},
-desempenho,
-oscilacao
-);
-
-const trajetoria=
-criarEstadoTrajetoria(
-base,
-momento,
-raioX.rx,
-diagnostico||{ativo:false,seq:0,lado:0,forca:0},
-desempenho,
-oscilacao
+diagnostico||{ativo:false,seq:0,lado:0}
 );
 
 const consulta=
 usarMemoria
-?consultarMemoria(contexto,trajetoria)
+?consultarMemoria(contexto)
 :null;
 
-const pressaoPreventiva=
-calcularPressaoPreventiva(
-momento,
-oscilacao,
-desempenho,
-diagnostico,
-consulta
-);
-
 const candidatos2=gerarCandidatos(
-2,
-freq,
-momento,
-diagnostico,
-consulta,
-pressaoPreventiva,
-!!opcoes.faseG1
+2,freq,momento,diagnostico,consulta
 );
 
 const candidatos1=gerarCandidatos(
-1,
-freq,
-momento,
-diagnostico,
-consulta,
-pressaoPreventiva,
-!!opcoes.faseG1
+1,freq,momento,diagnostico,consulta
 );
 
 let melhor=null;
@@ -2431,11 +1832,7 @@ numeros:usados,
 score,
 momento,
 contexto,
-trajetoria,
-oscilacao,
-pressaoPreventiva,
-consultaMemoria:consulta,
-faseG1:!!opcoes.faseG1
+consultaMemoria:consulta
 };
 
 }
@@ -2451,11 +1848,7 @@ blocos1:[],
 numeros:new Set(),
 momento,
 contexto,
-trajetoria,
-oscilacao,
-pressaoPreventiva,
-consultaMemoria:consulta,
-faseG1:!!opcoes.faseG1
+consultaMemoria:consulta
 };
 
 }
@@ -2464,8 +1857,7 @@ function gerarConfig(
 base,
 rxTam,
 diagnostico=null,
-usarMemoria=true,
-opcoes={}
+usarMemoria=true
 ){
 
 base=limitar35(base);
@@ -2478,8 +1870,7 @@ const jogada=montarJogada(
 raioX,
 base,
 diagnostico,
-usarMemoria,
-opcoes
+usarMemoria
 );
 
 return{
@@ -2487,8 +1878,7 @@ valido:jogada.valido,
 rx:rxTam,
 raioX,
 jogada,
-similaridade:raioX.similaridade,
-faseG1:!!opcoes.faseG1
+similaridade:raioX.similaridade
 };
 
 }
@@ -2605,19 +1995,11 @@ for(let i=inicio;i<base.length;i++){
 const passado=base.slice(0,i);
 const diag=diagnosticarLosses(timeline);
 
-const cfg=gerarConfig(
-passado,
-rxTam,
-diag,
-false,
-{
-faseG1:false,
-desempenho:{
-green1:0,g1:0,loss:0,total:0,
-taxaG1:0,taxaLoss:0,deterioracao:0
-}
-}
-);
+/*
+   O backtest interno não consulta a memória futura.
+   Ele testa o motor base.
+*/
+const cfg=gerarConfig(passado,rxTam,diag,false);
 
 if(!cfg.valido){
 
@@ -2654,35 +2036,15 @@ return statsTimeline(timeline);
    RX / AUTO
 ============================================================ */
 
-function melhorDoRX(
-base,
-rxTam,
-usarMemoria=true,
-opcoes={}
-){
+function melhorDoRX(base,rxTam,usarMemoria=true){
 
-const diagFonte=
-opcoes.timeline||
-estado.timelines[rxTam];
-
-const diag=diagnosticarLosses(diagFonte);
-
-const desempenho=
-opcoes.desempenho||
-desempenhoVisualRecente(
-opcoes.chaveVisual??rxTam,
-opcoes.duplasFonte||null
-);
+const diag=diagnosticarLosses(estado.timelines[rxTam]);
 
 const cfg=gerarConfig(
 base,
 rxTam,
 diag,
-usarMemoria,
-{
-faseG1:!!opcoes.faseG1,
-desempenho
-}
+usarMemoria
 );
 
 if(!cfg.valido)return null;
@@ -2705,24 +2067,10 @@ else score-=3;
 
 }
 
-const live=statsTimeline(diagFonte||[]);
+const live=statsTimeline(estado.timelines[rxTam]);
 
 if(live.total)
 score+=live.taxa10*.05+live.taxa20*.025;
-
-/*
-   A força do cenário atual pode influenciar AUTO,
-   independentemente de existir memória.
-*/
-if(cfg.jogada?.pressaoPreventiva){
-
-const p=cfg.jogada.pressaoPreventiva;
-
-if(p.nivel==="ESTAVEL")score+=.45;
-else if(p.nivel==="ATENCAO")score+=.20;
-else if(p.nivel==="QUEBRA")score-=.10;
-
-}
 
 return{
 valido:true,
@@ -2732,8 +2080,7 @@ jogada:cfg.jogada,
 similaridade:cfg.similaridade,
 backtest:bt,
 live,
-score,
-faseG1:!!opcoes.faseG1
+score
 };
 
 }
@@ -2753,6 +2100,190 @@ b.backtest.taxa20-a.backtest.taxa20
 );
 
 return lista[0];
+
+}
+
+
+/* ============================================================
+   TREINAMENTO WALK-FORWARD DO HISTÓRICO COLADO
+
+   IMPORTANTE:
+   Em cada ponto:
+   1. só usa números anteriores;
+   2. calcula a jogada;
+   3. depois observa o resultado;
+   4. grava o aprendizado;
+   5. segue para o próximo ponto.
+
+   Portanto o resultado futuro não entra na construção
+   da jogada que está sendo testada.
+============================================================ */
+
+function treinarHistoricoCompleto(numeros){
+
+limparMemoria();
+
+if(!Array.isArray(numeros)||numeros.length<18)return;
+
+const timelineTreino=[];
+let pendenteG1=null;
+
+for(let i=0;i<numeros.length;i++){
+
+const numero=numeros[i];
+
+/*
+   Se havia uma entrada esperando G1,
+   o número atual resolve o mesmo pacote.
+*/
+if(pendenteG1){
+
+const rG1=classificarJogada(numero,pendenteG1.jogada);
+
+pendenteG1.registro.g1=numero;
+
+if(rG1.green){
+
+pendenteG1.registro.resultadoFinal="GREEN_G1";
+pendenteG1.registro.greenG1=true;
+
+}else{
+
+pendenteG1.registro.resultadoFinal="LOSS";
+pendenteG1.registro.greenG1=false;
+pendenteG1.registro.tipoG1=rG1.tipo;
+pendenteG1.registro.ladoG1=rG1.lado;
+
+}
+
+registrarMemoria(pendenteG1.registro);
+
+pendenteG1=null;
+
+/*
+   O G1 também pertence ao histórico normalmente.
+   Ele não cria uma segunda entrada de treinamento.
+*/
+continue;
+
+}
+
+const passado=numeros.slice(
+Math.max(0,i-35),
+i
+);
+
+if(passado.length<14)continue;
+
+const configs={};
+
+RX_LIST.forEach(rx=>{
+
+/*
+   Durante o treinamento, o motor consulta somente
+   memórias já criadas por situações anteriores.
+*/
+const diag=diagnosticarLosses(timelineTreino);
+
+const cfg=gerarConfig(
+passado,
+rx,
+diag,
+true
+);
+
+if(!cfg.valido){
+configs[rx]=null;
+return;
+}
+
+/*
+   Seleção RX preserva a lógica do backtest.
+*/
+const bt=backtest(passado,rx);
+
+let score=
+bt.taxa5*.42+
+bt.taxa10*.32+
+bt.taxa20*.20+
+cfg.similaridade*.06;
+
+configs[rx]={
+valido:true,
+rx,
+raioX:cfg.raioX,
+jogada:cfg.jogada,
+similaridade:cfg.similaridade,
+backtest:bt,
+live:statsTimeline(timelineTreino),
+score
+};
+
+});
+
+const auto=escolherAuto(configs);
+
+if(!auto||!auto.valido)continue;
+
+const diag=diagnosticarLosses(timelineTreino);
+
+const momento=auto.jogada.momento||analisarMomento(passado);
+
+const contexto=
+auto.jogada.contexto||
+vetorContexto(passado,momento,auto.rx,diag);
+
+const r=classificarJogada(numero,auto.jogada);
+
+const registro={
+contexto,
+rx:auto.rx,
+jogada:resumoJogadaMemoria(auto.jogada),
+numero,
+primeiroGreen:r.green,
+tipo:r.tipo,
+lado:r.lado,
+gap:r.gap,
+g1:null,
+greenG1:false,
+resultadoFinal:r.green?"GREEN1":"AGUARDA_G1"
+};
+
+timelineTreino.push({
+resultado:numero,
+semJogada:false,
+green:r.green,
+tipo:r.tipo,
+lado:r.lado
+});
+
+timelineTreino.splice(0,Math.max(0,timelineTreino.length-300));
+
+if(r.green){
+
+registrarMemoria(registro);
+
+}else{
+
+/*
+   LOSS de primeira:
+   a mesma jogada é congelada para o próximo número.
+*/
+pendenteG1={
+jogada:auto.jogada,
+registro
+};
+
+}
+
+}
+
+/*
+   Se o histórico terminou justamente após um LOSS,
+   ainda não existe G1 conhecido.
+   Não inventamos resultado.
+*/
+salvarMemoria();
 
 }
 
@@ -2778,15 +2309,6 @@ centro1:config.jogada.blocos1[0]
 :null
 };
 
-}
-
-function snapshotComAssinatura(config,sig){
-
-const p=snapshot(config);
-
-if(p)p.assinatura=sig;
-
-return p;
 }
 
 function classificarSnapshot(numero,p){
@@ -2886,7 +2408,7 @@ salvarEstado();
 
 
 /* ============================================================
-   CONTROLE VISUAL / G1 DINÂMICO
+   CONTROLE VISUAL / G1
 ============================================================ */
 
 function chaveVisualAtual(){
@@ -2938,15 +2460,30 @@ resultado[k]=item.semJogada
 return resultado;
 }
 
-function ultimaEntradaEsperandoG1(){
+function prepararVisualAntes(numero){
 
-if(!duplasVisual.length)return null;
+const snapshotsAntes=capturarSnapshotsPendentes();
 
-const ultima=duplasVisual[duplasVisual.length-1];
-
-return ultima&&ultima.fase==="ESPERA_G1"
-?ultima
+const ultima=duplasVisual.length
+?duplasVisual[duplasVisual.length-1]
 :null;
+
+if(ultima&&ultima.fase==="ESPERA_G1"){
+
+return{
+tipo:"G1",
+numero,
+entrada:ultima,
+snapshotsAntes
+};
+
+}
+
+return{
+tipo:"ENTRADA",
+numero,
+snapshotsAntes
+};
 
 }
 
@@ -2982,7 +2519,7 @@ return{tipo:"ABERTA",texto:"—",classe:"aberta"};
 
 
 /* ============================================================
-   MEMÓRIA AO VIVO
+   REGISTRO AO VIVO NA MEMÓRIA
 ============================================================ */
 
 let memoriaEntradaPendente=null;
@@ -2996,73 +2533,89 @@ if(
 !configAntes.jogada.valido
 )return null;
 
+const base=historico.slice(-35);
+const momento=analisarMomento(base);
+
+const diag=diagnosticarLosses(
+estado.timelines[
+configAntes.rx
+]||[]
+);
+
 return{
-contexto:configAntes.jogada.contexto||null,
-trajetoria:configAntes.jogada.trajetoria||null,
+contexto:
+configAntes.jogada.contexto||
+vetorContexto(base,momento,configAntes.rx,diag),
+
 rx:configAntes.rx,
 jogada:resumoJogadaMemoria(configAntes.jogada)
 };
 
 }
 
-
-/* ============================================================
-   CONFIGURAÇÃO ATUAL
-============================================================ */
-
-function calcularConfiguracoesAtuais(opcoes={}){
-
-const base=historico.slice(-35);
-const configs={};
-
-const faseG1=!!opcoes.faseG1;
-
-RX_LIST.forEach(rx=>{
-
-configs[rx]=melhorDoRX(
-base,
-rx,
-true,
-{
-faseG1,
-timeline:estado.timelines[rx],
-chaveVisual:rx
-}
-);
-
-});
-
-const auto=escolherAuto(configs);
-
-const ativa=
-estado.modo==="AUTO"
-?auto
-:configs[estado.manualRX];
-
-return{
-base,
-configs,
-auto,
-ativa,
-faseG1
-};
-
-}
-
-
-/* ============================================================
-   FINALIZAÇÃO DA PRIMEIRA ENTRADA
-============================================================ */
-
-function finalizarPrimeiraEntrada(
+function finalizarVisualDepois(
 numero,
+controle,
 configAntes,
-registroAntes,
-snapshotsAntes
+registroAntes
 ){
 
-const avaliacoes=capturarAvaliacoesDoResultado(numero);
 const chave=chaveVisualAtual();
+
+if(controle.tipo==="G1"){
+
+const entrada=controle.entrada;
+
+entrada.g1=numero;
+
+entrada.avaliacoesG1=
+avaliarNumeroContraPacote(
+numero,
+entrada.snapshotEntrada
+);
+
+entrada.fase="FINALIZADO";
+
+if(memoriaEntradaPendente){
+
+const rG1=classificarJogada(
+numero,
+memoriaEntradaPendente.jogadaCompleta
+);
+
+memoriaEntradaPendente.registro.g1=numero;
+
+if(rG1.green){
+
+memoriaEntradaPendente.registro.resultadoFinal="GREEN_G1";
+memoriaEntradaPendente.registro.greenG1=true;
+
+}else{
+
+memoriaEntradaPendente.registro.resultadoFinal="LOSS";
+memoriaEntradaPendente.registro.greenG1=false;
+memoriaEntradaPendente.registro.tipoG1=rG1.tipo;
+memoriaEntradaPendente.registro.ladoG1=rG1.lado;
+
+}
+
+registrarMemoria(memoriaEntradaPendente.registro);
+salvarMemoria();
+
+memoriaEntradaPendente=null;
+
+}
+
+jogadaCongelada=null;
+
+salvarJogadaCongelada();
+salvarDuplasVisual();
+
+return;
+
+}
+
+const avaliacoes=capturarAvaliacoesDoResultado(numero);
 const atual=avaliacoes[chave];
 
 const entrada=normalizarDuplaVisual({
@@ -3070,8 +2623,7 @@ resultado:numero,
 g1:null,
 avaliacoes,
 avaliacoesG1:avaliacoesVazias(),
-snapshotEntrada:snapshotsAntes,
-snapshotG1:snapshotsVazios(),
+snapshotEntrada:controle.snapshotsAntes,
 fase:atual==="LOSS"?"ESPERA_G1":"FINALIZADO"
 });
 
@@ -3084,30 +2636,16 @@ const r=classificarJogada(numero,configAntes.jogada);
 
 const registro={
 contexto:registroAntes.contexto,
-trajetoria:registroAntes.trajetoria,
 rx:registroAntes.rx,
 jogada:registroAntes.jogada,
-
 numero,
-
 primeiroGreen:r.green,
 tipo:r.tipo,
 lado:r.lado,
 gap:r.gap,
-
 g1:null,
 greenG1:false,
-
-correcaoIdeal:
-melhorCorrecaoParaResultado(
-registroAntes.jogada,
-numero
-),
-
-resultadoFinal:
-r.green
-?"GREEN1"
-:"AGUARDA_G1"
+resultadoFinal:r.green?"GREEN1":"AGUARDA_G1"
 };
 
 if(r.green){
@@ -3121,679 +2659,92 @@ memoriaEntradaPendente=null;
 
 memoriaEntradaPendente={
 registro,
-primeiraJogada:configAntes.jogada
+jogadaCompleta:configAntes.jogada
 };
 
 }
 
 }
 
+if(atual==="LOSS")
+jogadaCongelada=copiarJogadaCongelada(configAntes);
+else
+jogadaCongelada=null;
+
+salvarJogadaCongelada();
 salvarDuplasVisual();
 
 }
 
 
 /* ============================================================
-   PREPARA G1 DINÂMICO
-
-   Depois do primeiro erro:
-   - erro já está nos 35
-   - timeline já conhece o erro
-   - memória conhece a entrada pendente
-   - motor recalcula
-   - cobertura do G1 pode mudar levemente
+   CONFIGURAÇÃO ATUAL
 ============================================================ */
 
-function prepararG1Dinamico(){
+function calcularConfiguracoesAtuais(){
 
-const entrada=ultimaEntradaEsperandoG1();
-
-if(!entrada)return null;
-
-const calculoG1=calcularConfiguracoesAtuais({
-faseG1:true
-});
-
-const sig=assinatura();
-
-const pacote=snapshotsVazios();
+const base=historico.slice(-35);
+const configs={};
 
 RX_LIST.forEach(rx=>{
-pacote[rx]=snapshotComAssinatura(
-calculoG1.configs[rx],
-sig
-);
+configs[rx]=melhorDoRX(base,rx,true);
 });
 
-pacote.AUTO=snapshotComAssinatura(
-calculoG1.auto,
-sig
-);
+const auto=escolherAuto(configs);
 
-entrada.snapshotG1=pacote;
+const ativa=
+estado.modo==="AUTO"
+?auto
+:configs[estado.manualRX];
 
-salvarDuplasVisual();
-
-return{
-entrada,
-calculoG1,
-pacote
-};
-
-}
-
-
-/* ============================================================
-   FINALIZA G1 DINÂMICO
-============================================================ */
-
-function finalizarG1Dinamico(numero,controleG1){
-
-if(!controleG1||!controleG1.entrada)return;
-
-const entrada=controleG1.entrada;
-
-entrada.g1=numero;
-
-entrada.avaliacoesG1=
-avaliarNumeroContraPacote(
-numero,
-controleG1.pacote
-);
-
-entrada.fase="FINALIZADO";
-
-if(memoriaEntradaPendente){
-
-const chave=chaveVisualAtual();
-
-const snapshotG1=
-controleG1.pacote[chave];
-
-const rG1=
-snapshotG1
-?classificarSnapshot(numero,snapshotG1)
-:{green:false,tipo:"FORA",lado:0,gap:99};
-
-memoriaEntradaPendente.registro.g1=numero;
-memoriaEntradaPendente.registro.greenG1=rG1.green;
-memoriaEntradaPendente.registro.tipoG1=rG1.tipo;
-memoriaEntradaPendente.registro.ladoG1=rG1.lado;
-
-memoriaEntradaPendente.registro.correcaoG1=
-controleG1.calculoG1.ativa?.jogada
-?resumoJogadaMemoria(
-controleG1.calculoG1.ativa.jogada
-)
-:null;
-
-memoriaEntradaPendente.registro.resultadoFinal=
-rG1.green
-?"GREEN_G1"
-:"LOSS";
-
-/*
-   Aprende qual deslocamento teria ajudado no G1
-   a partir da jogada recalculada.
-*/
-if(controleG1.calculoG1.ativa?.jogada){
-
-const resumoG1=
-resumoJogadaMemoria(
-controleG1.calculoG1.ativa.jogada
-);
-
-memoriaEntradaPendente.registro.correcaoIdealG1=
-melhorCorrecaoParaResultado(
-resumoG1,
-numero
-);
-
-}
-
-/*
-   Para consulta futura, damos prioridade à correção
-   observada na quebra / G1 quando ela existiu.
-*/
-if(
-Number.isInteger(
-memoriaEntradaPendente.registro.correcaoIdealG1
-)
-){
-
-memoriaEntradaPendente.registro.correcaoIdeal=
-memoriaEntradaPendente.registro.correcaoIdealG1;
-
-}
-
-registrarMemoria(
-memoriaEntradaPendente.registro
-);
-
-salvarMemoria();
-
-memoriaEntradaPendente=null;
-
-}
-
-salvarDuplasVisual();
+return{base,configs,auto,ativa};
 
 }
 
 
 /* ============================================================
    ADICIONAR NÚMERO
-
-   REGRA:
-   - Se estamos esperando G1, o número atual é avaliado
-     contra a jogada G1 recalculada.
-   - Depois ele entra normalmente nos 35.
-   - O mesmo número participa da evolução seguinte.
 ============================================================ */
 
 function adicionarNumero(numero){
 
-const entradaG1=ultimaEntradaEsperandoG1();
+const calculoAntes=calcularConfiguracoesAtuais();
 
-/* ============================================================
-   CASO 1: NÚMERO É G1
-============================================================ */
-
-if(entradaG1){
-
-/*
-   G1 foi preparado depois do primeiro erro.
-   Caso por alguma razão ainda não exista snapshot,
-   recalculamos agora ANTES do resultado.
-*/
-let controleG1=null;
-
-if(
-entradaG1.snapshotG1&&
-Object.values(entradaG1.snapshotG1).some(Boolean)
-){
-
-const calculoG1=calcularConfiguracoesAtuais({
-faseG1:true
-});
-
-controleG1={
-entrada:entradaG1,
-calculoG1,
-pacote:entradaG1.snapshotG1
-};
-
-}else{
-
-controleG1=prepararG1Dinamico();
-
-}
-
-/*
-   Avalia pendentes normais da configuração que estava
-   visível antes deste número.
-*/
-avaliarPendentes(numero);
-
-/*
-   Finaliza o G1 usando exatamente a cobertura que estava
-   preparada antes de o resultado entrar.
-*/
-finalizarG1Dinamico(
-numero,
-controleG1
-);
-
-/*
-   Agora o número entra normalmente nos 35.
-*/
-historico.push(numero);
-historico=historico.slice(-35);
-
-salvarHistorico();
-
-/*
-   Limpa pendentes porque o histórico mudou.
-   O render criará os novos snapshots para a próxima entrada.
-*/
-estado.pendentes={AUTO:null,4:null,5:null,6:null};
-salvarEstado();
-
-render();
-
-return;
-}
-
-
-/* ============================================================
-   CASO 2: ENTRADA NORMAL
-============================================================ */
-
-const calculoAntes=calcularConfiguracoesAtuais({
-faseG1:false
-});
-
-const configAntes=calculoAntes.ativa;
+const configAntes=
+jogadaCongelada||
+calculoAntes.ativa;
 
 const registroAntes=
 prepararRegistroMemoria(configAntes);
 
-const snapshotsAntes=
-capturarSnapshotsPendentes();
+const controleVisual=
+prepararVisualAntes(numero);
 
-/*
-   Resultado avalia a jogada que estava na tela.
-*/
 avaliarPendentes(numero);
 
-/*
-   Resultado entra nos 35.
-*/
 historico.push(numero);
 historico=historico.slice(-35);
 
 salvarHistorico();
 
-/*
-   Primeiro registramos se a entrada virou GREEN ou precisa G1.
-*/
-finalizarPrimeiraEntrada(
-numero,
-configAntes,
-registroAntes,
-snapshotsAntes
-);
-
-/*
-   Se virou G1:
-   AGORA, com o erro já dentro dos 35, recalculamos a cobertura.
-*/
-if(ultimaEntradaEsperandoG1()){
-
-estado.pendentes={AUTO:null,4:null,5:null,6:null};
-salvarEstado();
-
-/*
-   Cria a jogada dinâmica do G1.
-*/
-const controleG1=prepararG1Dinamico();
-
-/*
-   Os pendentes operacionais passam a ser exatamente
-   a configuração recalculada do G1.
-*/
-if(controleG1){
-
-const sig=assinatura();
-
-RX_LIST.forEach(rx=>{
-estado.pendentes[rx]=snapshotComAssinatura(
-controleG1.calculoG1.configs[rx],
-sig
-);
-});
-
-estado.pendentes.AUTO=
-snapshotComAssinatura(
-controleG1.calculoG1.auto,
-sig
-);
-
-salvarEstado();
-
-}
-
-}
-
 render();
 
-}
-
-
-/* ============================================================
-   TREINAMENTO WALK-FORWARD
-
-   O número usado como G1 NÃO é pulado.
-   Ele resolve o G1 e continua pertencendo ao histórico.
-============================================================ */
-
-function desempenhoTreino(entradas){
-
-const lista=entradas.slice(-8);
-
-let green1=0,g1=0,loss=0;
-
-lista.forEach(x=>{
-if(x==="GREEN1")green1++;
-else if(x==="GREEN_G1")g1++;
-else if(x==="LOSS")loss++;
-});
-
-const total=green1+g1+loss;
-
-return{
-green1,
-g1,
-loss,
-total,
-taxaG1:total?g1/total:0,
-taxaLoss:total?loss/total:0,
-deterioracao:total
-?clamp(
-(g1/total)*.48+
-(loss/total)*.80,
-0,1
-)
-:0
-};
-
-}
-
-function treinarHistoricoCompleto(numeros){
-
-limparMemoria();
-
-if(!Array.isArray(numeros)||numeros.length<18)return;
-
-const timelinesTreino={
-4:[],
-5:[],
-6:[]
-};
-
-const resultadosEntradas=[];
-
-let pendente=null;
-
-for(let i=0;i<numeros.length;i++){
-
-const numero=numeros[i];
-
-const passado=numeros.slice(
-Math.max(0,i-35),
-i
-);
-
-/* ============================================================
-   PRIMEIRO:
-   se este número é G1 de uma entrada anterior,
-   ele resolve a entrada anterior usando uma jogada
-   recalculada a partir do passado atual.
-============================================================ */
-
-if(pendente&&passado.length>=14){
-
-const desempenho=
-desempenhoTreino(resultadosEntradas);
-
-const configsG1={};
-
-RX_LIST.forEach(rx=>{
-
-const diag=
-diagnosticarLosses(
-timelinesTreino[rx]
-);
-
-const cfg=
-gerarConfig(
-passado,
-rx,
-diag,
-true,
-{
-faseG1:true,
-desempenho
-}
-);
-
-if(!cfg.valido){
-configsG1[rx]=null;
-return;
-}
-
-const bt=backtest(passado,rx);
-
-let score=
-bt.taxa5*.42+
-bt.taxa10*.32+
-bt.taxa20*.20+
-cfg.similaridade*.06;
-
-configsG1[rx]={
-valido:true,
-rx,
-raioX:cfg.raioX,
-jogada:cfg.jogada,
-similaridade:cfg.similaridade,
-backtest:bt,
-live:statsTimeline(timelinesTreino[rx]),
-score,
-faseG1:true
-};
-
-});
-
-const autoG1=escolherAuto(configsG1);
-
-if(autoG1&&autoG1.valido){
-
-const rG1=
-classificarJogada(
+finalizarVisualDepois(
 numero,
-autoG1.jogada
+controleVisual,
+configAntes,
+registroAntes
 );
 
-pendente.registro.g1=numero;
-pendente.registro.greenG1=rG1.green;
-pendente.registro.tipoG1=rG1.tipo;
-pendente.registro.ladoG1=rG1.lado;
-
-pendente.registro.correcaoG1=
-resumoJogadaMemoria(
-autoG1.jogada
-);
-
-pendente.registro.correcaoIdealG1=
-melhorCorrecaoParaResultado(
-resumoJogadaMemoria(autoG1.jogada),
-numero
-);
-
-pendente.registro.correcaoIdeal=
-pendente.registro.correcaoIdealG1;
-
-pendente.registro.resultadoFinal=
-rG1.green
-?"GREEN_G1"
-:"LOSS";
-
-resultadosEntradas.push(
-pendente.registro.resultadoFinal
-);
-
-registrarMemoria(
-pendente.registro
-);
-
-}
-
-pendente=null;
-
-}
-
-
-/* ============================================================
-   SEGUNDO:
-   o MESMO número continua sendo um resultado normal da
-   sequência e participa da evolução do motor.
-
-   A entrada nova que ele resolveria foi formada ANTES dele,
-   portanto usamos o mesmo "passado".
-============================================================ */
-
-if(passado.length<14)continue;
-
-const desempenho=
-desempenhoTreino(resultadosEntradas);
-
-const configs={};
-
-RX_LIST.forEach(rx=>{
-
-const diag=
-diagnosticarLosses(
-timelinesTreino[rx]
-);
-
-const cfg=
-gerarConfig(
-passado,
-rx,
-diag,
-true,
-{
-faseG1:false,
-desempenho
-}
-);
-
-if(!cfg.valido){
-configs[rx]=null;
-return;
-}
-
-const bt=backtest(passado,rx);
-
-let score=
-bt.taxa5*.42+
-bt.taxa10*.32+
-bt.taxa20*.20+
-cfg.similaridade*.06;
-
-configs[rx]={
-valido:true,
-rx,
-raioX:cfg.raioX,
-jogada:cfg.jogada,
-similaridade:cfg.similaridade,
-backtest:bt,
-live:statsTimeline(timelinesTreino[rx]),
-score,
-faseG1:false
-};
-
-});
-
-const auto=escolherAuto(configs);
-
-RX_LIST.forEach(rx=>{
-
-const cfg=configs[rx];
-
-if(!cfg||!cfg.valido){
-
-timelinesTreino[rx].push({
-resultado:numero,
-semJogada:true,
-green:null,
-tipo:"SEM_JOGADA",
-lado:0
-});
-
-return;
-}
-
-const rr=
-classificarJogada(
-numero,
-cfg.jogada
-);
-
-timelinesTreino[rx].push({
-resultado:numero,
-semJogada:false,
-green:rr.green,
-tipo:rr.tipo,
-lado:rr.lado
-});
-
-timelinesTreino[rx]=
-timelinesTreino[rx].slice(-MAX_TIMELINE);
-
-});
-
-if(!auto||!auto.valido)continue;
-
-const r=
-classificarJogada(
-numero,
-auto.jogada
-);
-
-const registro={
-contexto:auto.jogada.contexto||null,
-trajetoria:auto.jogada.trajetoria||null,
-rx:auto.rx,
-
-jogada:
-resumoJogadaMemoria(
-auto.jogada
-),
-
-numero,
-
-primeiroGreen:r.green,
-tipo:r.tipo,
-lado:r.lado,
-gap:r.gap,
-
-g1:null,
-greenG1:false,
-
-correcaoIdeal:
-melhorCorrecaoParaResultado(
-resumoJogadaMemoria(auto.jogada),
-numero
-),
-
-resultadoFinal:
-r.green
-?"GREEN1"
-:"AGUARDA_G1"
-};
-
-if(r.green){
-
-resultadosEntradas.push("GREEN1");
-
-registrarMemoria(registro);
-
-}else{
-
-/*
-   Aguarda o próximo número.
-   O próximo número será G1 com RECÁLCULO.
-*/
-pendente={
-registro
-};
-
-}
-
-}
-
-/*
-   Se terminou após uma primeira perda,
-   não inventamos o G1.
-*/
-salvarMemoria();
+render();
 
 }
 
 
 /* ============================================================
    COLAR HISTÓRICO
+
+   NÃO CORTA ANTES DO TREINAMENTO.
 ============================================================ */
 
 function extrairNumeros(texto){
@@ -3809,38 +2760,38 @@ return encontrados.map(Number);
 
 function inserirHistorico(){
 
-const campo=
-document.getElementById("entradaHistorico");
+const campo=document.getElementById("entradaHistorico");
 
-const numeros=
-extrairNumeros(campo.value);
+const numeros=extrairNumeros(campo.value);
 
 if(!numeros.length)return;
 
 document.getElementById("status").textContent=
-"TREINANDO MEMÓRIA • "+
-numeros.length+
-" NÚMEROS...";
+"TREINANDO MEMÓRIA • "+numeros.length+" NÚMEROS...";
 
+/*
+   Limpa estado operacional anterior.
+*/
 estado.pendentes={AUTO:null,4:null,5:null,6:null};
 estado.timelines={AUTO:[],4:[],5:[],6:[]};
 
 duplasVisual=[];
+jogadaCongelada=null;
 memoriaEntradaPendente=null;
 
-salvarJogadaCongelada();
-
 /*
-   Todo o histórico é usado no treinamento.
+   PRIMEIRO:
+   percorre TODO o histórico fornecido.
 */
 treinarHistoricoCompleto(numeros);
 
 /*
-   Motor operacional:
-   somente últimos 35.
+   DEPOIS:
+   somente os últimos 35 viram histórico operacional.
 */
 historico=numeros.slice(-35);
 
+salvarJogadaCongelada();
 salvarDuplasVisual();
 salvarHistorico();
 salvarEstado();
@@ -3862,14 +2813,10 @@ if(!duplasVisual.length)return;
 
 const ultima=duplasVisual[duplasVisual.length-1];
 
-if(
-ultima.g1!==null&&
-ultima.g1!==undefined
-){
+if(ultima.g1!==null&&ultima.g1!==undefined){
 
 ultima.g1=null;
 ultima.avaliacoesG1=avaliacoesVazias();
-ultima.snapshotG1=snapshotsVazios();
 ultima.fase="ESPERA_G1";
 
 salvarDuplasVisual();
@@ -3892,6 +2839,7 @@ historico.pop();
 
 estado.pendentes={AUTO:null,4:null,5:null,6:null};
 
+jogadaCongelada=null;
 memoriaEntradaPendente=null;
 
 salvarJogadaCongelada();
@@ -3908,6 +2856,7 @@ if(!confirm("Apagar histórico e memória adaptativa?"))return;
 
 historico=[];
 duplasVisual=[];
+jogadaCongelada=null;
 memoriaEntradaPendente=null;
 
 estado.pendentes={AUTO:null,4:null,5:null,6:null};
@@ -3989,7 +2938,7 @@ button{cursor:pointer;font-family:Arial;font-weight:900}
 .g1Numero{font-size:6px;font-weight:900;padding-left:3px;border-left:1px solid rgba(255,255,255,.45)}
 
 .jogadaStatus{font-size:8px;font-weight:900;margin:3px 0 6px;padding:4px 6px;border-radius:5px;display:inline-block;background:#15323a;color:#00e5ff;border:1px solid #007d98}
-.jogadaStatus.g1dinamico{background:#4a3510;color:#ffc107;border-color:#ffc107}
+.jogadaStatus.congelada{background:#4a3510;color:#ffc107;border-color:#ffc107}
 .jogadaCompacta{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;width:100%;margin-top:4px}
 .blocoCompacto{height:52px;min-width:0;background:#111;border:1px solid #00e5ff;border-radius:8px;display:flex;align-items:center;justify-content:center;position:relative}
 .blocoCompacto.um{border-color:#ffc107}
@@ -4086,6 +3035,8 @@ document.getElementById("auto").onclick=()=>{
 
 estado.modo="AUTO";
 
+jogadaCongelada=null;
+
 salvarJogadaCongelada();
 salvarEstado();
 render();
@@ -4098,6 +3049,8 @@ document.getElementById("rx"+rx).onclick=()=>{
 
 estado.modo="MANUAL";
 estado.manualRX=rx;
+
+jogadaCongelada=null;
 
 salvarJogadaCongelada();
 salvarEstado();
@@ -4255,7 +3208,7 @@ x.score.toFixed(1)+
    JOGADA
 ============================================================ */
 
-function renderJogada(config,faseG1=false){
+function renderJogada(config,congelada=false){
 
 const area=document.getElementById("jogada");
 
@@ -4278,10 +3231,10 @@ const ordenados=ordenarBlocosVisual(todos);
 area.innerHTML=
 
 '<div class="jogadaStatus '+
-(faseG1?"g1dinamico":"")+
+(congelada?"congelada":"")+
 '">'+
-(faseG1
-?"G1 • CENÁRIO RECALCULADO"
+(congelada
+?"JOGADA CONGELADA • G1"
 :"JOGADA ATUAL")+
 '</div>'+
 
@@ -4372,22 +3325,20 @@ salvarHistorico();
 const base=historico.slice(-35);
 const momento=analisarMomento(base);
 
-const esperandoG1=!!ultimaEntradaEsperandoG1();
+const configs={};
 
-const calculo=
-calcularConfiguracoesAtuais({
-faseG1:esperandoG1
+RX_LIST.forEach(rx=>{
+configs[rx]=melhorDoRX(base,rx,true);
 });
 
-const configs=calculo.configs;
-const auto=calculo.auto;
-const ativa=calculo.ativa;
+const auto=escolherAuto(configs);
 
-/*
-   Só criamos pendentes automaticamente quando eles ainda
-   não foram preparados explicitamente.
-*/
 garantirPendentes(configs,auto);
+
+const ativa=
+estado.modo==="AUTO"
+?auto
+:configs[estado.manualRX];
 
 ["auto","rx4","rx5","rx6"].forEach(id=>{
 document.getElementById(id).classList.remove("ativo");
@@ -4398,6 +3349,13 @@ document.getElementById("auto").classList.add("ativo");
 else
 document.getElementById("rx"+estado.manualRX).classList.add("ativo");
 
+
+/*
+   BT10 / BT20 / REAL10 / REAL20
+   NÃO SÃO MAIS EXIBIDOS.
+   O backtest continua trabalhando internamente.
+*/
+
 renderTrio(momento);
 
 renderTimeline("timelineAUTO","AUTO","AUTO");
@@ -4407,77 +3365,45 @@ renderTimeline("timeline6","RX6",6);
 
 renderDuplas14();
 
-renderJogada(
-ativa,
-esperandoG1
-);
+if(jogadaCongelada)
+renderJogada(jogadaCongelada,true);
+else
+renderJogada(ativa,false);
 
 
 /* ============================================================
-   MEMÓRIA / TRAJETÓRIA
+   INFORMAÇÃO DISCRETA DA MEMÓRIA
 ============================================================ */
 
 let consultaAtual=null;
-let pressaoAtual=null;
 
 if(
 ativa&&
 ativa.valido&&
-ativa.jogada
+ativa.jogada&&
+ativa.jogada.consultaMemoria
 ){
-
-consultaAtual=
-ativa.jogada.consultaMemoria||null;
-
-pressaoAtual=
-ativa.jogada.pressaoPreventiva||null;
-
-}
-
-let memoriaTexto=
-'MEMÓRIA INTERNA: <b>'+
-memoriaAdaptativa.length+
-'</b> CENÁRIOS';
-
-if(
-consultaAtual&&
-consultaAtual.ativo
-){
-
-memoriaTexto+=
-' • SEMELHANTES: <b>'+
-consultaAtual.amostras+
-'</b>';
-
-}
-
-if(pressaoAtual){
-
-memoriaTexto+=
-' • CENÁRIO: <b>'+
-pressaoAtual.nivel+
-'</b>';
-
-if(
-pressaoAtual.direcao!==0&&
-pressaoAtual.intensidade>=.30
-){
-
-memoriaTexto+=
-' • CORREÇÃO: <b>'+
-(
-pressaoAtual.direcao>0
-?"→"
-:"←"
-)+
-'</b>';
-
-}
-
+consultaAtual=ativa.jogada.consultaMemoria;
 }
 
 document.getElementById("memoriaInfo").innerHTML=
-memoriaTexto;
+
+'MEMÓRIA INTERNA: <b>'+
+memoriaAdaptativa.length+
+'</b> CENÁRIOS'+
+
+(
+consultaAtual&&consultaAtual.ativo
+?' • SEMELHANTES AGORA: <b>'+
+consultaAtual.amostras+
+'</b>'
+:''
+);
+
+
+const esperandoG1=
+duplasVisual.length&&
+duplasVisual[duplasVisual.length-1].fase==="ESPERA_G1";
 
 document.getElementById("status").textContent=
 
@@ -4486,7 +3412,7 @@ base.length+
 memoriaAdaptativa.length+
 (
 esperandoG1
-?" • G1 RECALCULADO"
+?" • G1: JOGADA CONGELADA"
 :""
 );
 
