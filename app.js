@@ -3,44 +3,25 @@
 
 /* ============================================================
    ANALISADOR 0 • 6 • 9
+   RAIO X + MOMENTO 14 + CONCENTRAÇÃO FÍSICA DAS DÚZIAS
 
-   MOTOR:
-   - RAIO X
-   - MOMENTO 14
-   - TERMINAIS
-   - COMBINAÇÕES DE TERMINAIS
-   - CORES
-   - ZONAS
-   - COLUNAS
-   - DÚZIAS
-   - CONCENTRAÇÃO FÍSICA DAS DÚZIAS
-   - CORREDORES
-   - DENSIDADE
-   - BACKTEST
+   REGRA VISUAL DA ENTRADA:
+   - A jogada mostrada é a jogada existente ANTES do resultado.
+   - GREEN de primeira: encerra e libera a nova jogada.
+   - LOSS de primeira: congela a jogada anterior.
+   - O próximo número é G1 usando EXATAMENTE a jogada congelada.
+   - Após o G1, libera a jogada nova.
+   - Todos os números, inclusive G1, entram normalmente nos 35.
 
-   IMPORTANTE:
-   - OFFSET NOVO REMOVIDO.
-   - VOLTA A GIRADA ORIGINAL DO MOTOR: -2 A +2.
-   - CONCENTRAÇÃO FÍSICA CONTINUA NO MOTOR.
-   - QUADRO VISUAL DE CONCENTRAÇÃO FÍSICA REMOVIDO.
-   - COLUNA ADICIONADA COMO AUXILIAR.
-   - COMBINAÇÃO DE TERMINAIS ADICIONADA COMO AUXILIAR.
-   - BACKTEST DOS COMPONENTES É USADO COMO CONFIANÇA.
-   - RAIO X CONTINUA SENDO A BASE DA JOGADA.
-   - V2 CONTINUA GREEN.
-
-   REGRA VISUAL:
-   - A jogada mostrada é a existente ANTES do resultado.
-   - GREEN direto libera nova jogada.
-   - LOSS direto congela a jogada.
-   - Próximo número é G1 na MESMA jogada.
-   - Depois do G1 libera nova jogada.
-   - G1 entra normalmente no histórico/motor.
-============================================================ */
-
-
-/* ============================================================
-   STORAGE
+   ALTERAÇÃO VISUAL:
+   - Quadros da jogada compactos.
+   - Mostra somente o número central.
+   - Os vizinhos continuam normalmente no motor.
+   - Os 28 números continuam normalmente no motor.
+   - Concentração física das dúzias continua no motor,
+     mas seu quadro visual foi removido.
+   - Ordem visual:
+     TIERS → ORPHELINS → VOISINS → ZERO
 ============================================================ */
 
 const STORAGE_KEY =
@@ -55,40 +36,21 @@ const STORAGE_DUPLAS =
 const STORAGE_FREEZE =
 "ANALISADOR_069_JOGADA_CONGELADA_V1";
 
-
-/* ============================================================
-   CONFIGURAÇÃO
-============================================================ */
-
 const MAX_HISTORICO = 35;
 const JANELA_MOMENTO = 14;
 const MAX_TIMELINE = 300;
 
 const RX_LIST = [4,5,6];
-
 const MAX_REPLICAS = 40;
 
 const PESO_MOMENTO = .34;
-
-/* GIRADA ORIGINAL */
 const MAX_GIRADA = 2;
 
-/* MOTOR */
 const PESO_DUZIA_FISICA = .16;
-
-/*
-   NOVOS AUXILIARES.
-
-   São pesos deliberadamente menores que o RX.
-   Eles ajudam a ordenar candidatos, mas não substituem o RX.
-*/
-const PESO_COLUNA = .105;
-const PESO_DUZIA = .085;
-const PESO_COMBINACAO_TERMINAL = .115;
 
 
 /* ============================================================
-   ROLETA EUROPEIA
+   ROLETA EUROPEIA FÍSICA
 ============================================================ */
 
 const track = [
@@ -130,7 +92,7 @@ TIERS:new Set([
 
 
 /* ============================================================
-   DÚZIA / COLUNA
+   DÚZIAS
 ============================================================ */
 
 function duzia(numero){
@@ -145,23 +107,6 @@ if(numero>=25 && numero<=36)
 return 3;
 
 return 0;
-
-}
-
-function coluna(numero){
-
-if(numero===0)
-return 0;
-
-const r=numero%3;
-
-if(r===1)
-return 1;
-
-if(r===2)
-return 2;
-
-return 3;
 
 }
 
@@ -351,6 +296,50 @@ return "#087c48";
 return vermelhos.has(n)
 ?"#c6283d"
 :"#181818";
+
+}
+
+
+/* ============================================================
+   ORDEM VISUAL DA JOGADA
+   TIERS → ORPHELINS → VOISINS → ZERO
+============================================================ */
+
+const ORDEM_REGIOES = {
+TIERS:0,
+ORPHELINS:1,
+VOISINS:2,
+ZERO:3
+};
+
+function ordenarBlocosVisual(blocos){
+
+return blocos
+.slice()
+.sort((a,b)=>{
+
+const ra=regiao(a.centro);
+const rb=regiao(b.centro);
+
+const oa=
+Object.prototype.hasOwnProperty.call(
+ORDEM_REGIOES,
+ra
+)
+?ORDEM_REGIOES[ra]
+:99;
+
+const ob=
+Object.prototype.hasOwnProperty.call(
+ORDEM_REGIOES,
+rb
+)
+?ORDEM_REGIOES[rb]
+:99;
+
+return oa-ob;
+
+});
 
 }
 
@@ -776,17 +765,6 @@ blocos2:
 config.jogada.blocos2.map(b=>({
 
 centro:b.centro,
-
-centroOriginal:
-b.centroOriginal!==undefined
-?b.centroOriginal
-:b.centro,
-
-offset:
-Number.isInteger(b.offset)
-?b.offset
-:0,
-
 qtd:2,
 numeros:b.numeros.slice()
 
@@ -796,17 +774,6 @@ blocos1:
 config.jogada.blocos1.map(b=>({
 
 centro:b.centro,
-
-centroOriginal:
-b.centroOriginal!==undefined
-?b.centroOriginal
-:b.centro,
-
-offset:
-Number.isInteger(b.offset)
-?b.offset
-:0,
-
 qtd:1,
 numeros:b.numeros.slice()
 
@@ -1020,214 +987,6 @@ t===terminalSeguinte(trio[2])
 return .34;
 
 return 0;
-
-}
-
-
-/* ============================================================
-   COMBINAÇÕES DE TERMINAIS
-
-   Analisa pares de terminais que aparecem juntos no momento.
-
-   Exemplo:
-   T3 + T7
-
-   Também considera a vizinhança dos dois terminais.
-
-   Isso NÃO substitui o trio original.
-   É uma confluência adicional.
-============================================================ */
-
-function analisarCombinacoesTerminais(base){
-
-const janela=
-limitar35(base)
-.slice(-JANELA_MOMENTO);
-
-const pares=[];
-
-for(let a=0;a<=9;a++){
-
-for(let b=a+1;b<=9;b++){
-
-let direto=0;
-let cobertura=0;
-let recente=0;
-let score=0;
-
-janela.forEach((numero,i)=>{
-
-const t=
-terminal(numero);
-
-const recencia=
-.45+
-((i+1)/
-Math.max(1,janela.length))
-*.55;
-
-const diretoA=
-t===a;
-
-const diretoB=
-t===b;
-
-const vizA=
-t===terminalAnterior(a) ||
-t===terminalSeguinte(a);
-
-const vizB=
-t===terminalAnterior(b) ||
-t===terminalSeguinte(b);
-
-if(diretoA || diretoB){
-
-direto++;
-cobertura++;
-
-score+=
-1.15*
-recencia;
-
-if(i>=janela.length-5){
-
-recente++;
-score+=.38;
-
-}
-
-}else if(vizA || vizB){
-
-cobertura++;
-
-score+=
-.42*
-recencia;
-
-if(i>=janela.length-5)
-score+=.12;
-
-}
-
-});
-
-/*
-   Evita favorecer dois terminais praticamente iguais
-   apenas porque suas vizinhanças se sobrepõem muito.
-*/
-const distancia=
-Math.min(
-Math.abs(a-b),
-10-Math.abs(a-b)
-);
-
-if(distancia===1)
-score*=.94;
-
-pares.push({
-
-a,
-b,
-direto,
-cobertura,
-recente,
-score,
-
-taxa:
-janela.length
-?cobertura/janela.length*100
-:0
-
-});
-
-}
-
-}
-
-pares.sort(
-(a,b)=>
-b.score-a.score ||
-b.recente-a.recente ||
-b.direto-a.direto ||
-b.cobertura-a.cobertura
-);
-
-return {
-
-ranking:pares,
-
-fortes:
-pares.slice(0,5),
-
-principal:
-pares[0]||null
-
-};
-
-}
-
-function scoreCombinacaoTerminalNumero(
-numero,
-momento
-){
-
-const info=
-momento.combinacoesTerminais;
-
-if(
-!info ||
-!info.fortes ||
-!info.fortes.length
-)
-return 0;
-
-const t=
-terminal(numero);
-
-let melhor=0;
-
-info.fortes.forEach((p,pos)=>{
-
-const pesoRanking=
-[1,.82,.67,.54,.44][pos]||.35;
-
-let local=0;
-
-if(
-t===p.a ||
-t===p.b
-){
-
-local=1;
-
-}else if(
-t===terminalAnterior(p.a) ||
-t===terminalSeguinte(p.a) ||
-t===terminalAnterior(p.b) ||
-t===terminalSeguinte(p.b)
-){
-
-local=.46;
-
-}
-
-const confianca=
-Math.min(
-1,
-p.taxa/75
-);
-
-const s=
-local*
-pesoRanking*
-(.55+.45*confianca);
-
-if(s>melhor)
-melhor=s;
-
-});
-
-return melhor;
 
 }
 
@@ -1472,259 +1231,8 @@ return score;
 
 
 /* ============================================================
-   DÚZIAS SIMPLES
-============================================================ */
-
-function analisarDuzias(base){
-
-const janela=
-limitar35(base)
-.slice(-JANELA_MOMENTO);
-
-const contagem={
-1:0,
-2:0,
-3:0
-};
-
-const recente={
-1:0,
-2:0,
-3:0
-};
-
-const score={
-1:0,
-2:0,
-3:0
-};
-
-janela.forEach((numero,i)=>{
-
-const d=duzia(numero);
-
-if(!d)
-return;
-
-contagem[d]++;
-
-const recencia=
-.50+
-((i+1)/
-Math.max(1,janela.length))
-*.50;
-
-score[d]+=recencia;
-
-if(i>=janela.length-5){
-
-recente[d]++;
-score[d]+=.28;
-
-}
-
-});
-
-const ranking=
-[1,2,3]
-.map(d=>({
-
-duzia:d,
-contagem:contagem[d],
-recente:recente[d],
-score:score[d],
-
-taxa:
-janela.length
-?contagem[d]/janela.length*100
-:0
-
-}))
-.sort(
-(a,b)=>
-b.score-a.score ||
-b.recente-a.recente ||
-b.contagem-a.contagem
-);
-
-return {
-contagem,
-recente,
-ranking,
-dominante:ranking[0]||null
-};
-
-}
-
-function scoreDuziaNumero(numero,momento){
-
-const d=
-duzia(numero);
-
-if(!d)
-return 0;
-
-const info=
-momento.duzias;
-
-if(
-!info ||
-!info.ranking.length
-)
-return 0;
-
-const pos=
-info.ranking.findIndex(
-x=>x.duzia===d
-);
-
-if(pos===0)
-return 1;
-
-if(pos===1)
-return .63;
-
-if(pos===2)
-return .34;
-
-return 0;
-
-}
-
-
-/* ============================================================
-   COLUNAS
-============================================================ */
-
-function analisarColunas(base){
-
-const janela=
-limitar35(base)
-.slice(-JANELA_MOMENTO);
-
-const contagem={
-1:0,
-2:0,
-3:0
-};
-
-const recente={
-1:0,
-2:0,
-3:0
-};
-
-const score={
-1:0,
-2:0,
-3:0
-};
-
-janela.forEach((numero,i)=>{
-
-const c=
-coluna(numero);
-
-if(!c)
-return;
-
-contagem[c]++;
-
-const recencia=
-.50+
-((i+1)/
-Math.max(1,janela.length))
-*.50;
-
-score[c]+=recencia;
-
-if(i>=janela.length-5){
-
-recente[c]++;
-score[c]+=.30;
-
-}
-
-});
-
-const ranking=
-[1,2,3]
-.map(c=>({
-
-coluna:c,
-contagem:contagem[c],
-recente:recente[c],
-score:score[c],
-
-taxa:
-janela.length
-?contagem[c]/janela.length*100
-:0
-
-}))
-.sort(
-(a,b)=>
-b.score-a.score ||
-b.recente-a.recente ||
-b.contagem-a.contagem
-);
-
-return {
-
-contagem,
-recente,
-ranking,
-
-dominante:
-ranking[0]||null
-
-};
-
-}
-
-function scoreColunaNumero(
-numero,
-momento
-){
-
-const c=
-coluna(numero);
-
-if(!c)
-return 0;
-
-const info=
-momento.colunas;
-
-if(
-!info ||
-!info.ranking.length
-)
-return 0;
-
-const pos=
-info.ranking.findIndex(
-x=>x.coluna===c
-);
-
-if(pos===0)
-return 1;
-
-if(pos===1)
-return .62;
-
-if(pos===2)
-return .32;
-
-return 0;
-
-}
-
-
-/* ============================================================
    CONCENTRAÇÃO FÍSICA DAS DÚZIAS
-   CONTINUA NO MOTOR
-   SEM QUADRO VISUAL
+   CONTINUA INTEGRALMENTE NO MOTOR
 ============================================================ */
 
 function analisarDuziasFisicas(base){
@@ -2336,307 +1844,6 @@ ranking.length
 
 
 /* ============================================================
-   BACKTEST DOS COMPONENTES
-
-   Avalia cada componente usando somente dados ANTERIORES
-   ao número testado.
-
-   Isso evita testar o número usando informação do próprio
-   resultado.
-
-   O resultado vira CONFIANÇA para o Momento.
-============================================================ */
-
-function taxaAcertoComponente(
-base,
-avaliador,
-minimo=7
-){
-
-base=
-limitar35(base);
-
-if(base.length<=minimo)
-return {
-acertos:0,
-total:0,
-taxa:50,
-confianca:1
-};
-
-let acertos=0;
-let total=0;
-
-const inicio=
-Math.max(
-minimo,
-base.length-20
-);
-
-for(
-let i=inicio;
-i<base.length;
-i++
-){
-
-const passado=
-base.slice(0,i);
-
-const resultado=
-base[i];
-
-const ok=
-avaliador(
-passado,
-resultado
-);
-
-if(ok===null ||
-ok===undefined)
-continue;
-
-total++;
-
-if(ok)
-acertos++;
-
-}
-
-const taxa=
-total
-?acertos/total*100
-:50;
-
-/*
-   Converte taxa em multiplicador moderado.
-   Não deixa um filtro zerar nem dominar o motor.
-*/
-let confianca=
-.65+
-(taxa/100)*.70;
-
-confianca=
-Math.max(
-.65,
-Math.min(1.35,confianca)
-);
-
-return {
-acertos,
-total,
-taxa,
-confianca
-};
-
-}
-
-function backtestComponentes(base){
-
-const btTerminal=
-taxaAcertoComponente(
-base,
-(passado,resultado)=>{
-
-const a=
-analisarTerminais(passado);
-
-if(!a.trio.length)
-return null;
-
-const t=
-terminal(resultado);
-
-return a.trio.some(c=>
-t===c ||
-t===terminalAnterior(c) ||
-t===terminalSeguinte(c)
-);
-
-}
-);
-
-const btComboTerminal=
-taxaAcertoComponente(
-base,
-(passado,resultado)=>{
-
-const a=
-analisarCombinacoesTerminais(passado);
-
-if(!a.principal)
-return null;
-
-const t=
-terminal(resultado);
-
-const p=
-a.principal;
-
-return (
-t===p.a ||
-t===p.b ||
-t===terminalAnterior(p.a) ||
-t===terminalSeguinte(p.a) ||
-t===terminalAnterior(p.b) ||
-t===terminalSeguinte(p.b)
-);
-
-}
-);
-
-const btColuna=
-taxaAcertoComponente(
-base,
-(passado,resultado)=>{
-
-const a=
-analisarColunas(passado);
-
-if(!a.dominante)
-return null;
-
-const c=
-coluna(resultado);
-
-if(!c)
-return false;
-
-return c===
-a.dominante.coluna;
-
-}
-);
-
-const btDuzia=
-taxaAcertoComponente(
-base,
-(passado,resultado)=>{
-
-const a=
-analisarDuzias(passado);
-
-if(!a.dominante)
-return null;
-
-const d=
-duzia(resultado);
-
-if(!d)
-return false;
-
-return d===
-a.dominante.duzia;
-
-}
-);
-
-const btCor=
-taxaAcertoComponente(
-base,
-(passado,resultado)=>{
-
-const a=
-analisarCores(passado);
-
-const total=
-Object.values(
-a.contagem
-).reduce((s,x)=>s+x,0);
-
-if(!total)
-return null;
-
-let esperado=null;
-
-if(
-a.pctAlternancia>=60 &&
-a.ultima==="VERMELHO"
-)
-esperado="PRETO";
-
-else if(
-a.pctAlternancia>=60 &&
-a.ultima==="PRETO"
-)
-esperado="VERMELHO";
-
-else{
-
-esperado=
-Object.entries(
-a.contagem
-)
-.sort(
-(x,y)=>y[1]-x[1]
-)[0][0];
-
-}
-
-return tipoCor(resultado)===
-esperado;
-
-}
-);
-
-const btZona=
-taxaAcertoComponente(
-base,
-(passado,resultado)=>{
-
-const a=
-analisarZonas(passado);
-
-if(!a.atual)
-return null;
-
-const linha=
-a.transicoes[a.atual];
-
-let esperado=
-Object.entries(linha)
-.sort(
-(x,y)=>y[1]-x[1]
-)[0];
-
-if(
-!esperado ||
-esperado[1]===0
-){
-
-esperado=
-Object.entries(
-a.contagem
-)
-.sort(
-(x,y)=>y[1]-x[1]
-)[0];
-
-}
-
-if(!esperado)
-return null;
-
-return regiao(resultado)===
-esperado[0];
-
-}
-);
-
-return {
-
-terminal:btTerminal,
-comboTerminal:btComboTerminal,
-coluna:btColuna,
-duzia:btDuzia,
-cor:btCor,
-zona:btZona
-
-};
-
-}
-
-
-/* ============================================================
    MOMENTO 14
 ============================================================ */
 
@@ -2644,7 +1851,7 @@ function analisarMomento(base){
 
 base=limitar35(base);
 
-const momento={
+return {
 
 janela:
 base.slice(-14),
@@ -2652,20 +1859,11 @@ base.slice(-14),
 terminais:
 analisarTerminais(base),
 
-combinacoesTerminais:
-analisarCombinacoesTerminais(base),
-
 cores:
 analisarCores(base),
 
 zonas:
 analisarZonas(base),
-
-colunas:
-analisarColunas(base),
-
-duzias:
-analisarDuzias(base),
 
 corredores:
 analisarCorredores(base),
@@ -2678,162 +1876,54 @@ analisarDuziasFisicas(base)
 
 };
 
-/*
-   Backtest dos auxiliares.
-
-   Só calculamos quando existe histórico suficiente.
-*/
-momento.backtestComponentes=
-base.length>=10
-?backtestComponentes(base)
-:null;
-
-return momento;
-
 }
 
-
-/* ============================================================
-   SCORE MOMENTO
-============================================================ */
-
-function confiancaBT(
-momento,
-chave
-){
-
-if(
-!momento.backtestComponentes ||
-!momento.backtestComponentes[chave]
-)
-return 1;
-
-return momento
-.backtestComponentes[chave]
-.confianca;
-
-}
-
-function scoreMomentoNumero(
-numero,
-momento
-){
-
-const cTerminal=
-confiancaBT(
-momento,
-"terminal"
-);
-
-const cCombo=
-confiancaBT(
-momento,
-"comboTerminal"
-);
-
-const cCor=
-confiancaBT(
-momento,
-"cor"
-);
-
-const cZona=
-confiancaBT(
-momento,
-"zona"
-);
-
-const cColuna=
-confiancaBT(
-momento,
-"coluna"
-);
-
-const cDuzia=
-confiancaBT(
-momento,
-"duzia"
-);
+function scoreMomentoNumero(numero,momento){
 
 const scoreBase=(
 
 scoreTerminalNumero(
 numero,
 momento
-)*
-.31*
-cTerminal +
-
-scoreCombinacaoTerminalNumero(
-numero,
-momento
-)*
-PESO_COMBINACAO_TERMINAL*
-cCombo +
+)*.31 +
 
 scoreCorNumero(
 numero,
 momento
-)*
-.10*
-cCor +
+)*.10 +
 
 scoreZonaNumero(
 numero,
 momento
-)*
-.13*
-cZona +
+)*.13 +
 
 scoreCorredorNumero(
 numero,
 momento
-)*
-.30 +
+)*.30 +
 
 (
 momento.densidade.mapa
 .get(numero)||0
-)*
-.055 +
-
-scoreColunaNumero(
-numero,
-momento
-)*
-PESO_COLUNA*
-cColuna +
-
-scoreDuziaNumero(
-numero,
-momento
-)*
-PESO_DUZIA*
-cDuzia
+)*.055
 
 );
 
-const scoreDuziaFisica=
+const scoreDuzia=
 scoreDuziaFisicaNumero(
 numero,
 momento
 );
 
 return (
-
 scoreBase +
-
-scoreDuziaFisica*
+scoreDuzia*
 PESO_DUZIA_FISICA
-
 );
 
 }
 
-function direcaoMomento(
-centro,
-momento
-){
+function direcaoMomento(centro,momento){
 
 let esquerda=0;
 let direita=0;
@@ -3396,8 +2486,7 @@ numeros.length;
 
 
 /* ============================================================
-   GIRADA ORIGINAL DO MOTOR
-   -2 / -1 / 0 / +1 / +2
+   GIRADA DINÂMICA
 ============================================================ */
 
 function avaliarCentroComGiradas(
@@ -3442,7 +2531,10 @@ momento
 const custoGirada=
 Math.abs(offset)*
 .15*
-Math.max(1,rx.suporte);
+Math.max(
+1,
+rx.suporte
+);
 
 const direcao=
 direcaoMomento(
@@ -3462,8 +2554,7 @@ direcao.direcao
 bonusDirecao=
 direcao.forca*
 rx.suporte*
-.22*
-Math.abs(offset);
+.18;
 
 }
 
@@ -3473,10 +2564,7 @@ if(
 diagnostico &&
 diagnostico.ativo &&
 diagnostico.lado!==0 &&
-offset!==0
-){
-
-if(
+offset!==0 &&
 Math.sign(offset)===
 diagnostico.lado
 ){
@@ -3484,18 +2572,7 @@ diagnostico.lado
 bonusLoss=
 diagnostico.forca*
 rx.suporte*
-.30*
-Math.abs(offset);
-
-}else{
-
-bonusLoss=
--diagnostico.forca*
-rx.suporte*
-.18*
-Math.abs(offset);
-
-}
+.22;
 
 }
 
@@ -3565,21 +2642,16 @@ if(!c)
 return;
 
 const existente=
-mapa.get(
-c.centro
-);
+mapa.get(c.centro);
 
 if(
 !existente ||
 c.score>existente.score
-){
-
+)
 mapa.set(
 c.centro,
 c
 );
-
-}
 
 });
 
@@ -3589,17 +2661,16 @@ mapa.values()
 .sort(
 (a,b)=>
 b.score-a.score ||
-b.suporte-a.suporte
+b.suporte-a.suporte ||
+Math.abs(a.offset)-
+Math.abs(b.offset)
 );
 
 }
 
 
 /* ============================================================
-   MONTA JOGADA
-   5 blocos de 2 vizinhos
-   1 bloco de 1 vizinho
-   total = 28 casas
+   JOGADA
 ============================================================ */
 
 function montarJogada(
@@ -3622,8 +2693,7 @@ numeros:new Set()
 
 }
 
-base=
-limitar35(base);
+base=limitar35(base);
 
 const momento=
 analisarMomento(base);
@@ -3679,8 +2749,7 @@ continue;
 
 dois.push(candidato);
 
-score+=
-candidato.score;
+score+=candidato.score;
 
 candidato.numeros
 .forEach(
@@ -3742,8 +2811,7 @@ rxTam,
 diagnostico=null
 ){
 
-base=
-limitar35(base);
+base=limitar35(base);
 
 const raioX=
 analisarRX(
@@ -3766,13 +2834,10 @@ diagnostico
 
 return {
 
-valido:
-jogada.valido,
-
+valido:jogada.valido,
 rx:rxTam,
 raioX,
 jogada,
-
 similaridade:
 raioX.similaridade
 
@@ -3782,7 +2847,7 @@ raioX.similaridade
 
 
 /* ============================================================
-   CLASSIFICAÇÃO
+   RESULTADO
 ============================================================ */
 
 function classificarJogada(
@@ -3995,7 +3060,7 @@ timeline:lista
 
 
 /* ============================================================
-   BACKTEST PRINCIPAL
+   BACKTEST
 ============================================================ */
 
 function backtest(
@@ -4003,8 +3068,7 @@ base,
 rxTam
 ){
 
-base=
-limitar35(base);
+base=limitar35(base);
 
 const timeline=[];
 
@@ -4122,9 +3186,7 @@ bt.taxa10*.32+
 bt.taxa20*.20+
 cfg.similaridade*.06;
 
-if(
-bt.lossSeguidos===1
-){
+if(bt.lossSeguidos===1){
 
 const validos=
 bt.timeline.filter(
@@ -4430,7 +3492,7 @@ salvarEstado();
 
 
 /* ============================================================
-   CONTROLE VISUAL ENTRADA / G1
+   CONTROLE DA ENTRADA
 ============================================================ */
 
 function chaveVisualAtual(){
@@ -4568,7 +3630,7 @@ snapshotsAntes
 
 
 /* ============================================================
-   STATUS ENTRADA
+   STATUS DA ENTRADA
 ============================================================ */
 
 function statusEntrada(
@@ -4659,7 +3721,7 @@ classe:"aberta"
 
 
 /* ============================================================
-   FINALIZA VISUAL
+   FINALIZA ENTRADA VISUAL
 ============================================================ */
 
 function finalizarVisualDepois(
@@ -4752,7 +3814,7 @@ salvarDuplasVisual();
 
 
 /* ============================================================
-   CONFIG ATUAL
+   CONFIGURAÇÃO ATUAL
 ============================================================ */
 
 function calcularConfiguracoesAtuais(){
@@ -5135,57 +4197,6 @@ font-weight:900
 font-size:13px
 }
 
-
-/* AUXILIARES */
-
-.auxBox{
-margin-top:7px;
-background:#111;
-border:1px solid #333;
-border-radius:8px;
-padding:7px
-}
-
-.auxGrid{
-display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:4px
-}
-
-.auxCard{
-background:#1d1d1d;
-border:1px solid #444;
-border-radius:7px;
-padding:6px;
-text-align:center
-}
-
-.auxCard.forte{
-border-color:#00e676
-}
-
-.auxCard small{
-display:block;
-font-size:7px;
-color:#888;
-font-weight:900
-}
-
-.auxCard strong{
-display:block;
-font-size:13px
-}
-
-.auxCard span{
-display:block;
-font-size:7px;
-color:#999;
-margin-top:2px
-}
-
-
-/* TERMINAIS */
-
 .trio{
 margin-top:7px;
 background:#111;
@@ -5306,7 +4317,9 @@ text-align:right
 }
 
 
-/* ENTRADAS */
+/* ============================================================
+   ENTRADAS
+============================================================ */
 
 .duplas14{
 display:grid;
@@ -5420,7 +4433,9 @@ border-left:1px solid rgba(255,255,255,.45)
 }
 
 
-/* JOGADA */
+/* ============================================================
+   JOGADA COMPACTA
+============================================================ */
 
 .jogadaStatus{
 font-size:8px;
@@ -5440,43 +4455,52 @@ color:#ffc107;
 border-color:#ffc107
 }
 
-.jogada{
-display:flex;
+.jogadaCompacta{
+display:grid;
+grid-template-columns:repeat(6,1fr);
 gap:5px;
-overflow-x:auto;
-margin-top:5px
+width:100%;
+margin-top:4px
 }
 
-.bloco{
-min-width:135px;
+.blocoCompacto{
+height:52px;
+min-width:0;
 background:#111;
 border:1px solid #00e5ff;
 border-radius:8px;
-padding:7px;
-text-align:center
+display:flex;
+align-items:center;
+justify-content:center;
+position:relative
 }
 
-.bloco.um{
+.blocoCompacto.um{
 border-color:#ffc107
 }
 
-.bloco small{
-font-size:7px;
-font-weight:900;
-color:#888
-}
-
-.bloco strong{
-display:block;
-font-size:22px;
-margin:3px
-}
-
-.numeros{
-border-top:1px solid #333;
-padding-top:4px;
-font-size:9px;
+.blocoCompacto strong{
+font-size:25px;
+line-height:1;
 font-weight:900
+}
+
+.blocoCompacto .tipoVizinho{
+position:absolute;
+right:3px;
+top:2px;
+font-size:6px;
+font-weight:900;
+color:#777
+}
+
+.blocoCompacto .regiaoMini{
+position:absolute;
+left:3px;
+bottom:2px;
+font-size:5px;
+font-weight:900;
+color:#555
 }
 
 
@@ -5512,16 +4536,26 @@ margin-top:5px
 grid-template-columns:repeat(2,1fr)
 }
 
-.auxGrid{
-grid-template-columns:repeat(2,1fr)
-}
-
 .duplas14{
 grid-template-columns:repeat(4,1fr)
 }
 
 .dupla14{
 min-height:65px
+}
+
+.jogadaCompacta{
+grid-template-columns:repeat(6,1fr);
+gap:3px
+}
+
+.blocoCompacto{
+height:46px;
+border-radius:6px
+}
+
+.blocoCompacto strong{
+font-size:21px
 }
 
 }
@@ -5593,8 +4627,6 @@ AUTO
 <div id="resumo" class="resumo"></div>
 
 <div id="trio" class="trio"></div>
-
-<div id="auxiliares" class="auxBox"></div>
 
 <div id="timelineAUTO" class="timelineRow"></div>
 <div id="timeline4" class="timelineRow"></div>
@@ -5752,7 +4784,7 @@ teclado.appendChild(zero);
 
 
 /* ============================================================
-   TIMELINE ENTRADAS
+   TIMELINE POR ENTRADAS
 ============================================================ */
 
 function timelineEntradas(chave){
@@ -5893,7 +4925,7 @@ lista.length
 
 
 /* ============================================================
-   TERMINAIS
+   TRIO
 ============================================================ */
 
 function renderTrio(momento){
@@ -5902,10 +4934,6 @@ const itens=
 momento.terminais
 .ranking
 .slice(0,3);
-
-const combo=
-momento.combinacoesTerminais
-.principal;
 
 document
 .getElementById("trio")
@@ -5940,155 +4968,13 @@ x.score.toFixed(1)+
 
 ).join("")+
 
-'</div>'+
-
-(
-combo
-?'<div style="margin-top:6px;font-size:8px;font-weight:900;color:#aaa">'+
-'COMBINAÇÃO MAIS FORTE: T'+
-combo.a+
-' + T'+
-combo.b+
-' • COBERTURA '+
-combo.taxa.toFixed(0)+
-'%'+
-'</div>'
-:""
-);
-
-}
-
-
-/* ============================================================
-   AUXILIARES / BACKTEST
-============================================================ */
-
-function renderAuxiliares(momento){
-
-const area=
-document.getElementById(
-"auxiliares"
-);
-
-const bt=
-momento.backtestComponentes;
-
-const col=
-momento.colunas.dominante;
-
-const dz=
-momento.duzias.dominante;
-
-const combo=
-momento.combinacoesTerminais.principal;
-
-function taxa(chave){
-
-if(
-!bt ||
-!bt[chave] ||
-!bt[chave].total
-)
-return "—";
-
-return bt[chave]
-.taxa
-.toFixed(0)+"%";
-
-}
-
-area.innerHTML=
-
-'<div class="trioTitulo">'+
-'CONFLUÊNCIAS • BACKTEST RECENTE'+
-'</div>'+
-
-'<div class="auxGrid">'+
-
-
-'<div class="auxCard forte">'+
-'<small>COLUNA</small>'+
-'<strong>'+
-(
-col
-?col.coluna+'ª'
-:'—'
-)+
-'</strong>'+
-'<span>BT '+taxa("coluna")+'</span>'+
-'</div>'+
-
-
-'<div class="auxCard">'+
-'<small>DÚZIA</small>'+
-'<strong>'+
-(
-dz
-?dz.duzia+'ª'
-:'—'
-)+
-'</strong>'+
-'<span>BT '+taxa("duzia")+'</span>'+
-'</div>'+
-
-
-'<div class="auxCard">'+
-'<small>TERMINAL</small>'+
-'<strong>'+
-(
-momento.terminais.trio.length
-?'T'+momento.terminais.trio[0]
-:'—'
-)+
-'</strong>'+
-'<span>BT '+taxa("terminal")+'</span>'+
-'</div>'+
-
-
-'<div class="auxCard">'+
-'<small>COMBO TERMINAL</small>'+
-'<strong>'+
-(
-combo
-?'T'+combo.a+' + T'+combo.b
-:'—'
-)+
-'</strong>'+
-'<span>BT '+taxa("comboTerminal")+'</span>'+
-'</div>'+
-
-
-'<div class="auxCard">'+
-'<small>COR</small>'+
-'<strong>'+
-(
-momento.cores.ultima||
-'—'
-)+
-'</strong>'+
-'<span>BT '+taxa("cor")+'</span>'+
-'</div>'+
-
-
-'<div class="auxCard">'+
-'<small>ZONA</small>'+
-'<strong style="font-size:10px">'+
-(
-momento.zonas.atual||
-'—'
-)+
-'</strong>'+
-'<span>BT '+taxa("zona")+'</span>'+
-'</div>'+
-
-
 '</div>';
 
 }
 
 
 /* ============================================================
-   JOGADA
+   JOGADA COMPACTA
 ============================================================ */
 
 function renderJogada(
@@ -6113,35 +4999,65 @@ return;
 
 }
 
-const dois=
-config.jogada
-.blocos2
-.map(b=>
+/*
+   A ordenação abaixo é APENAS VISUAL.
 
-'<div class="bloco">'+
-'<small>2 VIZINHOS DO</small>'+
-'<strong>'+b.centro+'</strong>'+
-'<div class="numeros">'+
-b.numeros.join(" • ")+
-'</div>'+
+   Não altera:
+   - blocos escolhidos
+   - centros
+   - vizinhos
+   - cobertura
+   - classificação
+   - snapshot
+   - G1
+   - motor
+*/
+
+const todosBlocos=[
+...config.jogada.blocos2,
+...config.jogada.blocos1
+];
+
+const ordenados=
+ordenarBlocosVisual(
+todosBlocos
+);
+
+const blocosHTML=
+ordenados
+.map(b=>{
+
+const r=
+regiao(b.centro)||"";
+
+return (
+
+'<div class="blocoCompacto '+
+(b.qtd===1?"um":"")+
+'">'+
+
+'<span class="tipoVizinho">'+
+(
+b.qtd===1
+?"1V"
+:"2V"
+)+
+'</span>'+
+
+'<strong>'+
+b.centro+
+'</strong>'+
+
+'<span class="regiaoMini">'+
+r+
+'</span>'+
+
 '</div>'
 
-).join("");
+);
 
-const um=
-config.jogada
-.blocos1
-.map(b=>
-
-'<div class="bloco um">'+
-'<small>1 VIZINHO DO</small>'+
-'<strong>'+b.centro+'</strong>'+
-'<div class="numeros">'+
-b.numeros.join(" • ")+
-'</div>'+
-'</div>'
-
-).join("");
+})
+.join("");
 
 area.innerHTML=
 
@@ -6155,12 +5071,8 @@ congelada
 )+
 '</div>'+
 
-'<div class="jogada">'+
-dois+
-'</div>'+
-
-'<div class="jogada">'+
-um+
+'<div class="jogadaCompacta">'+
+blocosHTML+
 '</div>';
 
 }
@@ -6196,6 +5108,15 @@ d,
 chave
 );
 
+let classe=
+status.classe;
+
+let miniClasse=
+status.classe;
+
+let miniTexto=
+status.texto;
+
 let g1="";
 
 if(
@@ -6213,7 +5134,7 @@ g1=
 html+=
 
 '<div class="dupla14 '+
-status.classe+
+classe+
 '">'+
 
 '<div class="bolaDupla" style="background:'+
@@ -6223,10 +5144,10 @@ d.resultado+
 '</div>'+
 
 '<div class="resultadoEntrada '+
-status.classe+
+miniClasse+
 '">'+
 
-status.texto+
+miniTexto+
 
 g1+
 
@@ -6379,9 +5300,15 @@ renderTrio(
 momento
 );
 
-renderAuxiliares(
-momento
-);
+
+/*
+   O QUADRO VISUAL DA CONCENTRAÇÃO FÍSICA
+   FOI REMOVIDO.
+
+   A ANÁLISE CONTINUA ATIVA NO MOTOR:
+   momento.duziasFisicas
+*/
+
 
 renderTimeline(
 "timelineAUTO",
@@ -6410,6 +5337,11 @@ renderTimeline(
 renderDuplas14();
 
 
+/*
+   SE EXISTE LOSS AGUARDANDO G1,
+   MOSTRA EXATAMENTE A JOGADA CONGELADA.
+*/
+
 if(jogadaCongelada){
 
 renderJogada(
@@ -6433,28 +5365,12 @@ duplasVisual[
 duplasVisual.length-1
 ].fase==="ESPERA_G1";
 
-const col=
-momento.colunas.dominante;
-
-const dz=
-momento.duzias.dominante;
-
 document
 .getElementById("status")
 .textContent=
 
 base.length+
 "/35 • MOMENTO 14 • 35×14 ATIVO"+
-(
-col
-?" • COL "+col.coluna
-:""
-)+
-(
-dz
-?" • D"+dz.duzia
-:""
-)+
 (
 esperandoG1
 ?" • G1: JOGADA CONGELADA"
