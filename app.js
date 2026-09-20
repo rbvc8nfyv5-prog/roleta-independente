@@ -3,26 +3,44 @@
 
 /* ============================================================
    ANALISADOR 0 • 6 • 9
-   RAIO X + MOMENTO 14 + CONCENTRAÇÃO FÍSICA DAS DÚZIAS
-   OFFSET DINÂMICO POR BACKTEST
 
-   REGRA VISUAL DA ENTRADA:
-   - A jogada mostrada é a jogada existente ANTES do resultado.
-   - GREEN de primeira: encerra e libera a nova jogada.
-   - LOSS de primeira: congela a jogada anterior.
-   - O próximo número é G1 usando EXATAMENTE a jogada congelada.
-   - Após o G1, libera a jogada nova.
-   - Todos os números, inclusive G1, entram normalmente nos 35.
+   MOTOR:
+   - RAIO X
+   - MOMENTO 14
+   - TERMINAIS
+   - COMBINAÇÕES DE TERMINAIS
+   - CORES
+   - ZONAS
+   - COLUNAS
+   - DÚZIAS
+   - CONCENTRAÇÃO FÍSICA DAS DÚZIAS
+   - CORREDORES
+   - DENSIDADE
+   - BACKTEST
 
-   REGRA DO OFFSET:
-   - Testa offsets físicos de -3 até +3.
-   - ALVO e V1 são o objetivo principal.
-   - V2 indica borda interna.
-   - FORA1 indica borda externa.
-   - Backtest recente mede qual offset está entregando mais ALVO/V1.
-   - Borda direciona o desempate do offset.
-   - Offset escolhido é aplicado SOMENTE à próxima jogada.
-   - Jogada congelada não muda durante Entrada + G1.
+   IMPORTANTE:
+   - OFFSET NOVO REMOVIDO.
+   - VOLTA A GIRADA ORIGINAL DO MOTOR: -2 A +2.
+   - CONCENTRAÇÃO FÍSICA CONTINUA NO MOTOR.
+   - QUADRO VISUAL DE CONCENTRAÇÃO FÍSICA REMOVIDO.
+   - COLUNA ADICIONADA COMO AUXILIAR.
+   - COMBINAÇÃO DE TERMINAIS ADICIONADA COMO AUXILIAR.
+   - BACKTEST DOS COMPONENTES É USADO COMO CONFIANÇA.
+   - RAIO X CONTINUA SENDO A BASE DA JOGADA.
+   - V2 CONTINUA GREEN.
+
+   REGRA VISUAL:
+   - A jogada mostrada é a existente ANTES do resultado.
+   - GREEN direto libera nova jogada.
+   - LOSS direto congela a jogada.
+   - Próximo número é G1 na MESMA jogada.
+   - Depois do G1 libera nova jogada.
+   - G1 entra normalmente no histórico/motor.
+============================================================ */
+
+
+/* ============================================================
+   STORAGE
 ============================================================ */
 
 const STORAGE_KEY =
@@ -37,27 +55,40 @@ const STORAGE_DUPLAS =
 const STORAGE_FREEZE =
 "ANALISADOR_069_JOGADA_CONGELADA_V1";
 
+
+/* ============================================================
+   CONFIGURAÇÃO
+============================================================ */
+
 const MAX_HISTORICO = 35;
 const JANELA_MOMENTO = 14;
 const MAX_TIMELINE = 300;
 
 const RX_LIST = [4,5,6];
+
 const MAX_REPLICAS = 40;
 
 const PESO_MOMENTO = .34;
 
-/* OFFSET */
-const MAX_GIRADA = 3;
-const OFFSET_MIN = -3;
-const OFFSET_MAX = 3;
-const OFFSET_BT_JANELA = 20;
-const OFFSET_BT_MIN = 5;
+/* GIRADA ORIGINAL */
+const MAX_GIRADA = 2;
 
+/* MOTOR */
 const PESO_DUZIA_FISICA = .16;
+
+/*
+   NOVOS AUXILIARES.
+
+   São pesos deliberadamente menores que o RX.
+   Eles ajudam a ordenar candidatos, mas não substituem o RX.
+*/
+const PESO_COLUNA = .105;
+const PESO_DUZIA = .085;
+const PESO_COMBINACAO_TERMINAL = .115;
 
 
 /* ============================================================
-   ROLETA EUROPEIA FÍSICA
+   ROLETA EUROPEIA
 ============================================================ */
 
 const track = [
@@ -99,7 +130,7 @@ TIERS:new Set([
 
 
 /* ============================================================
-   DÚZIAS
+   DÚZIA / COLUNA
 ============================================================ */
 
 function duzia(numero){
@@ -114,6 +145,23 @@ if(numero>=25 && numero<=36)
 return 3;
 
 return 0;
+
+}
+
+function coluna(numero){
+
+if(numero===0)
+return 0;
+
+const r=numero%3;
+
+if(r===1)
+return 1;
+
+if(r===2)
+return 2;
+
+return 3;
 
 }
 
@@ -259,15 +307,6 @@ return (t+9)%10;
 
 function terminalSeguinte(t){
 return (t+1)%10;
-}
-
-function textoOffset(offset){
-
-if(offset>0)
-return "+"+offset;
-
-return String(offset);
-
 }
 
 
@@ -729,16 +768,6 @@ return {
 valido:true,
 rx:config.rx,
 
-offset:
-Number.isInteger(config.offset)
-?config.offset
-:0,
-
-offsetInfo:
-config.offsetInfo
-?JSON.parse(JSON.stringify(config.offsetInfo))
-:null,
-
 jogada:{
 
 valido:true,
@@ -747,6 +776,7 @@ blocos2:
 config.jogada.blocos2.map(b=>({
 
 centro:b.centro,
+
 centroOriginal:
 b.centroOriginal!==undefined
 ?b.centroOriginal
@@ -766,6 +796,7 @@ blocos1:
 config.jogada.blocos1.map(b=>({
 
 centro:b.centro,
+
 centroOriginal:
 b.centroOriginal!==undefined
 ?b.centroOriginal
@@ -989,6 +1020,214 @@ t===terminalSeguinte(trio[2])
 return .34;
 
 return 0;
+
+}
+
+
+/* ============================================================
+   COMBINAÇÕES DE TERMINAIS
+
+   Analisa pares de terminais que aparecem juntos no momento.
+
+   Exemplo:
+   T3 + T7
+
+   Também considera a vizinhança dos dois terminais.
+
+   Isso NÃO substitui o trio original.
+   É uma confluência adicional.
+============================================================ */
+
+function analisarCombinacoesTerminais(base){
+
+const janela=
+limitar35(base)
+.slice(-JANELA_MOMENTO);
+
+const pares=[];
+
+for(let a=0;a<=9;a++){
+
+for(let b=a+1;b<=9;b++){
+
+let direto=0;
+let cobertura=0;
+let recente=0;
+let score=0;
+
+janela.forEach((numero,i)=>{
+
+const t=
+terminal(numero);
+
+const recencia=
+.45+
+((i+1)/
+Math.max(1,janela.length))
+*.55;
+
+const diretoA=
+t===a;
+
+const diretoB=
+t===b;
+
+const vizA=
+t===terminalAnterior(a) ||
+t===terminalSeguinte(a);
+
+const vizB=
+t===terminalAnterior(b) ||
+t===terminalSeguinte(b);
+
+if(diretoA || diretoB){
+
+direto++;
+cobertura++;
+
+score+=
+1.15*
+recencia;
+
+if(i>=janela.length-5){
+
+recente++;
+score+=.38;
+
+}
+
+}else if(vizA || vizB){
+
+cobertura++;
+
+score+=
+.42*
+recencia;
+
+if(i>=janela.length-5)
+score+=.12;
+
+}
+
+});
+
+/*
+   Evita favorecer dois terminais praticamente iguais
+   apenas porque suas vizinhanças se sobrepõem muito.
+*/
+const distancia=
+Math.min(
+Math.abs(a-b),
+10-Math.abs(a-b)
+);
+
+if(distancia===1)
+score*=.94;
+
+pares.push({
+
+a,
+b,
+direto,
+cobertura,
+recente,
+score,
+
+taxa:
+janela.length
+?cobertura/janela.length*100
+:0
+
+});
+
+}
+
+}
+
+pares.sort(
+(a,b)=>
+b.score-a.score ||
+b.recente-a.recente ||
+b.direto-a.direto ||
+b.cobertura-a.cobertura
+);
+
+return {
+
+ranking:pares,
+
+fortes:
+pares.slice(0,5),
+
+principal:
+pares[0]||null
+
+};
+
+}
+
+function scoreCombinacaoTerminalNumero(
+numero,
+momento
+){
+
+const info=
+momento.combinacoesTerminais;
+
+if(
+!info ||
+!info.fortes ||
+!info.fortes.length
+)
+return 0;
+
+const t=
+terminal(numero);
+
+let melhor=0;
+
+info.fortes.forEach((p,pos)=>{
+
+const pesoRanking=
+[1,.82,.67,.54,.44][pos]||.35;
+
+let local=0;
+
+if(
+t===p.a ||
+t===p.b
+){
+
+local=1;
+
+}else if(
+t===terminalAnterior(p.a) ||
+t===terminalSeguinte(p.a) ||
+t===terminalAnterior(p.b) ||
+t===terminalSeguinte(p.b)
+){
+
+local=.46;
+
+}
+
+const confianca=
+Math.min(
+1,
+p.taxa/75
+);
+
+const s=
+local*
+pesoRanking*
+(.55+.45*confianca);
+
+if(s>melhor)
+melhor=s;
+
+});
+
+return melhor;
 
 }
 
@@ -1233,7 +1472,259 @@ return score;
 
 
 /* ============================================================
+   DÚZIAS SIMPLES
+============================================================ */
+
+function analisarDuzias(base){
+
+const janela=
+limitar35(base)
+.slice(-JANELA_MOMENTO);
+
+const contagem={
+1:0,
+2:0,
+3:0
+};
+
+const recente={
+1:0,
+2:0,
+3:0
+};
+
+const score={
+1:0,
+2:0,
+3:0
+};
+
+janela.forEach((numero,i)=>{
+
+const d=duzia(numero);
+
+if(!d)
+return;
+
+contagem[d]++;
+
+const recencia=
+.50+
+((i+1)/
+Math.max(1,janela.length))
+*.50;
+
+score[d]+=recencia;
+
+if(i>=janela.length-5){
+
+recente[d]++;
+score[d]+=.28;
+
+}
+
+});
+
+const ranking=
+[1,2,3]
+.map(d=>({
+
+duzia:d,
+contagem:contagem[d],
+recente:recente[d],
+score:score[d],
+
+taxa:
+janela.length
+?contagem[d]/janela.length*100
+:0
+
+}))
+.sort(
+(a,b)=>
+b.score-a.score ||
+b.recente-a.recente ||
+b.contagem-a.contagem
+);
+
+return {
+contagem,
+recente,
+ranking,
+dominante:ranking[0]||null
+};
+
+}
+
+function scoreDuziaNumero(numero,momento){
+
+const d=
+duzia(numero);
+
+if(!d)
+return 0;
+
+const info=
+momento.duzias;
+
+if(
+!info ||
+!info.ranking.length
+)
+return 0;
+
+const pos=
+info.ranking.findIndex(
+x=>x.duzia===d
+);
+
+if(pos===0)
+return 1;
+
+if(pos===1)
+return .63;
+
+if(pos===2)
+return .34;
+
+return 0;
+
+}
+
+
+/* ============================================================
+   COLUNAS
+============================================================ */
+
+function analisarColunas(base){
+
+const janela=
+limitar35(base)
+.slice(-JANELA_MOMENTO);
+
+const contagem={
+1:0,
+2:0,
+3:0
+};
+
+const recente={
+1:0,
+2:0,
+3:0
+};
+
+const score={
+1:0,
+2:0,
+3:0
+};
+
+janela.forEach((numero,i)=>{
+
+const c=
+coluna(numero);
+
+if(!c)
+return;
+
+contagem[c]++;
+
+const recencia=
+.50+
+((i+1)/
+Math.max(1,janela.length))
+*.50;
+
+score[c]+=recencia;
+
+if(i>=janela.length-5){
+
+recente[c]++;
+score[c]+=.30;
+
+}
+
+});
+
+const ranking=
+[1,2,3]
+.map(c=>({
+
+coluna:c,
+contagem:contagem[c],
+recente:recente[c],
+score:score[c],
+
+taxa:
+janela.length
+?contagem[c]/janela.length*100
+:0
+
+}))
+.sort(
+(a,b)=>
+b.score-a.score ||
+b.recente-a.recente ||
+b.contagem-a.contagem
+);
+
+return {
+
+contagem,
+recente,
+ranking,
+
+dominante:
+ranking[0]||null
+
+};
+
+}
+
+function scoreColunaNumero(
+numero,
+momento
+){
+
+const c=
+coluna(numero);
+
+if(!c)
+return 0;
+
+const info=
+momento.colunas;
+
+if(
+!info ||
+!info.ranking.length
+)
+return 0;
+
+const pos=
+info.ranking.findIndex(
+x=>x.coluna===c
+);
+
+if(pos===0)
+return 1;
+
+if(pos===1)
+return .62;
+
+if(pos===2)
+return .32;
+
+return 0;
+
+}
+
+
+/* ============================================================
    CONCENTRAÇÃO FÍSICA DAS DÚZIAS
+   CONTINUA NO MOTOR
+   SEM QUADRO VISUAL
 ============================================================ */
 
 function analisarDuziasFisicas(base){
@@ -1845,6 +2336,307 @@ ranking.length
 
 
 /* ============================================================
+   BACKTEST DOS COMPONENTES
+
+   Avalia cada componente usando somente dados ANTERIORES
+   ao número testado.
+
+   Isso evita testar o número usando informação do próprio
+   resultado.
+
+   O resultado vira CONFIANÇA para o Momento.
+============================================================ */
+
+function taxaAcertoComponente(
+base,
+avaliador,
+minimo=7
+){
+
+base=
+limitar35(base);
+
+if(base.length<=minimo)
+return {
+acertos:0,
+total:0,
+taxa:50,
+confianca:1
+};
+
+let acertos=0;
+let total=0;
+
+const inicio=
+Math.max(
+minimo,
+base.length-20
+);
+
+for(
+let i=inicio;
+i<base.length;
+i++
+){
+
+const passado=
+base.slice(0,i);
+
+const resultado=
+base[i];
+
+const ok=
+avaliador(
+passado,
+resultado
+);
+
+if(ok===null ||
+ok===undefined)
+continue;
+
+total++;
+
+if(ok)
+acertos++;
+
+}
+
+const taxa=
+total
+?acertos/total*100
+:50;
+
+/*
+   Converte taxa em multiplicador moderado.
+   Não deixa um filtro zerar nem dominar o motor.
+*/
+let confianca=
+.65+
+(taxa/100)*.70;
+
+confianca=
+Math.max(
+.65,
+Math.min(1.35,confianca)
+);
+
+return {
+acertos,
+total,
+taxa,
+confianca
+};
+
+}
+
+function backtestComponentes(base){
+
+const btTerminal=
+taxaAcertoComponente(
+base,
+(passado,resultado)=>{
+
+const a=
+analisarTerminais(passado);
+
+if(!a.trio.length)
+return null;
+
+const t=
+terminal(resultado);
+
+return a.trio.some(c=>
+t===c ||
+t===terminalAnterior(c) ||
+t===terminalSeguinte(c)
+);
+
+}
+);
+
+const btComboTerminal=
+taxaAcertoComponente(
+base,
+(passado,resultado)=>{
+
+const a=
+analisarCombinacoesTerminais(passado);
+
+if(!a.principal)
+return null;
+
+const t=
+terminal(resultado);
+
+const p=
+a.principal;
+
+return (
+t===p.a ||
+t===p.b ||
+t===terminalAnterior(p.a) ||
+t===terminalSeguinte(p.a) ||
+t===terminalAnterior(p.b) ||
+t===terminalSeguinte(p.b)
+);
+
+}
+);
+
+const btColuna=
+taxaAcertoComponente(
+base,
+(passado,resultado)=>{
+
+const a=
+analisarColunas(passado);
+
+if(!a.dominante)
+return null;
+
+const c=
+coluna(resultado);
+
+if(!c)
+return false;
+
+return c===
+a.dominante.coluna;
+
+}
+);
+
+const btDuzia=
+taxaAcertoComponente(
+base,
+(passado,resultado)=>{
+
+const a=
+analisarDuzias(passado);
+
+if(!a.dominante)
+return null;
+
+const d=
+duzia(resultado);
+
+if(!d)
+return false;
+
+return d===
+a.dominante.duzia;
+
+}
+);
+
+const btCor=
+taxaAcertoComponente(
+base,
+(passado,resultado)=>{
+
+const a=
+analisarCores(passado);
+
+const total=
+Object.values(
+a.contagem
+).reduce((s,x)=>s+x,0);
+
+if(!total)
+return null;
+
+let esperado=null;
+
+if(
+a.pctAlternancia>=60 &&
+a.ultima==="VERMELHO"
+)
+esperado="PRETO";
+
+else if(
+a.pctAlternancia>=60 &&
+a.ultima==="PRETO"
+)
+esperado="VERMELHO";
+
+else{
+
+esperado=
+Object.entries(
+a.contagem
+)
+.sort(
+(x,y)=>y[1]-x[1]
+)[0][0];
+
+}
+
+return tipoCor(resultado)===
+esperado;
+
+}
+);
+
+const btZona=
+taxaAcertoComponente(
+base,
+(passado,resultado)=>{
+
+const a=
+analisarZonas(passado);
+
+if(!a.atual)
+return null;
+
+const linha=
+a.transicoes[a.atual];
+
+let esperado=
+Object.entries(linha)
+.sort(
+(x,y)=>y[1]-x[1]
+)[0];
+
+if(
+!esperado ||
+esperado[1]===0
+){
+
+esperado=
+Object.entries(
+a.contagem
+)
+.sort(
+(x,y)=>y[1]-x[1]
+)[0];
+
+}
+
+if(!esperado)
+return null;
+
+return regiao(resultado)===
+esperado[0];
+
+}
+);
+
+return {
+
+terminal:btTerminal,
+comboTerminal:btComboTerminal,
+coluna:btColuna,
+duzia:btDuzia,
+cor:btCor,
+zona:btZona
+
+};
+
+}
+
+
+/* ============================================================
    MOMENTO 14
 ============================================================ */
 
@@ -1852,7 +2644,7 @@ function analisarMomento(base){
 
 base=limitar35(base);
 
-return {
+const momento={
 
 janela:
 base.slice(-14),
@@ -1860,11 +2652,20 @@ base.slice(-14),
 terminais:
 analisarTerminais(base),
 
+combinacoesTerminais:
+analisarCombinacoesTerminais(base),
+
 cores:
 analisarCores(base),
 
 zonas:
 analisarZonas(base),
+
+colunas:
+analisarColunas(base),
+
+duzias:
+analisarDuzias(base),
 
 corredores:
 analisarCorredores(base),
@@ -1877,54 +2678,162 @@ analisarDuziasFisicas(base)
 
 };
 
+/*
+   Backtest dos auxiliares.
+
+   Só calculamos quando existe histórico suficiente.
+*/
+momento.backtestComponentes=
+base.length>=10
+?backtestComponentes(base)
+:null;
+
+return momento;
+
 }
 
-function scoreMomentoNumero(numero,momento){
+
+/* ============================================================
+   SCORE MOMENTO
+============================================================ */
+
+function confiancaBT(
+momento,
+chave
+){
+
+if(
+!momento.backtestComponentes ||
+!momento.backtestComponentes[chave]
+)
+return 1;
+
+return momento
+.backtestComponentes[chave]
+.confianca;
+
+}
+
+function scoreMomentoNumero(
+numero,
+momento
+){
+
+const cTerminal=
+confiancaBT(
+momento,
+"terminal"
+);
+
+const cCombo=
+confiancaBT(
+momento,
+"comboTerminal"
+);
+
+const cCor=
+confiancaBT(
+momento,
+"cor"
+);
+
+const cZona=
+confiancaBT(
+momento,
+"zona"
+);
+
+const cColuna=
+confiancaBT(
+momento,
+"coluna"
+);
+
+const cDuzia=
+confiancaBT(
+momento,
+"duzia"
+);
 
 const scoreBase=(
 
 scoreTerminalNumero(
 numero,
 momento
-)*.31 +
+)*
+.31*
+cTerminal +
+
+scoreCombinacaoTerminalNumero(
+numero,
+momento
+)*
+PESO_COMBINACAO_TERMINAL*
+cCombo +
 
 scoreCorNumero(
 numero,
 momento
-)*.10 +
+)*
+.10*
+cCor +
 
 scoreZonaNumero(
 numero,
 momento
-)*.13 +
+)*
+.13*
+cZona +
 
 scoreCorredorNumero(
 numero,
 momento
-)*.30 +
+)*
+.30 +
 
 (
 momento.densidade.mapa
 .get(numero)||0
-)*.055
+)*
+.055 +
+
+scoreColunaNumero(
+numero,
+momento
+)*
+PESO_COLUNA*
+cColuna +
+
+scoreDuziaNumero(
+numero,
+momento
+)*
+PESO_DUZIA*
+cDuzia
 
 );
 
-const scoreDuzia=
+const scoreDuziaFisica=
 scoreDuziaFisicaNumero(
 numero,
 momento
 );
 
 return (
+
 scoreBase +
-scoreDuzia*
+
+scoreDuziaFisica*
 PESO_DUZIA_FISICA
+
 );
 
 }
 
-function direcaoMomento(centro,momento){
+function direcaoMomento(
+centro,
+momento
+){
 
 let esquerda=0;
 let direita=0;
@@ -2487,236 +3396,11 @@ numeros.length;
 
 
 /* ============================================================
-   ANÁLISE DAS BORDAS
-   V2 + FORA1
-
-   V2:
-   resultado caiu na segunda casa do centro.
-   É green no bloco de 2 vizinhos, mas mostra tendência de borda.
-
-   FORA1:
-   resultado caiu uma casa depois da cobertura.
+   GIRADA ORIGINAL DO MOTOR
+   -2 / -1 / 0 / +1 / +2
 ============================================================ */
 
-function analisarBordasTimeline(lista){
-
-if(!Array.isArray(lista))
-lista=[];
-
-const validos=
-lista
-.filter(x=>!x.semJogada)
-.slice(-OFFSET_BT_JANELA);
-
-let esquerda=0;
-let direita=0;
-let pesoEsquerda=0;
-let pesoDireita=0;
-let v2=0;
-let fora1=0;
-
-validos.forEach((x,i)=>{
-
-if(
-x.tipo!=="V2" &&
-x.tipo!=="FORA1"
-)
-return;
-
-const recencia=
-.45+
-((i+1)/
-Math.max(1,validos.length))
-*.55;
-
-let peso=
-x.tipo==="FORA1"
-?1.30
-:1.00;
-
-peso*=recencia;
-
-if(x.tipo==="V2")
-v2++;
-
-if(x.tipo==="FORA1")
-fora1++;
-
-if(x.lado<0){
-
-esquerda++;
-pesoEsquerda+=peso;
-
-}else if(x.lado>0){
-
-direita++;
-pesoDireita+=peso;
-
-}
-
-});
-
-const total=
-pesoEsquerda+
-pesoDireita;
-
-let lado=0;
-
-if(pesoDireita>pesoEsquerda)
-lado=1;
-
-else if(pesoEsquerda>pesoDireita)
-lado=-1;
-
-return {
-
-lado,
-esquerda,
-direita,
-pesoEsquerda,
-pesoDireita,
-v2,
-fora1,
-
-forca:
-total
-?Math.abs(
-pesoDireita-pesoEsquerda
-)/total
-:0
-
-};
-
-}
-
-
-/* ============================================================
-   BACKTEST DE OFFSET
-
-   Aqui NÃO remonta o motor.
-   Ele pega as jogadas históricas geradas pelo próprio motor
-   e pergunta:
-
-   "Se aquela jogada tivesse sido deslocada de -3 a +3,
-    onde ALVO/V1 teria funcionado melhor?"
-
-   OBJETIVO:
-   - ALVO = maior peso
-   - V1 = acerto principal
-   - V2 = borda / aviso
-   - FORA1 = borda externa / aviso
-============================================================ */
-
-function deslocarJogada(
-jogada,
-offset
-){
-
-if(
-!jogada ||
-!jogada.valido
-)
-return null;
-
-const blocos2=
-jogada.blocos2.map(b=>{
-
-const centro=
-numeroOffset(
-b.centro,
-offset
-);
-
-return {
-
-centro,
-centroOriginal:b.centro,
-offset,
-qtd:2,
-numeros:setor(centro,2)
-
-};
-
-});
-
-const blocos1=
-jogada.blocos1.map(b=>{
-
-const centro=
-numeroOffset(
-b.centro,
-offset
-);
-
-return {
-
-centro,
-centroOriginal:b.centro,
-offset,
-qtd:1,
-numeros:setor(centro,1)
-
-};
-
-});
-
-return {
-
-valido:true,
-blocos2,
-blocos1
-
-};
-
-}
-
-function pontuarResultadoOffset(
-numero,
-jogada
-){
-
-const r=
-classificarJogada(
-numero,
-jogada
-);
-
-let pontos=0;
-
-if(r.green){
-
-if(r.tipo==="ALVO")
-pontos=1.15;
-
-else if(r.tipo==="V1")
-pontos=1.00;
-
-else if(r.tipo==="V2")
-pontos=.30;
-
-}else{
-
-if(r.tipo==="FORA1")
-pontos=.12;
-
-}
-
-return {
-r,
-pontos
-};
-
-}
-
-
-/* ============================================================
-   JOGADA BASE SEM OFFSET GLOBAL
-
-   Esta função mantém a construção original.
-   O offset global do backtest é aplicado DEPOIS.
-============================================================ */
-
-function avaliarCentroSemOffset(
+function avaliarCentroComGiradas(
 centroOriginal,
 qtd,
 freq,
@@ -2724,8 +3408,19 @@ momento,
 diagnostico
 ){
 
+let melhor=null;
+
+for(
+let offset=-MAX_GIRADA;
+offset<=MAX_GIRADA;
+offset++
+){
+
 const centro=
-centroOriginal;
+numeroOffset(
+centroOriginal,
+offset
+);
 
 const rx=
 scoreRXPuro(
@@ -2735,7 +3430,7 @@ freq
 );
 
 if(rx.suporte<=0)
-return null;
+continue;
 
 const momentoScore=
 scoreMomentoSetor(
@@ -2743,6 +3438,11 @@ centro,
 qtd,
 momento
 );
+
+const custoGirada=
+Math.abs(offset)*
+.15*
+Math.max(1,rx.suporte);
 
 const direcao=
 direcaoMomento(
@@ -2753,13 +3453,17 @@ momento
 let bonusDirecao=0;
 
 if(
-direcao.direcao!==0
+offset!==0 &&
+direcao.direcao!==0 &&
+Math.sign(offset)===
+direcao.direcao
 ){
 
 bonusDirecao=
 direcao.forca*
 rx.suporte*
-.04;
+.22*
+Math.abs(offset);
 
 }
 
@@ -2767,13 +3471,31 @@ let bonusLoss=0;
 
 if(
 diagnostico &&
-diagnostico.ativo
+diagnostico.ativo &&
+diagnostico.lado!==0 &&
+offset!==0
+){
+
+if(
+Math.sign(offset)===
+diagnostico.lado
 ){
 
 bonusLoss=
 diagnostico.forca*
 rx.suporte*
-.03;
+.30*
+Math.abs(offset);
+
+}else{
+
+bonusLoss=
+-diagnostico.forca*
+rx.suporte*
+.18*
+Math.abs(offset);
+
+}
 
 }
 
@@ -2788,13 +3510,14 @@ PESO_MOMENTO
 )+
 
 bonusDirecao+
-bonusLoss;
+bonusLoss-
+custoGirada;
 
-return {
+const item={
 
 centroOriginal,
 centro,
-offset:0,
+offset,
 qtd,
 numeros:rx.numeros,
 suporte:rx.suporte,
@@ -2804,9 +3527,19 @@ score:scoreFinal
 
 };
 
+if(
+!melhor ||
+item.score>melhor.score
+)
+melhor=item;
+
 }
 
-function gerarCandidatosBase(
+return melhor;
+
+}
+
+function gerarCandidatos(
 qtd,
 freq,
 momento,
@@ -2820,7 +3553,7 @@ track.forEach(
 centroOriginal=>{
 
 const c=
-avaliarCentroSemOffset(
+avaliarCentroComGiradas(
 centroOriginal,
 qtd,
 freq,
@@ -2832,16 +3565,21 @@ if(!c)
 return;
 
 const existente=
-mapa.get(c.centro);
+mapa.get(
+c.centro
+);
 
 if(
 !existente ||
 c.score>existente.score
-)
+){
+
 mapa.set(
 c.centro,
 c
 );
+
+}
 
 });
 
@@ -2858,10 +3596,13 @@ b.suporte-a.suporte
 
 
 /* ============================================================
-   MONTA JOGADA BASE
+   MONTA JOGADA
+   5 blocos de 2 vizinhos
+   1 bloco de 1 vizinho
+   total = 28 casas
 ============================================================ */
 
-function montarJogadaBase(
+function montarJogada(
 raioX,
 base,
 diagnostico=null
@@ -2881,7 +3622,8 @@ numeros:new Set()
 
 }
 
-base=limitar35(base);
+base=
+limitar35(base);
 
 const momento=
 analisarMomento(base);
@@ -2892,7 +3634,7 @@ raioX.replicas
 );
 
 const candidatos2=
-gerarCandidatosBase(
+gerarCandidatos(
 2,
 freq,
 momento,
@@ -2900,7 +3642,7 @@ diagnostico
 );
 
 const candidatos1=
-gerarCandidatosBase(
+gerarCandidatos(
 1,
 freq,
 momento,
@@ -2937,7 +3679,8 @@ continue;
 
 dois.push(candidato);
 
-score+=candidato.score;
+score+=
+candidato.score;
 
 candidato.numeros
 .forEach(
@@ -2966,8 +3709,7 @@ blocos2:dois,
 blocos1:[um],
 numeros:usados,
 score,
-momento,
-offset:0
+momento
 
 };
 
@@ -2983,8 +3725,7 @@ valido:false,
 blocos2:[],
 blocos1:[],
 numeros:new Set(),
-momento,
-offset:0
+momento
 
 };
 
@@ -2992,16 +3733,17 @@ offset:0
 
 
 /* ============================================================
-   GERA CONFIG BASE
+   CONFIG
 ============================================================ */
 
-function gerarConfigBase(
+function gerarConfig(
 base,
 rxTam,
 diagnostico=null
 ){
 
-base=limitar35(base);
+base=
+limitar35(base);
 
 const raioX=
 analisarRX(
@@ -3016,7 +3758,7 @@ rx:rxTam
 };
 
 const jogada=
-montarJogadaBase(
+montarJogada(
 raioX,
 base,
 diagnostico
@@ -3024,10 +3766,13 @@ diagnostico
 
 return {
 
-valido:jogada.valido,
+valido:
+jogada.valido,
+
 rx:rxTam,
 raioX,
 jogada,
+
 similaridade:
 raioX.similaridade
 
@@ -3037,7 +3782,7 @@ raioX.similaridade
 
 
 /* ============================================================
-   RESULTADO
+   CLASSIFICAÇÃO
 ============================================================ */
 
 function classificarJogada(
@@ -3167,507 +3912,6 @@ melhor.lado
 
 
 /* ============================================================
-   BACKTEST ESPECÍFICO DOS OFFSETS
-============================================================ */
-
-function backtestOffsets(
-base,
-rxTam
-){
-
-base=limitar35(base);
-
-const minimo=
-Math.max(
-14,
-rxTam*2+4
-);
-
-const inicio=
-Math.max(
-minimo,
-base.length-OFFSET_BT_JANELA
-);
-
-const resultados={};
-
-for(
-let offset=OFFSET_MIN;
-offset<=OFFSET_MAX;
-offset++
-){
-
-resultados[offset]={
-
-offset,
-amostra:0,
-alvo:0,
-v1:0,
-v2:0,
-fora1:0,
-green28:0,
-pontos:0,
-esquerda:0,
-direita:0
-
-};
-
-}
-
-const timelineBase=[];
-
-for(
-let i=inicio;
-i<base.length;
-i++
-){
-
-const passado=
-base.slice(0,i);
-
-const diag=
-diagnosticarLosses(
-timelineBase
-);
-
-const cfgBase=
-gerarConfigBase(
-passado,
-rxTam,
-diag
-);
-
-if(!cfgBase.valido){
-
-timelineBase.push({
-
-resultado:base[i],
-semJogada:true,
-green:null,
-tipo:"SEM_JOGADA",
-lado:0
-
-});
-
-continue;
-
-}
-
-const resultado=
-base[i];
-
-const rBase=
-classificarJogada(
-resultado,
-cfgBase.jogada
-);
-
-timelineBase.push({
-
-resultado,
-semJogada:false,
-green:rBase.green,
-tipo:rBase.tipo,
-lado:rBase.lado
-
-});
-
-for(
-let offset=OFFSET_MIN;
-offset<=OFFSET_MAX;
-offset++
-){
-
-const jogada=
-deslocarJogada(
-cfgBase.jogada,
-offset
-);
-
-const teste=
-pontuarResultadoOffset(
-resultado,
-jogada
-);
-
-const item=
-resultados[offset];
-
-item.amostra++;
-item.pontos+=teste.pontos;
-
-if(teste.r.green)
-item.green28++;
-
-if(teste.r.tipo==="ALVO")
-item.alvo++;
-
-else if(teste.r.tipo==="V1")
-item.v1++;
-
-else if(teste.r.tipo==="V2")
-item.v2++;
-
-else if(teste.r.tipo==="FORA1")
-item.fora1++;
-
-if(
-teste.r.tipo==="V2" ||
-teste.r.tipo==="FORA1"
-){
-
-if(teste.r.lado<0)
-item.esquerda++;
-
-else if(teste.r.lado>0)
-item.direita++;
-
-}
-
-}
-
-}
-
-const borda=
-analisarBordasTimeline(
-timelineBase
-);
-
-const ranking=
-Object.values(resultados)
-.map(x=>{
-
-const principal=
-x.alvo+x.v1;
-
-const taxaPrincipal=
-x.amostra
-?principal/x.amostra*100
-:0;
-
-const taxa28=
-x.amostra
-?x.green28/x.amostra*100
-:0;
-
-/*
-   SCORE DO OFFSET
-
-   1) ALVO/V1 manda.
-   2) ALVO recebe pequeno bônus.
-   3) V2 não é objetivo; vale pouco.
-   4) FORA1 só serve como informação de borda.
-   5) Offset maior tem pequeno custo para evitar giro gratuito.
-*/
-
-let score=
-
-taxaPrincipal*1.00 +
-
-(
-x.amostra
-?x.alvo/x.amostra*100
-:0
-)*.12 +
-
-(
-x.amostra
-?x.v2/x.amostra*100
-:0
-)*.04 -
-
-Math.abs(x.offset)*.65;
-
-
-/*
-   BORDA DO BACKTEST:
-   se a borda está puxando para um lado,
-   favorece offset naquele mesmo sentido.
-*/
-
-if(
-borda.lado!==0 &&
-x.offset!==0 &&
-Math.sign(x.offset)===
-borda.lado
-){
-
-score+=
-borda.forca*
-Math.abs(x.offset)*
-1.80;
-
-}
-
-
-/*
-   Penaliza deslocamento contrário à borda dominante.
-*/
-
-if(
-borda.lado!==0 &&
-x.offset!==0 &&
-Math.sign(x.offset)!==
-borda.lado
-){
-
-score-=
-borda.forca*
-Math.abs(x.offset)*
-.90;
-
-}
-
-return Object.assign(
-{},
-x,
-{
-principal,
-taxaPrincipal,
-taxa28,
-score
-}
-);
-
-})
-.sort((a,b)=>
-
-b.score-a.score ||
-
-b.taxaPrincipal-
-a.taxaPrincipal ||
-
-b.alvo-a.alvo ||
-
-Math.abs(a.offset)-
-Math.abs(b.offset)
-
-);
-
-let escolhido=
-ranking[0]||null;
-
-/*
-   Com amostra muito pequena,
-   não força offset distante.
-*/
-
-if(
-escolhido &&
-escolhido.amostra<
-OFFSET_BT_MIN
-){
-
-const zero=
-ranking.find(
-x=>x.offset===0
-);
-
-if(zero)
-escolhido=zero;
-
-}
-
-return {
-
-valido:
-!!escolhido,
-
-rx:rxTam,
-
-escolhido,
-
-ranking,
-
-borda,
-
-timelineBase
-
-};
-
-}
-
-
-/* ============================================================
-   APLICA OFFSET GLOBAL NA JOGADA
-============================================================ */
-
-function aplicarOffsetJogada(
-jogada,
-offset
-){
-
-if(
-!jogada ||
-!jogada.valido
-)
-return jogada;
-
-offset=
-Math.max(
-OFFSET_MIN,
-Math.min(
-OFFSET_MAX,
-Number(offset)||0
-)
-);
-
-const blocos2=
-jogada.blocos2.map(b=>{
-
-const centroOriginal=
-b.centro;
-
-const centro=
-numeroOffset(
-centroOriginal,
-offset
-);
-
-return {
-
-centroOriginal,
-centro,
-offset,
-qtd:2,
-numeros:setor(centro,2),
-
-suporte:b.suporte,
-scoreRX:b.scoreRX,
-scoreMomento:b.scoreMomento,
-score:b.score
-
-};
-
-});
-
-const blocos1=
-jogada.blocos1.map(b=>{
-
-const centroOriginal=
-b.centro;
-
-const centro=
-numeroOffset(
-centroOriginal,
-offset
-);
-
-return {
-
-centroOriginal,
-centro,
-offset,
-qtd:1,
-numeros:setor(centro,1),
-
-suporte:b.suporte,
-scoreRX:b.scoreRX,
-scoreMomento:b.scoreMomento,
-score:b.score
-
-};
-
-});
-
-const numeros=
-new Set();
-
-blocos2.forEach(b=>
-b.numeros.forEach(n=>
-numeros.add(n)
-)
-);
-
-blocos1.forEach(b=>
-b.numeros.forEach(n=>
-numeros.add(n)
-)
-);
-
-return {
-
-valido:
-blocos2.length===5 &&
-blocos1.length===1 &&
-numeros.size===28,
-
-blocos2,
-blocos1,
-numeros,
-score:jogada.score,
-momento:jogada.momento,
-offset
-
-};
-
-}
-
-
-/* ============================================================
-   CONFIG FINAL COM OFFSET DO BACKTEST
-============================================================ */
-
-function gerarConfig(
-base,
-rxTam,
-diagnostico=null
-){
-
-base=limitar35(base);
-
-const cfgBase=
-gerarConfigBase(
-base,
-rxTam,
-diagnostico
-);
-
-if(!cfgBase.valido)
-return {
-valido:false,
-rx:rxTam
-};
-
-const btOffset=
-backtestOffsets(
-base,
-rxTam
-);
-
-const offset=
-btOffset &&
-btOffset.valido &&
-btOffset.escolhido
-?btOffset.escolhido.offset
-:0;
-
-const jogada=
-aplicarOffsetJogada(
-cfgBase.jogada,
-offset
-);
-
-return {
-
-valido:jogada.valido,
-rx:rxTam,
-raioX:cfgBase.raioX,
-jogada,
-similaridade:
-cfgBase.similaridade,
-
-offset,
-
-offsetInfo:
-btOffset
-
-};
-
-}
-
-
-/* ============================================================
    STATS
 ============================================================ */
 
@@ -3751,7 +3995,7 @@ timeline:lista
 
 
 /* ============================================================
-   BACKTEST NORMAL DO MOTOR
+   BACKTEST PRINCIPAL
 ============================================================ */
 
 function backtest(
@@ -3759,7 +4003,8 @@ base,
 rxTam
 ){
 
-base=limitar35(base);
+base=
+limitar35(base);
 
 const timeline=[];
 
@@ -3877,7 +4122,9 @@ bt.taxa10*.32+
 bt.taxa20*.20+
 cfg.similaridade*.06;
 
-if(bt.lossSeguidos===1){
+if(
+bt.lossSeguidos===1
+){
 
 const validos=
 bt.timeline.filter(
@@ -3922,15 +4169,7 @@ jogada:cfg.jogada,
 similaridade:cfg.similaridade,
 backtest:bt,
 live,
-score,
-
-offset:
-Number.isInteger(cfg.offset)
-?cfg.offset
-:0,
-
-offsetInfo:
-cfg.offsetInfo||null
+score
 
 };
 
@@ -3991,11 +4230,6 @@ assinatura(),
 
 rx:
 config.rx,
-
-offset:
-Number.isInteger(config.offset)
-?config.offset
-:0,
 
 centros2:
 config.jogada
@@ -4103,7 +4337,6 @@ salvarEstado();
 
 /* ============================================================
    AVALIA PENDENTES
-   MOTOR PRESERVADO
 ============================================================ */
 
 function avaliarPendentes(numero){
@@ -4179,12 +4412,7 @@ semJogada:false,
 green:r.green,
 tipo:r.tipo,
 lado:r.lado,
-hora:Date.now(),
-
-offset:
-Number.isInteger(p.offset)
-?p.offset
-:0
+hora:Date.now()
 
 });
 
@@ -4202,7 +4430,7 @@ salvarEstado();
 
 
 /* ============================================================
-   CONTROLE DA ENTRADA
+   CONTROLE VISUAL ENTRADA / G1
 ============================================================ */
 
 function chaveVisualAtual(){
@@ -4340,7 +4568,7 @@ snapshotsAntes
 
 
 /* ============================================================
-   STATUS DA ENTRADA
+   STATUS ENTRADA
 ============================================================ */
 
 function statusEntrada(
@@ -4431,7 +4659,7 @@ classe:"aberta"
 
 
 /* ============================================================
-   FINALIZA ENTRADA VISUAL
+   FINALIZA VISUAL
 ============================================================ */
 
 function finalizarVisualDepois(
@@ -4524,7 +4752,7 @@ salvarDuplasVisual();
 
 
 /* ============================================================
-   CONFIGURAÇÃO ATUAL
+   CONFIG ATUAL
 ============================================================ */
 
 function calcularConfiguracoesAtuais(){
@@ -4907,74 +5135,56 @@ font-weight:900
 font-size:13px
 }
 
-.offsetBox{
+
+/* AUXILIARES */
+
+.auxBox{
 margin-top:7px;
 background:#111;
-border:1px solid #555;
+border:1px solid #333;
 border-radius:8px;
 padding:7px
 }
 
-.offsetTopo{
+.auxGrid{
 display:grid;
-grid-template-columns:1fr 1fr 1fr;
+grid-template-columns:repeat(3,1fr);
 gap:4px
 }
 
-.offsetCard{
-background:#1c1c1c;
+.auxCard{
+background:#1d1d1d;
 border:1px solid #444;
 border-radius:7px;
 padding:6px;
 text-align:center
 }
 
-.offsetCard.ativo{
-border-color:#00e5ff
+.auxCard.forte{
+border-color:#00e676
 }
 
-.offsetCard small{
+.auxCard small{
 display:block;
 font-size:7px;
 color:#888;
 font-weight:900
 }
 
-.offsetCard strong{
+.auxCard strong{
 display:block;
-font-size:15px;
+font-size:13px
+}
+
+.auxCard span{
+display:block;
+font-size:7px;
+color:#999;
 margin-top:2px
 }
 
-.offsetRanking{
-display:flex;
-gap:3px;
-margin-top:5px;
-overflow-x:auto
-}
 
-.offsetItem{
-min-width:55px;
-background:#191919;
-border:1px solid #3b3b3b;
-border-radius:6px;
-padding:4px;
-text-align:center
-}
-
-.offsetItem.melhor{
-border-color:#00e676
-}
-
-.offsetItem b{
-display:block;
-font-size:10px
-}
-
-.offsetItem span{
-font-size:7px;
-color:#999
-}
+/* TERMINAIS */
 
 .trio{
 margin-top:7px;
@@ -5210,53 +5420,6 @@ border-left:1px solid rgba(255,255,255,.45)
 }
 
 
-/* DÚZIAS */
-
-.duziasBox{
-margin-top:7px;
-background:#111;
-border:1px solid #333;
-border-radius:8px;
-padding:7px
-}
-
-.duziasLinha{
-display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:4px
-}
-
-.duziaCard{
-background:#1d1d1d;
-border:1px solid #444;
-border-radius:7px;
-padding:6px;
-text-align:center
-}
-
-.duziaCard.forte{
-border-color:#00e676
-}
-
-.duziaCard small{
-display:block;
-font-size:7px;
-color:#888;
-font-weight:900
-}
-
-.duziaCard strong{
-font-size:14px
-}
-
-.duziaCard span{
-display:block;
-font-size:7px;
-color:#aaa;
-margin-top:2px
-}
-
-
 /* JOGADA */
 
 .jogadaStatus{
@@ -5275,18 +5438,6 @@ border:1px solid #007d98
 background:#4a3510;
 color:#ffc107;
 border-color:#ffc107
-}
-
-.offsetJogada{
-display:inline-block;
-margin-left:4px;
-font-size:8px;
-font-weight:900;
-padding:4px 6px;
-border-radius:5px;
-background:#202020;
-border:1px solid #00e676;
-color:#00e676
 }
 
 .jogada{
@@ -5319,13 +5470,6 @@ color:#888
 display:block;
 font-size:22px;
 margin:3px
-}
-
-.blocoOffset{
-font-size:6px;
-color:#00e676;
-font-weight:900;
-margin-bottom:3px
 }
 
 .numeros{
@@ -5365,6 +5509,10 @@ margin-top:5px
 @media(max-width:600px){
 
 .resumo{
+grid-template-columns:repeat(2,1fr)
+}
+
+.auxGrid{
 grid-template-columns:repeat(2,1fr)
 }
 
@@ -5444,11 +5592,9 @@ AUTO
 
 <div id="resumo" class="resumo"></div>
 
-<div id="offsetBox" class="offsetBox"></div>
-
 <div id="trio" class="trio"></div>
 
-<div id="duzias" class="duziasBox"></div>
+<div id="auxiliares" class="auxBox"></div>
 
 <div id="timelineAUTO" class="timelineRow"></div>
 <div id="timeline4" class="timelineRow"></div>
@@ -5606,7 +5752,7 @@ teclado.appendChild(zero);
 
 
 /* ============================================================
-   TIMELINE POR ENTRADAS
+   TIMELINE ENTRADAS
 ============================================================ */
 
 function timelineEntradas(chave){
@@ -5747,7 +5893,7 @@ lista.length
 
 
 /* ============================================================
-   TRIO
+   TERMINAIS
 ============================================================ */
 
 function renderTrio(momento){
@@ -5756,6 +5902,10 @@ const itens=
 momento.terminais
 .ranking
 .slice(0,3);
+
+const combo=
+momento.combinacoesTerminais
+.principal;
 
 document
 .getElementById("trio")
@@ -5790,193 +5940,149 @@ x.score.toFixed(1)+
 
 ).join("")+
 
-'</div>';
-
-}
-
-
-/* ============================================================
-   DÚZIAS
-============================================================ */
-
-function renderDuzias(momento){
-
-const info=
-momento.duziasFisicas;
-
-const ranking=
-info.ranking;
-
-document
-.getElementById("duzias")
-.innerHTML=
-
-'<div class="trioTitulo">'+
-'CONCENTRAÇÃO FÍSICA DAS DÚZIAS • AUXILIAR DO RAIO X'+
 '</div>'+
 
-'<div class="duziasLinha">'+
-
-ranking.map((x,i)=>
-
-'<div class="duziaCard '+
-(i===0?"forte":"")+
-'">'+
-
-'<small>'+
-x.duzia+
-'ª DÚZIA'+
-'</small>'+
-
-'<strong>'+
-(x.score*100).toFixed(0)+
+(
+combo
+?'<div style="margin-top:6px;font-size:8px;font-weight:900;color:#aaa">'+
+'COMBINAÇÃO MAIS FORTE: T'+
+combo.a+
+' + T'+
+combo.b+
+' • COBERTURA '+
+combo.taxa.toFixed(0)+
 '%'+
-'</strong>'+
-
-'<span>'+
-x.contagem+
-'/14 • FÍSICA '+
-(x.fisica*100).toFixed(0)+
-'%'+
-'</span>'+
-
 '</div>'
-
-).join("")+
-
-'</div>';
+:""
+);
 
 }
 
 
 /* ============================================================
-   OFFSET
+   AUXILIARES / BACKTEST
 ============================================================ */
 
-function renderOffset(config){
+function renderAuxiliares(momento){
 
 const area=
 document.getElementById(
-"offsetBox"
+"auxiliares"
 );
 
+const bt=
+momento.backtestComponentes;
+
+const col=
+momento.colunas.dominante;
+
+const dz=
+momento.duzias.dominante;
+
+const combo=
+momento.combinacoesTerminais.principal;
+
+function taxa(chave){
+
 if(
-!config ||
-!config.valido ||
-!config.offsetInfo ||
-!config.offsetInfo.escolhido
-){
+!bt ||
+!bt[chave] ||
+!bt[chave].total
+)
+return "—";
 
-area.innerHTML=
-
-'<div class="trioTitulo">'+
-'OFFSET • BACKTEST ALVO/V1'+
-'</div>'+
-'<div style="font-size:9px;color:#777">'+
-'AGUARDANDO AMOSTRA'+
-'</div>';
-
-return;
+return bt[chave]
+.taxa
+.toFixed(0)+"%";
 
 }
 
-const info=
-config.offsetInfo;
-
-const melhor=
-info.escolhido;
-
-const segundo=
-info.ranking.find(
-x=>x.offset!==melhor.offset
-);
-
-const borda=
-info.borda;
-
-let lado="NEUTRA";
-
-if(borda.lado>0)
-lado="DIREITA";
-
-else if(borda.lado<0)
-lado="ESQUERDA";
-
 area.innerHTML=
 
 '<div class="trioTitulo">'+
-'OFFSET • BACKTEST ALVO/V1 • -3 A +3'+
+'CONFLUÊNCIAS • BACKTEST RECENTE'+
 '</div>'+
 
-'<div class="offsetTopo">'+
+'<div class="auxGrid">'+
 
-'<div class="offsetCard ativo">'+
-'<small>OFFSET ATUAL</small>'+
+
+'<div class="auxCard forte">'+
+'<small>COLUNA</small>'+
 '<strong>'+
-textoOffset(melhor.offset)+
-'</strong>'+
-'</div>'+
-
-'<div class="offsetCard">'+
-'<small>ALVO/V1</small>'+
-'<strong>'+
-melhor.taxaPrincipal.toFixed(0)+
-'%</strong>'+
-'</div>'+
-
-'<div class="offsetCard">'+
-'<small>BORDA</small>'+
-'<strong style="font-size:11px">'+
-lado+
-'</strong>'+
-'</div>'+
-
-'</div>'+
-
-'<div class="offsetRanking">'+
-
-info.ranking.map(x=>
-
-'<div class="offsetItem '+
 (
-x.offset===melhor.offset
-?"melhor"
-:""
+col
+?col.coluna+'ª'
+:'—'
 )+
-'">'+
-
-'<b>'+
-textoOffset(x.offset)+
-'</b>'+
-
-'<span>'+
-x.taxaPrincipal.toFixed(0)+
-'% • '+
-x.principal+
-'/'+
-x.amostra+
-'</span>'+
-
-'</div>'
-
-).join("")+
-
+'</strong>'+
+'<span>BT '+taxa("coluna")+'</span>'+
 '</div>'+
 
+
+'<div class="auxCard">'+
+'<small>DÚZIA</small>'+
+'<strong>'+
 (
-segundo
-?'<div style="font-size:7px;color:#777;margin-top:5px">'+
-'2º MELHOR: '+
-textoOffset(segundo.offset)+
-' • '+
-segundo.taxaPrincipal.toFixed(0)+
-'% • V2 '+
-melhor.v2+
-' • FORA1 '+
-melhor.fora1+
-'</div>'
-:""
-);
+dz
+?dz.duzia+'ª'
+:'—'
+)+
+'</strong>'+
+'<span>BT '+taxa("duzia")+'</span>'+
+'</div>'+
+
+
+'<div class="auxCard">'+
+'<small>TERMINAL</small>'+
+'<strong>'+
+(
+momento.terminais.trio.length
+?'T'+momento.terminais.trio[0]
+:'—'
+)+
+'</strong>'+
+'<span>BT '+taxa("terminal")+'</span>'+
+'</div>'+
+
+
+'<div class="auxCard">'+
+'<small>COMBO TERMINAL</small>'+
+'<strong>'+
+(
+combo
+?'T'+combo.a+' + T'+combo.b
+:'—'
+)+
+'</strong>'+
+'<span>BT '+taxa("comboTerminal")+'</span>'+
+'</div>'+
+
+
+'<div class="auxCard">'+
+'<small>COR</small>'+
+'<strong>'+
+(
+momento.cores.ultima||
+'—'
+)+
+'</strong>'+
+'<span>BT '+taxa("cor")+'</span>'+
+'</div>'+
+
+
+'<div class="auxCard">'+
+'<small>ZONA</small>'+
+'<strong style="font-size:10px">'+
+(
+momento.zonas.atual||
+'—'
+)+
+'</strong>'+
+'<span>BT '+taxa("zona")+'</span>'+
+'</div>'+
+
+
+'</div>';
 
 }
 
@@ -6007,16 +6113,6 @@ return;
 
 }
 
-const offset=
-Number.isInteger(config.offset)
-?config.offset
-:(
-config.jogada &&
-Number.isInteger(config.jogada.offset)
-?config.jogada.offset
-:0
-);
-
 const dois=
 config.jogada
 .blocos2
@@ -6025,19 +6121,6 @@ config.jogada
 '<div class="bloco">'+
 '<small>2 VIZINHOS DO</small>'+
 '<strong>'+b.centro+'</strong>'+
-
-(
-b.centroOriginal!==undefined &&
-b.centroOriginal!==b.centro
-?'<div class="blocoOffset">'+
-'BASE '+b.centroOriginal+
-' → OFF '+textoOffset(offset)+
-'</div>'
-:'<div class="blocoOffset">'+
-'OFF '+textoOffset(offset)+
-'</div>'
-)+
-
 '<div class="numeros">'+
 b.numeros.join(" • ")+
 '</div>'+
@@ -6053,19 +6136,6 @@ config.jogada
 '<div class="bloco um">'+
 '<small>1 VIZINHO DO</small>'+
 '<strong>'+b.centro+'</strong>'+
-
-(
-b.centroOriginal!==undefined &&
-b.centroOriginal!==b.centro
-?'<div class="blocoOffset">'+
-'BASE '+b.centroOriginal+
-' → OFF '+textoOffset(offset)+
-'</div>'
-:'<div class="blocoOffset">'+
-'OFF '+textoOffset(offset)+
-'</div>'
-)+
-
 '<div class="numeros">'+
 b.numeros.join(" • ")+
 '</div>'+
@@ -6083,11 +6153,6 @@ congelada
 ?"JOGADA CONGELADA • G1"
 :"JOGADA ATUAL"
 )+
-'</div>'+
-
-'<div class="offsetJogada">'+
-'OFFSET '+
-textoOffset(offset)+
 '</div>'+
 
 '<div class="jogada">'+
@@ -6131,15 +6196,6 @@ d,
 chave
 );
 
-let classe=
-status.classe;
-
-let miniClasse=
-status.classe;
-
-let miniTexto=
-status.texto;
-
 let g1="";
 
 if(
@@ -6157,7 +6213,7 @@ g1=
 html+=
 
 '<div class="dupla14 '+
-classe+
+status.classe+
 '">'+
 
 '<div class="bolaDupla" style="background:'+
@@ -6167,10 +6223,10 @@ d.resultado+
 '</div>'+
 
 '<div class="resultadoEntrada '+
-miniClasse+
+status.classe+
 '">'+
 
-miniTexto+
+status.texto+
 
 g1+
 
@@ -6319,15 +6375,11 @@ live.total
 '</div>';
 
 
-renderOffset(
-ativa
-);
-
 renderTrio(
 momento
 );
 
-renderDuzias(
+renderAuxiliares(
 momento
 );
 
@@ -6375,20 +6427,17 @@ false
 }
 
 
-const df=
-momento.duziasFisicas.dominante;
-
 const esperandoG1=
 duplasVisual.length &&
 duplasVisual[
 duplasVisual.length-1
 ].fase==="ESPERA_G1";
 
-const offsetAtual=
-ativa &&
-Number.isInteger(ativa.offset)
-?ativa.offset
-:0;
+const col=
+momento.colunas.dominante;
+
+const dz=
+momento.duzias.dominante;
 
 document
 .getElementById("status")
@@ -6397,13 +6446,13 @@ document
 base.length+
 "/35 • MOMENTO 14 • 35×14 ATIVO"+
 (
-df
-?" • CONCENTRAÇÃO: "+df.duzia+"ª DÚZIA"
+col
+?" • COL "+col.coluna
 :""
 )+
 (
-ativa
-?" • OFFSET: "+textoOffset(offsetAtual)
+dz
+?" • D"+dz.duzia
 :""
 )+
 (
