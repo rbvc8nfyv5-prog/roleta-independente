@@ -13,13 +13,19 @@
    - Após o G1, libera a jogada nova.
    - Todos os números, inclusive G1, entram normalmente nos 35.
 
-   DINÂMICA DO CENTRO:
-   - ALVO = offset 0.
-   - V1 = deslocamento de 1 posição no mesmo sentido da batida.
-   - V2 = deslocamento de 2 posições no mesmo sentido da batida.
-   - O sentido é determinado pela ordem física do track.
-   - Ex.: alvo 9 e resultado 14 => offset -2.
-   - O deslocamento é aplicado na geração seguinte.
+   DINÂMICA GLOBAL DOS CENTROS:
+   - O resultado identifica ONDE bateu em relação ao centro:
+       V2 esquerdo = -2
+       V1 esquerdo = -1
+       ALVO        =  0
+       V1 direito  = +1
+       V2 direito  = +2
+   - O offset identificado é aplicado à PRÓXIMA jogada.
+   - O MESMO offset desloca TODOS os centros da jogada.
+   - Os 5 blocos de 2 vizinhos e o bloco de 1 vizinho
+     deslocam juntos.
+   - A direção física é determinada exclusivamente pela
+     ordem do track europeu abaixo.
 ============================================================ */
 
 const STORAGE_KEY =
@@ -35,7 +41,7 @@ const STORAGE_FREEZE =
 "ANALISADOR_069_JOGADA_CONGELADA_V1";
 
 const STORAGE_OFFSET_CENTRO =
-"ANALISADOR_069_OFFSET_CENTRO_V1";
+"ANALISADOR_069_OFFSET_GLOBAL_CENTROS_V2";
 
 const MAX_HISTORICO = 35;
 const JANELA_MOMENTO = 14;
@@ -538,7 +544,7 @@ JSON.stringify(estado)
 
 
 /* ============================================================
-   DINÂMICA DO CENTRO
+   OFFSET GLOBAL DOS CENTROS
 ============================================================ */
 
 let offsetCentroAtual=0;
@@ -583,7 +589,20 @@ String(offsetCentroAtual)
 
 carregarOffsetCentro();
 
-function encontrarBlocoDaBatida(
+
+/*
+   DESCOBRE EM QUAL BLOCO O RESULTADO BATEU.
+
+   O offset é medido contra o centro REAL mostrado
+   naquela jogada.
+
+   Exemplo:
+   centro = 9
+   resultado = 14
+   deltaRoda(9,14) = -2
+*/
+
+function encontrarBatidaGlobal(
 numero,
 config
 ){
@@ -601,6 +620,8 @@ const blocos=[
 ...(config.jogada.blocos1||[])
 ];
 
+let melhor=null;
+
 for(const bloco of blocos){
 
 if(!bloco.numeros.includes(numero))
@@ -613,43 +634,56 @@ numero
 );
 
 if(
-Math.abs(delta)<=2
-){
+Math.abs(delta)>bloco.qtd
+)
+continue;
 
-return {
+const candidato={
 centro:bloco.centro,
 numero,
 delta,
 qtd:bloco.qtd
 };
 
-}
+if(
+!melhor ||
+Math.abs(delta)<
+Math.abs(melhor.delta)
+){
+
+melhor=candidato;
 
 }
 
-return null;
+}
+
+return melhor;
 
 }
 
-function atualizarOffsetCentro(
+
+/*
+   REGRA:
+   BATEU EM -2 => PRÓXIMA JOGADA TODA -2
+   BATEU EM -1 => PRÓXIMA JOGADA TODA -1
+   BATEU NO  0 => PRÓXIMA JOGADA TODA  0
+   BATEU EM +1 => PRÓXIMA JOGADA TODA +1
+   BATEU EM +2 => PRÓXIMA JOGADA TODA +2
+*/
+
+function atualizarOffsetGlobal(
 numero,
 config
 ){
 
 const batida=
-encontrarBlocoDaBatida(
+encontrarBatidaGlobal(
 numero,
 config
 );
 
 if(!batida)
 return;
-
-if(batida.delta===0){
-
-offsetCentroAtual=0;
-
-}else{
 
 offsetCentroAtual=
 Math.max(
@@ -659,8 +693,6 @@ Math.min(
 batida.delta
 )
 );
-
-}
 
 salvarOffsetCentro();
 
@@ -2572,7 +2604,7 @@ numeros.length;
 
 
 /* ============================================================
-   GIRADA DINÂMICA
+   GIRADA DINÂMICA ORIGINAL DO MOTOR
 ============================================================ */
 
 function avaliarCentroComGiradas(
@@ -2591,19 +2623,10 @@ offset<=MAX_GIRADA;
 offset++
 ){
 
-/*
-   DINÂMICA NOVA:
-   A BATIDA ANTERIOR DESLOCA A REFERÊNCIA DO CENTRO.
-   O restante do cálculo continua igual.
-*/
-
-const offsetEfetivo=
-offset+offsetCentroAtual;
-
 const centro=
 numeroOffset(
 centroOriginal,
-offsetEfetivo
+offset
 );
 
 const rx=
@@ -2689,7 +2712,7 @@ const item={
 
 centroOriginal,
 centro,
-offset:offsetEfetivo,
+offset,
 qtd,
 numeros:rx.numeros,
 suporte:rx.suporte,
@@ -2897,6 +2920,110 @@ momento
 
 
 /* ============================================================
+   DESLOCAMENTO GLOBAL DA JOGADA PRONTA
+
+   IMPORTANTE:
+   O MOTOR PRIMEIRO GERA A JOGADA NORMALMENTE.
+
+   SOMENTE DEPOIS:
+   - todos os centros recebem o MESMO offset;
+   - os números dos blocos são reconstruídos;
+   - 2 vizinhos continuam 2 vizinhos;
+   - 1 vizinho continua 1 vizinho.
+
+   Assim o offset NÃO altera RX, Momento, score,
+   seleção dos seis blocos ou demais dimensões do motor.
+============================================================ */
+
+function aplicarOffsetGlobalNaJogada(
+jogada,
+offset
+){
+
+if(
+!jogada ||
+!jogada.valido
+)
+return jogada;
+
+if(!offset)
+return jogada;
+
+const blocos2=
+jogada.blocos2.map(b=>{
+
+const novoCentro=
+numeroOffset(
+b.centro,
+offset
+);
+
+return Object.assign(
+{},
+b,
+{
+centro:novoCentro,
+numeros:setor(
+novoCentro,
+2
+)
+}
+);
+
+});
+
+const blocos1=
+jogada.blocos1.map(b=>{
+
+const novoCentro=
+numeroOffset(
+b.centro,
+offset
+);
+
+return Object.assign(
+{},
+b,
+{
+centro:novoCentro,
+numeros:setor(
+novoCentro,
+1
+)
+}
+);
+
+});
+
+const numeros=
+new Set();
+
+blocos2.forEach(b=>
+b.numeros.forEach(n=>
+numeros.add(n)
+)
+);
+
+blocos1.forEach(b=>
+b.numeros.forEach(n=>
+numeros.add(n)
+)
+);
+
+return Object.assign(
+{},
+jogada,
+{
+blocos2,
+blocos1,
+numeros
+}
+);
+
+}
+
+
+/* ============================================================
    CONFIG
 ============================================================ */
 
@@ -2920,11 +3047,22 @@ valido:false,
 rx:rxTam
 };
 
-const jogada=
+let jogada=
 montarJogada(
 raioX,
 base,
 diagnostico
+);
+
+/*
+   O MOTOR JÁ TERMINOU A JOGADA.
+   AGORA TODOS OS CENTROS DESLOCAM JUNTOS.
+*/
+
+jogada=
+aplicarOffsetGlobalNaJogada(
+jogada,
+offsetCentroAtual
 );
 
 return {
@@ -3971,19 +4109,22 @@ avaliarPendentes(
 numero
 );
 
-/*
-   REGISTRA ONDE O RESULTADO BATEU
-   EM RELAÇÃO AO CENTRO DA JOGADA.
 
-   ALVO = 0
-   V1   = +/-1
-   V2   = +/-2
+/*
+   IDENTIFICA A POSIÇÃO DA BATIDA NA JOGADA QUE
+   EXISTIA ANTES DO RESULTADO.
+
+   -2 / -1 / 0 / +1 / +2
+
+   O VALOR FICA PRONTO PARA A PRÓXIMA JOGADA.
+   O MESMO OFFSET SERÁ APLICADO A TODOS OS CENTROS.
 */
 
-atualizarOffsetCentro(
+atualizarOffsetGlobal(
 numero,
 configAntes
 );
+
 
 historico.push(numero);
 
@@ -5641,6 +5782,21 @@ duplasVisual[
 duplasVisual.length-1
 ].fase==="ESPERA_G1";
 
+let textoOffset="ALVO";
+
+if(offsetCentroAtual===-2)
+textoOffset="V2 ESQUERDA • TODOS -2";
+
+else if(offsetCentroAtual===-1)
+textoOffset="V1 ESQUERDA • TODOS -1";
+
+else if(offsetCentroAtual===1)
+textoOffset="V1 DIREITA • TODOS +1";
+
+else if(offsetCentroAtual===2)
+textoOffset="V2 DIREITA • TODOS +2";
+
+
 document
 .getElementById("status")
 .textContent=
@@ -5652,13 +5808,8 @@ df
 ?" • CONCENTRAÇÃO: "+df.duzia+"ª DÚZIA"
 :""
 )+
-(
-offsetCentroAtual!==0
-?" • CENTRO: OFFSET "+
-(offsetCentroAtual>0?"+":"")+
-offsetCentroAtual
-:" • CENTRO: ALVO"
-)+
+" • CENTROS: "+
+textoOffset+
 (
 esperandoG1
 ?" • G1: JOGADA CONGELADA"
