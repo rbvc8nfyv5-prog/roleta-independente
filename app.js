@@ -3,118 +3,136 @@
 
 /* ============================================================
    ANALISADOR 0 • 6 • 9
-   RAIO X + MOMENTO 14 + MEMÓRIA DE TRANSIÇÕES
+   RAIO X + MOMENTO 14 + CONCENTRAÇÃO FÍSICA DAS DÚZIAS
 
-   PRINCÍPIOS:
-   - 35 atuais = cérebro principal
-   - Momento 14 = confirmação
-   - GREEN / G1 / LOSS = comportamento do modelo
-   - Memória = correção auxiliar
-   - Memória NÃO cria jogada sozinha
-   - Memória NÃO substitui RX
-   - Memória NÃO depende de encontrar cenário idêntico
-   - Histórico colado é percorrido inteiro em walk-forward
-   - Motor operacional mantém somente últimos 35
-   - G1 é reavaliado após o primeiro LOSS:
-       • o número do LOSS entra normalmente no histórico
-       • o cenário é recalculado
-       • o sistema compara a jogada congelada com a nova jogada
-       • mantém ou corrige o G1 conforme cenário atual + transição
+   REGRA VISUAL DA ENTRADA:
+   - A jogada mostrada é a jogada existente ANTES do resultado.
+   - GREEN de primeira: encerra e libera a nova jogada.
+   - LOSS de primeira: congela a jogada anterior.
+   - O próximo número é G1 usando EXATAMENTE a jogada congelada.
+   - Após o G1, libera a jogada nova.
+   - Todos os números, inclusive G1, entram normalmente nos 35.
+
+   DINÂMICA DO CENTRO:
+   - ALVO = offset 0.
+   - V1 = deslocamento de 1 posição no mesmo sentido da batida.
+   - V2 = deslocamento de 2 posições no mesmo sentido da batida.
+   - O sentido é determinado pela ordem física do track.
+   - Ex.: alvo 9 e resultado 14 => offset -2.
+   - O deslocamento é aplicado na geração seguinte.
 ============================================================ */
+
+const STORAGE_KEY =
+"ANALISADOR_069_IDS_CORRESPONDENTES_V1";
+
+const STORAGE_ENGINE =
+"ANALISADOR_069_ENGINE_COMPLETO_V10";
+
+const STORAGE_DUPLAS =
+"ANALISADOR_069_DUPLAS_VISUAIS_V4";
+
+const STORAGE_FREEZE =
+"ANALISADOR_069_JOGADA_CONGELADA_V1";
+
+const STORAGE_OFFSET_CENTRO =
+"ANALISADOR_069_OFFSET_CENTRO_V1";
+
+const MAX_HISTORICO = 35;
+const JANELA_MOMENTO = 14;
+const MAX_TIMELINE = 300;
+
+const RX_LIST = [4,5,6];
+const MAX_REPLICAS = 40;
+
+const PESO_MOMENTO = .34;
+const MAX_GIRADA = 2;
+
+const PESO_DUZIA_FISICA = .16;
 
 
 /* ============================================================
-   CONSTANTES
+   ROLETA EUROPEIA FÍSICA
 ============================================================ */
 
-const STORAGE_KEY="ANALISADOR_069_IDS_CORRESPONDENTES_V1";
-const STORAGE_ENGINE="ANALISADOR_069_ENGINE_COMPLETO_V10";
-const STORAGE_DUPLAS="ANALISADOR_069_DUPLAS_VISUAIS_V4";
-const STORAGE_FREEZE="ANALISADOR_069_JOGADA_G1_ADAPTATIVA_V2";
-const STORAGE_MEMORIA="ANALISADOR_069_MEMORIA_TRANSICOES_V2";
-
-const MAX_HISTORICO=35;
-const JANELA_MOMENTO=14;
-const MAX_TIMELINE=300;
-const MAX_MEMORIA=900;
-
-const RX_LIST=[4,5,6];
-const MAX_REPLICAS=40;
-
-const PESO_MOMENTO=.34;
-const PESO_DUZIA_FISICA=.16;
-const MAX_GIRADA=2;
-
-/*
-   A memória só pode corrigir uma parte pequena do score.
-*/
-const PESO_MEMORIA_MAX=.10;
-const MIN_SIM_TRANSICAO=.60;
-const MAX_TRANSICOES_USADAS=24;
-
-
-/* ============================================================
-   ROLETA
-============================================================ */
-
-const track=[
+const track = [
 32,15,19,4,21,2,25,17,34,6,
 27,13,36,11,30,8,23,10,5,24,
 16,33,1,20,14,31,9,22,18,29,
 7,28,12,35,3,26,0
 ];
 
-const vermelhos=new Set([
+const vermelhos = new Set([
 1,3,5,7,9,12,14,16,18,
 19,21,23,25,27,30,32,34,36
 ]);
 
-const regioes={
-ZERO:new Set([0,32,15,26,3,35,12]),
-VOISINS:new Set([19,4,21,2,25,28,7,29,18,22]),
-ORPHELINS:new Set([9,31,14,20,1,17,6,34]),
-TIERS:new Set([27,13,36,11,30,8,23,10,5,24,16,33])
-};
 
-const ORDEM_REGIOES={
-TIERS:0,
-ORPHELINS:1,
-VOISINS:2,
-ZERO:3
-};
+/* ============================================================
+   REGIÕES
+============================================================ */
 
-const NOMES_REGIOES=[
-"ZERO",
-"VOISINS",
-"ORPHELINS",
-"TIERS"
-];
+const regioes = {
+
+ZERO:new Set([
+0,32,15,26,3,35,12
+]),
+
+VOISINS:new Set([
+19,4,21,2,25,28,7,29,18,22
+]),
+
+ORPHELINS:new Set([
+9,31,14,20,1,17,6,34
+]),
+
+TIERS:new Set([
+27,13,36,11,30,8,23,10,5,24,16,33
+])
+
+};
 
 
 /* ============================================================
    DÚZIAS
 ============================================================ */
 
-function duzia(n){
-if(n>=1&&n<=12)return 1;
-if(n>=13&&n<=24)return 2;
-if(n>=25&&n<=36)return 3;
+function duzia(numero){
+
+if(numero>=1 && numero<=12)
+return 1;
+
+if(numero>=13 && numero<=24)
+return 2;
+
+if(numero>=25 && numero<=36)
+return 3;
+
 return 0;
+
 }
 
-const MAPA_DUZIA_FISICA={
+
+/* ============================================================
+   MAPA FÍSICO DAS DÚZIAS
+============================================================ */
+
+const MAPA_DUZIA_FISICA = {
+
 1:new Map([
-[3,1],[12,1],[7,.95],[4,.92],[2,.92],[11,.82],
+[3,1.00],[12,1.00],[7,.95],[4,.92],[2,.92],[11,.82],
 [8,.86],[5,.86],[6,.40],[1,.36],[9,.36],[10,.58]
 ]),
+
 2:new Map([
-[15,1],[19,1],[21,.98],[17,.70],[13,.72],[23,.96],
+[15,1.00],[19,1.00],[21,.98],[17,.70],[13,.72],[23,.96],
 [24,.94],[16,.94],[14,.88],[20,.88],[18,.92]
 ]),
+
 3:new Map([
-[29,1],[30,1],[32,.96],[25,.94],[27,.88],[28,.92],
+[29,1.00],[30,1.00],[32,.96],[25,.94],[27,.88],[28,.92],
 [26,.80],[35,.72],[36,.68],[34,.64],[33,.42],[31,.40]
 ])
+
 };
 
 
@@ -122,8 +140,17 @@ const MAPA_DUZIA_FISICA={
    IDS
 ============================================================ */
 
-const BASES=[0,10,20,30,6,16,26,36,9,19,29];
-const TODOS_IDS=[0,10,20,30,6,16,26,36,9,19,29,39];
+const BASES=[
+0,10,20,30,
+6,16,26,36,
+9,19,29
+];
+
+const TODOS_IDS=[
+0,10,20,30,
+6,16,26,36,
+9,19,29,39
+];
 
 const ESPECIAIS={
 25:[39],
@@ -137,63 +164,83 @@ const ESPECIAIS={
 ============================================================ */
 
 function limitar35(base){
-return Array.isArray(base)?base.slice(-35):[];
-}
 
-function clamp(v,min,max){
-return Math.max(min,Math.min(max,v));
-}
+if(!Array.isArray(base))
+return [];
 
-function media(arr){
-if(!arr||!arr.length)return 0;
-return arr.reduce((a,b)=>a+b,0)/arr.length;
+return base.slice(-MAX_HISTORICO);
+
 }
 
 function indice(n){
 return track.indexOf(n);
 }
 
-function numeroOffset(c,o){
-const i=indice(c);
-return i<0?c:track[(i+o+37)%37];
+function numeroOffset(centro,offset){
+
+const i=indice(centro);
+
+if(i<0)
+return centro;
+
+return track[(i+offset+37)%37];
+
 }
 
-function setor(c,q){
-const i=indice(c);
-if(i<0)return[];
+function setor(centro,qtd){
+
+const i=indice(centro);
+
+if(i<0)
+return [];
+
 const r=[];
-for(let d=-q;d<=q;d++){
-r.push(track[(i+d+37)%37]);
-}
-return r;
+
+for(let d=-qtd;d<=qtd;d++){
+
+r.push(
+track[(i+d+37)%37]
+);
+
 }
 
-function vizinhos(n,q=1){
-return setor(n,q);
+return r;
+
+}
+
+function vizinhos(numero,qtd=1){
+return setor(numero,qtd);
 }
 
 function distanciaRoda(a,b){
+
 const ia=indice(a);
 const ib=indice(b);
 
-if(ia<0||ib<0)return 99;
+if(ia<0 || ib<0)
+return 99;
 
 const d=Math.abs(ia-ib);
 
 return Math.min(d,37-d);
+
 }
 
-function deltaRoda(c,n){
-const a=indice(c);
-const b=indice(n);
+function deltaRoda(centro,numero){
 
-if(a<0||b<0)return 0;
+const a=indice(centro);
+const b=indice(numero);
+
+if(a<0 || b<0)
+return 0;
 
 let d=(b-a+37)%37;
 
-if(d>18)d-=37;
+if(d>18)
+d-=37;
 
 return d;
+
 }
 
 function terminal(n){
@@ -201,194 +248,243 @@ return n%10;
 }
 
 function terminalAnterior(t){
-return(t+9)%10;
+return (t+9)%10;
 }
 
 function terminalSeguinte(t){
-return(t+1)%10;
-}
-
-function regiao(n){
-if(regioes.ZERO.has(n))return"ZERO";
-if(regioes.VOISINS.has(n))return"VOISINS";
-if(regioes.ORPHELINS.has(n))return"ORPHELINS";
-if(regioes.TIERS.has(n))return"TIERS";
-return null;
-}
-
-function tipoCor(n){
-if(n===0)return"VERDE";
-return vermelhos.has(n)?"VERMELHO":"PRETO";
-}
-
-function corRoleta(n){
-if(n===0)return"#087c48";
-return vermelhos.has(n)?"#c6283d":"#181818";
-}
-
-function ordenarBlocosVisual(blocos){
-return blocos.slice().sort((a,b)=>{
-const ra=regiao(a.centro);
-const rb=regiao(b.centro);
-
-return(
-(ORDEM_REGIOES[ra]??99)-
-(ORDEM_REGIOES[rb]??99)
-);
-});
-}
-
-function normalizarVetor(v){
-const soma=v.reduce((a,b)=>a+b,0);
-if(!soma)return v.map(()=>0);
-return v.map(x=>x/soma);
-}
-
-function divergenciaL1(a,b){
-const n=Math.min(a.length,b.length);
-if(!n)return 0;
-
-let s=0;
-
-for(let i=0;i<n;i++){
-s+=Math.abs((a[i]||0)-(b[i]||0));
-}
-
-return clamp(s/2,0,1);
+return (t+1)%10;
 }
 
 
 /* ============================================================
-   IDS / EVENTOS
+   COR / REGIÃO
+============================================================ */
+
+function regiao(n){
+
+if(regioes.ZERO.has(n))
+return "ZERO";
+
+if(regioes.VOISINS.has(n))
+return "VOISINS";
+
+if(regioes.ORPHELINS.has(n))
+return "ORPHELINS";
+
+if(regioes.TIERS.has(n))
+return "TIERS";
+
+return null;
+
+}
+
+function tipoCor(n){
+
+if(n===0)
+return "VERDE";
+
+return vermelhos.has(n)
+?"VERMELHO"
+:"PRETO";
+
+}
+
+function corRoleta(n){
+
+if(n===0)
+return "#087c48";
+
+return vermelhos.has(n)
+?"#c6283d"
+:"#181818";
+
+}
+
+
+/* ============================================================
+   IDS
 ============================================================ */
 
 const coberturaIds={};
 
-BASES.forEach(b=>{
-coberturaIds[b]=new Set(vizinhos(b,1));
+BASES.forEach(base=>{
+
+coberturaIds[base]=
+new Set(vizinhos(base,1));
+
 });
 
 function familia(id){
-if([0,10,20,30].includes(id))return 0;
-if([6,16,26,36].includes(id))return 6;
-if([9,19,29,39].includes(id))return 9;
+
+if(
+id===0 ||
+id===10 ||
+id===20 ||
+id===30
+)
+return 0;
+
+if(
+id===6 ||
+id===16 ||
+id===26 ||
+id===36
+)
+return 6;
+
+if(
+id===9 ||
+id===19 ||
+id===29 ||
+id===39
+)
+return 9;
+
 return null;
+
 }
 
 function idsQueBatem(numero){
+
 const ids=[];
 
-BASES.forEach(b=>{
-if(coberturaIds[b].has(numero)){
-ids.push(b);
-}
+BASES.forEach(base=>{
+
+if(coberturaIds[base].has(numero))
+ids.push(base);
+
 });
 
-if(Object.prototype.hasOwnProperty.call(ESPECIAIS,numero)){
+if(
+Object.prototype.hasOwnProperty.call(
+ESPECIAIS,
+numero
+)
+){
+
 ESPECIAIS[numero].forEach(id=>{
-if(!ids.includes(id)){
+
+if(!ids.includes(id))
 ids.push(id);
-}
+
 });
+
 }
 
 return ids;
+
 }
 
 function eventoNumero(numero){
-const fs=new Set(
+
+const fs=
+new Set(
 idsQueBatem(numero)
 .map(familia)
 .filter(x=>x!==null)
 );
 
-return(
-(fs.has(0)?1:0)|
-(fs.has(6)?2:0)|
+return (
+(fs.has(0)?1:0) |
+(fs.has(6)?2:0) |
 (fs.has(9)?4:0)
 );
+
 }
 
 
 /* ============================================================
-   STORAGE
+   STORAGE / ESTADO
 ============================================================ */
 
-function lerJSON(chave,padrao){
-try{
-const x=localStorage.getItem(chave);
-return x?JSON.parse(x):padrao;
-}catch(e){
-return padrao;
-}
-}
-
-function gravarJSON(chave,valor){
-try{
-localStorage.setItem(chave,JSON.stringify(valor));
-}catch(e){}
-}
-
 function carregarHistorico(){
-const arr=lerJSON(STORAGE_KEY,[]);
 
-if(!Array.isArray(arr)){
-return[];
-}
+try{
+
+const raw=
+localStorage.getItem(STORAGE_KEY);
+
+if(!raw)
+return [];
+
+const arr=JSON.parse(raw);
+
+if(!Array.isArray(arr))
+return [];
 
 return limitar35(
 arr
 .map(Number)
 .filter(n=>
-Number.isInteger(n)&&
-n>=0&&
+Number.isInteger(n) &&
+n>=0 &&
 n<=36
 )
 );
+
+}catch(e){
+
+return [];
+
 }
 
-let historico=carregarHistorico();
+}
+
+let historico=
+carregarHistorico();
 
 let estado={
+
 modo:"AUTO",
+
 manualRX:6,
+
 pendentes:{
 AUTO:null,
 4:null,
 5:null,
 6:null
 },
+
 timelines:{
 AUTO:[],
 4:[],
 5:[],
 6:[]
 }
+
 };
 
-(function carregarEstado(){
-const x=lerJSON(STORAGE_ENGINE,null);
+function carregarEstado(){
 
-if(!x)return;
+try{
+
+const raw=
+localStorage.getItem(STORAGE_ENGINE);
+
+if(!raw)
+return;
+
+const x=JSON.parse(raw);
 
 if(
-x.modo==="AUTO"||
+x.modo==="AUTO" ||
 x.modo==="MANUAL"
-){
+)
 estado.modo=x.modo;
-}
 
-if(RX_LIST.includes(x.manualRX)){
+if(RX_LIST.includes(x.manualRX))
 estado.manualRX=x.manualRX;
-}
 
 if(x.timelines){
 
 ["AUTO",4,5,6].forEach(k=>{
 
 if(Array.isArray(x.timelines[k])){
+
 estado.timelines[k]=
 x.timelines[k].slice(-MAX_TIMELINE);
+
 }
 
 });
@@ -396,132 +492,178 @@ x.timelines[k].slice(-MAX_TIMELINE);
 }
 
 if(x.pendentes){
+
 estado.pendentes=
 Object.assign(
 estado.pendentes,
 x.pendentes
 );
+
 }
 
-})();
+}catch(e){}
+
+}
+
+carregarEstado();
 
 function salvarHistorico(){
-historico=limitar35(historico);
-gravarJSON(STORAGE_KEY,historico);
+
+historico=
+limitar35(historico);
+
+try{
+
+localStorage.setItem(
+STORAGE_KEY,
+JSON.stringify(historico)
+);
+
+}catch(e){}
+
 }
 
 function salvarEstado(){
-gravarJSON(STORAGE_ENGINE,estado);
-}
 
+try{
 
-/* ============================================================
-   MEMÓRIA DE TRANSIÇÕES
-============================================================ */
-
-let memoriaTransicoes=[];
-
-(function carregarMemoria(){
-const x=lerJSON(STORAGE_MEMORIA,[]);
-
-if(Array.isArray(x)){
-memoriaTransicoes=x.slice(-MAX_MEMORIA);
-}
-})();
-
-function salvarMemoria(){
-memoriaTransicoes=
-memoriaTransicoes.slice(-MAX_MEMORIA);
-
-gravarJSON(
-STORAGE_MEMORIA,
-memoriaTransicoes
+localStorage.setItem(
+STORAGE_ENGINE,
+JSON.stringify(estado)
 );
-}
 
-function limparMemoria(){
-memoriaTransicoes=[];
-salvarMemoria();
+}catch(e){}
+
 }
 
 
 /* ============================================================
-   DISTRIBUIÇÕES
+   DINÂMICA DO CENTRO
 ============================================================ */
 
-function distribuicaoRegioes(nums){
-const v=[0,0,0,0];
+let offsetCentroAtual=0;
 
-nums.forEach(n=>{
-const r=regiao(n);
-const i=NOMES_REGIOES.indexOf(r);
+function carregarOffsetCentro(){
 
-if(i>=0){
-v[i]++;
-}
-});
+try{
 
-return normalizarVetor(v);
-}
+const raw=
+localStorage.getItem(
+STORAGE_OFFSET_CENTRO
+);
 
-function distribuicaoTerminais(nums){
-const v=new Array(10).fill(0);
+if(raw===null)
+return;
 
-nums.forEach(n=>{
-v[terminal(n)]++;
-});
+const n=Number(raw);
 
-return normalizarVetor(v);
-}
+if(
+Number.isInteger(n) &&
+n>=-2 &&
+n<=2
+)
+offsetCentroAtual=n;
 
-function distribuicaoDuzias(nums){
-const v=[0,0,0];
+}catch(e){}
 
-nums.forEach(n=>{
-const d=duzia(n);
-
-if(d){
-v[d-1]++;
-}
-});
-
-return normalizarVetor(v);
 }
 
-function centroDensidadeSimples(nums){
-if(!nums.length)return null;
+function salvarOffsetCentro(){
 
-let melhor=null;
+try{
 
-track.forEach(c=>{
+localStorage.setItem(
+STORAGE_OFFSET_CENTRO,
+String(offsetCentroAtual)
+);
 
-let score=0;
+}catch(e){}
 
-nums.forEach((n,i)=>{
+}
 
-const d=distanciaRoda(c,n);
+carregarOffsetCentro();
 
-if(d>7)return;
+function encontrarBlocoDaBatida(
+numero,
+config
+){
 
-const rec=.55+
-((i+1)/nums.length)*.45;
+if(
+!config ||
+!config.valido ||
+!config.jogada ||
+!config.jogada.valido
+)
+return null;
 
-score+=
-Math.max(0,1-d/8)*
-rec;
+const blocos=[
+...(config.jogada.blocos2||[]),
+...(config.jogada.blocos1||[])
+];
 
-});
+for(const bloco of blocos){
 
-if(!melhor||score>melhor.score){
-melhor={
-centro:c,
-score
+if(!bloco.numeros.includes(numero))
+continue;
+
+const delta=
+deltaRoda(
+bloco.centro,
+numero
+);
+
+if(
+Math.abs(delta)<=2
+){
+
+return {
+centro:bloco.centro,
+numero,
+delta,
+qtd:bloco.qtd
 };
+
 }
 
-});
+}
 
-return melhor?melhor.centro:null;
+return null;
+
+}
+
+function atualizarOffsetCentro(
+numero,
+config
+){
+
+const batida=
+encontrarBlocoDaBatida(
+numero,
+config
+);
+
+if(!batida)
+return;
+
+if(batida.delta===0){
+
+offsetCentroAtual=0;
+
+}else{
+
+offsetCentroAtual=
+Math.max(
+-2,
+Math.min(
+2,
+batida.delta
+)
+);
+
+}
+
+salvarOffsetCentro();
+
 }
 
 
@@ -532,55 +674,72 @@ return melhor?melhor.centro:null;
 let duplasVisual=[];
 
 function avaliacoesVazias(){
-return{
+
+return {
 AUTO:null,
 4:null,
 5:null,
 6:null
 };
+
 }
 
 function snapshotsVazios(){
-return{
+
+return {
 AUTO:null,
 4:null,
 5:null,
 6:null
 };
+
 }
 
 function copiarSnapshotVisual(p){
-if(!p)return null;
 
-return{
+if(!p)
+return null;
+
+return {
+
 assinatura:p.assinatura,
 rx:p.rx,
+
 centros2:
 Array.isArray(p.centros2)
 ?p.centros2.slice()
 :[],
+
 centro1:
 p.centro1!==undefined
 ?p.centro1
 :null
+
 };
+
 }
 
 function capturarSnapshotsPendentes(){
+
 const r=snapshotsVazios();
 
 ["AUTO",4,5,6].forEach(k=>{
+
 r[k]=
 copiarSnapshotVisual(
 estado.pendentes[k]
 );
+
 });
 
 return r;
+
 }
 
 function normalizarDuplaVisual(d){
-return{
+
+return {
+
 resultado:
 d.resultado!==undefined
 ?d.resultado
@@ -609,92 +768,150 @@ snapshotsVazios(),
 d.snapshotEntrada||{}
 ),
 
-fase:d.fase||"FINALIZADO"
+fase:
+d.fase||"FINALIZADO"
+
 };
-}
 
-(function carregarDuplas(){
-const x=lerJSON(STORAGE_DUPLAS,[]);
-
-if(Array.isArray(x)){
-duplasVisual=
-x
-.map(normalizarDuplaVisual)
-.slice(-14);
 }
-})();
 
 function salvarDuplasVisual(){
+
 duplasVisual=
 duplasVisual
 .map(normalizarDuplaVisual)
 .slice(-14);
 
-gravarJSON(
+try{
+
+localStorage.setItem(
 STORAGE_DUPLAS,
-duplasVisual
+JSON.stringify(duplasVisual)
 );
+
+}catch(e){}
+
 }
+
+function carregarDuplasVisual(){
+
+try{
+
+const raw=
+localStorage.getItem(
+STORAGE_DUPLAS
+);
+
+if(!raw)
+return;
+
+const arr=
+JSON.parse(raw);
+
+if(!Array.isArray(arr))
+return;
+
+duplasVisual=
+arr
+.map(normalizarDuplaVisual)
+.slice(-14);
+
+}catch(e){}
+
+}
+
+carregarDuplasVisual();
 
 
 /* ============================================================
-   G1 ADAPTATIVO
+   JOGADA CONGELADA
 ============================================================ */
 
 let jogadaCongelada=null;
 
-(function carregarFreeze(){
-const x=lerJSON(STORAGE_FREEZE,null);
-
-if(
-x&&
-x.valido&&
-x.jogada
-){
-jogadaCongelada=x;
-}
-})();
-
-function salvarJogadaCongelada(){
-gravarJSON(
-STORAGE_FREEZE,
-jogadaCongelada
-);
-}
-
 function copiarJogadaCongelada(config){
 
 if(
-!config||
-!config.valido||
-!config.jogada||
+!config ||
+!config.valido ||
+!config.jogada ||
 !config.jogada.valido
-){
+)
 return null;
-}
 
-return{
+return {
+
 valido:true,
 rx:config.rx,
+
 jogada:{
+
 valido:true,
 
 blocos2:
 config.jogada.blocos2.map(b=>({
+
 centro:b.centro,
 qtd:2,
 numeros:b.numeros.slice()
+
 })),
 
 blocos1:
 config.jogada.blocos1.map(b=>({
+
 centro:b.centro,
 qtd:1,
 numeros:b.numeros.slice()
+
 }))
+
 }
+
 };
+
 }
+
+function salvarJogadaCongelada(){
+
+try{
+
+localStorage.setItem(
+STORAGE_FREEZE,
+JSON.stringify(jogadaCongelada)
+);
+
+}catch(e){}
+
+}
+
+function carregarJogadaCongelada(){
+
+try{
+
+const raw=
+localStorage.getItem(
+STORAGE_FREEZE
+);
+
+if(!raw)
+return;
+
+const x=
+JSON.parse(raw);
+
+if(
+x &&
+x.valido &&
+x.jogada
+)
+jogadaCongelada=x;
+
+}catch(e){}
+
+}
+
+carregarJogadaCongelada();
 
 
 /* ============================================================
@@ -704,7 +921,8 @@ numeros:b.numeros.slice()
 function analisarTerminais(base){
 
 const janela=
-limitar35(base).slice(-14);
+limitar35(base)
+.slice(-JANELA_MOMENTO);
 
 const ranking=[];
 
@@ -723,8 +941,8 @@ const tn=terminal(n);
 const recencia=
 .50+
 ((i+1)/
-Math.max(1,janela.length))*
-.50;
+Math.max(1,janela.length))
+*.50;
 
 if(tn===t){
 
@@ -732,12 +950,14 @@ direto++;
 score+=2.20*recencia;
 
 if(i>=janela.length-5){
+
 direto5++;
 score+=.95;
+
 }
 
 }else if(
-tn===terminalAnterior(t)||
+tn===terminalAnterior(t) ||
 tn===terminalSeguinte(t)
 ){
 
@@ -745,8 +965,10 @@ vizinho++;
 score+=.62*recencia;
 
 if(i>=janela.length-5){
+
 vizinho5++;
 score+=.20;
+
 }
 
 }
@@ -764,10 +986,11 @@ score
 
 }
 
-ranking.sort((a,b)=>
-b.score-a.score||
-b.direto5-a.direto5||
-b.direto-a.direto||
+ranking.sort(
+(a,b)=>
+b.score-a.score ||
+b.direto5-a.direto5 ||
+b.direto-a.direto ||
 b.vizinho-a.vizinho
 );
 
@@ -783,63 +1006,75 @@ janela.forEach(n=>{
 const t=terminal(n);
 
 if(trio.includes(t)){
+
 cobertura++;
 return;
+
 }
 
 if(
 trio.some(c=>
-t===terminalAnterior(c)||
+t===terminalAnterior(c) ||
 t===terminalSeguinte(c)
 )
-){
+)
 cobertura++;
-}
 
 });
 
-return{
+return {
+
 ranking,
 trio,
+
 taxa:
 janela.length
 ?cobertura/janela.length*100
 :0
+
 };
+
 }
 
-function scoreTerminalNumero(
-numero,
-momento
-){
+function scoreTerminalNumero(numero,momento){
 
 const trio=
 momento.terminais.trio;
 
-if(!trio.length)return 0;
+if(!trio.length)
+return 0;
 
 const t=terminal(numero);
 
-if(t===trio[0])return 1;
-if(t===trio[1])return .88;
-if(t===trio[2])return .78;
+if(t===trio[0])
+return 1;
+
+if(t===trio[1])
+return .88;
+
+if(t===trio[2])
+return .78;
 
 if(
-t===terminalAnterior(trio[0])||
+t===terminalAnterior(trio[0]) ||
 t===terminalSeguinte(trio[0])
-)return .46;
+)
+return .46;
 
 if(
-t===terminalAnterior(trio[1])||
+t===terminalAnterior(trio[1]) ||
 t===terminalSeguinte(trio[1])
-)return .40;
+)
+return .40;
 
 if(
-t===terminalAnterior(trio[2])||
+t===terminalAnterior(trio[2]) ||
 t===terminalSeguinte(trio[2])
-)return .34;
+)
+return .34;
 
 return 0;
+
 }
 
 
@@ -850,7 +1085,8 @@ return 0;
 function analisarCores(base){
 
 const janela=
-limitar35(base).slice(-14);
+limitar35(base)
+.slice(-JANELA_MOMENTO);
 
 const contagem={
 VERMELHO:0,
@@ -869,34 +1105,30 @@ for(let i=1;i<janela.length;i++){
 if(
 tipoCor(janela[i])!==
 tipoCor(janela[i-1])
-){
+)
 alternancias++;
-}
 
 }
 
-return{
+return {
+
 contagem,
 
 ultima:
 janela.length
-?tipoCor(
-janela[janela.length-1]
-)
+?tipoCor(janela[janela.length-1])
 :null,
 
 pctAlternancia:
 janela.length>1
-?alternancias/
-(janela.length-1)*100
+?alternancias/(janela.length-1)*100
 :0
+
 };
+
 }
 
-function scoreCorNumero(
-numero,
-momento
-){
+function scoreCorNumero(numero,momento){
 
 const info=momento.cores;
 
@@ -913,25 +1145,26 @@ let score=
 info.contagem[cor]/total;
 
 if(
-info.pctAlternancia>=60&&
+info.pctAlternancia>=60 &&
 info.ultima
 ){
 
 if(
-info.ultima==="VERMELHO"&&
+info.ultima==="VERMELHO" &&
 cor==="PRETO"
-){
+)
 score+=.18;
-}else if(
-info.ultima==="PRETO"&&
+
+else if(
+info.ultima==="PRETO" &&
 cor==="VERMELHO"
-){
+)
 score+=.18;
-}
 
 }
 
 return score;
+
 }
 
 
@@ -942,7 +1175,8 @@ return score;
 function analisarZonas(base){
 
 const janela=
-limitar35(base).slice(-14);
+limitar35(base)
+.slice(-JANELA_MOMENTO);
 
 const seq=
 janela.map(regiao);
@@ -955,38 +1189,51 @@ TIERS:0
 };
 
 seq.forEach(z=>{
-if(z){
+if(z)
 contagem[z]++;
+});
+
+const transicoes={
+
+ZERO:{
+ZERO:0,
+VOISINS:0,
+ORPHELINS:0,
+TIERS:0
+},
+
+VOISINS:{
+ZERO:0,
+VOISINS:0,
+ORPHELINS:0,
+TIERS:0
+},
+
+ORPHELINS:{
+ZERO:0,
+VOISINS:0,
+ORPHELINS:0,
+TIERS:0
+},
+
+TIERS:{
+ZERO:0,
+VOISINS:0,
+ORPHELINS:0,
+TIERS:0
 }
-});
 
-const transicoes={};
-
-Object.keys(contagem).forEach(a=>{
-
-transicoes[a]={};
-
-Object.keys(contagem).forEach(b=>{
-transicoes[a][b]=0;
-});
-
-});
+};
 
 let alternancias=0;
 
 for(let i=1;i<seq.length;i++){
 
-if(seq[i]!==seq[i-1]){
+if(seq[i]!==seq[i-1])
 alternancias++;
-}
 
-if(seq[i-1]&&seq[i]){
-transicoes[
-seq[i-1]
-][
-seq[i]
-]++;
-}
+if(seq[i-1] && seq[i])
+transicoes[seq[i-1]][seq[i]]++;
 
 }
 
@@ -999,23 +1246,20 @@ let repeticaoAtual=0;
 
 if(atual){
 
-for(
-let i=seq.length-1;
-i>=0;
-i--
-){
+for(let i=seq.length-1;i>=0;i--){
 
-if(seq[i]===atual){
+if(seq[i]===atual)
 repeticaoAtual++;
-}else{
+
+else
 break;
-}
 
 }
 
 }
 
-return{
+return {
+
 contagem,
 transicoes,
 atual,
@@ -1023,21 +1267,20 @@ repeticaoAtual,
 
 pctAlternancia:
 seq.length>1
-?alternancias/
-(seq.length-1)*100
+?alternancias/(seq.length-1)*100
 :0
+
 };
+
 }
 
-function scoreZonaNumero(
-numero,
-momento
-){
+function scoreZonaNumero(numero,momento){
 
 const info=momento.zonas;
 const z=regiao(numero);
 
-if(!z)return 0;
+if(!z)
+return 0;
 
 const total=
 Math.max(
@@ -1051,41 +1294,38 @@ info.contagem[z]/total;
 if(info.atual){
 
 const linha=
-info.transicoes[
-info.atual
-];
+info.transicoes[info.atual];
 
 const soma=
 Object.values(linha)
 .reduce((a,b)=>a+b,0);
 
-if(soma){
+if(soma)
 score+=
-((linha[z]||0)/soma)*
-.45;
-}
+((linha[z]||0)/soma)*.45;
 
 }
 
 if(
-z===info.atual&&
+z===info.atual &&
 info.repeticaoAtual>=2
-){
+)
 score+=.10;
-}
 
 return score;
+
 }
 
 
 /* ============================================================
-   DÚZIAS FÍSICAS
+   CONCENTRAÇÃO FÍSICA DAS DÚZIAS
 ============================================================ */
 
 function analisarDuziasFisicas(base){
 
 const janela=
-limitar35(base).slice(-14);
+limitar35(base)
+.slice(-JANELA_MOMENTO);
 
 const forca={
 1:0,
@@ -1101,23 +1341,22 @@ const contagem={
 
 const calor=new Map();
 
-track.forEach(n=>{
-calor.set(n,0);
-});
+track.forEach(n=>
+calor.set(n,0)
+);
 
 janela.forEach((numero,i)=>{
 
 const d=duzia(numero);
 
-if(d){
+if(d)
 contagem[d]++;
-}
 
 const recencia=
 .45+
 ((i+1)/
-Math.max(1,janela.length))*
-.55;
+Math.max(1,janela.length))
+*.55;
 
 if(d){
 
@@ -1125,13 +1364,14 @@ const mapa=
 MAPA_DUZIA_FISICA[d];
 
 const estrutural=
-mapa&&mapa.has(numero)
+mapa && mapa.has(numero)
 ?mapa.get(numero)
 :.55;
 
 forca[d]+=
 recencia*
 (.55+.45*estrutural);
+
 }
 
 track.forEach(alvo=>{
@@ -1144,12 +1384,23 @@ alvo
 
 let peso=0;
 
-if(dist===0)peso=1;
-else if(dist===1)peso=.72;
-else if(dist===2)peso=.46;
-else if(dist===3)peso=.26;
-else if(dist===4)peso=.12;
-else if(dist===5)peso=.05;
+if(dist===0)
+peso=1;
+
+else if(dist===1)
+peso=.72;
+
+else if(dist===2)
+peso=.46;
+
+else if(dist===3)
+peso=.26;
+
+else if(dist===4)
+peso=.12;
+
+else if(dist===5)
+peso=.05;
 
 if(peso){
 
@@ -1186,12 +1437,14 @@ soma+=
 peso;
 
 pesoTotal+=peso;
+
 });
 
 confluencia[d]=
 pesoTotal
 ?soma/pesoTotal
 :0;
+
 });
 
 const maxForca=
@@ -1226,34 +1479,45 @@ const fisica=
 confluencia[d]/
 maxConfluencia;
 
-return{
+const score=
+frequencia*.35+
+fisica*.45+
+momento*.20;
+
+return {
+
 duzia:d,
 contagem:contagem[d],
 frequencia,
 momento,
 fisica,
+score
 
-score:
-frequencia*.35+
-fisica*.45+
-momento*.20
 };
 
 })
-.sort((a,b)=>
+.sort(
+(a,b)=>
 b.score-a.score
 );
 
-return{
+return {
+
 janela,
 calor,
 forca,
 contagem,
 confluencia,
 ranking,
-dominante:ranking[0]||null,
-segunda:ranking[1]||null
+
+dominante:
+ranking[0]||null,
+
+segunda:
+ranking[1]||null
+
 };
+
 }
 
 function scoreDuziaFisicaNumero(
@@ -1264,24 +1528,27 @@ momento
 const analise=
 momento.duziasFisicas;
 
-if(!analise)return 0;
+if(!analise)
+return 0;
 
 const d=duzia(numero);
 
-if(!d)return 0;
+if(!d)
+return 0;
 
 const item=
 analise.ranking.find(
 x=>x.duzia===d
 );
 
-if(!item)return 0;
+if(!item)
+return 0;
 
 const mapa=
 MAPA_DUZIA_FISICA[d];
 
 const estrutural=
-mapa&&mapa.has(numero)
+mapa && mapa.has(numero)
 ?mapa.get(numero)
 :.48;
 
@@ -1291,9 +1558,10 @@ analise.calor.get(numero)||0;
 let maxCalor=0;
 
 analise.calor.forEach(v=>{
-if(v>maxCalor){
+
+if(v>maxCalor)
 maxCalor=v;
-}
+
 });
 
 const calorNorm=
@@ -1302,6 +1570,8 @@ maxCalor
 :0;
 
 let proximidade=0;
+
+if(mapa){
 
 mapa.forEach((peso,alvo)=>{
 
@@ -1313,26 +1583,39 @@ alvo
 
 let p=0;
 
-if(dist===0)p=1;
-else if(dist===1)p=.78;
-else if(dist===2)p=.52;
-else if(dist===3)p=.28;
-else if(dist===4)p=.12;
+if(dist===0)
+p=1;
+
+else if(dist===1)
+p=.78;
+
+else if(dist===2)
+p=.52;
+
+else if(dist===3)
+p=.28;
+
+else if(dist===4)
+p=.12;
 
 p*=peso;
 
-if(p>proximidade){
+if(p>proximidade)
 proximidade=p;
-}
 
 });
 
-return(
-item.score*.44+
-estrutural*.22+
-calorNorm*.22+
+}
+
+return (
+
+item.score*.44 +
+estrutural*.22 +
+calorNorm*.22 +
 proximidade*.12
+
 );
+
 }
 
 
@@ -1343,7 +1626,8 @@ proximidade*.12
 function analisarCorredores(base){
 
 const janela=
-limitar35(base).slice(-14);
+limitar35(base)
+.slice(-JANELA_MOMENTO);
 
 const ranking=[];
 
@@ -1368,61 +1652,63 @@ numero
 const d=
 Math.abs(delta);
 
-if(d>5)return;
+if(d>5)
+return;
 
 dentro++;
 
 const recencia=
 .50+
 ((i+1)/
-Math.max(1,janela.length))*
-.50;
+Math.max(1,janela.length))
+*.50;
 
 if(d<=1){
+
 miolo++;
 score+=recencia;
+
 }else if(d<=3){
+
 lateral++;
 score+=.92*recencia;
+
 }else{
+
 ponta++;
 score+=.86*recencia;
+
 }
 
-if(delta<0){
+if(delta<0)
 esquerda++;
-}else if(delta>0){
+
+else if(delta>0)
 direita++;
-}
 
 });
 
 let perfil="MIOLO";
 
 if(
-ponta>miolo&&
+ponta>miolo &&
 ponta>=lateral
-){
+)
 perfil="PONTA";
-}else if(
-lateral>miolo
-){
+
+else if(lateral>miolo)
 perfil="LATERAL";
-}
 
 let direcao=0;
 
-if(
-direita>esquerda+1
-){
+if(direita>esquerda+1)
 direcao=1;
-}else if(
-esquerda>direita+1
-){
+
+else if(esquerda>direita+1)
 direcao=-1;
-}
 
 ranking.push({
+
 centro,
 dentro,
 
@@ -1439,31 +1725,34 @@ direita,
 direcao,
 perfil,
 score
-});
 
 });
 
-ranking.sort((a,b)=>
-b.score-a.score||
+});
+
+ranking.sort(
+(a,b)=>
+b.score-a.score ||
 b.dentro-a.dentro
 );
 
-return{
+return {
+
 ranking,
 fortes:ranking.slice(0,5),
 principal:ranking[0]||null
+
 };
+
 }
 
-function scoreCorredorNumero(
-numero,
-momento
-){
+function scoreCorredorNumero(numero,momento){
 
 const fortes=
 momento.corredores.fortes;
 
-if(!fortes.length)return 0;
+if(!fortes.length)
+return 0;
 
 let score=0;
 
@@ -1478,7 +1767,8 @@ numero
 const d=
 Math.abs(delta);
 
-if(d>5)return;
+if(d>5)
+return;
 
 const rankingPeso=
 [1,.78,.60,.46,.34][pos];
@@ -1490,33 +1780,53 @@ let local=0;
 
 if(c.perfil==="PONTA"){
 
-if(d>=4)local=1;
-else if(d===3)local=.72;
-else if(d===2)local=.50;
-else local=.34;
+if(d>=4)
+local=1;
+
+else if(d===3)
+local=.72;
+
+else if(d===2)
+local=.50;
+
+else
+local=.34;
 
 }else if(c.perfil==="LATERAL"){
 
-if(d===2||d===3)local=1;
-else if(d===4)local=.70;
-else if(d===1)local=.62;
-else local=.45;
+if(d===2 || d===3)
+local=1;
+
+else if(d===4)
+local=.70;
+
+else if(d===1)
+local=.62;
+
+else
+local=.45;
 
 }else{
 
-if(d<=1)local=1;
-else if(d===2)local=.72;
-else if(d===3)local=.48;
-else local=.28;
+if(d<=1)
+local=1;
+
+else if(d===2)
+local=.72;
+
+else if(d===3)
+local=.48;
+
+else
+local=.28;
 
 }
 
 if(
-c.direcao!==0&&
+c.direcao!==0 &&
 Math.sign(delta)===c.direcao
-){
+)
 local*=1.08;
-}
 
 score+=
 rankingPeso*
@@ -1526,6 +1836,7 @@ local;
 });
 
 return score;
+
 }
 
 
@@ -1536,21 +1847,23 @@ return score;
 function analisarDensidade(base){
 
 const janela=
-limitar35(base).slice(-14);
+limitar35(base)
+.slice(-JANELA_MOMENTO);
 
-const mapa=new Map();
+const mapa=
+new Map();
 
-track.forEach(n=>{
-mapa.set(n,0);
-});
+track.forEach(n=>
+mapa.set(n,0)
+);
 
 janela.forEach((numero,i)=>{
 
 const recencia=
 .50+
 ((i+1)/
-Math.max(1,janela.length))*
-.50;
+Math.max(1,janela.length))
+*.50;
 
 track.forEach(alvo=>{
 
@@ -1562,11 +1875,20 @@ alvo
 
 let peso=0;
 
-if(d===0)peso=1;
-else if(d===1)peso=.68;
-else if(d===2)peso=.40;
-else if(d===3)peso=.20;
-else if(d===4)peso=.08;
+if(d===0)
+peso=1;
+
+else if(d===1)
+peso=.68;
+
+else if(d===2)
+peso=.40;
+
+else if(d===3)
+peso=.20;
+
+else if(d===4)
+peso=.08;
 
 if(peso){
 
@@ -1588,30 +1910,35 @@ track
 numero:n,
 score:mapa.get(n)||0
 }))
-.sort((a,b)=>
-b.score-a.score
+.sort(
+(a,b)=>b.score-a.score
 );
 
-return{
+return {
+
 mapa,
 ranking,
+
 centro:
 ranking.length
 ?ranking[0].numero
 :null
+
 };
+
 }
 
 
 /* ============================================================
-   MOMENTO
+   MOMENTO 14
 ============================================================ */
 
 function analisarMomento(base){
 
 base=limitar35(base);
 
-return{
+return {
+
 janela:
 base.slice(-14),
 
@@ -1632,54 +1959,57 @@ analisarDensidade(base),
 
 duziasFisicas:
 analisarDuziasFisicas(base)
+
 };
+
 }
 
-function scoreMomentoNumero(
-numero,
-momento
-){
+function scoreMomentoNumero(numero,momento){
 
-const scoreBase=
+const scoreBase=(
 
 scoreTerminalNumero(
 numero,
 momento
-)*.31+
+)*.31 +
 
 scoreCorNumero(
 numero,
 momento
-)*.10+
+)*.10 +
 
 scoreZonaNumero(
 numero,
 momento
-)*.13+
+)*.13 +
 
 scoreCorredorNumero(
 numero,
 momento
-)*.30+
+)*.30 +
 
 (
-momento.densidade.mapa.get(numero)||0
-)*.055;
+momento.densidade.mapa
+.get(numero)||0
+)*.055
 
-return(
-scoreBase+
+);
+
+const scoreDuzia=
 scoreDuziaFisicaNumero(
 numero,
 momento
-)*
+);
+
+return (
+scoreBase +
+scoreDuzia*
 PESO_DUZIA_FISICA
 );
+
 }
 
-function direcaoMomento(
-centro,
-momento
-){
+function direcaoMomento(centro,momento){
 
 let esquerda=0;
 let direita=0;
@@ -1695,13 +2025,14 @@ numero
 const d=
 Math.abs(delta);
 
-if(d>7)return;
+if(d>7)
+return;
 
 const recencia=
 .55+
 ((i+1)/
-Math.max(1,momento.janela.length))*
-.45;
+Math.max(1,momento.janela.length))
+*.45;
 
 const proximidade=
 Math.max(
@@ -1713,36 +2044,36 @@ const peso=
 recencia*
 proximidade;
 
-if(delta<0){
+if(delta<0)
 esquerda+=peso;
-}else if(delta>0){
+
+else if(delta>0)
 direita+=peso;
-}
 
 });
 
 const total=
-esquerda+
-direita;
+esquerda+direita;
 
-if(!total){
-return{
+if(!total)
+return {
 direcao:0,
 forca:0
 };
-}
 
-return{
+return {
+
 direcao:
 direita>esquerda
 ?1
 :(esquerda>direita?-1:0),
 
 forca:
-Math.abs(
-direita-esquerda
-)/total
+Math.abs(direita-esquerda)/
+total
+
 };
+
 }
 
 
@@ -1753,19 +2084,16 @@ direita-esquerda
 function construirCache(base){
 
 const eventos=
-new Uint8Array(
-base.length
-);
+new Uint8Array(base.length);
 
-for(let i=0;i<base.length;i++){
-eventos[i]=
-eventoNumero(base[i]);
-}
+for(let i=0;i<base.length;i++)
+eventos[i]=eventoNumero(base[i]);
 
-return{
+return {
 base,
 eventos
 };
+
 }
 
 function similaridadeJanelas(
@@ -1778,13 +2106,8 @@ tamanho
 let iguais=0;
 let erro=0;
 
-let a0=0;
-let a6=0;
-let a9=0;
-
-let b0=0;
-let b6=0;
-let b9=0;
+let a0=0,a6=0,a9=0;
+let b0=0,b6=0,b9=0;
 
 for(let k=0;k<tamanho;k++){
 
@@ -1794,9 +2117,8 @@ cache.eventos[a+k];
 const eb=
 cache.eventos[b+k];
 
-if(ea===eb){
+if(ea===eb)
 iguais++;
-}
 
 if(ea&1)a0++;
 if(ea&2)a6++;
@@ -1806,36 +2128,39 @@ if(eb&1)b0++;
 if(eb&2)b6++;
 if(eb&4)b9++;
 
-erro+=
-Math.abs(a0-b0)+
-Math.abs(a6-b6)+
-Math.abs(a9-b9);
+erro+=Math.abs(a0-b0);
+erro+=Math.abs(a6-b6);
+erro+=Math.abs(a9-b9);
+
 }
 
 const eventos=
 iguais/tamanho*100;
 
+const maxErro=
+tamanho*tamanho*3;
+
 const forma=
 Math.max(
 0,
-1-
-erro/
-(tamanho*tamanho*3)
+1-erro/maxErro
 )*100;
 
-return(
-eventos*.80+
-forma*.20
-);
+return eventos*.80+
+forma*.20;
+
 }
 
 function analisarRX(base,rx){
 
 base=limitar35(base);
 
-if(base.length<rx*2+4){
+if(
+base.length<
+rx*2+4
+){
 
-return{
+return {
 valido:false,
 rx,
 replicas:[],
@@ -1862,11 +2187,11 @@ i++
 const proximo=
 base[i+rx];
 
-if(proximo===undefined){
+if(proximo===undefined)
 continue;
-}
 
 candidatos.push({
+
 inicio:i,
 proximo,
 
@@ -1877,18 +2202,20 @@ atualInicio,
 i,
 rx
 )
+
 });
 
 }
 
-candidatos.sort((a,b)=>
-b.similaridade-a.similaridade||
+candidatos.sort(
+(a,b)=>
+b.similaridade-a.similaridade ||
 b.inicio-a.inicio
 );
 
 if(!candidatos.length){
 
-return{
+return {
 valido:false,
 rx,
 replicas:[],
@@ -1904,10 +2231,7 @@ candidatos.length*.10
 );
 
 qtd=
-Math.max(
-4,
-qtd
-);
+Math.max(4,qtd);
 
 qtd=
 Math.min(
@@ -1922,9 +2246,9 @@ candidatos.slice(0,qtd);
 const contagem=
 new Map();
 
-TODOS_IDS.forEach(id=>{
-contagem.set(id,0);
-});
+TODOS_IDS.forEach(
+id=>contagem.set(id,0)
+);
 
 function contar(rep){
 
@@ -1946,17 +2270,20 @@ replicas.forEach(contar);
 
 function positivos(){
 
-return TODOS_IDS.filter(id=>
+return TODOS_IDS
+.filter(
+id=>
 (contagem.get(id)||0)>0
-).length;
+)
+.length;
 
 }
 
 let pos=qtd;
 
 while(
-positivos()<8&&
-pos<candidatos.length&&
+positivos()<8 &&
+pos<candidatos.length &&
 replicas.length<MAX_REPLICAS
 ){
 
@@ -1965,25 +2292,30 @@ candidatos[pos++];
 
 replicas.push(rep);
 contar(rep);
+
 }
 
 const rankingIds=
 TODOS_IDS
 .map((id,ordem)=>({
+
 id,
+
 ocorrencias:
 contagem.get(id)||0,
+
 ordem
+
 }))
-.filter(x=>
-x.ocorrencias>0
-)
-.sort((a,b)=>
-b.ocorrencias-a.ocorrencias||
+.filter(x=>x.ocorrencias>0)
+.sort(
+(a,b)=>
+b.ocorrencias-a.ocorrencias ||
 a.ordem-b.ordem
 );
 
-return{
+return {
+
 valido:true,
 rx,
 replicas,
@@ -1994,17 +2326,24 @@ replicas.reduce(
 (s,r)=>s+r.similaridade,
 0
 )/replicas.length
+
 };
+
 }
+
+
+/* ============================================================
+   FREQUÊNCIA DAS RÉPLICAS
+============================================================ */
 
 function frequenciaReplicas(replicas){
 
 const freq=
 new Map();
 
-track.forEach(n=>{
-freq.set(n,0);
-});
+track.forEach(
+n=>freq.set(n,0)
+);
 
 replicas.forEach(rep=>{
 
@@ -2016,6 +2355,7 @@ rep.proximo,
 });
 
 return freq;
+
 }
 
 
@@ -2025,9 +2365,8 @@ return freq;
 
 function diagnosticarLosses(lista){
 
-if(!Array.isArray(lista)){
+if(!Array.isArray(lista))
 lista=[];
-}
 
 const validos=
 lista.filter(
@@ -2042,18 +2381,18 @@ i>=0;
 i--
 ){
 
-if(validos[i].green){
+if(validos[i].green)
 break;
-}
 
 losses.unshift(
 validos[i]
 );
+
 }
 
 if(!losses.length){
 
-return{
+return {
 ativo:false,
 seq:0,
 tipo:"ESTAVEL",
@@ -2072,17 +2411,14 @@ let direita=0;
 
 recentes.forEach(x=>{
 
-if(x.tipo==="FORA1"){
+if(x.tipo==="FORA1")
 fora1++;
-}
 
-if(x.lado<0){
+if(x.lado<0)
 esquerda++;
-}
 
-if(x.lado>0){
+if(x.lado>0)
 direita++;
-}
 
 });
 
@@ -2090,7 +2426,7 @@ let tipo="ISOLADO";
 let forca=.10;
 
 if(
-losses.length===1&&
+losses.length===1 &&
 fora1===1
 ){
 
@@ -2098,22 +2434,16 @@ tipo="BORDA";
 forca=.10;
 
 }else if(
-fora1>=2&&
-Math.max(
-esquerda,
-direita
-)>=2
+fora1>=2 &&
+Math.max(esquerda,direita)>=2
 ){
 
 tipo="BORDA_REPETIDA";
 forca=.35;
 
 }else if(
-losses.length>=2&&
-Math.max(
-esquerda,
-direita
-)>=2
+losses.length>=2 &&
+Math.max(esquerda,direita)>=2
 ){
 
 tipo="DESLOCAMENTO";
@@ -2125,9 +2455,11 @@ losses.length>=3
 
 tipo="QUEBRA";
 forca=.60;
+
 }
 
-return{
+return {
+
 ativo:true,
 seq:losses.length,
 tipo,
@@ -2138,862 +2470,14 @@ direita>esquerda
 :(esquerda>direita?-1:0),
 
 forca
+
 };
+
 }
 
 
 /* ============================================================
-   HISTÓRICO DE RESULTADOS DO MODELO
-============================================================ */
-
-function obterHistoricoComportamento(){
-
-const chave=
-estado.modo==="AUTO"
-?"AUTO"
-:estado.manualRX;
-
-const lista=
-duplasVisual
-.map(d=>{
-
-const s=
-statusEntrada(
-d,
-chave
-);
-
-return{
-tipo:s.tipo,
-resultado:d.resultado,
-g1:d.g1
-};
-
-})
-.filter(x=>
-x.tipo==="GREEN1"||
-x.tipo==="GREENG1"||
-x.tipo==="LOSS"
-);
-
-return lista;
-}
-
-function metricasComportamento(lista){
-
-if(!Array.isArray(lista)){
-lista=[];
-}
-
-const ultimos=
-lista.slice(-10);
-
-const recentes=
-ultimos.slice(-4);
-
-const anteriores=
-ultimos.slice(-8,-4);
-
-function valor(x){
-
-if(x.tipo==="GREEN1"){
-return 0;
-}
-
-if(x.tipo==="GREENG1"){
-return .50;
-}
-
-if(x.tipo==="LOSS"){
-return 1;
-}
-
-return 0;
-}
-
-const deterioracaoRecente=
-media(
-recentes.map(valor)
-);
-
-const deterioracaoAnterior=
-media(
-anteriores.map(valor)
-);
-
-const tendencia=
-clamp(
-deterioracaoRecente-
-deterioracaoAnterior,
-0,
-1
-);
-
-const g1=
-recentes.length
-?recentes.filter(
-x=>x.tipo==="GREENG1"
-).length/recentes.length
-:0;
-
-const loss=
-recentes.length
-?recentes.filter(
-x=>x.tipo==="LOSS"
-).length/recentes.length
-:0;
-
-const direto=
-recentes.length
-?recentes.filter(
-x=>x.tipo==="GREEN1"
-).length/recentes.length
-:0;
-
-return{
-tendencia,
-g1,
-loss,
-direto,
-deterioracao:
-clamp(
-deterioracaoRecente*.65+
-tendencia*.35,
-0,
-1
-)
-};
-}
-
-
-/* ============================================================
-   MUDANÇA ESTRUTURAL
-============================================================ */
-
-function analisarMudancaEstrutural(base){
-
-base=limitar35(base);
-
-const janela=
-base.slice(-14);
-
-if(janela.length<8){
-
-return{
-score:0,
-regiao:0,
-terminal:0,
-duzia:0,
-roda:0,
-direcao:0,
-centroAnterior:null,
-centroRecente:null
-};
-
-}
-
-const recente=
-janela.slice(-5);
-
-const anterior=
-janela.slice(
-0,
-Math.max(
-0,
-janela.length-5
-)
-);
-
-const divRegiao=
-divergenciaL1(
-distribuicaoRegioes(recente),
-distribuicaoRegioes(anterior)
-);
-
-const divTerminal=
-divergenciaL1(
-distribuicaoTerminais(recente),
-distribuicaoTerminais(anterior)
-);
-
-const divDuzia=
-divergenciaL1(
-distribuicaoDuzias(recente),
-distribuicaoDuzias(anterior)
-);
-
-const centroRecente=
-centroDensidadeSimples(recente);
-
-const centroAnterior=
-centroDensidadeSimples(anterior);
-
-let roda=0;
-let direcao=0;
-
-if(
-centroRecente!==null&&
-centroAnterior!==null
-){
-
-const delta=
-deltaRoda(
-centroAnterior,
-centroRecente
-);
-
-roda=
-clamp(
-Math.abs(delta)/8,
-0,
-1
-);
-
-direcao=
-Math.sign(delta);
-}
-
-const score=
-clamp(
-divRegiao*.28+
-divTerminal*.22+
-divDuzia*.16+
-roda*.34,
-0,
-1
-);
-
-return{
-score,
-regiao:divRegiao,
-terminal:divTerminal,
-duzia:divDuzia,
-roda,
-direcao,
-centroAnterior,
-centroRecente
-};
-}
-
-
-/* ============================================================
-   DIVERGÊNCIA RX
-============================================================ */
-
-function centroPrincipalJogada(jogada){
-
-if(
-!jogada||
-!jogada.valido
-){
-return null;
-}
-
-const blocos=[
-...jogada.blocos2,
-...jogada.blocos1
-];
-
-if(!blocos.length){
-return null;
-}
-
-blocos.sort((a,b)=>
-(b.score||0)-
-(a.score||0)
-);
-
-return blocos[0].centro;
-}
-
-function divergenciaRXConfigs(configs){
-
-const centros=
-RX_LIST
-.map(rx=>
-configs&&
-configs[rx]&&
-configs[rx].valido
-?centroPrincipalJogada(
-configs[rx].jogada
-)
-:null
-)
-.filter(x=>
-x!==null
-);
-
-if(centros.length<2){
-return 0;
-}
-
-let soma=0;
-let qtd=0;
-
-for(let i=0;i<centros.length;i++){
-
-for(let j=i+1;j<centros.length;j++){
-
-soma+=
-clamp(
-distanciaRoda(
-centros[i],
-centros[j]
-)/12,
-0,
-1
-);
-
-qtd++;
-}
-
-}
-
-return qtd
-?soma/qtd
-:0;
-}
-
-
-/* ============================================================
-   ESTADO DO MODELO
-============================================================ */
-
-function construirEstadoModelo(
-base,
-configs=null,
-comportamento=null
-){
-
-const mudanca=
-analisarMudancaEstrutural(base);
-
-const comp=
-metricasComportamento(
-comportamento||
-obterHistoricoComportamento()
-);
-
-const divRX=
-configs
-?divergenciaRXConfigs(configs)
-:0;
-
-const sinais=[
-mudanca.score>=.42,
-comp.deterioracao>=.38,
-comp.g1>=.50,
-comp.loss>=.25,
-divRX>=.42
-];
-
-const qtdSinais=
-sinais.filter(Boolean).length;
-
-const score=
-clamp(
-mudanca.score*.43+
-comp.deterioracao*.34+
-divRX*.15+
-comp.g1*.08,
-0,
-1
-);
-
-let estadoNome="ESTAVEL";
-
-if(
-score>=.62&&
-qtdSinais>=2
-){
-estadoNome="QUEBRA";
-}else if(
-score>=.34||
-qtdSinais>=2
-){
-estadoNome="ATENCAO";
-}
-
-return{
-estado:estadoNome,
-score,
-mudanca,
-comportamento:comp,
-divergenciaRX:divRX,
-qtdSinais
-};
-}
-
-
-/* ============================================================
-   VETOR DE TRANSIÇÃO
-============================================================ */
-
-function vetorTransicao(
-base,
-momento,
-rx,
-diag,
-estadoModelo
-){
-
-const janela=
-limitar35(base).slice(-14);
-
-const zonas=
-NOMES_REGIOES.map(z=>
-janela.length
-?momento.zonas.contagem[z]/
-janela.length
-:0
-);
-
-const cores=[
-momento.cores.contagem.VERMELHO,
-momento.cores.contagem.PRETO,
-momento.cores.contagem.VERDE
-].map(v=>
-janela.length
-?v/janela.length
-:0
-);
-
-const duzias=
-[1,2,3].map(d=>
-janela.length
-?momento.duziasFisicas.contagem[d]/
-janela.length
-:0
-);
-
-const corredor=
-momento.corredores.principal;
-
-const mudanca=
-estadoModelo.mudanca;
-
-const comp=
-estadoModelo.comportamento;
-
-return[
-rx/6,
-
-Math.min(
-1,
-(diag?.seq||0)/4
-),
-
-diag?.lado===-1?1:0,
-diag?.lado===1?1:0,
-
-...zonas,
-...cores,
-...duzias,
-
-momento.cores.pctAlternancia/100,
-momento.zonas.pctAlternancia/100,
-
-momento.terminais.taxa/100,
-
-corredor
-?indice(corredor.centro)/36
-:0,
-
-corredor
-?corredor.taxa/100
-:0,
-
-corredor
-?(corredor.direcao+1)/2
-:.5,
-
-momento.duziasFisicas.dominante
-?momento.duziasFisicas.dominante.duzia/3
-:0,
-
-mudanca.regiao,
-mudanca.terminal,
-mudanca.duzia,
-mudanca.roda,
-
-(mudanca.direcao+1)/2,
-
-comp.deterioracao,
-comp.g1,
-comp.loss,
-
-estadoModelo.divergenciaRX,
-estadoModelo.score
-];
-}
-
-function similaridadeTransicao(a,b){
-
-if(
-!a||
-!b||
-a.length!==b.length
-){
-return 0;
-}
-
-let erro=0;
-
-for(let i=0;i<a.length;i++){
-erro+=
-Math.abs(
-a[i]-b[i]
-);
-}
-
-return clamp(
-1-
-erro/a.length,
-0,
-1
-);
-}
-
-
-/* ============================================================
-   CORREÇÃO IDEAL OBSERVADA
-============================================================ */
-
-function melhorCorrecaoResultado(
-numero,
-jogada
-){
-
-if(
-!jogada||
-!jogada.valido
-){
-return{
-offset:0,
-distancia:99
-};
-}
-
-let melhor={
-offset:0,
-distancia:99
-};
-
-const blocos=[
-...jogada.blocos2,
-...jogada.blocos1
-];
-
-for(const b of blocos){
-
-for(
-let offset=-2;
-offset<=2;
-offset++
-){
-
-const centro=
-numeroOffset(
-b.centro,
-offset
-);
-
-const d=
-distanciaRoda(
-centro,
-numero
-);
-
-const gap=
-Math.max(
-0,
-d-b.qtd
-);
-
-if(
-gap<melhor.distancia||
-(
-gap===melhor.distancia&&
-Math.abs(offset)<
-Math.abs(melhor.offset)
-)
-){
-
-melhor={
-offset,
-distancia:gap
-};
-}
-
-}
-
-}
-
-return melhor;
-}
-
-
-/* ============================================================
-   REGISTRO DA MEMÓRIA
-============================================================ */
-
-let sequenciaMemoria=0;
-
-function registrarTransicao(registro){
-
-if(!registro)return;
-
-sequenciaMemoria++;
-
-registro.seq=
-sequenciaMemoria;
-
-memoriaTransicoes.push(
-registro
-);
-
-if(
-memoriaTransicoes.length>
-MAX_MEMORIA
-){
-memoriaTransicoes=
-memoriaTransicoes.slice(
--MAX_MEMORIA
-);
-}
-}
-
-
-/* ============================================================
-   CONSULTA À MEMÓRIA
-============================================================ */
-
-function consultarTransicoes(
-contexto,
-estadoModelo
-){
-
-const vazio={
-ativo:false,
-amostras:0,
-confianca:0,
-offset:0,
-lado:0,
-taxaLoss:0,
-taxaG1:0,
-forca:0
-};
-
-if(
-!contexto||
-!estadoModelo||
-estadoModelo.estado==="ESTAVEL"||
-memoriaTransicoes.length<4
-){
-return vazio;
-}
-
-const semelhantes=[];
-
-for(
-let i=0;
-i<memoriaTransicoes.length;
-i++
-){
-
-const m=
-memoriaTransicoes[i];
-
-if(!m.contexto){
-continue;
-}
-
-const sim=
-similaridadeTransicao(
-contexto,
-m.contexto
-);
-
-if(sim<MIN_SIM_TRANSICAO){
-continue;
-}
-
-/*
-   Transições recentes têm mais peso,
-   mas registros antigos não desaparecem.
-*/
-const idade=
-memoriaTransicoes.length-i;
-
-const recencia=
-Math.max(
-.38,
-1-
-idade/
-Math.max(
-80,
-memoriaTransicoes.length*1.45
-)
-);
-
-let peso=
-sim*
-recencia;
-
-/*
-   Cenário atual em QUEBRA procura mais
-   os registros históricos de atenção/quebra.
-*/
-if(
-estadoModelo.estado==="QUEBRA"&&
-m.estadoModelo==="QUEBRA"
-){
-peso*=1.12;
-}else if(
-estadoModelo.estado==="ATENCAO"&&
-m.estadoModelo==="ATENCAO"
-){
-peso*=1.07;
-}
-
-semelhantes.push({
-m,
-sim,
-peso
-});
-}
-
-semelhantes.sort((a,b)=>
-b.peso-a.peso
-);
-
-const usados=
-semelhantes.slice(
-0,
-MAX_TRANSICOES_USADAS
-);
-
-if(usados.length<3){
-return{
-...vazio,
-amostras:usados.length
-};
-}
-
-let total=0;
-let somaOffset=0;
-let loss=0;
-let g1=0;
-let esquerda=0;
-let direita=0;
-
-usados.forEach(({m,peso})=>{
-
-total+=peso;
-
-const off=
-clamp(
-Number(m.correcaoOffset)||0,
--2,
-2
-);
-
-somaOffset+=
-off*peso;
-
-if(m.resultadoFinal==="LOSS"){
-loss+=peso;
-}
-
-if(m.resultadoFinal==="GREEN_G1"){
-g1+=peso;
-}
-
-if(off<0){
-esquerda+=
-Math.abs(off)*
-peso;
-}
-
-if(off>0){
-direita+=
-Math.abs(off)*
-peso;
-}
-
-});
-
-if(!total){
-return vazio;
-}
-
-const offsetMedio=
-somaOffset/total;
-
-let offset=0;
-
-if(
-Math.abs(offsetMedio)>=.35
-){
-offset=
-clamp(
-Math.round(offsetMedio),
--2,
-2
-);
-}
-
-const lado=
-direita>esquerda*1.18
-?1
-:(esquerda>direita*1.18?-1:0);
-
-const simMedia=
-media(
-usados.map(x=>x.sim)
-);
-
-const confianca=
-clamp(
-(usados.length/12)*
-simMedia,
-0,
-1
-);
-
-const taxaLoss=
-loss/total;
-
-const taxaG1=
-g1/total;
-
-const forca=
-clamp(
-confianca*
-(
-.45+
-taxaLoss*.35+
-taxaG1*.20
-),
-0,
-1
-);
-
-return{
-ativo:true,
-amostras:usados.length,
-confianca,
-offset,
-lado,
-taxaLoss,
-taxaG1,
-forca
-};
-}
-
-
-/* ============================================================
-   SCORES
+   SCORE RX PURO
 ============================================================ */
 
 function scoreRXPuro(
@@ -3003,10 +2487,7 @@ freq
 ){
 
 const numeros=
-setor(
-centro,
-qtd
-);
+setor(centro,qtd);
 
 let score=0;
 let suporte=0;
@@ -3026,21 +2507,28 @@ n
 
 let peso=1;
 
-if(d===0){
+if(d===0)
 peso=1.45;
-}else if(d===1){
+
+else if(d===1)
 peso=1.22;
-}
 
 score+=f*peso;
+
 });
 
-return{
+return {
 score,
 suporte,
 numeros
 };
+
 }
+
+
+/* ============================================================
+   SCORE MOMENTO DO SETOR
+============================================================ */
 
 function scoreMomentoSetor(
 centro,
@@ -3049,10 +2537,7 @@ momento
 ){
 
 const numeros=
-setor(
-centro,
-qtd
-);
+setor(centro,qtd);
 
 let score=0;
 
@@ -3066,157 +2551,23 @@ n
 
 let peso=1;
 
-if(d===0){
+if(d===0)
 peso=1.20;
-}else if(d===1){
+
+else if(d===1)
 peso=1.08;
-}
 
 score+=
 scoreMomentoNumero(
 n,
 momento
-)*
-peso;
+)*peso;
+
 });
 
-return(
-score/
-numeros.length
-);
-}
+return score/
+numeros.length;
 
-
-/* ============================================================
-   CORREÇÃO DE TRANSIÇÃO
-============================================================ */
-
-function bonusTransicaoCandidato(
-offset,
-rxSuporte,
-direcao,
-estadoModelo,
-consulta
-){
-
-if(
-!consulta||
-!consulta.ativo||
-!estadoModelo||
-estadoModelo.estado==="ESTAVEL"
-){
-return 0;
-}
-
-if(offset===0){
-return 0;
-}
-
-const sinalOffset=
-Math.sign(offset);
-
-let alinhamentos=0;
-let conflitos=0;
-
-/*
-   Memória.
-*/
-if(consulta.offset!==0){
-
-if(
-sinalOffset===
-Math.sign(consulta.offset)
-){
-alinhamentos++;
-}else{
-conflitos++;
-}
-
-}
-
-/*
-   Mudança física dos últimos resultados.
-*/
-if(
-estadoModelo.mudanca.direcao!==0
-){
-
-if(
-sinalOffset===
-estadoModelo.mudanca.direcao
-){
-alinhamentos++;
-}else{
-conflitos++;
-}
-
-}
-
-/*
-   Direção do Momento.
-*/
-if(
-direcao&&
-direcao.direcao!==0&&
-direcao.forca>=.12
-){
-
-if(
-sinalOffset===
-direcao.direcao
-){
-alinhamentos++;
-}else{
-conflitos++;
-}
-
-}
-
-/*
-   A memória não pode empurrar contra
-   o cenário atual.
-*/
-if(
-alinhamentos===0||
-conflitos>alinhamentos
-){
-return 0;
-}
-
-let intensidade=
-consulta.forca;
-
-if(
-estadoModelo.estado==="ATENCAO"
-){
-intensidade*=.65;
-}
-
-if(
-estadoModelo.estado==="QUEBRA"
-){
-intensidade*=1;
-}
-
-if(
-Math.abs(offset)===
-Math.abs(consulta.offset)
-){
-intensidade*=1.10;
-}
-
-intensidade=
-clamp(
-intensidade,
-0,
-1
-);
-
-return(
-rxSuporte*
-PESO_MEMORIA_MAX*
-intensidade
-);
 }
 
 
@@ -3229,9 +2580,7 @@ centroOriginal,
 qtd,
 freq,
 momento,
-diagnostico,
-estadoModelo=null,
-consulta=null
+diagnostico
 ){
 
 let melhor=null;
@@ -3242,10 +2591,19 @@ offset<=MAX_GIRADA;
 offset++
 ){
 
+/*
+   DINÂMICA NOVA:
+   A BATIDA ANTERIOR DESLOCA A REFERÊNCIA DO CENTRO.
+   O restante do cálculo continua igual.
+*/
+
+const offsetEfetivo=
+offset+offsetCentroAtual;
+
 const centro=
 numeroOffset(
 centroOriginal,
-offset
+offsetEfetivo
 );
 
 const rx=
@@ -3255,9 +2613,8 @@ qtd,
 freq
 );
 
-if(rx.suporte<=0){
+if(rx.suporte<=0)
 continue;
-}
 
 const momentoScore=
 scoreMomentoSetor(
@@ -3283,8 +2640,8 @@ momento
 let bonusDirecao=0;
 
 if(
-offset!==0&&
-direcao.direcao!==0&&
+offset!==0 &&
+direcao.direcao!==0 &&
 Math.sign(offset)===
 direcao.direcao
 ){
@@ -3293,15 +2650,16 @@ bonusDirecao=
 direcao.forca*
 rx.suporte*
 .18;
+
 }
 
 let bonusLoss=0;
 
 if(
-diagnostico&&
-diagnostico.ativo&&
-diagnostico.lado!==0&&
-offset!==0&&
+diagnostico &&
+diagnostico.ativo &&
+diagnostico.lado!==0 &&
+offset!==0 &&
 Math.sign(offset)===
 diagnostico.lado
 ){
@@ -3310,83 +2668,61 @@ bonusLoss=
 diagnostico.forca*
 rx.suporte*
 .22;
+
 }
 
-const bonusMemoria=
-bonusTransicaoCandidato(
-offset,
-rx.suporte,
-direcao,
-estadoModelo,
-consulta
-);
+const scoreFinal=
 
-const scoreBase=
 rx.score+
+
+(
 momentoScore*
 rx.suporte*
-PESO_MOMENTO+
+PESO_MOMENTO
+)+
+
 bonusDirecao+
 bonusLoss-
 custoGirada;
 
-/*
-   Limite absoluto da memória:
-   no máximo 10% do score base positivo.
-*/
-const limite=
-Math.abs(scoreBase)*
-PESO_MEMORIA_MAX;
-
-const memoriaLimitada=
-clamp(
-bonusMemoria,
--limite,
-limite
-);
-
-const scoreFinal=
-scoreBase+
-memoriaLimitada;
-
 const item={
+
 centroOriginal,
 centro,
-offset,
+offset:offsetEfetivo,
 qtd,
 numeros:rx.numeros,
 suporte:rx.suporte,
 scoreRX:rx.score,
 scoreMomento:momentoScore,
-scoreMemoria:memoriaLimitada,
 score:scoreFinal
+
 };
 
 if(
-!melhor||
+!melhor ||
 item.score>melhor.score
-){
+)
 melhor=item;
-}
 
 }
 
 return melhor;
+
 }
 
 function gerarCandidatos(
 qtd,
 freq,
 momento,
-diagnostico,
-estadoModelo=null,
-consulta=null
+diagnostico
 ){
 
 const mapa=
 new Map();
 
-track.forEach(centroOriginal=>{
+track.forEach(
+centroOriginal=>{
 
 const c=
 avaliarCentroComGiradas(
@@ -3394,38 +2730,37 @@ centroOriginal,
 qtd,
 freq,
 momento,
-diagnostico,
-estadoModelo,
-consulta
+diagnostico
 );
 
-if(!c)return;
+if(!c)
+return;
 
 const existente=
-mapa.get(
-c.centro
-);
+mapa.get(c.centro);
 
 if(
-!existente||
+!existente ||
 c.score>existente.score
-){
+)
 mapa.set(
 c.centro,
 c
 );
-}
 
 });
 
 return Array.from(
 mapa.values()
-).sort((a,b)=>
-b.score-a.score||
-b.suporte-a.suporte||
+)
+.sort(
+(a,b)=>
+b.score-a.score ||
+b.suporte-a.suporte ||
 Math.abs(a.offset)-
 Math.abs(b.offset)
 );
+
 }
 
 
@@ -3436,22 +2771,21 @@ Math.abs(b.offset)
 function montarJogada(
 raioX,
 base,
-diagnostico=null,
-usarMemoria=true,
-estadoModeloExterno=null
+diagnostico=null
 ){
 
 if(
-!raioX||
+!raioX ||
 !raioX.valido
 ){
 
-return{
+return {
 valido:false,
 blocos2:[],
 blocos1:[],
 numeros:new Set()
 };
+
 }
 
 base=limitar35(base);
@@ -3464,44 +2798,12 @@ frequenciaReplicas(
 raioX.replicas
 );
 
-const estadoModelo=
-estadoModeloExterno||
-construirEstadoModelo(
-base,
-null,
-[]
-);
-
-const contexto=
-vetorTransicao(
-base,
-momento,
-raioX.rx,
-diagnostico||
-{
-ativo:false,
-seq:0,
-lado:0
-},
-estadoModelo
-);
-
-const consulta=
-usarMemoria
-?consultarTransicoes(
-contexto,
-estadoModelo
-)
-:null;
-
 const candidatos2=
 gerarCandidatos(
 2,
 freq,
 momento,
-diagnostico,
-estadoModelo,
-consulta
+diagnostico
 );
 
 const candidatos1=
@@ -3509,9 +2811,7 @@ gerarCandidatos(
 1,
 freq,
 momento,
-diagnostico,
-estadoModelo,
-consulta
+diagnostico
 );
 
 let melhor=null;
@@ -3529,55 +2829,52 @@ let score=
 um.score;
 
 for(
-const candidato of candidatos2
+const candidato
+of candidatos2
 ){
 
 const conflito=
-candidato.numeros.some(
+candidato.numeros
+.some(
 n=>usados.has(n)
 );
 
-if(conflito){
+if(conflito)
 continue;
-}
 
-dois.push(
-candidato
-);
+dois.push(candidato);
 
-score+=
-candidato.score;
+score+=candidato.score;
 
-candidato.numeros.forEach(
+candidato.numeros
+.forEach(
 n=>usados.add(n)
 );
 
-if(dois.length===5){
+if(dois.length===5)
 break;
-}
 
 }
 
 if(
-dois.length===5&&
+dois.length===5 &&
 usados.size===28
 ){
 
 if(
-!melhor||
+!melhor ||
 score>melhor.score
 ){
 
 melhor={
+
 valido:true,
 blocos2:dois,
 blocos1:[um],
 numeros:usados,
 score,
-momento,
-contexto,
-estadoModelo,
-consultaMemoria:consulta
+momento
+
 };
 
 }
@@ -3586,27 +2883,27 @@ consultaMemoria:consulta
 
 }
 
-return(
-melhor||
-{
+return melhor || {
+
 valido:false,
 blocos2:[],
 blocos1:[],
 numeros:new Set(),
-momento,
-contexto,
-estadoModelo,
-consultaMemoria:consulta
+momento
+
+};
+
 }
-);
-}
+
+
+/* ============================================================
+   CONFIG
+============================================================ */
 
 function gerarConfig(
 base,
 rxTam,
-diagnostico=null,
-usarMemoria=true,
-estadoModeloExterno=null
+diagnostico=null
 ){
 
 base=limitar35(base);
@@ -3617,36 +2914,35 @@ base,
 rxTam
 );
 
-if(!raioX.valido){
-
-return{
+if(!raioX.valido)
+return {
 valido:false,
 rx:rxTam
 };
-}
 
 const jogada=
 montarJogada(
 raioX,
 base,
-diagnostico,
-usarMemoria,
-estadoModeloExterno
+diagnostico
 );
 
-return{
+return {
+
 valido:jogada.valido,
 rx:rxTam,
 raioX,
 jogada,
 similaridade:
 raioX.similaridade
+
 };
+
 }
 
 
 /* ============================================================
-   CLASSIFICAÇÃO
+   RESULTADO
 ============================================================ */
 
 function classificarJogada(
@@ -3655,16 +2951,16 @@ jogada
 ){
 
 if(
-!jogada||
+!jogada ||
 !jogada.valido
 ){
 
-return{
+return {
 green:false,
 tipo:"FORA",
-lado:0,
-gap:99
+lado:0
 };
+
 }
 
 const blocos=[
@@ -3684,7 +2980,8 @@ numero,
 b.centro
 );
 
-return{
+return {
+
 green:true,
 
 tipo:
@@ -3698,9 +2995,8 @@ deltaRoda(
 b.centro,
 numero
 )
-),
+)
 
-gap:0
 };
 
 }
@@ -3721,14 +3017,15 @@ const gap=
 d-b.qtd;
 
 if(
-gap>0&&
+gap>0 &&
 (
-!melhor||
+!melhor ||
 gap<melhor.gap
 )
 ){
 
 melhor={
+
 gap,
 
 lado:
@@ -3738,6 +3035,7 @@ b.centro,
 numero
 )
 )
+
 };
 
 }
@@ -3746,15 +3044,16 @@ numero
 
 if(!melhor){
 
-return{
+return {
 green:false,
 tipo:"FORA",
-lado:0,
-gap:99
+lado:0
 };
+
 }
 
-return{
+return {
+
 green:false,
 
 tipo:
@@ -3765,37 +3064,49 @@ melhor.gap===1
 :"FORA"),
 
 lado:
-melhor.lado,
+melhor.lado
 
-gap:
-melhor.gap
 };
+
 }
 
 
 /* ============================================================
-   STATS / BACKTEST
+   STATS
 ============================================================ */
 
 function statsTimeline(lista){
 
-const validos=
-lista.filter(
+function validos(arr){
+
+return arr.filter(
 x=>!x.semJogada
 );
 
-function taxa(qtd){
+}
+
+function taxa(
+arr,
+qtd
+){
 
 const v=
-validos.slice(-qtd);
+validos(arr)
+.slice(-qtd);
 
-return(
-v.length
-?v.filter(x=>x.green).length/
-v.length*100
-:0
+if(!v.length)
+return 0;
+
+return (
+v.filter(x=>x.green).length/
+v.length*
+100
 );
+
 }
+
+const todosValidos=
+validos(lista);
 
 let loss=0;
 
@@ -3807,29 +3118,50 @@ i--
 
 const x=lista[i];
 
-if(x.semJogada){
+if(x.semJogada)
 continue;
-}
 
-if(x.green){
+if(x.green)
 break;
-}
 
 loss++;
+
 }
 
-return{
-total:validos.length,
-totalLinha:lista.length,
-taxa5:taxa(5),
-taxa10:taxa(10),
-taxa20:taxa(20),
+return {
+
+total:
+todosValidos.length,
+
+totalLinha:
+lista.length,
+
+taxa5:
+taxa(lista,5),
+
+taxa10:
+taxa(lista,10),
+
+taxa20:
+taxa(lista,20),
+
 lossSeguidos:loss,
+
 timeline:lista
+
 };
+
 }
 
-function backtest(base,rxTam){
+
+/* ============================================================
+   BACKTEST
+============================================================ */
+
+function backtest(
+base,
+rxTam
+){
 
 base=limitar35(base);
 
@@ -3861,43 +3193,46 @@ diagnosticarLosses(
 timeline
 );
 
-/*
-   Backtest permanece sem memória.
-*/
 const cfg=
 gerarConfig(
 passado,
 rxTam,
-diag,
-false,
-null
+diag
 );
 
 if(!cfg.valido){
 
 timeline.push({
+
 resultado:base[i],
 semJogada:true,
 green:null,
 tipo:"SEM_JOGADA",
 lado:0
+
 });
 
 continue;
+
 }
+
+const resultado=
+base[i];
 
 const r=
 classificarJogada(
-base[i],
+resultado,
 cfg.jogada
 );
 
 timeline.push({
-resultado:base[i],
+
+resultado,
 semJogada:false,
 green:r.green,
 tipo:r.tipo,
 lado:r.lado
+
 });
 
 }
@@ -3905,6 +3240,7 @@ lado:r.lado
 return statsTimeline(
 timeline
 );
+
 }
 
 
@@ -3912,37 +3248,25 @@ timeline
    RX / AUTO
 ============================================================ */
 
-function melhorDoRXComEstado(
+function melhorDoRX(
 base,
-rxTam,
-usarMemoria,
-timelinesRef,
-estadoModelo
+rxTam
 ){
-
-const timeline=
-timelinesRef&&
-timelinesRef[rxTam]
-?timelinesRef[rxTam]
-:[];
 
 const diag=
 diagnosticarLosses(
-timeline
+estado.timelines[rxTam]
 );
 
 const cfg=
 gerarConfig(
 base,
 rxTam,
-diag,
-usarMemoria,
-estadoModelo
+diag
 );
 
-if(!cfg.valido){
+if(!cfg.valido)
 return null;
-}
 
 const bt=
 backtest(
@@ -3951,6 +3275,7 @@ rxTam
 );
 
 let score=
+
 bt.taxa5*.42+
 bt.taxa10*.32+
 bt.taxa20*.20+
@@ -3969,19 +3294,19 @@ validos.length-1
 ];
 
 if(
-ultimo&&
+ultimo &&
 ultimo.tipo==="FORA1"
-){
+)
 score-=1;
-}else{
+
+else
 score-=3;
-}
 
 }
 
 const live=
 statsTimeline(
-timeline
+estado.timelines[rxTam]
 );
 
 if(live.total){
@@ -3989,9 +3314,11 @@ if(live.total){
 score+=
 live.taxa10*.05+
 live.taxa20*.025;
+
 }
 
-return{
+return {
+
 valido:true,
 rx:rxTam,
 raioX:cfg.raioX,
@@ -4000,32 +3327,9 @@ similaridade:cfg.similaridade,
 backtest:bt,
 live,
 score
+
 };
-}
 
-function melhorDoRX(
-base,
-rxTam,
-usarMemoria=true
-){
-
-const comportamento=
-obterHistoricoComportamento();
-
-const estadoModelo=
-construirEstadoModelo(
-base,
-null,
-comportamento
-);
-
-return melhorDoRXComEstado(
-base,
-rxTam,
-usarMemoria,
-estado.timelines,
-estadoModelo
-);
 }
 
 function escolherAuto(configs){
@@ -4033,787 +3337,24 @@ function escolherAuto(configs){
 const lista=
 RX_LIST
 .map(rx=>configs[rx])
-.filter(x=>
-x&&x.valido
+.filter(
+x=>x && x.valido
 );
 
-if(!lista.length){
+if(!lista.length)
 return null;
-}
 
-lista.sort((a,b)=>
-b.score-a.score||
+lista.sort(
+(a,b)=>
+b.score-a.score ||
 b.backtest.taxa10-
-a.backtest.taxa10||
+a.backtest.taxa10 ||
 b.backtest.taxa20-
 a.backtest.taxa20
 );
 
 return lista[0];
-}
 
-
-/* ============================================================
-   FORÇA DO CENÁRIO ATUAL
-
-   INDEPENDENTE DA MEMÓRIA.
-============================================================ */
-
-function calcularForcaCenario(
-base,
-configs,
-ativa
-){
-
-if(
-!ativa||
-!ativa.valido
-){
-return 0;
-}
-
-const momento=
-ativa.jogada.momento||
-analisarMomento(base);
-
-const simRX=
-clamp(
-ativa.similaridade/100,
-0,
-1
-);
-
-const terminalForca=
-clamp(
-momento.terminais.taxa/100,
-0,
-1
-);
-
-const corredor=
-momento.corredores.principal;
-
-const corredorForca=
-corredor
-?clamp(
-corredor.taxa/100,
-0,
-1
-)
-:0;
-
-const duziaForca=
-momento.duziasFisicas.dominante
-?clamp(
-momento.duziasFisicas.dominante.score,
-0,
-1
-)
-:0;
-
-const divRX=
-divergenciaRXConfigs(
-configs
-);
-
-const acordoRX=
-1-divRX;
-
-return clamp(
-simRX*.28+
-terminalForca*.18+
-corredorForca*.22+
-duziaForca*.14+
-acordoRX*.18,
-0,
-1
-);
-}
-
-
-/* ============================================================
-   MEMÓRIA DE UMA ENTRADA
-============================================================ */
-
-let memoriaEntradaPendente=null;
-
-function resumoJogadaMemoria(jogada){
-
-if(
-!jogada||
-!jogada.valido
-){
-return null;
-}
-
-return{
-centros2:
-jogada.blocos2.map(
-x=>x.centro
-),
-
-centro1:
-jogada.blocos1[0]
-?jogada.blocos1[0].centro
-:null
-};
-}
-
-function criarRegistroAntes(
-base,
-config,
-configs,
-comportamento,
-origem
-){
-
-if(
-!config||
-!config.valido||
-!config.jogada||
-!config.jogada.valido
-){
-return null;
-}
-
-const momento=
-analisarMomento(base);
-
-const timeline=
-estado.timelines[
-config.rx
-]||[];
-
-const diag=
-diagnosticarLosses(
-timeline
-);
-
-const estadoModelo=
-construirEstadoModelo(
-base,
-configs,
-comportamento
-);
-
-const contexto=
-vetorTransicao(
-base,
-momento,
-config.rx,
-diag,
-estadoModelo
-);
-
-return{
-origem:origem||"LIVE",
-rx:config.rx,
-contexto,
-
-estadoModelo:
-estadoModelo.estado,
-
-estadoScore:
-estadoModelo.score,
-
-mudanca:
-estadoModelo.mudanca,
-
-comportamento:
-estadoModelo.comportamento,
-
-divergenciaRX:
-estadoModelo.divergenciaRX,
-
-jogada:
-resumoJogadaMemoria(
-config.jogada
-),
-
-jogadaCompleta:
-config.jogada,
-
-numero:null,
-g1:null,
-tipo:null,
-lado:0,
-gap:99,
-tipoG1:null,
-ladoG1:0,
-resultadoFinal:null,
-correcaoOffset:0
-};
-}
-
-function finalizarRegistroPrimeira(
-registro,
-numero
-){
-
-if(!registro)return null;
-
-const r=
-classificarJogada(
-numero,
-registro.jogadaCompleta
-);
-
-registro.numero=numero;
-registro.tipo=r.tipo;
-registro.lado=r.lado;
-registro.gap=r.gap;
-
-if(r.green){
-
-registro.resultadoFinal=
-"GREEN1";
-
-registro.correcaoOffset=0;
-
-return{
-finalizado:true,
-registro,
-resultado:r
-};
-}
-
-const correcao=
-melhorCorrecaoResultado(
-numero,
-registro.jogadaCompleta
-);
-
-registro.correcaoPrimeira=
-correcao.offset;
-
-return{
-finalizado:false,
-registro,
-resultado:r
-};
-}
-
-function finalizarRegistroG1(
-registro,
-numero,
-jogadaG1
-){
-
-if(!registro)return null;
-
-const r=
-classificarJogada(
-numero,
-jogadaG1
-);
-
-registro.g1=numero;
-registro.tipoG1=r.tipo;
-registro.ladoG1=r.lado;
-
-if(r.green){
-
-registro.resultadoFinal=
-"GREEN_G1";
-
-const c=
-melhorCorrecaoResultado(
-registro.numero,
-registro.jogadaCompleta
-);
-
-registro.correcaoOffset=
-clamp(
-c.offset,
--2,
-2
-);
-
-}else{
-
-registro.resultadoFinal=
-"LOSS";
-
-const c1=
-melhorCorrecaoResultado(
-registro.numero,
-registro.jogadaCompleta
-);
-
-const c2=
-melhorCorrecaoResultado(
-numero,
-jogadaG1
-);
-
-let soma=
-c1.offset*.40+
-c2.offset*.60;
-
-registro.correcaoOffset=
-clamp(
-Math.round(soma),
--2,
-2
-);
-}
-
-delete registro.jogadaCompleta;
-
-registrarTransicao(
-registro
-);
-
-return r;
-}
-
-
-/* ============================================================
-   COMPARAÇÃO PARA G1 ADAPTATIVO
-============================================================ */
-
-function coberturaJogada(jogada){
-if(!jogada||!jogada.valido){
-return new Set();
-}
-
-const s=new Set();
-
-[
-...jogada.blocos2,
-...jogada.blocos1
-].forEach(b=>{
-b.numeros.forEach(n=>s.add(n));
-});
-
-return s;
-}
-
-function diferencaJogadas(a,b){
-
-const A=
-coberturaJogada(a);
-
-const B=
-coberturaJogada(b);
-
-if(!A.size||!B.size){
-return 1;
-}
-
-let inter=0;
-
-A.forEach(n=>{
-if(B.has(n)){
-inter++;
-}
-});
-
-const uniao=
-new Set([
-...A,
-...B
-]).size;
-
-return(
-uniao
-?1-inter/uniao
-:0
-);
-}
-
-function decidirJogadaG1(
-antiga,
-nova,
-estadoModelo
-){
-
-if(
-!antiga||
-!antiga.valido
-){
-return{
-usarNova:true,
-motivo:"SEM_ANTIGA"
-};
-}
-
-if(
-!nova||
-!nova.valido
-){
-return{
-usarNova:false,
-motivo:"SEM_NOVA"
-};
-}
-
-const dif=
-diferencaJogadas(
-antiga.jogada,
-nova.jogada
-);
-
-const mudanca=
-estadoModelo
-?estadoModelo.mudanca.score
-:0;
-
-const risco=
-estadoModelo
-?estadoModelo.score
-:0;
-
-/*
-   ESTÁVEL:
-   mantém a estrutura anterior,
-   exceto se a nova praticamente confirma a mesma estrutura.
-*/
-if(
-estadoModelo&&
-estadoModelo.estado==="ESTAVEL"
-){
-
-return{
-usarNova:false,
-motivo:"ESTAVEL",
-diferenca:dif
-};
-}
-
-/*
-   ATENÇÃO:
-   exige mudança estrutural real.
-*/
-if(
-estadoModelo&&
-estadoModelo.estado==="ATENCAO"
-){
-
-const usar=
-mudanca>=.42&&
-dif>=.22;
-
-return{
-usarNova:usar,
-motivo:
-usar
-?"ATENCAO_CORRIGE"
-:"ATENCAO_MANTEM",
-diferenca:dif
-};
-}
-
-/*
-   QUEBRA:
-   a nova leitura ganha prioridade
-   quando realmente saiu da estrutura antiga.
-*/
-if(
-estadoModelo&&
-estadoModelo.estado==="QUEBRA"
-){
-
-const usar=
-(
-risco>=.60&&
-dif>=.15
-)||
-mudanca>=.55;
-
-return{
-usarNova:usar,
-motivo:
-usar
-?"QUEBRA_CORRIGE"
-:"QUEBRA_MANTEM",
-diferenca:dif
-};
-}
-
-return{
-usarNova:false,
-motivo:"MANTEM"
-};
-}
-
-
-/* ============================================================
-   TREINAMENTO WALK-FORWARD
-============================================================ */
-
-function treinarHistoricoCompleto(numeros){
-
-limparMemoria();
-
-if(
-!Array.isArray(numeros)||
-numeros.length<18
-){
-return;
-}
-
-const timelines={
-AUTO:[],
-4:[],
-5:[],
-6:[]
-};
-
-const comportamento=[];
-
-let entradaAtual=null;
-
-for(
-let i=0;
-i<numeros.length;
-i++
-){
-
-const numero=
-numeros[i];
-
-const passado=
-numeros.slice(
-Math.max(0,i-35),
-i
-);
-
-if(passado.length<14){
-continue;
-}
-
-/*
-   Se existe uma entrada aguardando G1,
-   primeiro calculamos o cenário NOVO usando
-   todo o histórico conhecido antes do G1.
-*/
-if(entradaAtual){
-
-const estadoModelo=
-construirEstadoModelo(
-passado,
-null,
-comportamento
-);
-
-const configsNovos={};
-
-RX_LIST.forEach(rx=>{
-
-configsNovos[rx]=
-melhorDoRXComEstado(
-passado,
-rx,
-true,
-timelines,
-estadoModelo
-);
-
-});
-
-const autoNovo=
-escolherAuto(
-configsNovos
-);
-
-const nova=
-autoNovo&&autoNovo.valido
-?autoNovo
-:null;
-
-const decisao=
-decidirJogadaG1(
-entradaAtual.configOriginal,
-nova,
-estadoModelo
-);
-
-const configG1=
-decisao.usarNova&&nova
-?nova
-:entradaAtual.configOriginal;
-
-const rG1=
-classificarJogada(
-numero,
-configG1.jogada
-);
-
-finalizarRegistroG1(
-entradaAtual.registro,
-numero,
-configG1.jogada
-);
-
-comportamento.push({
-tipo:
-rG1.green
-?"GREENG1"
-:"LOSS",
-resultado:
-entradaAtual.registro.numero,
-g1:numero
-});
-
-if(comportamento.length>300){
-comportamento.splice(
-0,
-comportamento.length-300
-);
-}
-
-entradaAtual=null;
-
-/*
-   O número do G1 continua sendo parte normal
-   da sequência histórica. No próximo giro ele
-   já estará dentro do "passado".
-*/
-continue;
-}
-
-/*
-   Construção do cenário atual.
-*/
-const estadoModelo=
-construirEstadoModelo(
-passado,
-null,
-comportamento
-);
-
-const configs={};
-
-RX_LIST.forEach(rx=>{
-
-configs[rx]=
-melhorDoRXComEstado(
-passado,
-rx,
-true,
-timelines,
-estadoModelo
-);
-
-});
-
-const auto=
-escolherAuto(
-configs
-);
-
-if(
-!auto||
-!auto.valido
-){
-continue;
-}
-
-const registro=
-criarRegistroAntes(
-passado,
-auto,
-configs,
-comportamento,
-"TREINO"
-);
-
-if(!registro){
-continue;
-}
-
-const primeira=
-finalizarRegistroPrimeira(
-registro,
-numero
-);
-
-const r=
-primeira.resultado;
-
-RX_LIST.forEach(rx=>{
-
-const cfg=
-configs[rx];
-
-if(!cfg||!cfg.valido){
-
-timelines[rx].push({
-resultado:numero,
-semJogada:true,
-green:null,
-tipo:"SEM_JOGADA",
-lado:0
-});
-
-}else{
-
-const rr=
-classificarJogada(
-numero,
-cfg.jogada
-);
-
-timelines[rx].push({
-resultado:numero,
-semJogada:false,
-green:rr.green,
-tipo:rr.tipo,
-lado:rr.lado
-});
-
-}
-
-timelines[rx]=
-timelines[rx].slice(
--MAX_TIMELINE
-);
-
-});
-
-timelines.AUTO.push({
-resultado:numero,
-semJogada:false,
-green:r.green,
-tipo:r.tipo,
-lado:r.lado
-});
-
-timelines.AUTO=
-timelines.AUTO.slice(
--MAX_TIMELINE
-);
-
-if(r.green){
-
-delete registro.jogadaCompleta;
-
-registrarTransicao(
-registro
-);
-
-comportamento.push({
-tipo:"GREEN1",
-resultado:numero,
-g1:null
-});
-
-}else{
-
-entradaAtual={
-configOriginal:auto,
-registro
-};
-}
-
-}
-
-/*
-   Entrada incompleta no fim do histórico
-   não é inventada.
-*/
-salvarMemoria();
 }
 
 
@@ -4822,23 +3363,25 @@ salvarMemoria();
 ============================================================ */
 
 function assinatura(){
-return(
+
+return (
 historico.length+
 "|"+
 historico.join(",")
 );
+
 }
 
 function snapshot(config){
 
 if(
-!config||
+!config ||
 !config.valido
-){
+)
 return null;
-}
 
-return{
+return {
+
 assinatura:
 assinatura(),
 
@@ -4846,15 +3389,17 @@ rx:
 config.rx,
 
 centros2:
-config.jogada.blocos2.map(
-x=>x.centro
-),
+config.jogada
+.blocos2
+.map(x=>x.centro),
 
 centro1:
 config.jogada.blocos1[0]
 ?config.jogada.blocos1[0].centro
 :null
+
 };
+
 }
 
 function classificarSnapshot(
@@ -4864,29 +3409,36 @@ p
 
 if(!p){
 
-return{
+return {
 green:false,
 tipo:"FORA",
 lado:0
 };
+
 }
 
 const blocos2=
 (p.centros2||[])
 .map(c=>({
+
 centro:c,
 qtd:2,
 numeros:setor(c,2)
+
 }));
 
 const blocos1=
-p.centro1!==null&&
+p.centro1!==null &&
 p.centro1!==undefined
+
 ?[{
+
 centro:p.centro1,
 qtd:1,
 numeros:setor(p.centro1,1)
+
 }]
+
 :[];
 
 return classificarJogada(
@@ -4897,6 +3449,7 @@ blocos2,
 blocos1
 }
 );
+
 }
 
 function garantirPendentes(
@@ -4910,11 +3463,11 @@ assinatura();
 RX_LIST.forEach(rx=>{
 
 if(
-estado.pendentes[rx]&&
-estado.pendentes[rx].assinatura===sig
-){
+estado.pendentes[rx] &&
+estado.pendentes[rx]
+.assinatura===sig
+)
 return;
-}
 
 estado.pendentes[rx]=
 snapshot(
@@ -4924,39 +3477,72 @@ configs[rx]
 });
 
 if(
-!estado.pendentes.AUTO||
-estado.pendentes.AUTO.assinatura!==sig
+!estado.pendentes.AUTO ||
+estado.pendentes.AUTO
+.assinatura!==sig
 ){
 
 estado.pendentes.AUTO=
 snapshot(auto);
+
 }
 
 salvarEstado();
+
 }
+
+
+/* ============================================================
+   AVALIA PENDENTES
+============================================================ */
 
 function avaliarPendentes(numero){
 
 const sig=
 assinatura();
 
-["AUTO",4,5,6].forEach(k=>{
+["AUTO",4,5,6]
+.forEach(k=>{
 
 const p=
 estado.pendentes[k];
 
-if(
-!p||
-p.assinatura!==sig
-){
+if(!p){
 
-estado.timelines[k].push({
+estado.timelines[k]
+.push({
+
 resultado:numero,
 semJogada:true,
 green:null,
 tipo:"SEM_JOGADA",
 lado:0,
 hora:Date.now()
+
+});
+
+estado.timelines[k]=
+estado.timelines[k]
+.slice(-MAX_TIMELINE);
+
+return;
+
+}
+
+if(
+p.assinatura!==sig
+){
+
+estado.timelines[k]
+.push({
+
+resultado:numero,
+semJogada:true,
+green:null,
+tipo:"SEM_JOGADA",
+lado:0,
+hora:Date.now()
+
 });
 
 estado.timelines[k]=
@@ -4966,6 +3552,7 @@ estado.timelines[k]
 estado.pendentes[k]=null;
 
 return;
+
 }
 
 const r=
@@ -4974,13 +3561,16 @@ numero,
 p
 );
 
-estado.timelines[k].push({
+estado.timelines[k]
+.push({
+
 resultado:numero,
 semJogada:false,
 green:r.green,
 tipo:r.tipo,
 lado:r.lado,
 hora:Date.now()
+
 });
 
 estado.timelines[k]=
@@ -4988,22 +3578,24 @@ estado.timelines[k]
 .slice(-MAX_TIMELINE);
 
 estado.pendentes[k]=null;
+
 });
 
 salvarEstado();
+
 }
 
 
 /* ============================================================
-   CONTROLE VISUAL
+   CONTROLE DA ENTRADA
 ============================================================ */
 
 function chaveVisualAtual(){
-return(
-estado.modo==="AUTO"
+
+return estado.modo==="AUTO"
 ?"AUTO"
-:estado.manualRX
-);
+:estado.manualRX;
+
 }
 
 function avaliarNumeroContraPacote(
@@ -5014,16 +3606,20 @@ pacote
 const resultado=
 avaliacoesVazias();
 
-["AUTO",4,5,6].forEach(k=>{
+["AUTO",4,5,6]
+.forEach(k=>{
 
 const p=
-pacote&&pacote[k]
+pacote &&
+pacote[k]
 ?pacote[k]
 :null;
 
 if(!p){
+
 resultado[k]="SEM";
 return;
+
 }
 
 const r=
@@ -5036,9 +3632,11 @@ resultado[k]=
 r.green
 ?"GREEN"
 :"LOSS";
+
 });
 
 return resultado;
+
 }
 
 function capturarAvaliacoesDoResultado(
@@ -5047,7 +3645,8 @@ numero
 
 const resultado={};
 
-["AUTO",4,5,6].forEach(k=>{
+["AUTO",4,5,6]
+.forEach(k=>{
 
 const lista=
 estado.timelines[k]||[];
@@ -5058,22 +3657,32 @@ lista.length-1
 ];
 
 if(
-!item||
+!item ||
 item.resultado!==numero
 ){
+
 resultado[k]=null;
 return;
+
 }
 
+if(item.semJogada){
+
+resultado[k]="SEM";
+
+}else{
+
 resultado[k]=
-item.semJogada
-?"SEM"
-:(item.green
+item.green
 ?"GREEN"
-:"LOSS");
+:"LOSS";
+
+}
+
 });
 
 return resultado;
+
 }
 
 function prepararVisualAntes(numero){
@@ -5089,24 +3698,35 @@ duplasVisual.length-1
 :null;
 
 if(
-ultima&&
+ultima &&
 ultima.fase==="ESPERA_G1"
 ){
 
-return{
+return {
+
 tipo:"G1",
 numero,
 entrada:ultima,
 snapshotsAntes
+
 };
+
 }
 
-return{
+return {
+
 tipo:"ENTRADA",
 numero,
 snapshotsAntes
+
 };
+
 }
+
+
+/* ============================================================
+   STATUS DA ENTRADA
+============================================================ */
 
 function statusEntrada(
 entrada,
@@ -5125,165 +3745,84 @@ chave
 
 if(primeira==="GREEN"){
 
-return{
+return {
 tipo:"GREEN1",
 texto:"G",
 classe:"green"
 };
+
 }
 
 if(primeira==="SEM"){
 
-return{
+return {
 tipo:"SEM",
 texto:"—",
 classe:"sem"
 };
+
 }
 
 if(primeira==="LOSS"){
 
 if(
-entrada.g1===null||
+entrada.g1===null ||
 entrada.g1===undefined
 ){
 
-return{
+return {
 tipo:"AGUARDA_G1",
 texto:"L",
 classe:"loss"
 };
+
 }
 
 if(g1==="GREEN"){
 
-return{
+return {
 tipo:"GREENG1",
 texto:"G",
 classe:"g1"
 };
+
 }
 
 if(g1==="SEM"){
 
-return{
+return {
 tipo:"SEM",
 texto:"—",
 classe:"sem"
 };
+
 }
 
-return{
+return {
 tipo:"LOSS",
 texto:"L",
 classe:"loss"
 };
+
 }
 
-return{
+return {
 tipo:"ABERTA",
 texto:"—",
 classe:"aberta"
 };
+
 }
 
 
 /* ============================================================
-   CONFIGURAÇÃO ATUAL
-============================================================ */
-
-function calcularConfiguracoesAtuais(){
-
-const base=
-historico.slice(-35);
-
-const comportamento=
-obterHistoricoComportamento();
-
-const estadoModeloInicial=
-construirEstadoModelo(
-base,
-null,
-comportamento
-);
-
-const configs={};
-
-RX_LIST.forEach(rx=>{
-
-configs[rx]=
-melhorDoRXComEstado(
-base,
-rx,
-true,
-estado.timelines,
-estadoModeloInicial
-);
-
-});
-
-const estadoModelo=
-construirEstadoModelo(
-base,
-configs,
-comportamento
-);
-
-/*
-   Segunda leitura com divergência RX já conhecida.
-*/
-RX_LIST.forEach(rx=>{
-
-configs[rx]=
-melhorDoRXComEstado(
-base,
-rx,
-true,
-estado.timelines,
-estadoModelo
-);
-
-});
-
-const auto=
-escolherAuto(
-configs
-);
-
-const ativa=
-estado.modo==="AUTO"
-?auto
-:configs[
-estado.manualRX
-];
-
-const forcaCenario=
-calcularForcaCenario(
-base,
-configs,
-ativa
-);
-
-return{
-base,
-configs,
-auto,
-ativa,
-estadoModelo,
-forcaCenario
-};
-}
-
-
-/* ============================================================
-   FINALIZAÇÃO VISUAL / MEMÓRIA
+   FINALIZA ENTRADA VISUAL
 ============================================================ */
 
 function finalizarVisualDepois(
 numero,
 controle,
-configUsada,
-calculoDepois
+configAntes
 ){
 
 const chave=
@@ -5297,59 +3836,14 @@ controle.entrada;
 entrada.g1=
 numero;
 
-/*
-   Para o visual principal usamos a jogada realmente
-   escolhida para o G1.
-*/
-if(
-configUsada&&
-configUsada.valido
-){
-
-const r=
-classificarJogada(
-numero,
-configUsada.jogada
-);
-
-entrada.avaliacoesG1=
-Object.assign(
-avaliacoesVazias(),
-avaliarNumeroContraPacote(
-numero,
-entrada.snapshotEntrada
-)
-);
-
-entrada.avaliacoesG1[chave]=
-r.green
-?"GREEN"
-:"LOSS";
-
-}else{
-
 entrada.avaliacoesG1=
 avaliarNumeroContraPacote(
 numero,
 entrada.snapshotEntrada
 );
-}
 
 entrada.fase=
 "FINALIZADO";
-
-if(memoriaEntradaPendente){
-
-finalizarRegistroG1(
-memoriaEntradaPendente.registro,
-numero,
-configUsada.jogada
-);
-
-salvarMemoria();
-
-memoriaEntradaPendente=null;
-}
 
 jogadaCongelada=null;
 
@@ -5357,12 +3851,9 @@ salvarJogadaCongelada();
 salvarDuplasVisual();
 
 return;
+
 }
 
-
-/*
-   Entrada normal.
-*/
 const avaliacoes=
 capturarAvaliacoesDoResultado(
 numero
@@ -5373,93 +3864,93 @@ avaliacoes[chave];
 
 const entrada=
 normalizarDuplaVisual({
+
 resultado:numero,
+
 g1:null,
+
 avaliacoes,
+
 avaliacoesG1:
 avaliacoesVazias(),
+
 snapshotEntrada:
 controle.snapshotsAntes,
+
 fase:
 atual==="LOSS"
 ?"ESPERA_G1"
 :"FINALIZADO"
+
 });
 
-duplasVisual.push(
-entrada
-);
+duplasVisual.push(entrada);
 
 duplasVisual=
 duplasVisual.slice(-14);
 
-
-/*
-   Memória da entrada.
-*/
-if(
-configUsada&&
-configUsada.valido&&
-configUsada._registroMemoria
-){
-
-const registro=
-configUsada._registroMemoria;
-
-const primeira=
-finalizarRegistroPrimeira(
-registro,
-numero
-);
-
-if(primeira.finalizado){
-
-delete registro.jogadaCompleta;
-
-registrarTransicao(
-registro
-);
-
-salvarMemoria();
-
-memoriaEntradaPendente=null;
-
-}else{
-
-memoriaEntradaPendente={
-registro,
-configOriginal:
-configUsada
-};
-
-}
-
-}
-
-
-/*
-   Depois do LOSS, a jogada anterior fica armazenada
-   como referência, mas NÃO é obrigatoriamente usada.
-*/
 if(atual==="LOSS"){
 
 jogadaCongelada=
 copiarJogadaCongelada(
-configUsada
+configAntes
 );
 
 }else{
 
 jogadaCongelada=null;
+
 }
 
 salvarJogadaCongelada();
 salvarDuplasVisual();
+
 }
 
 
 /* ============================================================
-   ADICIONAR NÚMERO
+   CONFIGURAÇÃO ATUAL SEM ALTERAR ESTADO
+============================================================ */
+
+function calcularConfiguracoesAtuais(){
+
+const base=
+historico.slice(-35);
+
+const configs={};
+
+RX_LIST.forEach(rx=>{
+
+configs[rx]=
+melhorDoRX(
+base,
+rx
+);
+
+});
+
+const auto=
+escolherAuto(
+configs
+);
+
+const ativa=
+estado.modo==="AUTO"
+?auto
+:configs[estado.manualRX];
+
+return {
+base,
+configs,
+auto,
+ativa
+};
+
+}
+
+
+/* ============================================================
+   INSERÇÃO
 ============================================================ */
 
 function adicionarNumero(numero){
@@ -5467,7 +3958,8 @@ function adicionarNumero(numero){
 const calculoAntes=
 calcularConfiguracoesAtuais();
 
-let configAntes=
+const configAntes=
+jogadaCongelada ||
 calculoAntes.ativa;
 
 const controleVisual=
@@ -5475,106 +3967,46 @@ prepararVisualAntes(
 numero
 );
 
-
-/*
-   Se estamos entrando no G1,
-   a jogada a usar já foi decidida após o LOSS,
-   usando o cenário atualizado.
-*/
-if(
-controleVisual.tipo==="G1"&&
-jogadaCongelada
-){
-
-const nova=
-calculoAntes.ativa;
-
-const antiga=
-jogadaCongelada;
-
-const decisao=
-decidirJogadaG1(
-antiga,
-nova,
-calculoAntes.estadoModelo
-);
-
-configAntes=
-decisao.usarNova&&nova
-?nova
-:antiga;
-}
-
-
-/*
-   Registro da entrada normal.
-*/
-if(
-controleVisual.tipo==="ENTRADA"&&
-configAntes&&
-configAntes.valido
-){
-
-const registro=
-criarRegistroAntes(
-historico.slice(-35),
-configAntes,
-calculoAntes.configs,
-obterHistoricoComportamento(),
-"LIVE"
-);
-
-configAntes=
-Object.assign(
-{},
-configAntes,
-{
-_registroMemoria:
-registro
-}
-);
-}
-
-
 avaliarPendentes(
 numero
 );
 
-historico.push(
-numero
+/*
+   REGISTRA ONDE O RESULTADO BATEU
+   EM RELAÇÃO AO CENTRO DA JOGADA.
+
+   ALVO = 0
+   V1   = +/-1
+   V2   = +/-2
+*/
+
+atualizarOffsetCentro(
+numero,
+configAntes
 );
+
+historico.push(numero);
 
 historico=
 historico.slice(-35);
 
 salvarHistorico();
 
+render();
 
-/*
-   Recalcula cenário depois do número.
-*/
-const calculoDepois=
-calcularConfiguracoesAtuais();
-
-
-/*
-   Se foi LOSS de primeira entrada,
-   a referência antiga será armazenada e o próximo
-   giro decidirá manter ou corrigir.
-*/
 finalizarVisualDepois(
 numero,
 controleVisual,
-configAntes,
-calculoDepois
+configAntes
 );
 
 render();
+
 }
 
 
 /* ============================================================
-   COLAR HISTÓRICO
+   HISTÓRICO
 ============================================================ */
 
 function extrairNumeros(texto){
@@ -5584,13 +4016,13 @@ texto.match(
 /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
 );
 
-if(!encontrados){
-return[];
-}
+if(!encontrados)
+return [];
 
-return encontrados.map(
-Number
-);
+return encontrados
+.map(Number)
+.slice(-35);
+
 }
 
 function inserirHistorico(){
@@ -5605,21 +4037,12 @@ extrairNumeros(
 campo.value
 );
 
-if(!numeros.length){
+if(!numeros.length)
 return;
-}
 
-document.getElementById(
-"status"
-).textContent=
-"TREINANDO • "+
-numeros.length+
-" NÚMEROS...";
+historico=
+numeros.slice(-35);
 
-
-/*
-   Estado operacional anterior é zerado.
-*/
 estado.pendentes={
 AUTO:null,
 4:null,
@@ -5635,24 +4058,11 @@ AUTO:[],
 };
 
 duplasVisual=[];
+
 jogadaCongelada=null;
-memoriaEntradaPendente=null;
+offsetCentroAtual=0;
 
-
-/*
-   TODO o histórico é usado na memória.
-*/
-treinarHistoricoCompleto(
-numeros
-);
-
-
-/*
-   Apenas os últimos 35 permanecem operacionais.
-*/
-historico=
-numeros.slice(-35);
-
+salvarOffsetCentro();
 salvarJogadaCongelada();
 salvarDuplasVisual();
 salvarHistorico();
@@ -5661,18 +4071,13 @@ salvarEstado();
 campo.value="";
 
 render();
+
 }
-
-
-/* ============================================================
-   APAGAR
-============================================================ */
 
 function apagarUltimoDaDupla(){
 
-if(!duplasVisual.length){
+if(!duplasVisual.length)
 return;
-}
 
 const ultima=
 duplasVisual[
@@ -5680,55 +4085,34 @@ duplasVisual.length-1
 ];
 
 if(
-ultima.g1!==null&&
+ultima.g1!==null &&
 ultima.g1!==undefined
 ){
 
 ultima.g1=null;
+
 ultima.avaliacoesG1=
 avaliacoesVazias();
+
 ultima.fase=
 "ESPERA_G1";
 
 salvarDuplasVisual();
 
 return;
+
 }
 
 duplasVisual.pop();
+
 salvarDuplasVisual();
-}
 
-function removerUltimaMemoriaLive(){
-
-for(
-let i=memoriaTransicoes.length-1;
-i>=0;
-i--
-){
-
-if(
-memoriaTransicoes[i].origem==="LIVE"
-){
-
-memoriaTransicoes.splice(
-i,
-1
-);
-
-salvarMemoria();
-
-return;
-}
-
-}
 }
 
 function apagarUltimo(){
 
-if(!historico.length){
+if(!historico.length)
 return;
-}
 
 apagarUltimoDaDupla();
 
@@ -5742,37 +4126,30 @@ AUTO:null,
 };
 
 jogadaCongelada=null;
+offsetCentroAtual=0;
 
-if(memoriaEntradaPendente){
-
-memoriaEntradaPendente=null;
-
-}else{
-
-removerUltimaMemoriaLive();
-}
-
+salvarOffsetCentro();
 salvarJogadaCongelada();
 salvarHistorico();
 salvarEstado();
 
 render();
+
 }
 
 function apagarTudo(){
 
 if(
 !confirm(
-"Apagar histórico e memória adaptativa?"
+"Apagar histórico?"
 )
-){
+)
 return;
-}
 
 historico=[];
 duplasVisual=[];
 jogadaCongelada=null;
-memoriaEntradaPendente=null;
+offsetCentroAtual=0;
 
 estado.pendentes={
 AUTO:null,
@@ -5788,14 +4165,14 @@ AUTO:[],
 6:[]
 };
 
-limparMemoria();
-
+salvarOffsetCentro();
 salvarJogadaCongelada();
 salvarDuplasVisual();
 salvarHistorico();
 salvarEstado();
 
 render();
+
 }
 
 
@@ -5806,88 +4183,520 @@ render();
 document.body.innerHTML="";
 
 document.body.style.cssText=
-"margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif;";
+"margin:0;"+
+"background:#101010;"+
+"color:#fff;"+
+"font-family:Arial,sans-serif;";
 
 const app=
-document.createElement(
-"div"
-);
+document.createElement("div");
 
 app.innerHTML=`
+
 <style>
+
 *{box-sizing:border-box}
-body{background:#101010}
-.app{max-width:900px;margin:auto;padding:7px}
-h2{text-align:center;font-size:20px;margin:5px}
-.painel{background:#1c1c1f;border:1px solid #414141;border-radius:10px;padding:8px;margin-bottom:7px}
-.titulo{font-size:9px;font-weight:900;color:#888;margin-bottom:5px}
-textarea{width:100%;height:60px;background:#111;color:#fff;border:1px solid #555;border-radius:7px;padding:7px}
-.botoes{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
-button{cursor:pointer;font-family:Arial;font-weight:900}
-.btn{border:1px solid #555;background:#333;color:#fff;border-radius:7px;padding:7px 10px}
-.btn.verde{background:#17643b}
-.btn.red{background:#762832}
-.modos{display:flex;gap:4px}
-.modo{background:#222;color:#999;border:1px solid #555;border-radius:7px;padding:7px 11px}
-.modo.ativo{background:#007d98;border-color:#00e5ff;color:#fff}
 
-.trio{margin-top:7px;background:#111;border:1px solid #333;border-radius:8px;padding:8px}
-.trioTitulo{font-size:7px;font-weight:900;color:#777;margin-bottom:6px}
-.trioLinha{display:flex;gap:6px}
-.terminal{flex:1;border-radius:7px;padding:7px;text-align:center;font-size:18px;font-weight:900;background:#202020}
-.terminal.primeiro{border:1px solid #00e676}
-.terminal.segundo{border:1px solid #00b0ff}
-.terminal.terceiro{border:1px solid #ffc107}
-.terminal small{display:block;font-size:7px;color:#888;margin-top:3px}
+body{
+background:#101010
+}
 
-.timelineRow{display:grid;grid-template-columns:40px 1fr 42px;gap:4px;align-items:center;margin-top:4px}
-.timeline{display:flex;gap:2px;justify-content:flex-end;overflow:hidden}
-.gl{width:15px;height:15px;min-width:15px;border-radius:3px;font-size:7px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff}
-.gl.greenPrimeira{background:#00994d}
-.gl.greenG1{background:#ffc107;color:#111}
-.gl.lossEntrada,.gl.aguardaG1{background:#c62828}
-.semJogadaGL{width:15px;height:15px;min-width:15px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#777}
-.nomeTL,.taxaTL{font-size:8px;font-weight:900}
-.taxaTL{text-align:right}
+.app{
+max-width:900px;
+margin:auto;
+padding:7px
+}
 
-.duplas14{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;width:100%}
-.dupla14{min-width:0;min-height:65px;border-radius:7px;display:flex;align-items:flex-start;justify-content:center;background:#272727;border:2px solid #555;position:relative;padding:6px 4px 26px}
-.dupla14.green{background:rgba(0,153,77,.18);border-color:#00b85c}
-.dupla14.loss{background:rgba(198,40,40,.18);border-color:#d93a3a}
-.dupla14.g1{background:rgba(255,193,7,.16);border-color:#ffc107}
-.dupla14.sem{background:#292929;border-color:#666}
-.dupla14.aberta{background:#202020;border-color:#777;border-style:dashed}
-.bolaDupla{width:31px;height:31px;min-width:31px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;border:2px solid #aaa}
-.resultadoEntrada{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);height:19px;min-width:26px;padding:2px 5px;border-radius:5px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:7px;font-weight:900;white-space:nowrap;border:1px solid #777;background:#171717}
-.resultadoEntrada.green{background:#00994d;border-color:#00e676;color:#fff}
-.resultadoEntrada.g1{background:#ffc107;border-color:#ffe082;color:#111}
-.resultadoEntrada.loss{background:#c62828;border-color:#ff5252;color:#fff}
-.resultadoEntrada.sem{background:#333;border-color:#666;color:#aaa}
-.g1Numero{font-size:6px;font-weight:900;padding-left:3px;border-left:1px solid rgba(255,255,255,.45)}
+h2{
+text-align:center;
+font-size:20px;
+margin:5px
+}
 
-.jogadaStatus{font-size:8px;font-weight:900;margin:3px 0 6px;padding:4px 6px;border-radius:5px;display:inline-block;background:#15323a;color:#00e5ff;border:1px solid #007d98}
-.jogadaStatus.g1{background:#4a3510;color:#ffc107;border-color:#ffc107}
+.painel{
+background:#1c1c1f;
+border:1px solid #414141;
+border-radius:10px;
+padding:8px;
+margin-bottom:7px
+}
 
-.jogadaCompacta{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;width:100%;margin-top:4px}
-.blocoCompacto{height:52px;min-width:0;background:#111;border:1px solid #00e5ff;border-radius:8px;display:flex;align-items:center;justify-content:center;position:relative}
-.blocoCompacto.um{border-color:#ffc107}
-.blocoCompacto strong{font-size:25px;line-height:1;font-weight:900}
-.blocoCompacto .tipoVizinho{position:absolute;right:3px;top:2px;font-size:6px;font-weight:900;color:#777}
-.blocoCompacto .regiaoMini{position:absolute;left:3px;bottom:2px;font-size:5px;font-weight:900;color:#555}
+.titulo{
+font-size:9px;
+font-weight:900;
+color:#888;
+margin-bottom:5px
+}
 
-.teclado{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
-.numero{height:37px;border:1px solid #666;border-radius:6px;color:#fff}
-.zero{grid-column:span 6}
-.status{font-size:9px;font-weight:900;color:#00e676;margin-top:5px}
+textarea{
+width:100%;
+height:60px;
+background:#111;
+color:#fff;
+border:1px solid #555;
+border-radius:7px;
+padding:7px
+}
+
+.botoes{
+display:flex;
+gap:5px;
+flex-wrap:wrap;
+margin-top:5px
+}
+
+button{
+cursor:pointer;
+font-family:Arial;
+font-weight:900
+}
+
+.btn{
+border:1px solid #555;
+background:#333;
+color:#fff;
+border-radius:7px;
+padding:7px 10px
+}
+
+.btn.verde{
+background:#17643b
+}
+
+.btn.red{
+background:#762832
+}
+
+.modos{
+display:flex;
+gap:4px
+}
+
+.modo{
+background:#222;
+color:#999;
+border:1px solid #555;
+border-radius:7px;
+padding:7px 11px
+}
+
+.modo.ativo{
+background:#007d98;
+border-color:#00e5ff;
+color:#fff
+}
+
+.resumo{
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:4px;
+margin-top:7px
+}
+
+.card{
+background:#111;
+border:1px solid #333;
+border-radius:7px;
+padding:7px;
+text-align:center
+}
+
+.card small{
+display:block;
+font-size:7px;
+color:#777;
+font-weight:900
+}
+
+.card strong{
+font-size:13px
+}
+
+.trio{
+margin-top:7px;
+background:#111;
+border:1px solid #333;
+border-radius:8px;
+padding:8px
+}
+
+.trioTitulo{
+font-size:7px;
+font-weight:900;
+color:#777;
+margin-bottom:6px
+}
+
+.trioLinha{
+display:flex;
+gap:6px
+}
+
+.terminal{
+flex:1;
+border-radius:7px;
+padding:7px;
+text-align:center;
+font-size:18px;
+font-weight:900;
+background:#202020
+}
+
+.terminal.primeiro{
+border:1px solid #00e676
+}
+
+.terminal.segundo{
+border:1px solid #00b0ff
+}
+
+.terminal.terceiro{
+border:1px solid #ffc107
+}
+
+.terminal small{
+display:block;
+font-size:7px;
+color:#888;
+margin-top:3px
+}
+
+.timelineRow{
+display:grid;
+grid-template-columns:40px 1fr 42px;
+gap:4px;
+align-items:center;
+margin-top:4px
+}
+
+.timeline{
+display:flex;
+gap:2px;
+justify-content:flex-end;
+overflow:hidden
+}
+
+.gl{
+width:15px;
+height:15px;
+min-width:15px;
+border-radius:3px;
+font-size:7px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-weight:900;
+color:#fff
+}
+
+.gl.greenPrimeira{
+background:#00994d
+}
+
+.gl.greenG1{
+background:#ffc107;
+color:#111
+}
+
+.gl.lossEntrada{
+background:#c62828
+}
+
+.gl.aguardaG1{
+background:#c62828
+}
+
+.semJogadaGL{
+width:15px;
+height:15px;
+min-width:15px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:11px;
+font-weight:900;
+color:#777
+}
+
+.nomeTL,
+.taxaTL{
+font-size:8px;
+font-weight:900
+}
+
+.taxaTL{
+text-align:right
+}
+
+.duplas14{
+display:grid;
+grid-template-columns:repeat(7,1fr);
+gap:5px;
+width:100%
+}
+
+.dupla14{
+min-width:0;
+min-height:65px;
+border-radius:7px;
+display:flex;
+align-items:flex-start;
+justify-content:center;
+background:#272727;
+border:2px solid #555;
+position:relative;
+padding:6px 4px 26px
+}
+
+.dupla14.green{
+background:rgba(0,153,77,.18);
+border-color:#00b85c
+}
+
+.dupla14.loss{
+background:rgba(198,40,40,.18);
+border-color:#d93a3a
+}
+
+.dupla14.g1{
+background:rgba(255,193,7,.16);
+border-color:#ffc107
+}
+
+.dupla14.sem{
+background:#292929;
+border-color:#666
+}
+
+.dupla14.aberta{
+background:#202020;
+border-color:#777;
+border-style:dashed
+}
+
+.bolaDupla{
+width:31px;
+height:31px;
+min-width:31px;
+border-radius:50%;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:11px;
+font-weight:900;
+color:#fff;
+border:2px solid #aaa
+}
+
+.resultadoEntrada{
+position:absolute;
+left:50%;
+bottom:2px;
+transform:translateX(-50%);
+height:19px;
+min-width:26px;
+padding:2px 5px;
+border-radius:5px;
+display:flex;
+align-items:center;
+justify-content:center;
+gap:3px;
+font-size:7px;
+font-weight:900;
+white-space:nowrap;
+border:1px solid #777;
+background:#171717
+}
+
+.resultadoEntrada.green{
+background:#00994d;
+border-color:#00e676;
+color:#fff
+}
+
+.resultadoEntrada.g1{
+background:#ffc107;
+border-color:#ffe082;
+color:#111
+}
+
+.resultadoEntrada.loss{
+background:#c62828;
+border-color:#ff5252;
+color:#fff
+}
+
+.resultadoEntrada.sem{
+background:#333;
+border-color:#666;
+color:#aaa
+}
+
+.g1Numero{
+font-size:6px;
+font-weight:900;
+padding-left:3px;
+border-left:1px solid rgba(255,255,255,.45)
+}
+
+.duziasBox{
+margin-top:7px;
+background:#111;
+border:1px solid #333;
+border-radius:8px;
+padding:7px
+}
+
+.duziasLinha{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:4px
+}
+
+.duziaCard{
+background:#1d1d1d;
+border:1px solid #444;
+border-radius:7px;
+padding:6px;
+text-align:center
+}
+
+.duziaCard.forte{
+border-color:#00e676
+}
+
+.duziaCard small{
+display:block;
+font-size:7px;
+color:#888;
+font-weight:900
+}
+
+.duziaCard strong{
+font-size:14px
+}
+
+.duziaCard span{
+display:block;
+font-size:7px;
+color:#aaa;
+margin-top:2px
+}
+
+.jogadaStatus{
+font-size:8px;
+font-weight:900;
+margin:3px 0 6px;
+padding:4px 6px;
+border-radius:5px;
+display:inline-block;
+background:#15323a;
+color:#00e5ff;
+border:1px solid #007d98
+}
+
+.jogadaStatus.congelada{
+background:#4a3510;
+color:#ffc107;
+border-color:#ffc107
+}
+
+.grupoRegiao{
+margin-bottom:8px;
+background:#161616;
+border:1px solid #333;
+border-radius:8px;
+padding:6px
+}
+
+.grupoRegiaoTitulo{
+font-size:8px;
+font-weight:900;
+color:#aaa;
+margin-bottom:5px
+}
+
+.jogada{
+display:flex;
+gap:5px;
+overflow-x:auto;
+margin-top:5px
+}
+
+.bloco{
+min-width:135px;
+background:#111;
+border:1px solid #00e5ff;
+border-radius:8px;
+padding:7px;
+text-align:center
+}
+
+.bloco.um{
+border-color:#ffc107
+}
+
+.bloco small{
+font-size:7px;
+font-weight:900;
+color:#888
+}
+
+.bloco strong{
+display:block;
+font-size:22px;
+margin:3px
+}
+
+.numeros{
+border-top:1px solid #333;
+padding-top:4px;
+font-size:9px;
+font-weight:900
+}
+
+.teclado{
+display:grid;
+grid-template-columns:repeat(6,1fr);
+gap:4px
+}
+
+.numero{
+height:37px;
+border:1px solid #666;
+border-radius:6px;
+color:#fff
+}
+
+.zero{
+grid-column:span 6
+}
+
+.status{
+font-size:9px;
+font-weight:900;
+color:#00e676;
+margin-top:5px
+}
 
 @media(max-width:600px){
-.duplas14{grid-template-columns:repeat(4,1fr)}
-.dupla14{min-height:65px}
-.jogadaCompacta{grid-template-columns:repeat(6,1fr);gap:3px}
-.blocoCompacto{height:46px;border-radius:6px}
-.blocoCompacto strong{font-size:21px}
+
+.resumo{
+grid-template-columns:repeat(2,1fr)
 }
+
+.duplas14{
+grid-template-columns:repeat(4,1fr)
+}
+
+.dupla14{
+min-height:65px
+}
+
+}
+
 </style>
+
 
 <div class="app">
 
@@ -5897,31 +4706,63 @@ button{cursor:pointer;font-family:Arial;font-weight:900}
 
 <textarea
 id="entradaHistorico"
-placeholder="Cole qualquer quantidade de números — todos são analisados; os últimos 35 ficam ativos"
+placeholder="Cole o histórico — serão mantidos somente os últimos 35"
 ></textarea>
 
 <div class="botoes">
-<button id="inserir" class="btn verde">INSERIR</button>
-<button id="apagar" class="btn">APAGAR ÚLTIMO</button>
-<button id="limpar" class="btn red">APAGAR TUDO</button>
+
+<button id="inserir" class="btn verde">
+INSERIR
+</button>
+
+<button id="apagar" class="btn">
+APAGAR ÚLTIMO
+</button>
+
+<button id="limpar" class="btn red">
+APAGAR TUDO
+</button>
+
 </div>
 
-<div id="status" class="status">PRONTO</div>
+<div id="status" class="status">
+PRONTO
+</div>
 
 </div>
+
 
 <div class="painel">
 
-<div class="titulo">MOTOR</div>
-
-<div class="modos">
-<button id="auto" class="modo">AUTO</button>
-<button id="rx4" class="modo">4</button>
-<button id="rx5" class="modo">5</button>
-<button id="rx6" class="modo">6</button>
+<div class="titulo">
+MOTOR
 </div>
 
+<div class="modos">
+
+<button id="auto" class="modo">
+AUTO
+</button>
+
+<button id="rx4" class="modo">
+4
+</button>
+
+<button id="rx5" class="modo">
+5
+</button>
+
+<button id="rx6" class="modo">
+6
+</button>
+
+</div>
+
+<div id="resumo" class="resumo"></div>
+
 <div id="trio" class="trio"></div>
+
+<div id="duzias" class="duziasBox"></div>
 
 <div id="timelineAUTO" class="timelineRow"></div>
 <div id="timeline4" class="timelineRow"></div>
@@ -5930,51 +4771,73 @@ placeholder="Cole qualquer quantidade de números — todos são analisados; os 
 
 </div>
 
-<div class="painel">
-<div class="titulo">ÚLTIMAS 14 • ENTRADAS</div>
-<div id="ultimos14" class="duplas14"></div>
-</div>
 
 <div class="painel">
-<div class="titulo">JOGADA</div>
+
+<div class="titulo">
+ÚLTIMAS 14 • ENTRADAS
+</div>
+
+<div
+id="ultimos14"
+class="duplas14">
+</div>
+
+</div>
+
+
+<div class="painel">
+
+<div class="titulo">
+JOGADA
+</div>
+
 <div id="jogada"></div>
+
 </div>
 
+
 <div class="painel">
-<div class="titulo">TECLADO</div>
-<div id="teclado" class="teclado"></div>
+
+<div class="titulo">
+TECLADO
+</div>
+
+<div
+id="teclado"
+class="teclado">
+</div>
+
 </div>
 
 </div>
 `;
 
-document.body.appendChild(
-app
-);
+document.body.appendChild(app);
 
 
 /* ============================================================
    EVENTOS
 ============================================================ */
 
-document.getElementById(
-"inserir"
-).onclick=
+document
+.getElementById("inserir")
+.onclick=
 inserirHistorico;
 
-document.getElementById(
-"apagar"
-).onclick=
+document
+.getElementById("apagar")
+.onclick=
 apagarUltimo;
 
-document.getElementById(
-"limpar"
-).onclick=
+document
+.getElementById("limpar")
+.onclick=
 apagarTudo;
 
-document.getElementById(
-"auto"
-).onclick=()=>{
+document
+.getElementById("auto")
+.onclick=()=>{
 
 estado.modo="AUTO";
 
@@ -5983,13 +4846,16 @@ jogadaCongelada=null;
 salvarJogadaCongelada();
 salvarEstado();
 render();
+
 };
 
 RX_LIST.forEach(rx=>{
 
-document.getElementById(
+document
+.getElementById(
 "rx"+rx
-).onclick=()=>{
+)
+.onclick=()=>{
 
 estado.modo="MANUAL";
 estado.manualRX=rx;
@@ -5999,6 +4865,7 @@ jogadaCongelada=null;
 salvarJogadaCongelada();
 salvarEstado();
 render();
+
 };
 
 });
@@ -6020,19 +4887,17 @@ document.createElement(
 "button"
 );
 
-b.className=
-"numero";
-
+b.className="numero";
 b.textContent=n;
 
 b.style.background=
 corRoleta(n);
 
-b.onclick=()=>{
+b.onclick=()=>
 adicionarNumero(n);
-};
 
 teclado.appendChild(b);
+
 }
 
 const zero=
@@ -6048,17 +4913,14 @@ zero.textContent="0";
 zero.style.background=
 corRoleta(0);
 
-zero.onclick=()=>{
+zero.onclick=()=>
 adicionarNumero(0);
-};
 
-teclado.appendChild(
-zero
-);
+teclado.appendChild(zero);
 
 
 /* ============================================================
-   TIMELINE
+   TIMELINE POR ENTRADAS
 ============================================================ */
 
 function timelineEntradas(chave){
@@ -6071,11 +4933,15 @@ d,
 chave
 );
 
-return{
+return {
+
 resultado:d.resultado,
 tipo:s.tipo
+
 };
+
 });
+
 }
 
 function taxaEntradas(
@@ -6086,24 +4952,25 @@ qtd
 const validos=
 lista
 .filter(x=>
-x.tipo==="GREEN1"||
-x.tipo==="GREENG1"||
+x.tipo==="GREEN1" ||
+x.tipo==="GREENG1" ||
 x.tipo==="LOSS"
 )
 .slice(-qtd);
 
-if(!validos.length){
+if(!validos.length)
 return 0;
-}
 
-return(
+const greens=
 validos.filter(x=>
-x.tipo==="GREEN1"||
+x.tipo==="GREEN1" ||
 x.tipo==="GREENG1"
-).length/
+).length;
+
+return greens/
 validos.length*
-100
-);
+100;
+
 }
 
 function renderTimeline(
@@ -6113,9 +4980,8 @@ chave
 ){
 
 const lista=
-timelineEntradas(
-chave
-).slice(-20);
+timelineEntradas(chave)
+.slice(-20);
 
 const taxa=
 taxaEntradas(
@@ -6123,9 +4989,9 @@ lista,
 20
 );
 
-document.getElementById(
-id
-).innerHTML=
+document
+.getElementById(id)
+.innerHTML=
 
 '<div class="nomeTL">'+
 nome+
@@ -6136,26 +5002,48 @@ nome+
 lista.map(x=>{
 
 if(x.tipo==="SEM"){
-return'<span class="semJogadaGL">—</span>';
+
+return (
+'<span class="semJogadaGL">—</span>'
+);
+
 }
 
 if(x.tipo==="GREEN1"){
-return'<span class="gl greenPrimeira">G</span>';
+
+return (
+'<span class="gl greenPrimeira">G</span>'
+);
+
 }
 
 if(x.tipo==="GREENG1"){
-return'<span class="gl greenG1">G</span>';
+
+return (
+'<span class="gl greenG1">G</span>'
+);
+
 }
 
 if(x.tipo==="AGUARDA_G1"){
-return'<span class="gl aguardaG1">L</span>';
+
+return (
+'<span class="gl aguardaG1">L</span>'
+);
+
 }
 
 if(x.tipo==="LOSS"){
-return'<span class="gl lossEntrada">L</span>';
+
+return (
+'<span class="gl lossEntrada">L</span>'
+);
+
 }
 
-return'<span class="semJogadaGL">—</span>';
+return (
+'<span class="semJogadaGL">—</span>'
+);
 
 }).join("")+
 
@@ -6168,22 +5056,24 @@ lista.length
 :"—"
 )+
 '</div>';
+
 }
 
 
 /* ============================================================
-   TERMINAIS
+   TRIO
 ============================================================ */
 
 function renderTrio(momento){
 
 const itens=
-momento.terminais.ranking
+momento.terminais
+.ranking
 .slice(0,3);
 
-document.getElementById(
-"trio"
-).innerHTML=
+document
+.getElementById("trio")
+.innerHTML=
 
 '<div class="trioTitulo">'+
 'TERMINAIS DO MOMENTO • COM 1 VIZINHO DE CADA LADO'+
@@ -6205,7 +5095,8 @@ i===0
 
 x.terminal+
 
-'<small>FORÇA '+
+'<small>'+
+'FORÇA '+
 x.score.toFixed(1)+
 '</small>'+
 
@@ -6214,6 +5105,127 @@ x.score.toFixed(1)+
 ).join("")+
 
 '</div>';
+
+}
+
+
+/* ============================================================
+   DÚZIAS
+============================================================ */
+
+function renderDuzias(momento){
+
+const info=
+momento.duziasFisicas;
+
+const ranking=
+info.ranking;
+
+document
+.getElementById("duzias")
+.innerHTML=
+
+'<div class="trioTitulo">'+
+'CONCENTRAÇÃO FÍSICA DAS DÚZIAS • AUXILIAR DO RAIO X'+
+'</div>'+
+
+'<div class="duziasLinha">'+
+
+ranking.map((x,i)=>
+
+'<div class="duziaCard '+
+(i===0?"forte":"")+
+'">'+
+
+'<small>'+
+x.duzia+
+'ª DÚZIA'+
+'</small>'+
+
+'<strong>'+
+(x.score*100).toFixed(0)+
+'%'+
+'</strong>'+
+
+'<span>'+
+x.contagem+
+'/14 • FÍSICA '+
+(x.fisica*100).toFixed(0)+
+'%'+
+'</span>'+
+
+'</div>'
+
+).join("")+
+
+'</div>';
+
+}
+
+
+/* ============================================================
+   ORGANIZAÇÃO VISUAL DA JOGADA POR REGIÃO
+============================================================ */
+
+function ordemRegiao(nome){
+
+const ordem={
+TIERS:0,
+ORPHELINS:1,
+ZERO:2,
+VOISINS:3
+};
+
+return ordem[nome]!==undefined
+?ordem[nome]
+:99;
+
+}
+
+function nomeRegiaoVisual(nome){
+
+if(nome==="TIERS")
+return "TIERS";
+
+if(nome==="ORPHELINS")
+return "ORPHELINS";
+
+if(nome==="ZERO")
+return "ZERO";
+
+if(nome==="VOISINS")
+return "VOISINS";
+
+return "OUTROS";
+
+}
+
+function htmlBlocoJogada(b,um=false){
+
+return (
+
+'<div class="bloco '+
+(um?"um":"")+
+'">'+
+
+'<small>'+
+(um
+?"1 VIZINHO DO"
+:"2 VIZINHOS DO")+
+'</small>'+
+
+'<strong>'+
+b.centro+
+'</strong>'+
+
+'<div class="numeros">'+
+b.numeros.join(" • ")+
+'</div>'+
+
+'</div>'
+
+);
+
 }
 
 
@@ -6223,7 +5235,7 @@ x.score.toFixed(1)+
 
 function renderJogada(
 config,
-g1=false
+congelada=false
 ){
 
 const area=
@@ -6232,7 +5244,7 @@ document.getElementById(
 );
 
 if(
-!config||
+!config ||
 !config.valido
 ){
 
@@ -6240,75 +5252,118 @@ area.innerHTML=
 '<div style="color:#777">AGUARDANDO DADOS</div>';
 
 return;
+
 }
 
-const todos=[
-...config.jogada.blocos2,
-...config.jogada.blocos1
-];
+const todos=[];
 
-const ordenados=
-ordenarBlocosVisual(
-todos
+config.jogada
+.blocos2
+.forEach(b=>{
+
+todos.push({
+bloco:b,
+um:false,
+regiao:regiao(b.centro)||"OUTROS"
+});
+
+});
+
+config.jogada
+.blocos1
+.forEach(b=>{
+
+todos.push({
+bloco:b,
+um:true,
+regiao:regiao(b.centro)||"OUTROS"
+});
+
+});
+
+todos.sort((a,b)=>{
+
+const ra=
+ordemRegiao(a.regiao);
+
+const rb=
+ordemRegiao(b.regiao);
+
+if(ra!==rb)
+return ra-rb;
+
+return indice(a.bloco.centro)-
+indice(b.bloco.centro);
+
+});
+
+const grupos=[];
+
+todos.forEach(item=>{
+
+let grupo=
+grupos.find(
+g=>g.nome===item.regiao
 );
+
+if(!grupo){
+
+grupo={
+nome:item.regiao,
+itens:[]
+};
+
+grupos.push(grupo);
+
+}
+
+grupo.itens.push(item);
+
+});
+
+const htmlGrupos=
+grupos.map(grupo=>
+
+'<div class="grupoRegiao">'+
+
+'<div class="grupoRegiaoTitulo">'+
+nomeRegiaoVisual(grupo.nome)+
+'</div>'+
+
+'<div class="jogada">'+
+
+grupo.itens.map(item=>
+htmlBlocoJogada(
+item.bloco,
+item.um
+)
+).join("")+
+
+'</div>'+
+
+'</div>'
+
+).join("");
 
 area.innerHTML=
 
 '<div class="jogadaStatus '+
-(g1?"g1":"")+
+(congelada?"congelada":"")+
 '">'+
 (
-g1
-?"G1 • CENÁRIO REAVALIADO"
+congelada
+?"JOGADA CONGELADA • G1"
 :"JOGADA ATUAL"
 )+
 '</div>'+
 
-'<div class="jogadaCompacta">'+
+htmlGrupos;
 
-ordenados.map(b=>{
-
-const r=
-regiao(
-b.centro
-)||"";
-
-return(
-'<div class="blocoCompacto '+
-(
-b.qtd===1
-?"um"
-:""
-)+
-'">'+
-
-'<span class="tipoVizinho">'+
-(
-b.qtd===1
-?"1V"
-:"2V"
-)+
-'</span>'+
-
-'<strong>'+
-b.centro+
-'</strong>'+
-
-'<span class="regiaoMini">'+
-r+
-'</span>'+
-
-'</div>'
-);
-
-}).join("")+
-
-'</div>';
 }
 
 
 /* ============================================================
-   ENTRADAS
+   ÚLTIMAS ENTRADAS
 ============================================================ */
 
 function renderDuplas14(){
@@ -6324,55 +5379,70 @@ duplasVisual.slice(-14);
 const chave=
 chaveVisualAtual();
 
-area.innerHTML=
-lista.map(d=>{
+let html="";
+
+lista.forEach(d=>{
 
 d=
 normalizarDuplaVisual(d);
 
-const s=
+const status=
 statusEntrada(
 d,
 chave
 );
 
+let classe=
+status.classe;
+
+let miniClasse=
+status.classe;
+
+let miniTexto=
+status.texto;
+
 let g1="";
 
 if(
-d.g1!==null&&
+d.g1!==null &&
 d.g1!==undefined
 ){
 
 g1=
-'<span class="g1Numero">G1 '+
-d.g1+
+'<span class="g1Numero">'+
+'G1 '+d.g1+
 '</span>';
+
 }
 
-return(
+html+=
+
 '<div class="dupla14 '+
-s.classe+
+classe+
 '">'+
 
 '<div class="bolaDupla" style="background:'+
-corRoleta(
-d.resultado
-)+
+corRoleta(d.resultado)+
 '">'+
 d.resultado+
 '</div>'+
 
 '<div class="resultadoEntrada '+
-s.classe+
+miniClasse+
 '">'+
-s.texto+
+
+miniTexto+
+
 g1+
+
 '</div>'+
 
-'</div>'
-);
+'</div>';
 
-}).join("");
+});
+
+area.innerHTML=html;
+
 }
 
 
@@ -6387,24 +5457,27 @@ historico.slice(-35);
 
 salvarHistorico();
 
-const calculo=
-calcularConfiguracoesAtuais();
-
 const base=
-calculo.base;
-
-const configs=
-calculo.configs;
-
-const auto=
-calculo.auto;
-
-const ativa=
-calculo.ativa;
+historico.slice(-35);
 
 const momento=
-analisarMomento(
-base
+analisarMomento(base);
+
+const configs={};
+
+RX_LIST.forEach(rx=>{
+
+configs[rx]=
+melhorDoRX(
+base,
+rx
+);
+
+});
+
+const auto=
+escolherAuto(
+configs
 );
 
 garantirPendentes(
@@ -6412,18 +5485,23 @@ configs,
 auto
 );
 
-[
-"auto",
-"rx4",
-"rx5",
-"rx6"
-].forEach(id=>{
+const ativa=
 
-document.getElementById(
-id
-).classList.remove(
-"ativo"
-);
+estado.modo==="AUTO"
+
+?auto
+
+:configs[
+estado.manualRX
+];
+
+
+["auto","rx4","rx5","rx6"]
+.forEach(id=>{
+
+document
+.getElementById(id)
+.classList.remove("ativo");
 
 });
 
@@ -6431,23 +5509,82 @@ if(
 estado.modo==="AUTO"
 ){
 
-document.getElementById(
-"auto"
-).classList.add(
-"ativo"
-);
+document
+.getElementById("auto")
+.classList.add("ativo");
 
 }else{
 
-document.getElementById(
-"rx"+
-estado.manualRX
-).classList.add(
-"ativo"
-);
+document
+.getElementById(
+"rx"+estado.manualRX
+)
+.classList.add("ativo");
+
 }
 
+
+/* RESUMO */
+
+const live=
+statsTimeline(
+estado.timelines.AUTO
+);
+
+document
+.getElementById("resumo")
+.innerHTML=
+
+'<div class="card">'+
+'<small>BT10</small>'+
+'<strong>'+
+(
+auto
+?auto.backtest.taxa10.toFixed(0)+"%"
+:"—"
+)+
+'</strong>'+
+'</div>'+
+
+'<div class="card">'+
+'<small>BT20</small>'+
+'<strong>'+
+(
+auto
+?auto.backtest.taxa20.toFixed(0)+"%"
+:"—"
+)+
+'</strong>'+
+'</div>'+
+
+'<div class="card">'+
+'<small>REAL10</small>'+
+'<strong>'+
+(
+live.total
+?live.taxa10.toFixed(0)+"%"
+:"—"
+)+
+'</strong>'+
+'</div>'+
+
+'<div class="card">'+
+'<small>REAL20</small>'+
+'<strong>'+
+(
+live.total
+?live.taxa20.toFixed(0)+"%"
+:"—"
+)+
+'</strong>'+
+'</div>';
+
+
 renderTrio(
+momento
+);
+
+renderDuzias(
 momento
 );
 
@@ -6478,36 +5615,10 @@ renderTimeline(
 renderDuplas14();
 
 
-/*
-   Quando existe entrada esperando G1,
-   mostramos a decisão que seria usada AGORA:
-   antiga ou nova.
-*/
-const esperandoG1=
-duplasVisual.length&&
-duplasVisual[
-duplasVisual.length-1
-].fase==="ESPERA_G1";
-
-if(
-esperandoG1&&
-jogadaCongelada
-){
-
-const decisao=
-decidirJogadaG1(
-jogadaCongelada,
-ativa,
-calculo.estadoModelo
-);
-
-const configG1=
-decisao.usarNova&&ativa
-?ativa
-:jogadaCongelada;
+if(jogadaCongelada){
 
 renderJogada(
-configG1,
+jogadaCongelada,
 true
 );
 
@@ -6517,25 +5628,43 @@ renderJogada(
 ativa,
 false
 );
+
 }
 
 
-/*
-   A memória permanece interna.
-   BT10 / BT20 / REAL10 / REAL20
-   continuam fora da tela.
-*/
-document.getElementById(
-"status"
-).textContent=
+const df=
+momento.duziasFisicas.dominante;
+
+const esperandoG1=
+duplasVisual.length &&
+duplasVisual[
+duplasVisual.length-1
+].fase==="ESPERA_G1";
+
+document
+.getElementById("status")
+.textContent=
 
 base.length+
 "/35 • MOMENTO 14 • 35×14 ATIVO"+
 (
+df
+?" • CONCENTRAÇÃO: "+df.duzia+"ª DÚZIA"
+:""
+)+
+(
+offsetCentroAtual!==0
+?" • CENTRO: OFFSET "+
+(offsetCentroAtual>0?"+":"")+
+offsetCentroAtual
+:" • CENTRO: ALVO"
+)+
+(
 esperandoG1
-?" • G1 REAVALIADO"
+?" • G1: JOGADA CONGELADA"
 :""
 );
+
 }
 
 
