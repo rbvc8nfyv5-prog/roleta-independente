@@ -42,6 +42,13 @@
    - LOSS CONGELA EXATAMENTE A JOGADA
    - PRÓXIMO RESULTADO É G1 DA MESMA JOGADA
    - APÓS G1 LIBERA NOVA JOGADA
+
+   CORREÇÃO VISUAL:
+   - SEM JOGADA = —
+   - GREEN PRIMEIRA = G
+   - LOSS AGUARDANDO G1 = L
+   - GREEN NO G1 = G1
+   - LOSS APÓS G1 = L
 ============================================================ */
 
 
@@ -3846,9 +3853,6 @@ timeline
 
 /* ============================================================
    BACKTEST DINÂMICO
-
-   MANTÉM O COMPORTAMENTO DO MOTOR DINÂMICO:
-   O OFFSET ATUAL É APLICADO ÀS CONFIGURAÇÕES DO BACKTEST.
 ============================================================ */
 
 function backtestDinamico(
@@ -4713,15 +4717,7 @@ return melhor;
 
 
 /* ============================================================
-   MOTOR DINÂMICO ATIVO PARA ATUALIZAR OFFSET
-
-   ELE NÃO DEPENDE DO AUTO FINAL.
-
-   SE ESTIVER EM AUTO:
-   USA O MELHOR DOS 3 RX DO PRÓPRIO MOTOR DINÂMICO.
-
-   SE O USUÁRIO ESTIVER MANUAL NO DINÂMICO:
-   USA O RX DINÂMICO SELECIONADO.
+   MELHOR DINÂMICO
 ============================================================ */
 
 function melhorDinamico(
@@ -4934,10 +4930,6 @@ function adicionarNumero(
 numero
 ){
 
-/*
-   1. CALCULA TUDO ANTES DO RESULTADO.
-*/
-
 const baseAntes=
 historico.slice(-35);
 
@@ -4961,18 +4953,10 @@ autoAntes
 );
 
 
-/*
-   2. JOGADA QUE O USUÁRIO ESTÁ EFETIVAMENTE ACOMPANHANDO.
-*/
-
 const configAntes=
 jogadaCongelada ||
 ativaAntes;
 
-
-/*
-   3. MOTOR DINÂMICO CONTINUA EXISTINDO INDEPENDENTEMENTE.
-*/
 
 const dinamicaAntes=
 melhorDinamico(
@@ -4980,36 +4964,20 @@ seisAntes
 );
 
 
-/*
-   4. VERIFICA SE ESTE RESULTADO É G1 VISUAL.
-*/
-
 const eraG1=
 ultimoVisualEsperaG1();
 
-
-/*
-   5. AVALIA AS 7 JOGADAS QUE EXISTIAM ANTES DO RESULTADO.
-*/
 
 avaliarPendentes(
 numero
 );
 
 
-/*
-   6. MOTOR DINÂMICO ATUALIZA SEU PRÓPRIO OFFSET.
-*/
-
 atualizarOffsetGlobal(
 numero,
 dinamicaAntes
 );
 
-
-/*
-   7. RESULTADO ENTRA NOS 35.
-*/
 
 historico.push(
 numero
@@ -5022,10 +4990,6 @@ historico.slice(-35);
 
 salvarHistorico();
 
-
-/*
-   8. CONTROLE VISUAL DO G1.
-*/
 
 if(eraG1){
 
@@ -5102,6 +5066,12 @@ g1:null,
 
 g1Green:null,
 
+semJogada:
+!configAntes ||
+!configAntes.valido ||
+!configAntes.jogada ||
+!configAntes.jogada.valido,
+
 green:
 resultadoAtivo
 ?resultadoAtivo.green
@@ -5161,10 +5131,6 @@ salvarDuplasVisual();
 
 }
 
-
-/*
-   9. RENDERIZA.
-*/
 
 render();
 
@@ -5554,10 +5520,10 @@ overflow:hidden
 }
 
 .gl{
-width:15px;
-height:15px;
-min-width:15px;
-border-radius:3px;
+width:18px;
+height:18px;
+min-width:18px;
+border-radius:4px;
 font-size:7px;
 display:flex;
 align-items:center;
@@ -5574,16 +5540,15 @@ background:#00994d
 background:#c62828
 }
 
-.semJogadaGL{
-width:15px;
-height:15px;
-min-width:15px;
-display:flex;
-align-items:center;
-justify-content:center;
-font-size:11px;
-font-weight:900;
-color:#777
+.gl.g1{
+background:#ffc107;
+color:#111
+}
+
+.gl.sem{
+background:#333;
+border:1px solid #555;
+color:#999
 }
 
 .nomeTL,
@@ -5629,6 +5594,11 @@ border-color:#d93a3a
 .dupla14.g1{
 background:rgba(255,193,7,.16);
 border-color:#ffc107
+}
+
+.dupla14.sem{
+background:#292929;
+border-color:#666
 }
 
 .bolaDupla{
@@ -5679,6 +5649,12 @@ border-color:#ff5252
 background:#ffc107;
 border-color:#ffe082;
 color:#111
+}
+
+.resultadoEntrada.sem{
+background:#333;
+border-color:#666;
+color:#aaa
 }
 
 .duziasBox{
@@ -6260,8 +6236,110 @@ zero
 
 
 /* ============================================================
-   TIMELINE
+   TIMELINE VISUAL
+   SOMENTE ALTERAÇÃO VISUAL:
+   - SEM JOGADA = —
+   - GREEN = G
+   - LOSS = L
+   - GREEN APÓS LOSS = G1
 ============================================================ */
+
+function prepararTimelineVisual(lista){
+
+const saida=[];
+
+let aguardandoG1=false;
+
+
+(lista||[]).forEach(x=>{
+
+if(x.semJogada){
+
+saida.push({
+tipo:"SEM",
+resultado:x.resultado
+});
+
+return;
+
+}
+
+
+if(aguardandoG1){
+
+if(x.green){
+
+saida.push({
+tipo:"G1",
+resultado:x.resultado
+});
+
+}else{
+
+saida.push({
+tipo:"LOSS",
+resultado:x.resultado
+});
+
+}
+
+aguardandoG1=false;
+
+return;
+
+}
+
+
+if(x.green){
+
+saida.push({
+tipo:"GREEN",
+resultado:x.resultado
+});
+
+}else{
+
+saida.push({
+tipo:"LOSS",
+resultado:x.resultado
+});
+
+aguardandoG1=true;
+
+}
+
+});
+
+
+return saida;
+
+}
+
+
+function taxaTimelineVisual(lista,qtd=20){
+
+const visual=
+prepararTimelineVisual(lista)
+.filter(x=>x.tipo!=="SEM")
+.slice(-qtd);
+
+if(!visual.length)
+return 0;
+
+const acertos=
+visual.filter(x=>
+x.tipo==="GREEN" ||
+x.tipo==="G1"
+).length;
+
+return (
+acertos/
+visual.length*
+100
+);
+
+}
+
 
 function renderTimeline(
 id,
@@ -6269,15 +6347,17 @@ nome,
 lista
 ){
 
-lista=
-(lista||[])
-.filter(x=>!x.semJogada)
+const visual=
+prepararTimelineVisual(
+lista||[]
+)
 .slice(-20);
 
 
-const stats=
-statsTimeline(
-lista
+const taxa=
+taxaTimelineVisual(
+lista||[],
+20
 );
 
 
@@ -6291,15 +6371,34 @@ nome+
 
 '<div class="timeline">'+
 
-lista.map(x=>{
+visual.map(x=>{
 
-if(x.green){
+if(x.tipo==="SEM"){
+
+return (
+'<span class="gl sem">—</span>'
+);
+
+}
+
+
+if(x.tipo==="GREEN"){
 
 return (
 '<span class="gl green">G</span>'
 );
 
 }
+
+
+if(x.tipo==="G1"){
+
+return (
+'<span class="gl g1">G1</span>'
+);
+
+}
+
 
 return (
 '<span class="gl loss">L</span>'
@@ -6312,8 +6411,8 @@ return (
 '<div class="taxaTL">'+
 
 (
-lista.length
-?stats.taxa20.toFixed(0)+"%"
+visual.length
+?taxa.toFixed(0)+"%"
 :"—"
 )+
 
@@ -6663,6 +6762,7 @@ item.um
 
 /* ============================================================
    ÚLTIMAS 14
+   SOMENTE CORREÇÃO VISUAL
 ============================================================ */
 
 function renderUltimos14(){
@@ -6685,10 +6785,10 @@ let classe="loss";
 let texto="L";
 
 
-if(d.green===true){
+if(d.semJogada===true){
 
-classe="green";
-texto="G";
+classe="sem";
+texto="—";
 
 }else if(
 d.g1!==null &&
@@ -6698,14 +6798,24 @@ d.g1!==undefined
 if(d.g1Green===true){
 
 classe="g1";
-texto="G1 G";
+texto="G1";
 
 }else{
 
 classe="loss";
-texto="G1 L";
+texto="L";
 
 }
+
+}else if(d.green===true){
+
+classe="green";
+texto="G";
+
+}else{
+
+classe="loss";
+texto="L";
 
 }
 
