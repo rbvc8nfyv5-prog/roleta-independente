@@ -2,43 +2,40 @@
 "use strict";
 
 /* ============================================================
-   ANÁLISE BETA — MOTOR DE CONTAGEM
+   ANÁLISE BETA
 
-   MOTOR NORMAL:
-   ------------------------------------------------------------
-   - A CONTAGEM COMANDA A ENTRADA.
-   - RX4 / RX5 / RX6 CONTINUAM EXISTINDO COMO JANELAS.
-   - CADA RX POSSUI SUA PRÓPRIA CONTAGEM.
-   - NÃO GERA JOGADA POR SIMPLES FREQUÊNCIA.
-   - PRIMEIRO É CALCULADA A PRESSÃO DA CONTAGEM.
-   - A JOGADA SÓ É LIBERADA QUANDO EXISTE CONVERGÊNCIA.
-   - SEM CONVERGÊNCIA = SEM JOGADA.
-   - CONVERGÊNCIA = GERA A JOGADA.
-   - BACKTEST REFAZ A CONTAGEM GIRO A GIRO SEM OLHAR O FUTURO.
+   HISTÓRICO:
+   - ATÉ 200 NÚMEROS
+   - BACKTEST EM TODO O HISTÓRICO DISPONÍVEL
+   - MOMENTO CONTINUA EM 14
+   - CONTAGEM USA TODO O PASSADO DISPONÍVEL
+   - PESO DE RECÊNCIA MANTÉM O MOMENTO ATUAL MAIS FORTE
 
-   MOTOR DINÂMICO:
+   2 MOTORES INDEPENDENTES
    ------------------------------------------------------------
-   - PRESERVADO.
-   - RX4 / RX5 / RX6.
-   - OFFSET GLOBAL -2 / -1 / 0 / +1 / +2.
+   CONTAGEM:
+   - C4
+   - C5
+   - C6
+   - CONVERGÊNCIA COMANDA A LIBERAÇÃO DA JOGADA
+   - SEM CONVERGÊNCIA = SEM JOGADA
+
+   DINÂMICO:
+   - RX4
+   - RX5
+   - RX6
+   - OFFSET GLOBAL -2 / -1 / 0 / +1 / +2
 
    AUTO:
-   ------------------------------------------------------------
-   - COMPARA OS 6 CANDIDATOS.
-   - NORMAL RX4 / RX5 / RX6.
-   - DINÂMICO RX4 / RX5 / RX6.
-   - ESCOLHE UMA ÚNICA JOGADA.
+   - COMPARA C4 / C5 / C6 / RX4 / RX5 / RX6
+   - ESCOLHE SOMENTE ENTRE CONFIGURAÇÕES VÁLIDAS
 
    G1:
-   ------------------------------------------------------------
-   - CADA LINHA POSSUI SEU PRÓPRIO G1.
-   - GREEN DE PRIMEIRA = G.
-   - PRIMEIRO ERRO NÃO É LOSS.
-   - PRIMEIRO ERRO CONGELA A JOGADA.
-   - PRÓXIMO RESULTADO VALIDA O G1.
-   - ACERTO G1 = G1.
-   - ERRO G1 = LOSS.
-
+   - GREEN DE PRIMEIRA = G
+   - PRIMEIRO ERRO = AGUARDA G1
+   - JOGADA CONGELADA
+   - ACERTO G1 = G1
+   - ERRO G1 = LOSS
 ============================================================ */
 
 
@@ -50,13 +47,13 @@ const STORAGE_KEY =
 "ANALISADOR_069_IDS_CORRESPONDENTES_V1";
 
 const STORAGE_ENGINE =
-"ANALISE_BETA_MOTOR_CONTAGEM_V1";
+"ANALISE_BETA_MOTOR_DUPLO_INDEPENDENTE_V1";
 
 const STORAGE_DUPLAS =
-"ANALISE_BETA_DUPLAS_CONTAGEM_V1";
+"ANALISE_BETA_DUPLAS_VISUAIS_V1";
 
 const STORAGE_FREEZE =
-"ANALISE_BETA_JOGADA_CONGELADA_CONTAGEM_V1";
+"ANALISE_BETA_JOGADA_CONGELADA_V1";
 
 const STORAGE_OFFSET =
 "ANALISADOR_069_OFFSET_GLOBAL_CENTROS_V2";
@@ -66,7 +63,7 @@ const STORAGE_OFFSET =
    CONSTANTES
 ============================================================ */
 
-const MAX_HISTORICO = 20;
+const MAX_HISTORICO = 200;
 const JANELA_MOMENTO = 14;
 const MAX_TIMELINE = 300;
 
@@ -80,30 +77,33 @@ const PESO_DUZIA_FISICA = .16;
 
 
 /* ============================================================
-   CONTAGEM — PARÂMETROS
+   CONFIGURAÇÃO DA CONTAGEM
 ============================================================ */
 
-const CONTAGEM_MINIMA = {
-4:2.15,
-5:2.45,
-6:2.75
-};
+const CONTAGEM_CONFIG = {
 
-const CONVERGENCIA_MINIMA = {
-4:.57,
-5:.59,
-6:.61
-};
+4:{
+janela:4,
+forcaMinima:2.15,
+convergenciaMinima:57,
+diferencaMinima:.28
+},
 
-const DIFERENCA_MINIMA = {
-4:.28,
-5:.31,
-6:.34
-};
+5:{
+janela:5,
+forcaMinima:2.45,
+convergenciaMinima:59,
+diferencaMinima:.31
+},
 
-const PESO_CONTAGEM_RECENTE = 1.35;
-const PESO_CONTAGEM_TOTAL = .65;
-const PESO_CONTAGEM_MOMENTO = .70;
+6:{
+janela:6,
+forcaMinima:2.75,
+convergenciaMinima:61,
+diferencaMinima:.34
+}
+
+};
 
 
 /* ============================================================
@@ -248,7 +248,7 @@ const ESPECIAIS = {
    UTILIDADES
 ============================================================ */
 
-function limitar35(base){
+function limitarHistorico(base){
 
 if(!Array.isArray(base))
 return [];
@@ -267,7 +267,7 @@ return track.indexOf(n);
 
 function numeroOffset(centro,offset){
 
-const i = indice(centro);
+const i=indice(centro);
 
 if(i<0)
 return centro;
@@ -281,7 +281,7 @@ return track[
 
 function setor(centro,qtd){
 
-const i = indice(centro);
+const i=indice(centro);
 
 if(i<0)
 return [];
@@ -537,7 +537,7 @@ JSON.parse(raw);
 if(!Array.isArray(arr))
 return [];
 
-return limitar35(
+return limitarHistorico(
 
 arr
 .map(Number)
@@ -560,6 +560,23 @@ return [];
 
 let historico=
 carregarHistorico();
+
+
+function salvarHistorico(){
+
+historico=
+limitarHistorico(historico);
+
+try{
+
+localStorage.setItem(
+STORAGE_KEY,
+JSON.stringify(historico)
+);
+
+}catch(e){}
+
+}
 
 
 /* ============================================================
@@ -791,23 +808,6 @@ x.freezes[motor][rx];
 carregarEstado();
 
 
-function salvarHistorico(){
-
-historico=
-limitar35(historico);
-
-try{
-
-localStorage.setItem(
-STORAGE_KEY,
-JSON.stringify(historico)
-);
-
-}catch(e){}
-
-}
-
-
 function salvarEstado(){
 
 try{
@@ -923,10 +923,6 @@ JSON.stringify(duplasVisual)
 carregarDuplasVisual();
 
 
-/* ============================================================
-   JOGADA CONGELADA
-============================================================ */
-
 let jogadaCongelada=null;
 
 
@@ -975,13 +971,13 @@ carregarJogadaCongelada();
 
 
 /* ============================================================
-   TERMINAIS
+   TERMINAIS — MOMENTO 14
 ============================================================ */
 
 function analisarTerminais(base){
 
 const janela=
-limitar35(base)
+limitarHistorico(base)
 .slice(-JANELA_MOMENTO);
 
 const ranking=[];
@@ -1050,7 +1046,6 @@ score
 
 ranking.sort(
 (a,b)=>
-
 b.score-a.score ||
 b.direto5-a.direto5 ||
 b.direto-a.direto ||
@@ -1058,9 +1053,7 @@ b.vizinho-a.vizinho
 );
 
 const trio=
-ranking
-.slice(0,3)
-.map(x=>x.terminal);
+ranking.slice(0,3).map(x=>x.terminal);
 
 let cobertura=0;
 
@@ -1077,10 +1070,8 @@ return;
 
 if(
 trio.some(c=>
-
 t===terminalAnterior(c) ||
 t===terminalSeguinte(c)
-
 )
 )
 cobertura++;
@@ -1102,10 +1093,7 @@ janela.length
 }
 
 
-function scoreTerminalNumero(
-numero,
-momento
-){
+function scoreTerminalNumero(numero,momento){
 
 const trio=
 momento.terminais.trio;
@@ -1149,13 +1137,13 @@ return 0;
 
 
 /* ============================================================
-   CORES
+   CORES — MOMENTO 14
 ============================================================ */
 
 function analisarCores(base){
 
 const janela=
-limitar35(base)
+limitarHistorico(base)
 .slice(-JANELA_MOMENTO);
 
 const contagem={
@@ -1166,19 +1154,13 @@ VERDE:0
 
 janela.forEach(n=>{
 
-contagem[
-tipoCor(n)
-]++;
+contagem[tipoCor(n)]++;
 
 });
 
 let alternancias=0;
 
-for(
-let i=1;
-i<janela.length;
-i++
-){
+for(let i=1;i<janela.length;i++){
 
 if(
 tipoCor(janela[i]) !==
@@ -1194,9 +1176,7 @@ contagem,
 
 ultima:
 janela.length
-?tipoCor(
-janela[janela.length-1]
-)
+?tipoCor(janela[janela.length-1])
 :null,
 
 pctAlternancia:
@@ -1209,10 +1189,7 @@ janela.length>1
 }
 
 
-function scoreCorNumero(
-numero,
-momento
-){
+function scoreCorNumero(numero,momento){
 
 const info=
 momento.cores;
@@ -1227,8 +1204,7 @@ const cor=
 tipoCor(numero);
 
 let score=
-info.contagem[cor]/
-total;
+info.contagem[cor]/total;
 
 if(
 info.pctAlternancia>=60 &&
@@ -1255,13 +1231,13 @@ return score;
 
 
 /* ============================================================
-   ZONAS
+   ZONAS — MOMENTO 14
 ============================================================ */
 
 function analisarZonas(base){
 
 const janela=
-limitar35(base)
+limitarHistorico(base)
 .slice(-JANELA_MOMENTO);
 
 const seq=
@@ -1315,24 +1291,13 @@ TIERS:0
 
 let alternancias=0;
 
-for(
-let i=1;
-i<seq.length;
-i++
-){
+for(let i=1;i<seq.length;i++){
 
 if(seq[i]!==seq[i-1])
 alternancias++;
 
-if(
-seq[i-1] &&
-seq[i]
-)
-transicoes[
-seq[i-1]
-][
-seq[i]
-]++;
+if(seq[i-1] && seq[i])
+transicoes[seq[i-1]][seq[i]]++;
 
 }
 
@@ -1345,11 +1310,7 @@ let repeticaoAtual=0;
 
 if(atual){
 
-for(
-let i=seq.length-1;
-i>=0;
-i--
-){
+for(let i=seq.length-1;i>=0;i--){
 
 if(seq[i]===atual)
 repeticaoAtual++;
@@ -1378,10 +1339,7 @@ seq.length>1
 }
 
 
-function scoreZonaNumero(
-numero,
-momento
-){
+function scoreZonaNumero(numero,momento){
 
 const info=
 momento.zonas;
@@ -1399,28 +1357,21 @@ momento.janela.length
 );
 
 let score=
-info.contagem[z]/
-total;
+info.contagem[z]/total;
 
 if(info.atual){
 
 const linha=
-info.transicoes[
-info.atual
-];
+info.transicoes[info.atual];
 
 const soma=
 Object.values(linha)
-.reduce(
-(a,b)=>a+b,
-0
-);
+.reduce((a,b)=>a+b,0);
 
 if(soma){
 
 score+=
-((linha[z]||0)/soma)
-*.45;
+((linha[z]||0)/soma)*.45;
 
 }
 
@@ -1438,13 +1389,13 @@ return score;
 
 
 /* ============================================================
-   DÚZIAS FÍSICAS
+   DÚZIAS FÍSICAS — MOMENTO 14
 ============================================================ */
 
 function analisarDuziasFisicas(base){
 
 const janela=
-limitar35(base)
+limitarHistorico(base)
 .slice(-JANELA_MOMENTO);
 
 const forca={
@@ -1554,8 +1505,7 @@ MAPA_DUZIA_FISICA[d];
 let soma=0;
 let pesoTotal=0;
 
-mapa.forEach(
-(peso,numero)=>{
+mapa.forEach((peso,numero)=>{
 
 soma+=
 (calor.get(numero)||0)*
@@ -1599,12 +1549,10 @@ janela.length
 :0;
 
 const momento=
-forca[d]/
-maxForca;
+forca[d]/maxForca;
 
 const fisica=
-confluencia[d]/
-maxConfluencia;
+confluencia[d]/maxConfluencia;
 
 const score=
 frequencia*.35+
@@ -1646,10 +1594,7 @@ ranking[1]||null
 }
 
 
-function scoreDuziaFisicaNumero(
-numero,
-momento
-){
+function scoreDuziaFisicaNumero(numero,momento){
 
 const analise=
 momento.duziasFisicas;
@@ -1701,8 +1646,7 @@ let proximidade=0;
 
 if(mapa){
 
-mapa.forEach(
-(peso,alvo)=>{
+mapa.forEach((peso,alvo)=>{
 
 const dist=
 distanciaRoda(
@@ -1749,13 +1693,13 @@ proximidade*.12
 
 
 /* ============================================================
-   CORREDORES
+   CORREDORES — MOMENTO 14
 ============================================================ */
 
 function analisarCorredores(base){
 
 const janela=
-limitar35(base)
+limitarHistorico(base)
 .slice(-JANELA_MOMENTO);
 
 const ranking=[];
@@ -1772,8 +1716,7 @@ let direita=0;
 
 let score=0;
 
-janela.forEach(
-(numero,i)=>{
+janela.forEach((numero,i)=>{
 
 const delta=
 deltaRoda(
@@ -1870,7 +1813,6 @@ score
 
 ranking.sort(
 (a,b)=>
-
 b.score-a.score ||
 b.dentro-a.dentro
 );
@@ -1890,10 +1832,7 @@ ranking[0]||null
 }
 
 
-function scoreCorredorNumero(
-numero,
-momento
-){
+function scoreCorredorNumero(numero,momento){
 
 const fortes=
 momento.corredores.fortes;
@@ -1994,13 +1933,13 @@ return score;
 
 
 /* ============================================================
-   DENSIDADE
+   DENSIDADE — MOMENTO 14
 ============================================================ */
 
 function analisarDensidade(base){
 
 const janela=
-limitar35(base)
+limitarHistorico(base)
 .slice(-JANELA_MOMENTO);
 
 const mapa=
@@ -2085,17 +2024,18 @@ ranking.length
 
 /* ============================================================
    MOMENTO
+   SEMPRE 14
 ============================================================ */
 
 function analisarMomento(base){
 
 base=
-limitar35(base);
+limitarHistorico(base);
 
 return {
 
 janela:
-base.slice(-14),
+base.slice(-JANELA_MOMENTO),
 
 terminais:
 analisarTerminais(base),
@@ -2120,10 +2060,7 @@ analisarDuziasFisicas(base)
 }
 
 
-function scoreMomentoNumero(
-numero,
-momento
-){
+function scoreMomentoNumero(numero,momento){
 
 const scoreBase=(
 
@@ -2172,10 +2109,7 @@ PESO_DUZIA_FISICA
 }
 
 
-function direcaoMomento(
-centro,
-momento
-){
+function direcaoMomento(centro,momento){
 
 let esquerda=0;
 let direita=0;
@@ -2244,8 +2178,7 @@ direita>esquerda
 forca:
 Math.abs(
 direita-esquerda
-)/
-total
+)/total
 
 };
 
@@ -2253,7 +2186,726 @@ total
 
 
 /* ============================================================
-   RX ORIGINAL — USADO PELO MOTOR DINÂMICO
+   CONTAGEM FÍSICA
+   USA TODO O HISTÓRICO DISPONÍVEL ATÉ 200
+============================================================ */
+
+function mapaContagem(base,janelaRecente){
+
+base=
+limitarHistorico(base);
+
+const total=
+new Map();
+
+const recente=
+new Map();
+
+track.forEach(n=>{
+
+total.set(n,0);
+recente.set(n,0);
+
+});
+
+const tamanho=
+Math.max(1,base.length);
+
+base.forEach((numero,i)=>{
+
+/*
+   PESO HISTÓRICO:
+   O PASSADO MAIS ANTIGO CONTINUA PARTICIPANDO,
+   MAS O PRESENTE TEM MAIS FORÇA.
+*/
+
+const posicao=
+(i+1)/tamanho;
+
+const recenciaHistorica=
+.25+
+posicao*.75;
+
+track.forEach(alvo=>{
+
+const d=
+distanciaRoda(
+numero,
+alvo
+);
+
+let peso=0;
+
+if(d===0)
+peso=1;
+
+else if(d===1)
+peso=.72;
+
+else if(d===2)
+peso=.44;
+
+else if(d===3)
+peso=.22;
+
+else if(d===4)
+peso=.10;
+
+if(!peso)
+return;
+
+total.set(
+alvo,
+(total.get(alvo)||0)+
+peso*recenciaHistorica
+);
+
+});
+
+});
+
+
+const ultimos=
+base.slice(
+-Math.max(
+1,
+janelaRecente
+)
+);
+
+ultimos.forEach((numero,i)=>{
+
+const recencia=
+.55+
+((i+1)/
+Math.max(1,ultimos.length))
+*.45;
+
+track.forEach(alvo=>{
+
+const d=
+distanciaRoda(
+numero,
+alvo
+);
+
+let peso=0;
+
+if(d===0)
+peso=1;
+
+else if(d===1)
+peso=.72;
+
+else if(d===2)
+peso=.44;
+
+else if(d===3)
+peso=.22;
+
+else if(d===4)
+peso=.10;
+
+if(!peso)
+return;
+
+recente.set(
+alvo,
+(recente.get(alvo)||0)+
+peso*recencia
+);
+
+});
+
+});
+
+return {
+total,
+recente
+};
+
+}
+
+
+/* ============================================================
+   ANÁLISE DE CONTAGEM
+============================================================ */
+
+function analisarContagem(
+base,
+nivel
+){
+
+base=
+limitarHistorico(base);
+
+const cfg=
+CONTAGEM_CONFIG[nivel];
+
+if(
+!cfg ||
+base.length<14
+){
+
+return {
+
+valido:false,
+liberada:false,
+nivel,
+ranking:[],
+convergencia:0,
+forca:0,
+diferenca:0
+
+};
+
+}
+
+const momento=
+analisarMomento(base);
+
+const mapas=
+mapaContagem(
+base,
+cfg.janela
+);
+
+let maxTotal=0;
+let maxRecente=0;
+
+mapas.total.forEach(v=>{
+
+if(v>maxTotal)
+maxTotal=v;
+
+});
+
+mapas.recente.forEach(v=>{
+
+if(v>maxRecente)
+maxRecente=v;
+
+});
+
+maxTotal=
+Math.max(
+maxTotal,
+.0001
+);
+
+maxRecente=
+Math.max(
+maxRecente,
+.0001
+);
+
+const ranking=
+track.map(numero=>{
+
+const totalNorm=
+(mapas.total.get(numero)||0)/
+maxTotal;
+
+const recenteNorm=
+(mapas.recente.get(numero)||0)/
+maxRecente;
+
+const momentoScore=
+scoreMomentoNumero(
+numero,
+momento
+);
+
+const corredor=
+scoreCorredorNumero(
+numero,
+momento
+);
+
+const duziaFisica=
+scoreDuziaFisicaNumero(
+numero,
+momento
+);
+
+const terminalScore=
+scoreTerminalNumero(
+numero,
+momento
+);
+
+/*
+   CONTAGEM COMANDA.
+   O MOMENTO 14 CONFIRMA.
+*/
+
+const score=
+
+recenteNorm*2.10+
+totalNorm*1.30+
+momentoScore*.90+
+corredor*.55+
+duziaFisica*.50+
+terminalScore*.35;
+
+return {
+
+numero,
+score,
+recente:recenteNorm,
+total:totalNorm,
+momento:momentoScore,
+corredor,
+duziaFisica,
+terminal:terminalScore
+
+};
+
+})
+.sort(
+(a,b)=>
+b.score-a.score
+);
+
+const primeiro=
+ranking[0];
+
+const segundo=
+ranking[1];
+
+const diferenca=
+primeiro && segundo
+?primeiro.score-segundo.score
+:0;
+
+
+/* ============================================================
+   CONVERGÊNCIA FÍSICA
+============================================================ */
+
+const top=
+ranking.slice(0,6);
+
+let somaConvergencia=0;
+let pares=0;
+
+for(let i=0;i<top.length;i++){
+
+for(let j=i+1;j<top.length;j++){
+
+const d=
+distanciaRoda(
+top[i].numero,
+top[j].numero
+);
+
+let valor=0;
+
+if(d<=2)
+valor=1;
+
+else if(d<=4)
+valor=.72;
+
+else if(d<=6)
+valor=.42;
+
+else if(d<=8)
+valor=.18;
+
+somaConvergencia+=valor;
+pares++;
+
+}
+
+}
+
+const convergenciaFisica=
+pares
+?somaConvergencia/pares
+:0;
+
+
+/* ============================================================
+   CONVERGÊNCIA DE CAMADAS
+============================================================ */
+
+let camadas=0;
+
+if(primeiro){
+
+if(primeiro.recente>=.72)
+camadas++;
+
+if(primeiro.total>=.70)
+camadas++;
+
+if(primeiro.momento>=.60)
+camadas++;
+
+if(primeiro.corredor>=.35)
+camadas++;
+
+if(primeiro.duziaFisica>=.55)
+camadas++;
+
+if(primeiro.terminal>=.40)
+camadas++;
+
+}
+
+const convergenciaCamadas=
+camadas/6;
+
+
+/* ============================================================
+   CONVERGÊNCIA FINAL
+============================================================ */
+
+const convergenciaFinal=
+
+(
+convergenciaFisica*.52+
+convergenciaCamadas*.48
+)*100;
+
+
+const forca=
+primeiro
+?primeiro.score
+:0;
+
+
+const liberada=
+
+forca>=cfg.forcaMinima &&
+
+convergenciaFinal>=
+cfg.convergenciaMinima &&
+
+diferenca>=
+cfg.diferencaMinima;
+
+
+return {
+
+valido:true,
+
+liberada,
+
+nivel,
+
+ranking,
+
+momento,
+
+forca,
+
+diferenca,
+
+convergencia:
+convergenciaFinal,
+
+convergenciaFisica:
+convergenciaFisica*100,
+
+convergenciaCamadas:
+convergenciaCamadas*100
+
+};
+
+}
+
+
+/* ============================================================
+   JOGADA DA CONTAGEM
+============================================================ */
+
+function gerarJogadaContagem(
+analise
+){
+
+if(
+!analise ||
+!analise.valido ||
+!analise.liberada
+){
+
+return {
+
+valido:false,
+blocos2:[],
+blocos1:[],
+numeros:new Set()
+
+};
+
+}
+
+
+const ranking=
+analise.ranking;
+
+
+/* ============================================================
+   CANDIDATOS DE CENTRO
+============================================================ */
+
+const candidatos2=
+ranking.map(x=>{
+
+const numeros=
+setor(
+x.numero,
+2
+);
+
+let score=0;
+
+numeros.forEach(n=>{
+
+const item=
+ranking.find(
+r=>r.numero===n
+);
+
+if(item)
+score+=item.score;
+
+});
+
+return {
+
+centro:x.numero,
+qtd:2,
+numeros,
+score
+
+};
+
+})
+.sort(
+(a,b)=>
+b.score-a.score
+);
+
+
+const candidatos1=
+ranking.map(x=>{
+
+const numeros=
+setor(
+x.numero,
+1
+);
+
+let score=0;
+
+numeros.forEach(n=>{
+
+const item=
+ranking.find(
+r=>r.numero===n
+);
+
+if(item)
+score+=item.score;
+
+});
+
+return {
+
+centro:x.numero,
+qtd:1,
+numeros,
+score
+
+};
+
+})
+.sort(
+(a,b)=>
+b.score-a.score
+);
+
+
+let melhor=null;
+
+
+for(const um of candidatos1){
+
+const usados=
+new Set(
+um.numeros
+);
+
+const dois=[];
+
+let score=
+um.score;
+
+
+for(const candidato of candidatos2){
+
+const conflito=
+candidato.numeros
+.some(
+n=>usados.has(n)
+);
+
+if(conflito)
+continue;
+
+dois.push(
+candidato
+);
+
+score+=
+candidato.score;
+
+candidato.numeros
+.forEach(
+n=>usados.add(n)
+);
+
+if(dois.length===5)
+break;
+
+}
+
+
+if(
+dois.length===5 &&
+usados.size===28
+){
+
+if(
+!melhor ||
+score>melhor.score
+){
+
+melhor={
+
+valido:true,
+
+blocos2:dois,
+
+blocos1:[um],
+
+numeros:usados,
+
+score,
+
+momento:
+analise.momento
+
+};
+
+}
+
+}
+
+}
+
+
+return melhor || {
+
+valido:false,
+blocos2:[],
+blocos1:[],
+numeros:new Set(),
+momento:
+analise.momento
+
+};
+
+}
+
+
+/* ============================================================
+   MOTOR CONTAGEM
+============================================================ */
+
+function gerarConfigNormal(
+base,
+nivel
+){
+
+base=
+limitarHistorico(base);
+
+const contagem=
+analisarContagem(
+base,
+nivel
+);
+
+if(
+!contagem.valido ||
+!contagem.liberada
+){
+
+return {
+
+valido:false,
+
+motor:"NORMAL",
+
+rx:nivel,
+
+usarOffset:false,
+
+offsetAplicado:0,
+
+contagem,
+
+similaridade:
+contagem.convergencia||0
+
+};
+
+}
+
+
+const jogada=
+gerarJogadaContagem(
+contagem
+);
+
+
+return {
+
+valido:
+jogada.valido,
+
+motor:"NORMAL",
+
+rx:nivel,
+
+usarOffset:false,
+
+offsetAplicado:0,
+
+contagem,
+
+jogada,
+
+similaridade:
+contagem.convergencia,
+
+convergencia:
+contagem.convergencia,
+
+forcaContagem:
+contagem.forca
+
+};
+
+}
+
+
+/* ============================================================
+   RX DINÂMICO
 ============================================================ */
 
 function construirCache(base){
@@ -2263,11 +2915,7 @@ new Uint8Array(
 base.length
 );
 
-for(
-let i=0;
-i<base.length;
-i++
-)
+for(let i=0;i<base.length;i++)
 eventos[i]=
 eventoNumero(
 base[i]
@@ -2294,11 +2942,7 @@ let erro=0;
 let a0=0,a6=0,a9=0;
 let b0=0,b6=0,b9=0;
 
-for(
-let k=0;
-k<tamanho;
-k++
-){
+for(let k=0;k<tamanho;k++){
 
 const ea=
 cache.eventos[a+k];
@@ -2354,7 +2998,7 @@ rx
 ){
 
 base=
-limitar35(base);
+limitarHistorico(base);
 
 if(
 base.length<
@@ -2414,7 +3058,6 @@ rx
 
 candidatos.sort(
 (a,b)=>
-
 b.similaridade-a.similaridade ||
 b.inicio-a.inicio
 );
@@ -2529,7 +3172,6 @@ x=>x.ocorrencias>0
 )
 .sort(
 (a,b)=>
-
 b.ocorrencias-a.ocorrencias ||
 a.ordem-b.ordem
 );
@@ -2558,9 +3200,7 @@ replicas.length
    FREQUÊNCIA RX
 ============================================================ */
 
-function frequenciaReplicas(
-replicas
-){
+function frequenciaReplicas(replicas){
 
 const freq=
 new Map();
@@ -2579,755 +3219,6 @@ rep.proximo,
 });
 
 return freq;
-
-}
-
-
-/* ============================================================
-   NOVO MOTOR DE CONTAGEM
-   ============================================================
-
-   A CONTAGEM FUNCIONA COMO UM "RUNNING COUNT".
-
-   CADA RESULTADO DISTRIBUI PONTOS FÍSICOS PELA RODA:
-
-   ALVO      = +1.00
-   V1        = +0.72
-   V2        = +0.44
-   V3        = +0.22
-   V4        = +0.10
-
-   RESULTADOS RECENTES PESAM MAIS.
-
-   O RX DEFINE O TAMANHO DA JANELA RECENTE.
-
-   O MOTOR PROCURA CONVERGÊNCIA ENTRE:
-
-   1. CONTAGEM RECENTE
-   2. CONTAGEM TOTAL
-   3. MOMENTO
-   4. CONCENTRAÇÃO FÍSICA
-   5. TERMINAL
-   6. CORREDOR
-
-   SÓ DEPOIS DA CONVERGÊNCIA A JOGADA É GERADA.
-============================================================ */
-
-function criarMapaZero(){
-
-const mapa=
-new Map();
-
-track.forEach(n=>
-mapa.set(n,0)
-);
-
-return mapa;
-
-}
-
-
-function adicionarContagemFisica(
-mapa,
-numero,
-peso
-){
-
-track.forEach(alvo=>{
-
-const d=
-distanciaRoda(
-numero,
-alvo
-);
-
-let p=0;
-
-if(d===0)
-p=1.00;
-
-else if(d===1)
-p=.72;
-
-else if(d===2)
-p=.44;
-
-else if(d===3)
-p=.22;
-
-else if(d===4)
-p=.10;
-
-if(p){
-
-mapa.set(
-alvo,
-(mapa.get(alvo)||0)+
-p*peso
-);
-
-}
-
-});
-
-}
-
-
-/* ============================================================
-   CONTAGEM DE FAMÍLIAS
-============================================================ */
-
-function contagemFamilias(base){
-
-const contagem={
-0:0,
-6:0,
-9:0
-};
-
-base.forEach((numero,i)=>{
-
-const recencia=
-.55+
-((i+1)/
-Math.max(1,base.length))
-*.45;
-
-const ids=
-idsQueBatem(numero);
-
-const familias=
-new Set(
-ids
-.map(familia)
-.filter(x=>x!==null)
-);
-
-familias.forEach(f=>{
-
-contagem[f]+=
-recencia;
-
-});
-
-});
-
-return contagem;
-
-}
-
-
-/* ============================================================
-   CONTAGEM PRINCIPAL
-============================================================ */
-
-function analisarContagem(
-base,
-rx
-){
-
-base=
-limitar35(base);
-
-if(
-base.length<
-Math.max(
-8,
-rx+4
-)
-){
-
-return {
-
-valido:false,
-rx,
-convergencia:false,
-forca:0,
-diferenca:0,
-ranking:[],
-mapa:criarMapaZero(),
-familias:{
-0:0,
-6:0,
-9:0
-}
-
-};
-
-}
-
-
-const momento=
-analisarMomento(base);
-
-const recente=
-base.slice(-rx);
-
-const mapaTotal=
-criarMapaZero();
-
-const mapaRecente=
-criarMapaZero();
-
-
-/* CONTAGEM TOTAL */
-
-base.forEach((numero,i)=>{
-
-const peso=
-.40+
-((i+1)/
-Math.max(1,base.length))
-*.60;
-
-adicionarContagemFisica(
-mapaTotal,
-numero,
-peso
-);
-
-});
-
-
-/* CONTAGEM RECENTE RX */
-
-recente.forEach((numero,i)=>{
-
-const peso=
-.65+
-((i+1)/
-Math.max(1,recente.length))
-*.70;
-
-adicionarContagemFisica(
-mapaRecente,
-numero,
-peso
-);
-
-});
-
-
-const maxTotal=
-Math.max(
-...Array.from(
-mapaTotal.values()
-),
-.0001
-);
-
-
-const maxRecente=
-Math.max(
-...Array.from(
-mapaRecente.values()
-),
-.0001
-);
-
-
-const ranking=
-track.map(numero=>{
-
-const total=
-(mapaTotal.get(numero)||0)/
-maxTotal;
-
-const recenteScore=
-(mapaRecente.get(numero)||0)/
-maxRecente;
-
-const momentoScore=
-scoreMomentoNumero(
-numero,
-momento
-);
-
-
-const score=
-
-recenteScore*
-PESO_CONTAGEM_RECENTE+
-
-total*
-PESO_CONTAGEM_TOTAL+
-
-momentoScore*
-PESO_CONTAGEM_MOMENTO;
-
-
-return {
-
-numero,
-
-total,
-
-recente:
-recenteScore,
-
-momento:
-momentoScore,
-
-score
-
-};
-
-});
-
-
-ranking.sort(
-(a,b)=>
-b.score-a.score
-);
-
-
-const primeiro=
-ranking[0];
-
-const segundo=
-ranking[1];
-
-
-const diferenca=
-primeiro && segundo
-?primeiro.score-segundo.score
-:0;
-
-
-/* ============================================================
-   CONVERGÊNCIA FÍSICA
-
-   VERIFICA QUANTO OS PRINCIPAIS CENTROS CONCORDAM
-   FISICAMENTE ENTRE SI.
-============================================================ */
-
-const fortes=
-ranking.slice(0,6);
-
-
-let convergentes=0;
-let pesoConvergencia=0;
-
-
-fortes.forEach((x,i)=>{
-
-const d=
-distanciaRoda(
-primeiro.numero,
-x.numero
-);
-
-if(d<=5){
-
-convergentes++;
-
-pesoConvergencia+=
-1-d/6;
-
-}
-
-});
-
-
-const taxaConvergencia=
-fortes.length
-?pesoConvergencia/
-fortes.length
-:0;
-
-
-/* ============================================================
-   CONVERGÊNCIA DAS FONTES
-
-   O CENTRO PRINCIPAL PRECISA SER FORTE EM MAIS DE UMA CAMADA.
-============================================================ */
-
-let fontes=0;
-
-
-if(primeiro.recente>=.70)
-fontes++;
-
-if(primeiro.total>=.65)
-fontes++;
-
-if(primeiro.momento>=.55)
-fontes++;
-
-
-const df=
-momento.duziasFisicas;
-
-
-if(
-scoreDuziaFisicaNumero(
-primeiro.numero,
-momento
-)>=.55
-)
-fontes++;
-
-
-if(
-scoreCorredorNumero(
-primeiro.numero,
-momento
-)>=.45
-)
-fontes++;
-
-
-if(
-scoreTerminalNumero(
-primeiro.numero,
-momento
-)>=.40
-)
-fontes++;
-
-
-const taxaFontes=
-fontes/6;
-
-
-const convergenciaFinal=
-
-taxaConvergencia*.55+
-taxaFontes*.45;
-
-
-const forca=
-primeiro
-?primeiro.score
-:0;
-
-
-const convergencia=
-
-forca>=
-CONTAGEM_MINIMA[rx] &&
-
-convergenciaFinal>=
-CONVERGENCIA_MINIMA[rx] &&
-
-diferenca>=
-DIFERENCA_MINIMA[rx];
-
-
-return {
-
-valido:true,
-
-rx,
-
-convergencia,
-
-forca,
-
-diferenca,
-
-convergenciaFinal,
-
-taxaConvergencia,
-
-taxaFontes,
-
-fontes,
-
-ranking,
-
-mapa:
-mapaRecente,
-
-mapaTotal,
-
-familias:
-contagemFamilias(base),
-
-momento
-
-};
-
-}
-
-
-/* ============================================================
-   GERA JOGADA PELA CONTAGEM
-============================================================ */
-
-function gerarJogadaContagem(
-analise
-){
-
-if(
-!analise ||
-!analise.valido ||
-!analise.convergencia
-){
-
-return {
-
-valido:false,
-blocos2:[],
-blocos1:[],
-numeros:new Set()
-
-};
-
-}
-
-
-const candidatos=
-analise.ranking.slice();
-
-
-/* ============================================================
-   1 BLOCO DE 1 VIZINHO
-============================================================ */
-
-let bloco1=null;
-
-
-for(const candidato of candidatos){
-
-const numeros=
-setor(
-candidato.numero,
-1
-);
-
-bloco1={
-
-centro:
-candidato.numero,
-
-qtd:1,
-
-numeros,
-
-score:
-candidato.score
-
-};
-
-break;
-
-}
-
-
-if(!bloco1){
-
-return {
-
-valido:false,
-blocos2:[],
-blocos1:[],
-numeros:new Set()
-
-};
-
-}
-
-
-/* ============================================================
-   5 BLOCOS DE 2 VIZINHOS SEM SOBREPOSIÇÃO
-============================================================ */
-
-const usados=
-new Set(
-bloco1.numeros
-);
-
-const blocos2=[];
-
-
-for(const candidato of candidatos){
-
-if(
-candidato.numero===
-bloco1.centro
-)
-continue;
-
-
-const numeros=
-setor(
-candidato.numero,
-2
-);
-
-
-const conflito=
-numeros.some(
-n=>usados.has(n)
-);
-
-
-if(conflito)
-continue;
-
-
-blocos2.push({
-
-centro:
-candidato.numero,
-
-qtd:2,
-
-numeros,
-
-score:
-candidato.score
-
-});
-
-
-numeros.forEach(
-n=>usados.add(n)
-);
-
-
-if(
-blocos2.length===5
-)
-break;
-
-}
-
-
-/* ============================================================
-   SE O RANKING PRINCIPAL NÃO CONSEGUIR FECHAR,
-   COMPLETA PELO MELHOR CENTRO FÍSICO DISPONÍVEL.
-============================================================ */
-
-if(
-blocos2.length<5
-){
-
-const extras=
-track.map(numero=>{
-
-const item=
-analise.ranking.find(
-x=>x.numero===numero
-);
-
-return {
-
-numero,
-
-score:
-item
-?item.score
-:0
-
-};
-
-})
-.sort(
-(a,b)=>
-b.score-a.score
-);
-
-
-for(const candidato of extras){
-
-if(
-blocos2.length===5
-)
-break;
-
-
-const numeros=
-setor(
-candidato.numero,
-2
-);
-
-
-const conflito=
-numeros.some(
-n=>usados.has(n)
-);
-
-
-if(conflito)
-continue;
-
-
-blocos2.push({
-
-centro:
-candidato.numero,
-
-qtd:2,
-
-numeros,
-
-score:
-candidato.score
-
-});
-
-
-numeros.forEach(
-n=>usados.add(n)
-);
-
-}
-
-}
-
-
-if(
-blocos2.length!==5 ||
-usados.size!==28
-){
-
-return {
-
-valido:false,
-blocos2:[],
-blocos1:[],
-numeros:new Set()
-
-};
-
-}
-
-
-const score=
-
-bloco1.score+
-
-blocos2.reduce(
-(s,b)=>s+b.score,
-0
-);
-
-
-return {
-
-valido:true,
-
-blocos2,
-
-blocos1:[
-bloco1
-],
-
-numeros:
-usados,
-
-score,
-
-momento:
-analise.momento,
-
-contagem:
-analise
-
-};
 
 }
 
@@ -3460,7 +3351,7 @@ forca
 
 
 /* ============================================================
-   SCORE RX DINÂMICO
+   SCORE RX
 ============================================================ */
 
 function scoreRXPuro(
@@ -3512,6 +3403,10 @@ numeros
 
 }
 
+
+/* ============================================================
+   SCORE MOMENTO SETOR
+============================================================ */
 
 function scoreMomentoSetor(
 centro,
@@ -3750,19 +3645,17 @@ mapa.values()
 )
 .sort(
 (a,b)=>
-
 b.score-a.score ||
 b.suporte-a.suporte ||
 Math.abs(a.offset)-
 Math.abs(b.offset)
-
 );
 
 }
 
 
 /* ============================================================
-   MONTA JOGADA DINÂMICA ORIGINAL
+   MONTA JOGADA DINÂMICA
 ============================================================ */
 
 function montarJogada(
@@ -3788,7 +3681,7 @@ numeros:new Set()
 }
 
 base=
-limitar35(base);
+limitarHistorico(base);
 
 const momento=
 analisarMomento(base);
@@ -4015,89 +3908,6 @@ numeros
 
 
 /* ============================================================
-   MOTOR NORMAL — CONTAGEM
-============================================================ */
-
-function gerarConfigNormal(
-base,
-rxTam,
-diagnostico=null
-){
-
-base=
-limitar35(base);
-
-const contagem=
-analisarContagem(
-base,
-rxTam
-);
-
-if(
-!contagem.valido ||
-!contagem.convergencia
-){
-
-return {
-
-valido:false,
-
-motor:"NORMAL",
-
-rx:rxTam,
-
-usarOffset:false,
-
-offsetAplicado:0,
-
-contagem,
-
-convergencia:
-contagem.convergencia||false,
-
-similaridade:
-contagem.convergenciaFinal
-?contagem.convergenciaFinal*100
-:0
-
-};
-
-}
-
-const jogada=
-gerarJogadaContagem(
-contagem
-);
-
-return {
-
-valido:
-jogada.valido,
-
-motor:"NORMAL",
-
-rx:
-rxTam,
-
-usarOffset:false,
-
-offsetAplicado:0,
-
-contagem,
-
-convergencia:true,
-
-jogada,
-
-similaridade:
-contagem.convergenciaFinal*100
-
-};
-
-}
-
-
-/* ============================================================
    MOTOR DINÂMICO
 ============================================================ */
 
@@ -4109,7 +3919,7 @@ offset=offsetCentroAtual
 ){
 
 base=
-limitar35(base);
+limitarHistorico(base);
 
 const raioX=
 analisarRX(
@@ -4406,34 +4216,24 @@ lista
 
 
 /* ============================================================
-   BACKTEST NORMAL — CONTAGEM
-   SEM OLHAR O FUTURO
+   BACKTEST CONTAGEM
+   USA TODO O HISTÓRICO DISPONÍVEL
 ============================================================ */
 
 function backtestNormal(
 base,
-rxTam
+nivel
 ){
 
 base=
-limitar35(base);
+limitarHistorico(base);
 
 const timeline=[];
 
-const minimo=
-Math.max(
-8,
-rxTam+4
-);
-
-const inicio=
-Math.max(
-minimo,
-base.length-20
-);
+const minimo=14;
 
 for(
-let i=inicio;
+let i=minimo;
 i<base.length;
 i++
 ){
@@ -4441,16 +4241,10 @@ i++
 const passado=
 base.slice(0,i);
 
-const diag=
-diagnosticarLosses(
-timeline
-);
-
 const cfg=
 gerarConfigNormal(
 passado,
-rxTam,
-diag
+nivel
 );
 
 if(!cfg.valido){
@@ -4508,6 +4302,7 @@ timeline
 
 /* ============================================================
    BACKTEST DINÂMICO
+   USA TODO O HISTÓRICO DISPONÍVEL
 ============================================================ */
 
 function backtestDinamico(
@@ -4517,7 +4312,7 @@ offsetAtual
 ){
 
 base=
-limitar35(base);
+limitarHistorico(base);
 
 const timeline=[];
 
@@ -4527,14 +4322,8 @@ Math.max(
 rxTam*2+4
 );
 
-const inicio=
-Math.max(
-minimo,
-base.length-20
-);
-
 for(
-let i=inicio;
+let i=minimo;
 i<base.length;
 i++
 ){
@@ -4632,7 +4421,7 @@ bt.taxa10*.32+
 
 bt.taxa20*.20+
 
-cfg.similaridade*.06;
+(cfg.similaridade||0)*.06;
 
 if(
 bt.lossSeguidos===1
@@ -4676,21 +4465,16 @@ return score;
 
 
 /* ============================================================
-   CANDIDATO NORMAL — CONTAGEM
+   CANDIDATO CONTAGEM
 ============================================================ */
 
 function analisarNormal(
 base,
-rx
+nivel
 ){
 
 const timeline=
-estado.timelines.NORMAL[rx];
-
-const diagnostico=
-diagnosticarLosses(
-timeline
-);
+estado.timelines.NORMAL[nivel];
 
 const live=
 statsTimeline(
@@ -4700,8 +4484,7 @@ timeline
 const cfg=
 gerarConfigNormal(
 base,
-rx,
-diagnostico
+nivel
 );
 
 if(!cfg.valido)
@@ -4710,7 +4493,7 @@ return null;
 const bt=
 backtestNormal(
 base,
-rx
+nivel
 );
 
 return Object.assign(
@@ -4798,12 +4581,10 @@ live
 
 
 /* ============================================================
-   CALCULA OS 6
+   6 CANDIDATOS
 ============================================================ */
 
-function calcularSeis(
-base
-){
+function calcularSeis(base){
 
 const normal={};
 const dinamico={};
@@ -4836,9 +4617,7 @@ dinamico
    AUTO
 ============================================================ */
 
-function escolherAuto(
-seis
-){
+function escolherAuto(seis){
 
 const candidatos=[];
 
@@ -4879,8 +4658,8 @@ a.backtest.taxa20 ||
 b.backtest.taxa5-
 a.backtest.taxa5 ||
 
-b.similaridade-
-a.similaridade
+(b.similaridade||0)-
+(a.similaridade||0)
 );
 
 return candidatos[0];
@@ -4889,12 +4668,10 @@ return candidatos[0];
 
 
 /* ============================================================
-   CONFIGURAÇÃO MANUAL
+   MANUAL
 ============================================================ */
 
-function configManual(
-seis
-){
+function configManual(seis){
 
 if(
 estado.motorManual==="DINAMICO"
@@ -4989,10 +4766,6 @@ config.jogada.blocos1[0]
 
 }
 
-
-/* ============================================================
-   SNAPSHOT -> JOGADA
-============================================================ */
 
 function jogadaDeSnapshot(p){
 
@@ -5399,9 +5172,7 @@ pendente:null
    AVALIA 7 LINHAS
 ============================================================ */
 
-function avaliarPendentes(
-numero
-){
+function avaliarPendentes(numero){
 
 const sig=
 assinatura();
@@ -5455,6 +5226,7 @@ normalResultado.freeze;
 
 estado.pendentes.NORMAL[rx]=
 normalResultado.pendente;
+
 
 const dinamicoResultado=
 avaliarLinhaComG1(
@@ -5559,9 +5331,7 @@ return melhor;
 }
 
 
-function melhorDinamico(
-seis
-){
+function melhorDinamico(seis){
 
 if(
 estado.modo==="MANUAL" &&
@@ -5646,9 +5416,7 @@ salvarOffsetCentro();
    COPIA JOGADA
 ============================================================ */
 
-function copiarJogada(
-config
-){
+function copiarJogada(config){
 
 if(
 !config ||
@@ -5751,12 +5519,10 @@ ultimo.fase==="ESPERA_G1"
    INSERIR NÚMERO
 ============================================================ */
 
-function adicionarNumero(
-numero
-){
+function adicionarNumero(numero){
 
 const baseAntes=
-historico.slice(-20);
+historico.slice(-MAX_HISTORICO);
 
 const seisAntes=
 calcularSeis(
@@ -5800,9 +5566,10 @@ numero
 );
 
 historico=
-historico.slice(-20);
+historico.slice(-MAX_HISTORICO);
 
 salvarHistorico();
+
 
 if(eraG1){
 
@@ -5837,7 +5604,6 @@ r.green;
 }else{
 
 ultima.g1Green=null;
-
 ultima.green=null;
 
 }
@@ -5845,7 +5611,6 @@ ultima.green=null;
 jogadaCongelada=null;
 
 salvarJogadaCongelada();
-
 salvarDuplasVisual();
 
 }else{
@@ -5935,7 +5700,6 @@ jogadaCongelada=null;
 }
 
 salvarJogadaCongelada();
-
 salvarDuplasVisual();
 
 }
@@ -5946,7 +5710,7 @@ render();
 
 
 /* ============================================================
-   HISTÓRICO MANUAL
+   HISTÓRICO MANUAL — ATÉ 200
 ============================================================ */
 
 function extrairNumeros(texto){
@@ -5961,7 +5725,7 @@ return [];
 
 return encontrados
 .map(Number)
-.slice(-20);
+.slice(-MAX_HISTORICO);
 
 }
 
@@ -6010,7 +5774,7 @@ if(!numeros.length)
 return;
 
 historico=
-numeros.slice(-20);
+numeros.slice(-MAX_HISTORICO);
 
 resetarEstadoAnalise();
 
@@ -6118,7 +5882,7 @@ margin-bottom:5px
 
 textarea{
 width:100%;
-height:60px;
+height:75px;
 background:#111;
 color:#fff;
 border:1px solid #555;
@@ -6147,10 +5911,17 @@ border-radius:7px;
 padding:7px 10px
 }
 
-.btn.verde{background:#17643b}
-.btn.red{background:#762832}
+.btn.verde{
+background:#17643b
+}
 
-.seletorGrupo{margin-top:7px}
+.btn.red{
+background:#762832
+}
+
+.seletorGrupo{
+margin-top:7px
+}
 
 .seletorTitulo{
 font-size:8px;
@@ -6207,7 +5978,9 @@ color:#777;
 font-weight:900
 }
 
-.card strong{font-size:13px}
+.card strong{
+font-size:13px
+}
 
 .origemAuto{
 margin-top:6px;
@@ -6222,24 +5995,53 @@ color:#00e5ff
 }
 
 .contagemBox{
-margin-top:6px;
-padding:7px;
+margin-top:7px;
 background:#111;
-border:1px solid #555;
+border:1px solid #333;
+border-radius:8px;
+padding:7px
+}
+
+.contagemLinha{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:4px
+}
+
+.contagemCard{
+background:#1d1d1d;
+border:1px solid #444;
 border-radius:7px;
-font-size:8px;
-font-weight:900;
+padding:7px;
 text-align:center
 }
 
-.contagemBox.ativa{
-border-color:#00e676;
-color:#00e676
+.contagemCard.liberada{
+border-color:#00e676
 }
 
-.contagemBox.espera{
-border-color:#ffc107;
-color:#ffc107
+.contagemCard.bloqueada{
+border-color:#8a6b00
+}
+
+.contagemCard small{
+display:block;
+font-size:7px;
+color:#888;
+font-weight:900
+}
+
+.contagemCard strong{
+display:block;
+font-size:14px;
+margin-top:3px
+}
+
+.contagemCard span{
+display:block;
+font-size:7px;
+color:#aaa;
+margin-top:3px
 }
 
 .trio{
@@ -6272,9 +6074,17 @@ font-weight:900;
 background:#202020
 }
 
-.terminal.primeiro{border:1px solid #00e676}
-.terminal.segundo{border:1px solid #00b0ff}
-.terminal.terceiro{border:1px solid #ffc107}
+.terminal.primeiro{
+border:1px solid #00e676
+}
+
+.terminal.segundo{
+border:1px solid #00b0ff
+}
+
+.terminal.terceiro{
+border:1px solid #ffc107
+}
 
 .terminal small{
 display:block;
@@ -6324,9 +6134,18 @@ font-weight:900;
 color:#fff
 }
 
-.gl.green{background:#00994d}
-.gl.loss{background:#c62828}
-.gl.g1{background:#ffc107;color:#111}
+.gl.green{
+background:#00994d
+}
+
+.gl.loss{
+background:#c62828
+}
+
+.gl.g1{
+background:#ffc107;
+color:#111
+}
 
 .gl.wait{
 background:#4a3510;
@@ -6346,7 +6165,9 @@ font-size:8px;
 font-weight:900
 }
 
-.taxaTL{text-align:right}
+.taxaTL{
+text-align:right
+}
 
 .duplas14{
 display:grid;
@@ -6477,7 +6298,9 @@ padding:6px;
 text-align:center
 }
 
-.duziaCard.forte{border-color:#00e676}
+.duziaCard.forte{
+border-color:#00e676
+}
 
 .duziaCard small{
 display:block;
@@ -6486,7 +6309,9 @@ color:#888;
 font-weight:900
 }
 
-.duziaCard strong{font-size:14px}
+.duziaCard strong{
+font-size:14px
+}
 
 .duziaCard span{
 display:block;
@@ -6544,7 +6369,9 @@ padding:7px;
 text-align:center
 }
 
-.bloco.um{border-color:#ffc107}
+.bloco.um{
+border-color:#ffc107
+}
 
 .bloco small{
 font-size:7px;
@@ -6578,7 +6405,9 @@ border-radius:6px;
 color:#fff
 }
 
-.zero{grid-column:span 6}
+.zero{
+grid-column:span 6
+}
 
 .status{
 font-size:9px;
@@ -6591,6 +6420,10 @@ margin-top:5px
 
 .resumo{
 grid-template-columns:repeat(2,1fr)
+}
+
+.contagemLinha{
+grid-template-columns:1fr
 }
 
 .duplas14{
@@ -6615,7 +6448,7 @@ grid-template-columns:70px 1fr 36px
 
 <textarea
 id="entradaHistorico"
-placeholder="Cole o histórico — últimos 20"
+placeholder="Cole o histórico — até 200 números"
 ></textarea>
 
 <div class="botoes">
@@ -6673,7 +6506,7 @@ AUTO
 <div class="seletorGrupo">
 
 <div class="seletorTitulo">
-NORMAL • CONTAGEM
+CONTAGEM
 </div>
 
 <div class="modos">
@@ -6740,15 +6573,14 @@ AUTO
 
 
 <div
-id="contagemStatus"
-class="contagemBox">
-CONTAGEM • AGUARDANDO
+id="resumo"
+class="resumo">
 </div>
 
 
 <div
-id="resumo"
-class="resumo">
+id="contagem"
+class="contagemBox">
 </div>
 
 
@@ -6781,7 +6613,7 @@ class="timelineRow">
 <div class="timelineSecao">
 
 <div class="timelineTituloGrupo">
-MOTOR NORMAL • CONTAGEM
+MOTOR CONTAGEM
 </div>
 
 <div
@@ -6870,7 +6702,6 @@ class="teclado">
 </div>
 
 `;
-
 
 document.body.appendChild(
 app
@@ -7165,41 +6996,19 @@ nome+
 
 visual.map(x=>{
 
-if(x.tipo==="SEM"){
+if(x.tipo==="SEM")
+return '<span class="gl sem">—</span>';
 
-return (
-'<span class="gl sem">—</span>'
-);
+if(x.tipo==="WAIT")
+return '<span class="gl wait">…</span>';
 
-}
+if(x.tipo==="GREEN")
+return '<span class="gl green">G</span>';
 
-if(x.tipo==="WAIT"){
+if(x.tipo==="G1")
+return '<span class="gl g1">G1</span>';
 
-return (
-'<span class="gl wait">…</span>'
-);
-
-}
-
-if(x.tipo==="GREEN"){
-
-return (
-'<span class="gl green">G</span>'
-);
-
-}
-
-if(x.tipo==="G1"){
-
-return (
-'<span class="gl g1">G1</span>'
-);
-
-}
-
-return (
-'<span class="gl loss">L</span>'
-);
+return '<span class="gl loss">L</span>';
 
 }).join("")+
 
@@ -7222,12 +7031,86 @@ x.tipo!=="WAIT"
 
 
 /* ============================================================
+   CONTAGEM VISUAL
+============================================================ */
+
+function renderContagem(base){
+
+const itens=
+RX_LIST.map(nivel=>
+analisarContagem(
+base,
+nivel
+)
+);
+
+document
+.getElementById(
+"contagem"
+)
+.innerHTML=
+
+'<div class="trioTitulo">'+
+'CONTAGEM • CONVERGÊNCIA • HISTÓRICO ATÉ 200'+
+'</div>'+
+
+'<div class="contagemLinha">'+
+
+itens.map(x=>{
+
+const classe=
+x.liberada
+?"liberada"
+:"bloqueada";
+
+const principal=
+x.ranking &&
+x.ranking[0]
+?x.ranking[0].numero
+:"—";
+
+return (
+
+'<div class="contagemCard '+
+classe+
+'">'+
+
+'<small>'+
+'C'+x.nivel+
+'</small>'+
+
+'<strong>'+
+(
+x.liberada
+?"JOGADA LIBERADA"
+:"AGUARDANDO"
+)+
+'</strong>'+
+
+'<span>'+
+'CONV. '+
+(x.convergencia||0).toFixed(0)+
+'% • FORÇA '+
+(x.forca||0).toFixed(2)+
+' • CENTRO '+principal+
+'</span>'+
+
+'</div>'
+
+);
+
+}).join("")+
+
+'</div>';
+
+}
+
+
+/* ============================================================
    TERMINAIS
 ============================================================ */
 
-function renderTrio(
-momento
-){
+function renderTrio(momento){
 
 const itens=
 momento.terminais
@@ -7280,9 +7163,7 @@ x.score.toFixed(1)+
    DÚZIAS
 ============================================================ */
 
-function renderDuzias(
-momento
-){
+function renderDuzias(momento){
 
 const ranking=
 momento
@@ -7296,7 +7177,7 @@ document
 .innerHTML=
 
 '<div class="trioTitulo">'+
-'CONCENTRAÇÃO FÍSICA DAS DÚZIAS'+
+'CONCENTRAÇÃO FÍSICA DAS DÚZIAS • MOMENTO 14'+
 '</div>'+
 
 '<div class="duziasLinha">'+
@@ -7405,7 +7286,7 @@ if(
 ){
 
 area.innerHTML=
-'<div style="color:#777">AGUARDANDO CONVERGÊNCIA</div>';
+'<div style="color:#777">AGUARDANDO CONVERGÊNCIA / DADOS</div>';
 
 return;
 
@@ -7515,11 +7396,10 @@ config.motor==="DINAMICO"
 ' • '+
 
 (
-config.motor==="NORMAL"
-?"C"
-:"RX"
+config.motor==="DINAMICO"
+?"RX"
+:"C"
 )+
-
 config.rx+
 
 '</div>'+
@@ -7641,11 +7521,8 @@ texto+
 (
 d.g1!==null &&
 d.g1!==undefined
-
 ?' • '+d.g1
-
 :''
-
 )+
 
 '</div>'+
@@ -7660,12 +7537,10 @@ d.g1!==undefined
 
 
 /* ============================================================
-   TEXTO OFFSET
+   OFFSET
 ============================================================ */
 
-function textoOffset(
-config
-){
+function textoOffset(config){
 
 if(
 !config ||
@@ -7699,130 +7574,22 @@ return "ALVO";
 
 
 /* ============================================================
-   STATUS CONTAGEM
-============================================================ */
-
-function renderStatusContagem(
-seis
-){
-
-const area=
-document.getElementById(
-"contagemStatus"
-);
-
-let rx=
-estado.manualRX;
-
-if(
-estado.modo==="AUTO"
-){
-
-const candidatos=
-RX_LIST
-.map(r=>{
-
-const c=
-analisarContagem(
-historico,
-r
-);
-
-return {
-rx:r,
-c
-};
-
-})
-.filter(x=>
-x.c &&
-x.c.valido
-)
-.sort(
-(a,b)=>
-b.c.convergenciaFinal-
-a.c.convergenciaFinal
-);
-
-if(candidatos.length)
-rx=candidatos[0].rx;
-
-}
-
-const analise=
-analisarContagem(
-historico,
-rx
-);
-
-if(!analise.valido){
-
-area.className=
-"contagemBox espera";
-
-area.textContent=
-"CONTAGEM C"+
-rx+
-" • AGUARDANDO DADOS";
-
-return;
-
-}
-
-if(
-analise.convergencia
-){
-
-area.className=
-"contagemBox ativa";
-
-area.textContent=
-
-"CONTAGEM C"+
-rx+
-" • CONVERGÊNCIA "+
-(
-analise.convergenciaFinal*100
-).toFixed(0)+
-"% • FORÇA "+
-analise.forca.toFixed(2)+
-" • JOGADA LIBERADA";
-
-}else{
-
-area.className=
-"contagemBox espera";
-
-area.textContent=
-
-"CONTAGEM C"+
-rx+
-" • CONVERGÊNCIA "+
-(
-analise.convergenciaFinal*100
-).toFixed(0)+
-"% • FORÇA "+
-analise.forca.toFixed(2)+
-" • AGUARDANDO";
-
-}
-
-}
-
-
-/* ============================================================
    RENDER
 ============================================================ */
 
 function render(){
 
 historico=
-historico.slice(-20);
+historico.slice(
+-MAX_HISTORICO
+);
 
 salvarHistorico();
 
 const base=
-historico.slice(-20);
+historico.slice(
+-MAX_HISTORICO
+);
 
 const momento=
 analisarMomento(
@@ -7900,9 +7667,7 @@ document
 }
 
 
-/* ============================================================
-   AUTO
-============================================================ */
+/* AUTO */
 
 document
 .getElementById(
@@ -7916,14 +7681,8 @@ auto
 "AUTO ESCOLHEU • "+
 (
 auto.motor==="DINAMICO"
-?"DINÂMICO"
-:"CONTAGEM"
-)+
-" • "+
-(
-auto.motor==="DINAMICO"
-?"RX"
-:"C"
+?"DINÂMICO • RX"
+:"CONTAGEM • C"
 )+
 auto.rx
 )
@@ -7931,18 +7690,7 @@ auto.rx
 :"AUTO • AGUARDANDO CONVERGÊNCIA";
 
 
-/* ============================================================
-   CONTAGEM
-============================================================ */
-
-renderStatusContagem(
-seis
-);
-
-
-/* ============================================================
-   RESUMO
-============================================================ */
+/* RESUMO */
 
 const liveAuto=
 statsTimeline(
@@ -7989,20 +7737,22 @@ liveAuto.total
 '</div>'+
 
 '<div class="card">'+
-'<small>REAL20 AUTO</small>'+
+'<small>HISTÓRICO</small>'+
 '<strong>'+
-(
-liveAuto.total
-?liveAuto.taxa20.toFixed(0)+"%"
-:"—"
-)+
+base.length+
+'/200'+
 '</strong>'+
 '</div>';
 
 
-/* ============================================================
-   TERMINAIS / DÚZIAS
-============================================================ */
+/* CONTAGEM */
+
+renderContagem(
+base
+);
+
+
+/* MOMENTO */
 
 renderTrio(
 momento
@@ -8013,9 +7763,7 @@ momento
 );
 
 
-/* ============================================================
-   TIMELINES
-============================================================ */
+/* TIMELINES */
 
 renderTimeline(
 "timelineAUTO",
@@ -8060,9 +7808,7 @@ estado.timelines.DINAMICO[6]
 );
 
 
-/* ============================================================
-   VISUAL
-============================================================ */
+/* VISUAL */
 
 renderUltimos14();
 
@@ -8076,9 +7822,7 @@ configExibida,
 );
 
 
-/* ============================================================
-   STATUS
-============================================================ */
+/* STATUS */
 
 const df=
 momento
@@ -8092,7 +7836,7 @@ document
 .textContent=
 
 base.length+
-"/20 • CONTAGEM ATIVA • BACKTEST WALK-FORWARD"+
+"/200 • BACKTEST HISTÓRICO COMPLETO • MOMENTO 14"+
 
 (
 df
