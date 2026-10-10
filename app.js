@@ -1,1895 +1,2089 @@
 
 (function () {
-  "use strict";
+"use strict";
 
-  /*
-   ANÁLISE BETA V3.4
-   -----------------
-   AUTO padrão: 3º colocado no ranking.
-   Opções: 1º, 2º, 3º e 4º.
-   Ranking: scoreAuto decrescente.
-   12 motores independentes.
-   G1 congelado por motor.
-   28 números cobertos, sem sobreposição.
-   Cinco centros com 2 vizinhos.
-   Um centro com 1 vizinho.
-   Jogador Virtual: auditoria da escolha.
-  */
+/*
+ ANÁLISE BETA V3.6
+ BASE V3.4
 
-  const STORAGE = "ANALISE_BETA_VIRTUAL_V34";
-  const STORAGE_ANTIGO = "ANALISE_BETA_VIRTUAL_V3";
+ ALTERAÇÃO ÚNICA:
+ BOTÃO AUTO 2º ⇄ 3º
 
-  const MAX_HISTORICO = 20;
-  const MAX_TIMELINE = 20;
-  const MAX_VISUAL = 14;
+ REGRAS:
+ - Inicia no 3º colocado.
+ - Após entrada concluída, alterna ao 2º.
+ - Se houver G1, mantém a jogada congelada.
+ - Só alterna após o resultado do G1.
+ - Depois do 2º, retorna ao 3º.
+ - Os quatro botões individuais permanecem.
+ - Os 12 motores permanecem independentes.
+ - Mantém 28 números sem sobreposição.
+*/
 
-  const TRACK = [
-    32,15,19,4,21,2,25,17,34,6,
-    27,13,36,11,30,8,23,10,5,24,
-    16,33,1,20,14,31,9,22,18,29,
-    7,28,12,35,3,26,0
-  ];
+const STORAGE = "ANALISE_BETA_VIRTUAL_V36";
+const ANTIGOS = [
+  "ANALISE_BETA_VIRTUAL_V34",
+  "ANALISE_BETA_VIRTUAL_V3"
+];
 
-  const VERMELHOS = new Set([
-    1,3,5,7,9,12,14,16,18,
-    19,21,23,25,27,30,32,34,36
-  ]);
+const MAX_HISTORICO = 20;
+const MAX_TIMELINE = 20;
+const MAX_VISUAL = 14;
 
-  const MOTORES = [
-    "NORMAL",
-    "DINAMICO",
-    "RX_NORMAL",
-    "RX_DINAMICO"
-  ];
+const TRACK = [
+  32,15,19,4,21,2,25,17,34,6,
+  27,13,36,11,30,8,23,10,5,24,
+  16,33,1,20,14,31,9,22,18,29,
+  7,28,12,35,3,26,0
+];
 
-  const RX_LIST = [4,5,6];
+const VERMELHOS = new Set([
+  1,3,5,7,9,12,14,16,18,
+  19,21,23,25,27,30,32,34,36
+]);
 
-  const PREFIXOS = {
-    NORMAL: "N",
-    DINAMICO: "D",
-    RX_NORMAL: "RN",
-    RX_DINAMICO: "RD"
-  };
+const MOTORES = [
+  "NORMAL",
+  "DINAMICO",
+  "RX_NORMAL",
+  "RX_DINAMICO"
+];
 
-  const NOMES = {
-    NORMAL: "NORMAL",
-    DINAMICO: "DINÂMICO",
-    RX_NORMAL: "RAIO-X",
-    RX_DINAMICO: "RAIO-X DINÂMICO"
-  };
+const RX_LIST = [4,5,6];
 
-  const ZONAS_QUEBRA = {
-    1: [13,14,15,16,17,18],
-    2: [0,26,3,35,28,7,6,30],
-    3: [23,10,24,20,22,21,4,19]
-  };
+const PREFIXOS = {
+  NORMAL:"N",
+  DINAMICO:"D",
+  RX_NORMAL:"RN",
+  RX_DINAMICO:"RD"
+};
 
-  const GRUPOS_FISICOS = {
-    1: [
-      [3,12,7],
-      [4,2,21],
-      [11,8,5],
-      [6,1,9]
-    ],
-    2: [
-      [13,36,11,30,8],
-      [23,10,5,24,16],
-      [15,19,17,14,20,18]
-    ],
-    3: [
-      [25,17,34,6,27],
-      [32,15,19,4,21],
-      [29,7,28,12,35,3,26],
-      [31,9,22,18,33]
-    ]
-  };
+const NOMES = {
+  NORMAL:"NORMAL",
+  DINAMICO:"DINÂMICO",
+  RX_NORMAL:"RAIO-X",
+  RX_DINAMICO:"RAIO-X DINÂMICO"
+};
 
-  const REGIOES = {
-    VOISINS: new Set([
-      19,4,21,2,25,28,7,29,18,22
-    ]),
-    ZERO: new Set([
-      0,32,15,26,3,35,12
-    ]),
-    TIERS: new Set([
-      27,13,36,11,30,8,
-      23,10,5,24,16,33
-    ]),
-    ORPHELINS: new Set([
-      9,31,14,20,1,17,6,34
-    ])
-  };
+const ZONAS_QUEBRA = {
+  1:[13,14,15,16,17,18],
+  2:[0,26,3,35,28,7,6,30],
+  3:[23,10,24,20,22,21,4,19]
+};
 
-  const ORDEM_REGIOES = [
-    "VOISINS",
-    "ZERO",
-    "TIERS",
-    "ORPHELINS",
-    "OUTROS"
-  ];
+const GRUPOS_FISICOS = {
+  1:[
+    [3,12,7],
+    [4,2,21],
+    [11,8,5],
+    [6,1,9]
+  ],
+  2:[
+    [13,36,11,30,8],
+    [23,10,5,24,16],
+    [15,19,17,14,20,18]
+  ],
+  3:[
+    [25,17,34,6,27],
+    [32,15,19,4,21],
+    [29,7,28,12,35,3,26],
+    [31,9,22,18,33]
+  ]
+};
 
-  const INDICE = new Map(
-    TRACK.map((n,i) => [n,i])
-  );
+const REGIOES = {
+  VOISINS:new Set([
+    19,4,21,2,25,28,7,29,18,22
+  ]),
+  ZERO:new Set([
+    0,32,15,26,3,35,12
+  ]),
+  TIERS:new Set([
+    27,13,36,11,30,8,
+    23,10,5,24,16,33
+  ]),
+  ORPHELINS:new Set([
+    9,31,14,20,1,17,6,34
+  ])
+};
 
-  const mod = (n,m) => ((n % m) + m) % m;
+const ORDEM_REGIOES = [
+  "VOISINS",
+  "ZERO",
+  "TIERS",
+  "ORPHELINS",
+  "OUTROS"
+];
 
-  function el(id) {
-    return document.getElementById(id);
+const INDICE = new Map(
+  TRACK.map((n,i)=>[n,i])
+);
+
+const mod = (n,m) => ((n%m)+m)%m;
+const el = id => document.getElementById(id);
+
+function pos(n) {
+  return INDICE.get(n) ?? -1;
+}
+
+function distancia(a,b) {
+  const ia=pos(a);
+  const ib=pos(b);
+
+  if (ia<0 || ib<0) return 99;
+
+  const d=Math.abs(ia-ib);
+  return Math.min(d,37-d);
+}
+
+function delta(a,b) {
+  if (pos(a)<0 || pos(b)<0) return 0;
+
+  let d=mod(pos(b)-pos(a),37);
+
+  if (d>18) d-=37;
+
+  return d;
+}
+
+function vizinhos(n,qtd) {
+  const i=pos(n);
+
+  if (i<0) return [];
+
+  const saida=[];
+
+  for (let d=-qtd;d<=qtd;d++) {
+    saida.push(TRACK[mod(i+d,37)]);
   }
 
-  function pos(n) {
-    return INDICE.get(n) ?? -1;
+  return saida;
+}
+
+function duzia(n) {
+  if (n===0) return 0;
+  if (n<=12) return 1;
+  if (n<=24) return 2;
+  return 3;
+}
+
+function alvoRX(rx) {
+  return rx-3;
+}
+
+function corNumero(n) {
+  if (n===0) return "#087c48";
+
+  return VERMELHOS.has(n)
+    ? "#c6283d"
+    : "#181818";
+}
+
+function regiao(n) {
+  for (const [nome,numeros] of
+    Object.entries(REGIOES)) {
+    if (numeros.has(n)) return nome;
   }
 
-  function distancia(a,b) {
-    const ia = pos(a);
-    const ib = pos(b);
+  return "OUTROS";
+}
 
-    if (ia < 0 || ib < 0) return 99;
+function limitarHistorico(lista) {
+  if (!Array.isArray(lista)) return [];
 
-    const d = Math.abs(ia-ib);
-    return Math.min(d,37-d);
+  return lista
+    .map(Number)
+    .filter(n=>
+      Number.isInteger(n) &&
+      n>=0 &&
+      n<=36
+    )
+    .slice(-MAX_HISTORICO);
+}
+
+function formatar(n) {
+  return Number.isFinite(n)
+    ? n.toFixed(3).replace(".",",")
+    : "—";
+}
+
+function criarEstrutura(valor) {
+  return {
+    AUTO:valor,
+    NORMAL:{4:valor,5:valor,6:valor},
+    DINAMICO:{4:valor,5:valor,6:valor},
+    RX_NORMAL:{4:valor,5:valor,6:valor},
+    RX_DINAMICO:{4:valor,5:valor,6:valor}
+  };
+}
+
+function criarEstado() {
+  const timelines=criarEstrutura(null);
+
+  timelines.AUTO=[];
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      timelines[motor][rx]=[];
+    }
   }
 
-  function delta(a,b) {
-    if (pos(a) < 0 || pos(b) < 0) return 0;
+  return {
+    historico:[],
+    modo:"AUTO",
+    motorManual:"NORMAL",
+    manualRX:4,
 
-    let d = mod(pos(b)-pos(a),37);
-    if (d > 18) d -= 37;
+    autoPosicao:3,
 
-    return d;
-  }
+    // NOVO: ALTERNÂNCIA 3º / 2º
+    autoAlternado:false,
+    autoProximaPosicao:3,
 
-  function vizinhos(n,qtd) {
-    const i = pos(n);
-    if (i < 0) return [];
+    timelines,
+    pendentes:criarEstrutura(null),
+    freezes:criarEstrutura(null),
 
-    const saida = [];
+    visual:[],
+    visualFreeze:null,
 
-    for (let d=-qtd;d<=qtd;d++) {
-      saida.push(TRACK[mod(i+d,37)]);
+    painelCandidatosAberto:false,
+    painelTimelinesAberto:false,
+    jogadorVirtualAberto:true,
+
+    diagnostico:null,
+    ultimoNumero:null
+  };
+}
+
+let estado=criarEstado();
+
+function carregar() {
+  try {
+    let raw=localStorage.getItem(STORAGE);
+
+    if (!raw) {
+      for (const chave of ANTIGOS) {
+        raw=localStorage.getItem(chave);
+        if (raw) break;
+      }
     }
 
-    return saida;
-  }
+    if (!raw) return;
 
-  function duzia(n) {
-    if (n === 0) return 0;
-    if (n <= 12) return 1;
-    if (n <= 24) return 2;
-    return 3;
-  }
+    const salvo=JSON.parse(raw);
 
-  function alvoRX(rx) {
-    return rx-3;
-  }
-
-  function corNumero(n) {
-    if (n === 0) return "#087c48";
-    return VERMELHOS.has(n)
-      ? "#c6283d"
-      : "#181818";
-  }
-
-  function regiao(n) {
-    for (const [nome,numeros] of Object.entries(REGIOES)) {
-      if (numeros.has(n)) return nome;
-    }
-    return "OUTROS";
-  }
-
-  function limitarHistorico(lista) {
-    if (!Array.isArray(lista)) return [];
-
-    return lista
-      .map(Number)
-      .filter(n =>
-        Number.isInteger(n) &&
-        n >= 0 &&
-        n <= 36
-      )
-      .slice(-MAX_HISTORICO);
-  }
-
-  function formatar(n) {
-    return Number.isFinite(n)
-      ? n.toFixed(3).replace(".",",")
-      : "—";
-  }
-
-  function criarEstrutura(valor) {
-    return {
-      AUTO: valor,
-      NORMAL: {
-        4:valor,5:valor,6:valor
-      },
-      DINAMICO: {
-        4:valor,5:valor,6:valor
-      },
-      RX_NORMAL: {
-        4:valor,5:valor,6:valor
-      },
-      RX_DINAMICO: {
-        4:valor,5:valor,6:valor
-      }
-    };
-  }
-
-  function criarEstado() {
-    const timelines = criarEstrutura(null);
-
-    timelines.AUTO = [];
-
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        timelines[motor][rx] = [];
-      }
+    if (!salvo || typeof salvo!=="object") {
+      return;
     }
 
-    return {
-      historico: [],
-      modo: "AUTO",
-      motorManual: "NORMAL",
-      manualRX: 4,
+    estado.historico=
+      limitarHistorico(salvo.historico);
 
-      autoPosicao: 3,
+    estado.modo=
+      salvo.modo==="MANUAL"
+        ? "MANUAL"
+        : "AUTO";
 
-      timelines,
-      pendentes: criarEstrutura(null),
-      freezes: criarEstrutura(null),
+    if (MOTORES.includes(salvo.motorManual)) {
+      estado.motorManual=salvo.motorManual;
+    }
 
-      visual: [],
-      visualFreeze: null,
+    if (RX_LIST.includes(Number(salvo.manualRX))) {
+      estado.manualRX=Number(salvo.manualRX);
+    }
 
-      painelCandidatosAberto: false,
-      painelTimelinesAberto: false,
-      jogadorVirtualAberto: true,
+    estado.autoPosicao=
+      [1,2,3,4].includes(Number(salvo.autoPosicao))
+        ? Number(salvo.autoPosicao)
+        : 3;
 
-      diagnostico: null,
-      ultimoNumero: null
-    };
-  }
+    estado.autoAlternado=
+      salvo.autoAlternado===true;
 
-  let estado = criarEstado();
+    estado.autoProximaPosicao=
+      [2,3].includes(Number(salvo.autoProximaPosicao))
+        ? Number(salvo.autoProximaPosicao)
+        : 3;
 
-  function carregar() {
-    try {
-      const raw =
-        localStorage.getItem(STORAGE) ||
-        localStorage.getItem(STORAGE_ANTIGO);
+    estado.painelCandidatosAberto=
+      !!salvo.painelCandidatosAberto;
 
-      if (!raw) return;
+    estado.painelTimelinesAberto=
+      !!salvo.painelTimelinesAberto;
 
-      const salvo = JSON.parse(raw);
-      if (!salvo || typeof salvo !== "object") return;
+    estado.jogadorVirtualAberto=
+      salvo.jogadorVirtualAberto!==false;
 
-      estado.historico =
-        limitarHistorico(salvo.historico);
+    estado.diagnostico=
+      salvo.diagnostico||null;
 
-      estado.modo =
-        salvo.modo === "MANUAL"
-          ? "MANUAL"
-          : "AUTO";
+    estado.ultimoNumero=
+      salvo.ultimoNumero??null;
 
-      if (MOTORES.includes(salvo.motorManual)) {
-        estado.motorManual = salvo.motorManual;
+    if (salvo.timelines) {
+      if (Array.isArray(salvo.timelines.AUTO)) {
+        estado.timelines.AUTO=
+          salvo.timelines.AUTO.slice(-MAX_TIMELINE);
       }
 
-      if (RX_LIST.includes(Number(salvo.manualRX))) {
-        estado.manualRX = Number(salvo.manualRX);
-      }
+      for (const motor of MOTORES) {
+        for (const rx of RX_LIST) {
+          const lista=salvo.timelines[motor]?.[rx];
 
-      estado.autoPosicao =
-        [1,2,3,4].includes(Number(salvo.autoPosicao))
-          ? Number(salvo.autoPosicao)
-          : 3;
-
-      estado.painelCandidatosAberto =
-        !!salvo.painelCandidatosAberto;
-
-      estado.painelTimelinesAberto =
-        !!salvo.painelTimelinesAberto;
-
-      estado.jogadorVirtualAberto =
-        salvo.jogadorVirtualAberto !== false;
-
-      estado.diagnostico =
-        salvo.diagnostico || null;
-
-      estado.ultimoNumero =
-        salvo.ultimoNumero ?? null;
-
-      if (salvo.timelines) {
-        if (Array.isArray(salvo.timelines.AUTO)) {
-          estado.timelines.AUTO =
-            salvo.timelines.AUTO.slice(-MAX_TIMELINE);
-        }
-
-        for (const motor of MOTORES) {
-          for (const rx of RX_LIST) {
-            const lista = salvo.timelines[motor]?.[rx];
-
-            if (Array.isArray(lista)) {
-              estado.timelines[motor][rx] =
-                lista.slice(-MAX_TIMELINE);
-            }
+          if (Array.isArray(lista)) {
+            estado.timelines[motor][rx]=
+              lista.slice(-MAX_TIMELINE);
           }
         }
       }
+    }
 
-      for (const campo of ["pendentes","freezes"]) {
-        if (!salvo[campo]) continue;
+    for (const campo of ["pendentes","freezes"]) {
+      if (!salvo[campo]) continue;
 
-        estado[campo].AUTO =
-          salvo[campo].AUTO || null;
+      estado[campo].AUTO=
+        salvo[campo].AUTO||null;
 
-        for (const motor of MOTORES) {
-          for (const rx of RX_LIST) {
-            estado[campo][motor][rx] =
-              salvo[campo][motor]?.[rx] || null;
-          }
+      for (const motor of MOTORES) {
+        for (const rx of RX_LIST) {
+          estado[campo][motor][rx]=
+            salvo[campo][motor]?.[rx]||null;
         }
       }
-
-      if (Array.isArray(salvo.visual)) {
-        estado.visual =
-          salvo.visual.slice(-MAX_VISUAL);
-      }
-
-      estado.visualFreeze =
-        salvo.visualFreeze || null;
-
-    } catch (erro) {
-      console.warn("Erro ao carregar:",erro);
     }
+
+    if (Array.isArray(salvo.visual)) {
+      estado.visual=
+        salvo.visual.slice(-MAX_VISUAL);
+    }
+
+    estado.visualFreeze=
+      salvo.visualFreeze||null;
+
+  } catch (erro) {
+    console.warn("Erro ao carregar:",erro);
+  }
+}
+
+function salvar() {
+  try {
+    localStorage.setItem(
+      STORAGE,
+      JSON.stringify(estado)
+    );
+  } catch (erro) {
+    console.warn("Erro ao salvar:",erro);
+  }
+}
+
+carregar();
+
+/*
+ CONTROLE AUTO 2º ⇄ 3º
+
+ A troca ocorre somente após
+ uma jogada concluída.
+
+ Se houver G1:
+ - mantém o snapshot
+ - não muda de posição
+ - aguarda resultado final
+*/
+
+function posicaoAutoAtual() {
+  return estado.autoAlternado
+    ? estado.autoProximaPosicao
+    : estado.autoPosicao;
+}
+
+function avancarAlternancia() {
+  if (!estado.autoAlternado) return;
+
+  estado.autoProximaPosicao=
+    estado.autoProximaPosicao===3
+      ? 2
+      : 3;
+
+  estado.autoPosicao=
+    estado.autoProximaPosicao;
+}
+
+function selecionarAlternancia() {
+  if (estado.autoAlternado) {
+    estado.autoAlternado=false;
+    estado.autoPosicao=
+      estado.autoProximaPosicao;
+  } else {
+    estado.autoAlternado=true;
+    estado.autoProximaPosicao=3;
+    estado.autoPosicao=3;
   }
 
-  function salvar() {
-    try {
-      localStorage.setItem(
-        STORAGE,
-        JSON.stringify(estado)
-      );
-    } catch (erro) {
-      console.warn("Erro ao salvar:",erro);
-    }
+  estado.modo="AUTO";
+
+  if (!estado.freezes.AUTO) {
+    estado.pendentes.AUTO=null;
   }
 
-  carregar();
+  invalidarCache();
+  salvar();
+  agendarRender();
+}
 
-  /*
-   ANÁLISE FÍSICA
-  */
+/*
+ ANÁLISE FÍSICA
+*/
 
-  function analisarFisica(base) {
-    const calor = new Float64Array(37);
-    const contagem = [0,0,0,0];
-    const forca = [0,0,0,0];
-    const quebra = [0,0,0,0];
+function analisarFisica(base) {
+  const calor=new Float64Array(37);
+  const contagem=[0,0,0,0];
+  const forca=[0,0,0,0];
+  const quebra=[0,0,0,0];
 
-    const pesos = [1,0.78,0.52,0.29,0.14,0.06];
+  const pesos=[1,0.78,0.52,0.29,0.14,0.06];
 
-    for (let i=0;i<base.length;i++) {
-      const numero = base[i];
+  for (let i=0;i<base.length;i++) {
+    const numero=base[i];
 
-      const peso =
-        0.45 +
-        0.55*(i+1)/Math.max(1,base.length);
+    const peso=
+      0.45+
+      0.55*(i+1)/Math.max(1,base.length);
 
-      const d = duzia(numero);
+    const d=duzia(numero);
 
-      if (d) {
-        contagem[d]++;
-        forca[d] += peso;
-      }
-
-      for (let z=1;z<=3;z++) {
-        if (ZONAS_QUEBRA[z].includes(numero)) {
-          quebra[z] += peso;
-        }
-      }
-
-      for (let j=0;j<37;j++) {
-        const dist = distancia(numero,TRACK[j]);
-
-        if (dist <= 5) {
-          calor[j] += pesos[dist]*peso;
-        }
-      }
+    if (d) {
+      contagem[d]++;
+      forca[d]+=peso;
     }
-
-    const info = {};
 
     for (let z=1;z<=3;z++) {
-      const numeros = [
-        ...new Set(GRUPOS_FISICOS[z].flat())
-      ];
-
-      const fisica =
-        numeros.reduce(
-          (s,n) => s+calor[pos(n)],
-          0
-        )/numeros.length;
-
-      const score =
-        forca[z]*0.46 +
-        fisica*0.40 +
-        quebra[z]*0.14;
-
-      info[z] = {
-        duzia:z,
-        contagem:contagem[z],
-        fisica,
-        quebra:quebra[z],
-        score
-      };
-    }
-
-    const maior = Math.max(
-      0.00001,
-      info[1].score,
-      info[2].score,
-      info[3].score
-    );
-
-    const ranking = [1,2,3]
-      .map(z => ({
-        ...info[z],
-        intensidade:info[z].score/maior
-      }))
-      .sort((a,b) => b.score-a.score);
-
-    return {
-      calor,
-      info,
-      ranking,
-      maxCalor:Math.max(0.00001,...calor)
-    };
-  }
-
-  function contagemFisica(base,rx) {
-    const mapa = new Float64Array(37);
-
-    const decay = {
-      4:0.78,
-      5:0.82,
-      6:0.86
-    }[rx];
-
-    const pesos = [1,0.72,0.44,0.22,0.10];
-
-    let peso = 1;
-
-    for (let i=base.length-1;i>=0;i--) {
-      for (let j=0;j<37;j++) {
-        const dist = distancia(base[i],TRACK[j]);
-
-        if (dist <= 4) {
-          mapa[j] += pesos[dist]*peso;
-        }
-      }
-
-      peso *= decay;
-    }
-
-    const maior = Math.max(0.00001,...mapa);
-
-    return mapa.map(v => v/maior);
-  }
-
-  /*
-   RAIO-X
-  */
-
-  function analisarRaioX(base,rx) {
-    const frequencia = new Float64Array(37);
-
-    if (base.length < rx*2+4) {
-      return {
-        valido:false,
-        frequencia,
-        similaridade:0
-      };
-    }
-
-    const atual = base.slice(-rx);
-    const candidatos = [];
-
-    for (
-      let i=0;
-      i+rx<base.length-rx;
-      i++
-    ) {
-      let score = 0;
-
-      for (let k=0;k<rx;k++) {
-        const antigo = base[i+k];
-        const recente = atual[k];
-
-        if (duzia(antigo) === duzia(recente)) {
-          score += 0.70;
-        }
-
-        score += 0.30*Math.max(
-          0,
-          1-distancia(antigo,recente)/19
-        );
-      }
-
-      candidatos.push({
-        numero:base[i+rx],
-        score:score/rx,
-        indice:i
-      });
-    }
-
-    candidatos.sort(
-      (a,b) => b.score-a.score || b.indice-a.indice
-    );
-
-    const escolhidos = candidatos.slice(
-      0,
-      Math.max(
-        4,
-        Math.ceil(candidatos.length*0.30)
-      )
-    );
-
-    const pesos = [1,0.70,0.42,0.18];
-
-    for (const item of escolhidos) {
-      for (let j=0;j<37;j++) {
-        const dist = distancia(
-          item.numero,
-          TRACK[j]
-        );
-
-        if (dist <= 3) {
-          frequencia[j] +=
-            pesos[dist] *
-            (0.40+0.60*item.score);
-        }
+      if (ZONAS_QUEBRA[z].includes(numero)) {
+        quebra[z]+=peso;
       }
     }
-
-    const maior = Math.max(
-      0.00001,
-      ...frequencia
-    );
-
-    const similaridade =
-      escolhidos.length
-        ? escolhidos.reduce(
-            (s,item) => s+item.score,
-            0
-          )/escolhidos.length*100
-        : 0;
-
-    return {
-      valido:escolhidos.length>0,
-      frequencia:frequencia.map(v => v/maior),
-      similaridade
-    };
-  }
-
-  /*
-   PONTUAÇÃO
-  */
-
-  function pontuarMotor(
-    base,
-    motor,
-    rx,
-    analise,
-    contagem,
-    raioX
-  ) {
-    const usaRX = motor.startsWith("RX");
-    const dinamico = motor.includes("DINAMICO");
-
-    if (usaRX && !raioX?.valido) {
-      return null;
-    }
-
-    const alvoDuzia = alvoRX(rx);
-    const scores = new Float64Array(37);
 
     for (let j=0;j<37;j++) {
-      const numero = TRACK[j];
+      const dist=distancia(numero,TRACK[j]);
 
-      const principal =
-        duzia(numero) === alvoDuzia ? 1 : 0;
+      if (dist<=5) {
+        calor[j]+=pesos[dist]*peso;
+      }
+    }
+  }
 
-      let proximidade = 0;
+  const info={};
 
-      for (const grupo of GRUPOS_FISICOS[alvoDuzia]) {
-        for (const alvo of grupo) {
-          const d = distancia(numero,alvo);
+  for (let z=1;z<=3;z++) {
+    const numeros=[
+      ...new Set(GRUPOS_FISICOS[z].flat())
+    ];
 
-          const peso =
-            d===0 ? 1 :
-            d===1 ? 0.75 :
-            d===2 ? 0.45 :
-            d===3 ? 0.20 : 0;
+    const fisica=
+      numeros.reduce(
+        (s,n)=>s+calor[pos(n)],
+        0
+      )/numeros.length;
 
-          proximidade = Math.max(
-            proximidade,
-            peso
+    const score=
+      forca[z]*0.46+
+      fisica*0.40+
+      quebra[z]*0.14;
+
+    info[z]={
+      duzia:z,
+      contagem:contagem[z],
+      fisica,
+      quebra:quebra[z],
+      score
+    };
+  }
+
+  const maior=Math.max(
+    0.00001,
+    info[1].score,
+    info[2].score,
+    info[3].score
+  );
+
+  const ranking=[1,2,3]
+    .map(z=>({
+      ...info[z],
+      intensidade:info[z].score/maior
+    }))
+    .sort((a,b)=>b.score-a.score);
+
+  return {
+    calor,
+    info,
+    ranking,
+    maxCalor:Math.max(0.00001,...calor)
+  };
+}
+
+function contagemFisica(base,rx) {
+  const mapa=new Float64Array(37);
+
+  const decay={
+    4:0.78,
+    5:0.82,
+    6:0.86
+  }[rx];
+
+  const pesos=[1,0.72,0.44,0.22,0.10];
+
+  let peso=1;
+
+  for (let i=base.length-1;i>=0;i--) {
+    for (let j=0;j<37;j++) {
+      const dist=distancia(base[i],TRACK[j]);
+
+      if (dist<=4) {
+        mapa[j]+=pesos[dist]*peso;
+      }
+    }
+
+    peso*=decay;
+  }
+
+  const maior=Math.max(0.00001,...mapa);
+
+  return mapa.map(v=>v/maior);
+}
+
+/*
+ RAIO-X
+*/
+
+function analisarRaioX(base,rx) {
+  const frequencia=new Float64Array(37);
+
+  if (base.length<rx*2+4) {
+    return {
+      valido:false,
+      frequencia,
+      similaridade:0
+    };
+  }
+
+  const atual=base.slice(-rx);
+  const candidatos=[];
+
+  for (
+    let i=0;
+    i+rx<base.length-rx;
+    i++
+  ) {
+    let score=0;
+
+    for (let k=0;k<rx;k++) {
+      const antigo=base[i+k];
+      const recente=atual[k];
+
+      if (duzia(antigo)===duzia(recente)) {
+        score+=0.70;
+      }
+
+      score+=0.30*Math.max(
+        0,
+        1-distancia(antigo,recente)/19
+      );
+    }
+
+    candidatos.push({
+      numero:base[i+rx],
+      score:score/rx,
+      indice:i
+    });
+  }
+
+  candidatos.sort(
+    (a,b)=>b.score-a.score||b.indice-a.indice
+  );
+
+  const escolhidos=candidatos.slice(
+    0,
+    Math.max(
+      4,
+      Math.ceil(candidatos.length*0.30)
+    )
+  );
+
+  const pesos=[1,0.70,0.42,0.18];
+
+  for (const item of escolhidos) {
+    for (let j=0;j<37;j++) {
+      const dist=distancia(
+        item.numero,
+        TRACK[j]
+      );
+
+      if (dist<=3) {
+        frequencia[j]+=
+          pesos[dist]*
+          (0.40+0.60*item.score);
+      }
+    }
+  }
+
+  const maior=Math.max(
+    0.00001,
+    ...frequencia
+  );
+
+  const similaridade=
+    escolhidos.length
+      ? escolhidos.reduce(
+          (s,item)=>s+item.score,
+          0
+        )/escolhidos.length*100
+      : 0;
+
+  return {
+    valido:escolhidos.length>0,
+    frequencia:frequencia.map(v=>v/maior),
+    similaridade
+  };
+}
+
+/*
+ PONTUAÇÃO DOS MOTORES
+*/
+
+function pontuarMotor(
+  base,
+  motor,
+  rx,
+  analise,
+  contagem,
+  raioX
+) {
+  const usaRX=motor.startsWith("RX");
+  const dinamico=motor.includes("DINAMICO");
+
+  if (usaRX&&!raioX?.valido) {
+    return null;
+  }
+
+  const alvoDuzia=alvoRX(rx);
+  const scores=new Float64Array(37);
+
+  for (let j=0;j<37;j++) {
+    const numero=TRACK[j];
+
+    const principal=
+      duzia(numero)===alvoDuzia?1:0;
+
+    let proximidade=0;
+
+    for (
+      const grupo of
+      GRUPOS_FISICOS[alvoDuzia]
+    ) {
+      for (const alvo of grupo) {
+        const d=distancia(numero,alvo);
+
+        const peso=
+          d===0?1:
+          d===1?0.75:
+          d===2?0.45:
+          d===3?0.20:0;
+
+        proximidade=Math.max(
+          proximidade,
+          peso
+        );
+      }
+    }
+
+    const quebra=
+      ZONAS_QUEBRA[alvoDuzia].some(
+        alvo=>distancia(numero,alvo)<=2
+      )?1:0;
+
+    const fisica=
+      analise.calor[j]/analise.maxCalor;
+
+    let score=
+      principal*0.52+
+      proximidade*0.48+
+      fisica*0.24+
+      quebra*0.22+
+      contagem[j]*0.22;
+
+    if (usaRX) {
+      score=
+        principal*0.42+
+        proximidade*0.38+
+        fisica*0.22+
+        quebra*0.18+
+        contagem[j]*0.12+
+        raioX.frequencia[j]*0.34;
+    }
+
+    if (dinamico) {
+      const ultimos=base.slice(-rx);
+
+      let direcao=0;
+      let total=0;
+
+      ultimos.forEach((n,i)=>{
+        const d=delta(numero,n);
+
+        if (Math.abs(d)<=7) {
+          const peso=(i+1)/ultimos.length;
+
+          direcao+=Math.sign(d)*peso;
+          total+=peso;
+        }
+      });
+
+      if (total>0) {
+        score+=Math.abs(direcao/total)*0.11;
+      }
+    }
+
+    scores[j]=score;
+  }
+
+  return {
+    scores,
+    similaridade:raioX?.similaridade||0
+  };
+}
+
+/*
+ GEOMETRIA ORIGINAL V3.4
+
+ 5 blocos de 5 números.
+ 1 bloco de 3 números.
+
+ 28 cobertos.
+ 9 descobertos.
+
+ Nenhuma sobreposição.
+ Nenhum número descoberto isolado.
+*/
+
+function construirJogada(scores) {
+  const pontos5=new Float64Array(37);
+  const pontos3=new Float64Array(37);
+
+  for (let centro=0;centro<37;centro++) {
+    for (let d=-2;d<=2;d++) {
+      const peso=
+        d===0?1.22:
+        Math.abs(d)===1?1.08:1;
+
+      pontos5[centro]+=
+        scores[mod(centro+d,37)]*peso;
+    }
+
+    for (let d=-1;d<=1;d++) {
+      pontos3[centro]+=
+        scores[mod(centro+d,37)]*
+        (d===0?1.22:1);
+    }
+  }
+
+  let melhor=null;
+  let maior=-Infinity;
+
+  for (let inicio=0;inicio<37;inicio++) {
+    for (let pos3=0;pos3<6;pos3++) {
+      const tamanhos=[5,5,5,5,5,5];
+
+      tamanhos[pos3]=3;
+
+      const memo=new Map();
+
+      function resolver(k,gastos) {
+        const chave=k+"|"+gastos;
+
+        if (memo.has(chave)) {
+          return memo.get(chave);
+        }
+
+        if (k===6) {
+          return gastos===9
+            ? {score:0,gaps:[]}
+            : null;
+        }
+
+        const anteriores=tamanhos
+          .slice(0,k)
+          .reduce((a,b)=>a+b,0);
+
+        const cursor=mod(
+          inicio+anteriores+gastos,
+          37
+        );
+
+        const tamanho=tamanhos[k];
+
+        const centro=mod(
+          cursor+Math.floor(tamanho/2),
+          37
+        );
+
+        const valor=tamanho===3
+          ? pontos3[centro]
+          : pontos5[centro];
+
+        let escolhido=null;
+
+        for (
+          let gap=0;
+          gap<=9-gastos;
+          gap++
+        ) {
+          if (gap===1) continue;
+
+          const resto=resolver(
+            k+1,
+            gastos+gap
+          );
+
+          if (!resto) continue;
+
+          const total=valor+resto.score;
+
+          if (
+            !escolhido||
+            total>escolhido.score
+          ) {
+            escolhido={
+              score:total,
+              gaps:[gap,...resto.gaps]
+            };
+          }
+        }
+
+        memo.set(chave,escolhido);
+        return escolhido;
+      }
+
+      const resultado=resolver(0,0);
+
+      if (!resultado) continue;
+
+      if (resultado.score>maior) {
+        maior=resultado.score;
+
+        let cursor=inicio;
+        const centros5=[];
+        let centro3=-1;
+
+        for (let k=0;k<6;k++) {
+          const tamanho=tamanhos[k];
+
+          const centro=mod(
+            cursor+Math.floor(tamanho/2),
+            37
+          );
+
+          if (tamanho===3) {
+            centro3=TRACK[centro];
+          } else {
+            centros5.push(TRACK[centro]);
+          }
+
+          cursor=mod(
+            cursor+
+            tamanho+
+            resultado.gaps[k],
+            37
           );
         }
+
+        melhor={
+          centros5,
+          centro3
+        };
       }
-
-      const quebra =
-        ZONAS_QUEBRA[alvoDuzia].some(
-          alvo => distancia(numero,alvo)<=2
-        ) ? 1 : 0;
-
-      const fisica =
-        analise.calor[j]/analise.maxCalor;
-
-      let score =
-        principal*0.52 +
-        proximidade*0.48 +
-        fisica*0.24 +
-        quebra*0.22 +
-        contagem[j]*0.22;
-
-      if (usaRX) {
-        score =
-          principal*0.42 +
-          proximidade*0.38 +
-          fisica*0.22 +
-          quebra*0.18 +
-          contagem[j]*0.12 +
-          raioX.frequencia[j]*0.34;
-      }
-
-      if (dinamico) {
-        const ultimos = base.slice(-rx);
-
-        let direcao = 0;
-        let total = 0;
-
-        ultimos.forEach((n,i) => {
-          const d = delta(numero,n);
-
-          if (Math.abs(d)<=7) {
-            const peso =
-              (i+1)/ultimos.length;
-
-            direcao += Math.sign(d)*peso;
-            total += peso;
-          }
-        });
-
-        if (total>0) {
-          score +=
-            Math.abs(direcao/total)*0.11;
-        }
-      }
-
-      scores[j] = score;
     }
-
-    return {
-      scores,
-      similaridade:raioX?.similaridade||0
-    };
   }
 
-  /*
-   GEOMETRIA OTIMIZADA
+  if (!melhor) return null;
 
-   Em vez de guardar milhares de objetos
-   e percorrê-los para cada motor,
-   a seleção usa programação dinâmica.
+  const blocos2=melhor.centros5.map(
+    centro=>({
+      centro,
+      qtd:2,
+      numeros:vizinhos(centro,2)
+    })
+  );
 
-   Os seis setores são blocos físicos
-   não sobrepostos de tamanhos:
-   5,5,5,5,5,3.
+  const blocos1=[{
+    centro:melhor.centro3,
+    qtd:1,
+    numeros:vizinhos(melhor.centro3,1)
+  }];
 
-   Restam 9 posições descobertas,
-   distribuídas em lacunas de 0
-   ou pelo menos 2 posições.
-  */
+  const numeros=new Set(
+    [...blocos2,...blocos1]
+      .flatMap(b=>b.numeros)
+  );
 
-  function construirJogada(scores) {
-    const pontos5 = new Float64Array(37);
-    const pontos3 = new Float64Array(37);
+  if (numeros.size!==28) {
+    return null;
+  }
 
-    for (let centro=0;centro<37;centro++) {
-      for (let d=-2;d<=2;d++) {
-        const peso =
-          d===0 ? 1.22 :
-          Math.abs(d)===1 ? 1.08 : 1;
+  for (let i=0;i<37;i++) {
+    const n=TRACK[i];
 
-        pontos5[centro] +=
-          scores[mod(centro+d,37)]*peso;
-      }
+    if (numeros.has(n)) continue;
 
-      for (let d=-1;d<=1;d++) {
-        pontos3[centro] +=
-          scores[mod(centro+d,37)] *
-          (d===0 ? 1.22 : 1);
-      }
-    }
+    const anterior=TRACK[mod(i-1,37)];
+    const seguinte=TRACK[mod(i+1,37)];
 
-    let melhor = null;
-    let maior = -Infinity;
-
-    /*
-      Para cada início e posição do bloco
-      de três números, a DP escolhe
-      as seis lacunas totalizando nove.
-    */
-
-    for (let inicio=0;inicio<37;inicio++) {
-      for (let pos3=0;pos3<6;pos3++) {
-        const tamanhos = [
-          5,5,5,5,5,5
-        ];
-
-        tamanhos[pos3] = 3;
-
-        const memo = new Map();
-
-        function resolver(k,gastos) {
-          const chave = k+"|"+gastos;
-
-          if (memo.has(chave)) {
-            return memo.get(chave);
-          }
-
-          if (k===6) {
-            return gastos===9
-              ? {score:0,gaps:[]}
-              : null;
-          }
-
-          const anteriores =
-            tamanhos
-              .slice(0,k)
-              .reduce((a,b)=>a+b,0);
-
-          const cursor =
-            mod(
-              inicio+anteriores+gastos,
-              37
-            );
-
-          const tamanho = tamanhos[k];
-
-          const centro =
-            mod(
-              cursor+Math.floor(tamanho/2),
-              37
-            );
-
-          const valor =
-            tamanho===3
-              ? pontos3[centro]
-              : pontos5[centro];
-
-          let escolhido = null;
-
-          for (
-            let gap=0;
-            gap<=9-gastos;
-            gap++
-          ) {
-            if (gap===1) continue;
-
-            const resto =
-              resolver(k+1,gastos+gap);
-
-            if (!resto) continue;
-
-            const total = valor+resto.score;
-
-            if (
-              !escolhido ||
-              total>escolhido.score
-            ) {
-              escolhido = {
-                score:total,
-                gaps:[gap,...resto.gaps]
-              };
-            }
-          }
-
-          memo.set(chave,escolhido);
-          return escolhido;
-        }
-
-        const resultado = resolver(0,0);
-        if (!resultado) continue;
-
-        if (resultado.score>maior) {
-          maior = resultado.score;
-
-          let cursor = inicio;
-          const centros5 = [];
-          let centro3 = -1;
-
-          for (let k=0;k<6;k++) {
-            const tamanho = tamanhos[k];
-
-            const centro =
-              mod(
-                cursor+Math.floor(tamanho/2),
-                37
-              );
-
-            if (tamanho===3) {
-              centro3 = TRACK[centro];
-            } else {
-              centros5.push(TRACK[centro]);
-            }
-
-            cursor = mod(
-              cursor+tamanho+resultado.gaps[k],
-              37
-            );
-          }
-
-          melhor = {
-            centros5,
-            centro3
-          };
-        }
-      }
-    }
-
-    if (!melhor) return null;
-
-    const blocos2 =
-      melhor.centros5.map(centro => ({
-        centro,
-        qtd:2,
-        numeros:vizinhos(centro,2)
-      }));
-
-    const blocos1 = [{
-      centro:melhor.centro3,
-      qtd:1,
-      numeros:vizinhos(melhor.centro3,1)
-    }];
-
-    const numeros = new Set(
-      [...blocos2,...blocos1]
-        .flatMap(b => b.numeros)
-    );
-
-    if (numeros.size!==28) {
+    if (
+      numeros.has(anterior)&&
+      numeros.has(seguinte)
+    ) {
       return null;
     }
+  }
 
-    for (let i=0;i<37;i++) {
-      const n = TRACK[i];
+  const assinatura=
+    blocos2
+      .map(b=>b.centro)
+      .sort((a,b)=>a-b)
+      .join("-")+
+    "|"+
+    blocos1[0].centro;
 
-      if (numeros.has(n)) continue;
+  return {
+    valido:true,
+    blocos2,
+    blocos1,
+    numeros,
+    score:maior,
+    assinatura
+  };
+}
 
-      const anterior = TRACK[mod(i-1,37)];
-      const seguinte = TRACK[mod(i+1,37)];
+/*
+ CONFIGURAÇÕES
+*/
 
-      if (
-        numeros.has(anterior) &&
-        numeros.has(seguinte)
-      ) {
-        return null;
-      }
-    }
+function gerarConfig(
+  base,
+  motor,
+  rx,
+  analise,
+  contagem,
+  raioX
+) {
+  const minimo=motor.startsWith("RX")
+    ? Math.max(14,rx*2+4)
+    : Math.max(8,rx+4);
 
-    const assinatura =
-      blocos2
-        .map(b=>b.centro)
-        .sort((a,b)=>a-b)
-        .join("-") +
-      "|" +
-      blocos1[0].centro;
-
+  if (base.length<minimo) {
     return {
-      valido:true,
-      blocos2,
-      blocos1,
-      numeros,
-      score:maior,
-      assinatura
+      valido:false,
+      motor,
+      rx,
+      motivo:"AGUARDANDO HISTÓRICO"
     };
   }
 
-  /*
-   CONFIGURAÇÕES
-  */
-
-  function gerarConfig(
+  const info=pontuarMotor(
     base,
     motor,
     rx,
     analise,
     contagem,
     raioX
-  ) {
-    const minimo =
-      motor.startsWith("RX")
-        ? Math.max(14,rx*2+4)
-        : Math.max(8,rx+4);
+  );
 
-    if (base.length<minimo) {
-      return {
-        valido:false,
-        motor,
-        rx,
-        motivo:"AGUARDANDO HISTÓRICO"
-      };
-    }
-
-    const info = pontuarMotor(
-      base,
+  if (!info) {
+    return {
+      valido:false,
       motor,
       rx,
-      analise,
-      contagem,
-      raioX
-    );
+      motivo:"SEM RÉPLICAS"
+    };
+  }
 
-    if (!info) {
-      return {
-        valido:false,
-        motor,
-        rx,
-        motivo:"SEM RÉPLICAS"
-      };
-    }
+  const jogada=construirJogada(
+    info.scores
+  );
 
-    const jogada =
-      construirJogada(info.scores);
-
-    if (!jogada) {
-      return {
-        valido:false,
-        motor,
-        rx,
-        motivo:"SEM JOGADA VÁLIDA"
-      };
-    }
-
+  if (!jogada) {
     return {
-      valido:true,
+      valido:false,
       motor,
       rx,
-      alvoDuzia:alvoRX(rx),
-      jogada,
-      score:jogada.score,
-      assinatura:jogada.assinatura,
-      similaridade:info.similaridade
+      motivo:"SEM JOGADA VÁLIDA"
     };
   }
 
-  /*
-   ESTATÍSTICAS
-  */
+  return {
+    valido:true,
+    motor,
+    rx,
+    alvoDuzia:alvoRX(rx),
+    jogada,
+    score:jogada.score,
+    assinatura:jogada.assinatura,
+    similaridade:info.similaridade
+  };
+}
 
-  function estatisticas(lista) {
-    const validos = (lista||[])
-      .filter(item =>
-        !item.semJogada &&
-        !item.aguardandoG1 &&
-        typeof item.green==="boolean"
-      )
-      .slice(-20);
+/*
+ ESTATÍSTICAS
+*/
 
-    function taxa(qtd) {
-      const itens = validos.slice(-qtd);
+function estatisticas(lista) {
+  const validos=(lista||[])
+    .filter(item=>
+      !item.semJogada&&
+      !item.aguardandoG1&&
+      typeof item.green==="boolean"
+    )
+    .slice(-20);
 
-      return itens.length
-        ? itens.filter(x=>x.green).length /
-          itens.length*100
-        : 0;
-    }
+  function taxa(qtd) {
+    const itens=validos.slice(-qtd);
 
-    let perdas = 0;
-
-    for (let i=validos.length-1;i>=0;i--) {
-      if (validos[i].green) break;
-      perdas++;
-    }
-
-    return {
-      total:validos.length,
-      taxa5:taxa(5),
-      taxa10:taxa(10),
-      taxa20:taxa(20),
-      perdas
-    };
+    return itens.length
+      ? itens.filter(x=>x.green).length/
+        itens.length*100
+      : 0;
   }
 
-  /*
-   CACHE E RANKING
-  */
+  let perdas=0;
 
-  let cacheChave = null;
-  let cacheResultado = null;
-
-  function invalidarCache() {
-    cacheChave = null;
-    cacheResultado = null;
+  for (let i=validos.length-1;i>=0;i--) {
+    if (validos[i].green) break;
+    perdas++;
   }
 
-  function calcularDoze(base) {
-    const configs = {
-      NORMAL:{},
-      DINAMICO:{},
-      RX_NORMAL:{},
-      RX_DINAMICO:{}
-    };
+  return {
+    total:validos.length,
+    taxa5:taxa(5),
+    taxa10:taxa(10),
+    taxa20:taxa(20),
+    perdas
+  };
+}
 
-    const analise = analisarFisica(base);
-    const contagens = {};
-    const raioXs = {};
+/*
+ CACHE E RANKING
+*/
 
+let cacheChave=null;
+let cacheResultado=null;
+
+function invalidarCache() {
+  cacheChave=null;
+  cacheResultado=null;
+}
+
+function calcularDoze(base) {
+  const configs={
+    NORMAL:{},
+    DINAMICO:{},
+    RX_NORMAL:{},
+    RX_DINAMICO:{}
+  };
+
+  const analise=analisarFisica(base);
+  const contagens={};
+  const raioXs={};
+
+  for (const rx of RX_LIST) {
+    contagens[rx]=contagemFisica(base,rx);
+    raioXs[rx]=analisarRaioX(base,rx);
+  }
+
+  const ranking=[];
+
+  for (const motor of MOTORES) {
     for (const rx of RX_LIST) {
-      contagens[rx] =
-        contagemFisica(base,rx);
-
-      raioXs[rx] =
-        analisarRaioX(base,rx);
-    }
-
-    const ranking = [];
-
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        const config = gerarConfig(
-          base,
-          motor,
-          rx,
-          analise,
-          contagens[rx],
-          raioXs[rx]
-        );
-
-        if (config.valido) {
-          const live =
-            estatisticas(estado.timelines[motor][rx]);
-
-          config.scoreAuto =
-            config.score +
-            live.taxa10*0.02 +
-            live.taxa20*0.01 -
-            live.perdas*0.30 +
-            config.similaridade*0.005;
-
-          ranking.push(config);
-        }
-
-        configs[motor][rx] = config;
-      }
-    }
-
-    ranking.sort(
-      (a,b) =>
-        b.scoreAuto-a.scoreAuto ||
-        b.score-a.score ||
-        MOTORES.indexOf(a.motor)-
-        MOTORES.indexOf(b.motor) ||
-        a.rx-b.rx
-    );
-
-    ranking.forEach((item,i) => {
-      item.posicaoRanking = i+1;
-    });
-
-    return {
-      configs,
-      analise,
-      ranking
-    };
-  }
-
-  function escolherAuto(ranking) {
-    const posicao = estado.autoPosicao || 3;
-
-    return (
-      ranking[posicao-1] ||
-      ranking[ranking.length-1] ||
-      null
-    );
-  }
-
-  function obterConfigs() {
-    const chave = estado.historico.join(",");
-
-    if (
-      cacheChave===chave &&
-      cacheResultado
-    ) {
-      return cacheResultado;
-    }
-
-    const resultado =
-      calcularDoze(estado.historico);
-
-    resultado.auto =
-      escolherAuto(resultado.ranking);
-
-    cacheChave = chave;
-    cacheResultado = resultado;
-
-    return resultado;
-  }
-
-  function configAtiva(dados) {
-    if (estado.modo==="AUTO") {
-      return dados.auto;
-    }
-
-    return (
-      dados.configs[estado.motorManual]
-        ?.[estado.manualRX] ||
-      null
-    );
-  }
-
-  /*
-   SNAPSHOTS
-
-   A escolha é congelada antes
-   do próximo resultado.
-  */
-
-  function snapshot(config) {
-    if (!config?.valido) return null;
-
-    return {
-      motor:config.motor,
-      rx:config.rx,
-      score:config.score,
-      scoreAuto:config.scoreAuto,
-      posicaoRanking:config.posicaoRanking||null,
-      centros2:config.jogada.blocos2
-        .map(b=>b.centro),
-      centro1:config.jogada.blocos1[0].centro,
-      historico:estado.historico.join(",")
-    };
-  }
-
-  function jogadaSnapshot(snap) {
-    if (!snap) return null;
-
-    const blocos2 =
-      (snap.centros2||[]).map(centro=>({
-        centro,
-        qtd:2,
-        numeros:vizinhos(centro,2)
-      }));
-
-    const blocos1 = [{
-      centro:snap.centro1,
-      qtd:1,
-      numeros:vizinhos(snap.centro1,1)
-    }];
-
-    return {
-      valido:true,
-      blocos2,
-      blocos1,
-      numeros:new Set(
-        [...blocos2,...blocos1]
-          .flatMap(b=>b.numeros)
-      )
-    };
-  }
-
-  function prepararPendentes(dados) {
-    const chave = estado.historico.join(",");
-
-    if (
-      !estado.freezes.AUTO &&
-      estado.pendentes.AUTO?.historico!==chave
-    ) {
-      estado.pendentes.AUTO =
-        snapshot(dados.auto);
-    }
-
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        if (estado.freezes[motor][rx]) {
-          continue;
-        }
-
-        if (
-          estado.pendentes[motor][rx]?.historico!==chave
-        ) {
-          estado.pendentes[motor][rx] =
-            snapshot(dados.configs[motor][rx]);
-        }
-      }
-    }
-  }
-
-  /*
-   CLASSIFICAÇÃO
-  */
-
-  function classificar(numero,jogada) {
-    if (!jogada?.valido) {
-      return {
-        green:false,
-        tipo:"SEM",
-        distancia:null,
-        centro:null,
-        gap:null
-      };
-    }
-
-    const blocos = [
-      ...jogada.blocos2,
-      ...jogada.blocos1
-    ];
-
-    for (const bloco of blocos) {
-      if (bloco.numeros.includes(numero)) {
-        const d = distancia(numero,bloco.centro);
-
-        return {
-          green:true,
-          tipo:
-            d===0 ? "ALVO" :
-            d===1 ? "V1" : "V2",
-          distancia:d,
-          centro:bloco.centro,
-          gap:0
-        };
-      }
-    }
-
-    let maisProximo = null;
-
-    for (const bloco of blocos) {
-      const d = distancia(numero,bloco.centro);
-      const gap = d-bloco.qtd;
-
-      if (
-        gap>0 &&
-        (
-          !maisProximo ||
-          gap<maisProximo.gap
-        )
-      ) {
-        maisProximo = {
-          centro:bloco.centro,
-          distancia:d,
-          gap,
-          qtd:bloco.qtd
-        };
-      }
-    }
-
-    return {
-      green:false,
-      tipo:
-        maisProximo?.gap===1
-          ? "FORA1"
-          : maisProximo?.gap===2
-            ? "FORA2"
-            : "FORA",
-      distancia:maisProximo?.distancia??null,
-      centro:maisProximo?.centro??null,
-      gap:maisProximo?.gap??null
-    };
-  }
-
-  /*
-   TIMELINES E G1
-  */
-
-  function avaliarLinha(
-    numero,
-    pendente,
-    freeze,
-    timeline,
-    chave
-  ) {
-    const lista = timeline.slice(-MAX_TIMELINE);
-
-    if (freeze) {
-      const resultado = classificar(
-        numero,
-        jogadaSnapshot(freeze)
+      const config=gerarConfig(
+        base,
+        motor,
+        rx,
+        analise,
+        contagens[rx],
+        raioXs[rx]
       );
 
-      let ultimo = -1;
+      if (config.valido) {
+        const live=estatisticas(
+          estado.timelines[motor][rx]
+        );
 
-      for (let i=lista.length-1;i>=0;i--) {
-        if (lista[i].aguardandoG1) {
-          ultimo = i;
-          break;
-        }
+        config.scoreAuto=
+          config.score+
+          live.taxa10*0.02+
+          live.taxa20*0.01-
+          live.perdas*0.30+
+          config.similaridade*0.005;
+
+        ranking.push(config);
       }
 
-      const atualizacao = {
-        resultadoG1:numero,
-        green:resultado.green,
-        tipo:resultado.tipo,
-        fase:resultado.green?"G1":"LOSS",
-        aguardandoG1:false,
-        semJogada:false
-      };
-
-      if (ultimo>=0) {
-        lista[ultimo] = {
-          ...lista[ultimo],
-          ...atualizacao
-        };
-      } else {
-        lista.push({
-          resultado:numero,
-          ...atualizacao
-        });
-      }
-
-      return {
-        timeline:lista.slice(-MAX_TIMELINE),
-        pendente:null,
-        freeze:null
-      };
+      configs[motor][rx]=config;
     }
+  }
 
-    if (
-      !pendente ||
-      pendente.historico!==chave
-    ) {
-      lista.push({
-        resultado:numero,
-        green:null,
-        semJogada:true,
-        fase:"SEM"
-      });
+  ranking.sort(
+    (a,b)=>
+      b.scoreAuto-a.scoreAuto||
+      b.score-a.score||
+      MOTORES.indexOf(a.motor)-
+      MOTORES.indexOf(b.motor)||
+      a.rx-b.rx
+  );
 
-      return {
-        timeline:lista.slice(-MAX_TIMELINE),
-        pendente:null,
-        freeze:null
-      };
-    }
+  ranking.forEach((item,i)=>{
+    item.posicaoRanking=i+1;
+  });
 
-    const resultado = classificar(
-      numero,
-      jogadaSnapshot(pendente)
+  return {
+    configs,
+    analise,
+    ranking
+  };
+}
+
+function escolherAuto(ranking) {
+  const p=posicaoAutoAtual();
+
+  return (
+    ranking[p-1]||
+    ranking[ranking.length-1]||
+    null
+  );
+}
+
+function obterConfigs() {
+  /*
+   A posição AUTO faz parte da
+   escolha, mas não altera o
+   cálculo dos motores.
+
+   Ao alternar, recalculamos a
+   seleção a partir do ranking.
+  */
+
+  const chave=estado.historico.join(",");
+
+  if (
+    cacheChave===chave&&
+    cacheResultado
+  ) {
+    cacheResultado.auto=escolherAuto(
+      cacheResultado.ranking
     );
 
-    if (resultado.green) {
-      lista.push({
-        resultado:numero,
-        green:true,
-        tipo:resultado.tipo,
-        semJogada:false,
-        fase:"ENTRADA"
-      });
+    return cacheResultado;
+  }
+
+  const resultado=calcularDoze(
+    estado.historico
+  );
+
+  resultado.auto=escolherAuto(
+    resultado.ranking
+  );
+
+  cacheChave=chave;
+  cacheResultado=resultado;
+
+  return resultado;
+}
+
+function configAtiva(dados) {
+  if (estado.modo==="AUTO") {
+    return dados.auto;
+  }
+
+  return (
+    dados.configs[estado.motorManual]
+      ?.[estado.manualRX]||
+    null
+  );
+}
+
+/*
+ SNAPSHOTS
+*/
+
+function snapshot(config) {
+  if (!config?.valido) return null;
+
+  return {
+    motor:config.motor,
+    rx:config.rx,
+    score:config.score,
+    scoreAuto:config.scoreAuto,
+    posicaoRanking:
+      config.posicaoRanking||null,
+
+    centros2:config.jogada.blocos2
+      .map(b=>b.centro),
+
+    centro1:
+      config.jogada.blocos1[0].centro,
+
+    historico:estado.historico.join(",")
+  };
+}
+
+function jogadaSnapshot(snap) {
+  if (!snap) return null;
+
+  const blocos2=(snap.centros2||[])
+    .map(centro=>({
+      centro,
+      qtd:2,
+      numeros:vizinhos(centro,2)
+    }));
+
+  const blocos1=[{
+    centro:snap.centro1,
+    qtd:1,
+    numeros:vizinhos(snap.centro1,1)
+  }];
+
+  return {
+    valido:true,
+    blocos2,
+    blocos1,
+    numeros:new Set(
+      [...blocos2,...blocos1]
+        .flatMap(b=>b.numeros)
+    )
+  };
+}
+
+function prepararPendentes(dados) {
+  const chave=estado.historico.join(",");
+
+  /*
+   AUTO:
+   Se G1 está congelado, não
+   substitui a jogada.
+
+   Se não há G1, prepara a
+   posição atualmente escolhida.
+  */
+
+  if (
+    !estado.freezes.AUTO&&
+    estado.pendentes.AUTO?.historico!==chave
+  ) {
+    estado.pendentes.AUTO=
+      snapshot(dados.auto);
+  }
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      if (estado.freezes[motor][rx]) {
+        continue;
+      }
+
+      if (
+        estado.pendentes[motor][rx]
+          ?.historico!==chave
+      ) {
+        estado.pendentes[motor][rx]=
+          snapshot(dados.configs[motor][rx]);
+      }
+    }
+  }
+}
+
+/*
+ CLASSIFICAÇÃO
+*/
+
+function classificar(numero,jogada) {
+  if (!jogada?.valido) {
+    return {
+      green:false,
+      tipo:"SEM",
+      distancia:null,
+      centro:null,
+      gap:null
+    };
+  }
+
+  const blocos=[
+    ...jogada.blocos2,
+    ...jogada.blocos1
+  ];
+
+  for (const bloco of blocos) {
+    if (bloco.numeros.includes(numero)) {
+      const d=distancia(
+        numero,
+        bloco.centro
+      );
 
       return {
-        timeline:lista.slice(-MAX_TIMELINE),
-        pendente:null,
-        freeze:null
+        green:true,
+        tipo:
+          d===0?"ALVO":
+          d===1?"V1":"V2",
+        distancia:d,
+        centro:bloco.centro,
+        gap:0
       };
     }
+  }
 
+  let maisProximo=null;
+
+  for (const bloco of blocos) {
+    const d=distancia(
+      numero,
+      bloco.centro
+    );
+
+    const gap=d-bloco.qtd;
+
+    if (
+      gap>0&&
+      (
+        !maisProximo||
+        gap<maisProximo.gap
+      )
+    ) {
+      maisProximo={
+        centro:bloco.centro,
+        distancia:d,
+        gap,
+        qtd:bloco.qtd
+      };
+    }
+  }
+
+  return {
+    green:false,
+    tipo:
+      maisProximo?.gap===1?"FORA1":
+      maisProximo?.gap===2?"FORA2":
+      "FORA",
+
+    distancia:
+      maisProximo?.distancia??null,
+
+    centro:
+      maisProximo?.centro??null,
+
+    gap:
+      maisProximo?.gap??null
+  };
+}
+
+/*
+ TIMELINES E G1
+*/
+
+function avaliarLinha(
+  numero,
+  pendente,
+  freeze,
+  timeline,
+  chave
+) {
+  const lista=timeline.slice(-MAX_TIMELINE);
+
+  if (freeze) {
+    const resultado=classificar(
+      numero,
+      jogadaSnapshot(freeze)
+    );
+
+    let ultimo=-1;
+
+    for (let i=lista.length-1;i>=0;i--) {
+      if (lista[i].aguardandoG1) {
+        ultimo=i;
+        break;
+      }
+    }
+
+    const atualizacao={
+      resultadoG1:numero,
+      green:resultado.green,
+      tipo:resultado.tipo,
+      fase:resultado.green?"G1":"LOSS",
+      aguardandoG1:false,
+      semJogada:false
+    };
+
+    if (ultimo>=0) {
+      lista[ultimo]={
+        ...lista[ultimo],
+        ...atualizacao
+      };
+    } else {
+      lista.push({
+        resultado:numero,
+        ...atualizacao
+      });
+    }
+
+    return {
+      timeline:lista.slice(-MAX_TIMELINE),
+      pendente:null,
+      freeze:null,
+      concluida:true,
+      foiG1:true
+    };
+  }
+
+  if (
+    !pendente||
+    pendente.historico!==chave
+  ) {
     lista.push({
       resultado:numero,
       green:null,
-      semJogada:false,
-      aguardandoG1:true,
-      fase:"ESPERA_G1"
+      semJogada:true,
+      fase:"SEM"
     });
 
     return {
       timeline:lista.slice(-MAX_TIMELINE),
       pendente:null,
-      freeze:{...pendente}
+      freeze:null,
+      concluida:false,
+      foiG1:false
     };
   }
 
-  function avaliarPendentes(numero) {
-    const chave = estado.historico.join(",");
-
-    const auto = avaliarLinha(
-      numero,
-      estado.pendentes.AUTO,
-      estado.freezes.AUTO,
-      estado.timelines.AUTO,
-      chave
-    );
-
-    estado.timelines.AUTO = auto.timeline;
-    estado.pendentes.AUTO = auto.pendente;
-    estado.freezes.AUTO = auto.freeze;
-
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        const resultado = avaliarLinha(
-          numero,
-          estado.pendentes[motor][rx],
-          estado.freezes[motor][rx],
-          estado.timelines[motor][rx],
-          chave
-        );
-
-        estado.timelines[motor][rx] =
-          resultado.timeline;
-
-        estado.pendentes[motor][rx] =
-          resultado.pendente;
-
-        estado.freezes[motor][rx] =
-          resultado.freeze;
-      }
-    }
-  }
-
-  /*
-   JOGADOR VIRTUAL
-
-   Responde:
-   - Por que o AUTO não escolheu
-     uma alternativa que acertaria?
-   - Qual era o ranking anterior?
-   - Qual alternativa cobria o número?
-   - O que precisaria mudar na regra?
-
-   A comparação é retrospectiva.
-   Não usa o resultado para refazer
-   a escolha anterior.
-  */
-
-  function nomeConfig(snap) {
-    if (!snap) return "SEM JOGADA";
-
-    return (
-      NOMES[snap.motor] +
-      " C" +
-      snap.rx
-    );
-  }
-
-  function diagnosticarEscolha(
+  const resultado=classificar(
     numero,
-    snapEscolhido,
-    rankingAnterior,
-    historicoAnterior
-  ) {
-    if (!snapEscolhido) {
-      return {
-        tipo:"SEM_JOGADA",
-        titulo:"AGUARDANDO JOGADA",
-        texto:"Ainda não havia configuração válida para avaliar.",
-        detalhes:[]
-      };
-    }
+    jogadaSnapshot(pendente)
+  );
 
-    const resultado = classificar(
-      numero,
-      jogadaSnapshot(snapEscolhido)
-    );
-
-    const alternativas =
-      rankingAnterior.map((config,i) => {
-        const teste = classificar(
-          numero,
-          config.jogada
-        );
-
-        return {
-          posicao:i+1,
-          motor:config.motor,
-          rx:config.rx,
-          scoreAuto:config.scoreAuto,
-          acertou:teste.green,
-          classificacao:teste.tipo,
-          centro:teste.centro
-        };
-      });
-
-    const acertaram =
-      alternativas.filter(x=>x.acertou);
-
-    const escolhidaPosicao =
-      snapEscolhido.posicaoRanking ||
-      alternativas.find(
-        x =>
-          x.motor===snapEscolhido.motor &&
-          x.rx===snapEscolhido.rx
-      )?.posicao ||
-      null;
-
-    const detalhes = [
-      "Resultado: "+numero,
-      "Escolha anterior: "+nomeConfig(snapEscolhido),
-      "Posição da escolha: "+
-        (escolhidaPosicao?escolhidaPosicao+"º":"MANUAL"),
-      "Pontuação da escolha: "+
-        formatar(snapEscolhido.scoreAuto),
-      "Cobertura: 28 de 37 números"
-    ];
-
-    if (resultado.green) {
-      detalhes.push(
-        "Acerto: "+resultado.tipo+
-        " do centro "+resultado.centro
-      );
-
-      return {
-        tipo:"ACERTO",
-        titulo:"ACERTO NA PRIMEIRA ENTRADA",
-        texto:
-          "A configuração escolhida antes do sorteio " +
-          "já cobria o número "+numero+
-          ". Não seria necessário mudar a posição do AUTO.",
-        detalhes,
-        resultadoOriginal:numero
-      };
-    }
-
-    const alternativa =
-      acertaram[0] || null;
-
-    const outras = acertaram
-      .map(x =>
-        x.posicao+"º "+
-        NOMES[x.motor]+" C"+x.rx+
-        " ("+formatar(x.scoreAuto)+")"
-      )
-      .join(" • ");
-
-    detalhes.push(
-      "Alternativas que acertariam: "+
-      (outras||"NENHUMA")
-    );
-
-    detalhes.push(
-      "Distância além da cobertura: "+
-      (resultado.gap??"—")
-    );
-
-    let texto;
-
-    if (alternativa) {
-      const diferenca =
-        snapEscolhido.scoreAuto -
-        alternativa.scoreAuto;
-
-      texto =
-        "O número "+numero+
-        " ficou fora da configuração escolhida. " +
-        "O sistema priorizou o "+
-        (escolhidaPosicao||"motor selecionado")+
-        "º colocado, "+nomeConfig(snapEscolhido)+
-        ", mas o "+alternativa.posicao+
-        "º colocado ("+
-        NOMES[alternativa.motor]+
-        " C"+alternativa.rx+
-        ") já cobria esse resultado. ";
-
-      if (diferenca>0) {
-        texto +=
-          "A alternativa recebeu "+
-          formatar(diferenca)+
-          " ponto(s) a menos no ranking. ";
-      } else if (diferenca<0) {
-        texto +=
-          "A alternativa tinha pontuação maior, "+
-          "mas não estava na posição configurada. ";
-      } else {
-        texto +=
-          "As pontuações eram equivalentes "+
-          "na precisão exibida. ";
-      }
-
-      texto +=
-        "Para acertar essa entrada específica, "+
-        "a escolha teria de ter sido o "+
-        alternativa.posicao+
-        "º colocado antes do sorteio. "+
-        "Isso mostra uma divergência entre "+
-        "a regra de seleção e o resultado observado, "+
-        "não prova que essa alternativa "+
-        "seria melhor no próximo giro.";
-
-    } else {
-      texto =
-        "O número "+numero+
-        " ficou fora da configuração escolhida "+
-        "e nenhuma das alternativas válidas "+
-        "do ranking anterior o cobria. "+
-        "Trocar apenas entre 1º, 2º, 3º ou 4º "+
-        "não teria acertado essa entrada. "+
-        "Seria necessário alterar a composição "+
-        "dos setores ou a regra de pontuação, "+
-        "sem garantia de melhora futura.";
-    }
-
-    const anterior =
-      historicoAnterior.length
-        ? historicoAnterior[historicoAnterior.length-1]
-        : null;
-
-    if (anterior!==null) {
-      detalhes.push(
-        "Resultado anterior: "+anterior
-      );
-    }
+  if (resultado.green) {
+    lista.push({
+      resultado:numero,
+      green:true,
+      tipo:resultado.tipo,
+      semJogada:false,
+      fase:"ENTRADA"
+    });
 
     return {
-      tipo:"FALHA_PRIMEIRA",
-      titulo:"POR QUE ESCOLHEMOS ESSA JOGADA?",
-      texto,
-      detalhes,
-      resultadoOriginal:numero,
-      alternativa,
-      alternativasAcertaram:acertaram.length,
-      resultadoG1:null
+      timeline:lista.slice(-MAX_TIMELINE),
+      pendente:null,
+      freeze:null,
+      concluida:true,
+      foiG1:false
     };
   }
 
-  function atualizarDiagnosticoG1(numero,snap) {
-    const anterior = estado.diagnostico;
+  lista.push({
+    resultado:numero,
+    green:null,
+    semJogada:false,
+    aguardandoG1:true,
+    fase:"ESPERA_G1"
+  });
 
-    if (
-      !anterior ||
-      anterior.tipo!=="FALHA_PRIMEIRA"
-    ) {
-      return;
+  return {
+    timeline:lista.slice(-MAX_TIMELINE),
+    pendente:null,
+
+    /*
+     CONGELAMENTO ORIGINAL:
+     Não altera centros nem
+     troca o motor durante G1.
+    */
+    freeze:{...pendente},
+
+    concluida:false,
+    foiG1:false
+  };
+}
+
+function avaliarPendentes(numero) {
+  const chave=estado.historico.join(",");
+
+  const auto=avaliarLinha(
+    numero,
+    estado.pendentes.AUTO,
+    estado.freezes.AUTO,
+    estado.timelines.AUTO,
+    chave
+  );
+
+  estado.timelines.AUTO=auto.timeline;
+  estado.pendentes.AUTO=auto.pendente;
+  estado.freezes.AUTO=auto.freeze;
+
+  /*
+   NOVA REGRA V3.6:
+
+   Só alterna se AUTO concluiu
+   uma jogada.
+
+   Entrada GREEN = concluída.
+   Entrada LOSS = aguarda G1.
+   G1 GREEN = concluída.
+   G1 LOSS = concluída.
+  */
+
+  if (
+    auto.concluida&&
+    estado.autoAlternado
+  ) {
+    avancarAlternancia();
+  }
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      const resultado=avaliarLinha(
+        numero,
+        estado.pendentes[motor][rx],
+        estado.freezes[motor][rx],
+        estado.timelines[motor][rx],
+        chave
+      );
+
+      estado.timelines[motor][rx]=
+        resultado.timeline;
+
+      estado.pendentes[motor][rx]=
+        resultado.pendente;
+
+      estado.freezes[motor][rx]=
+        resultado.freeze;
+    }
+  }
+
+  return auto;
+}
+
+/*
+ JOGADOR VIRTUAL
+*/
+
+function nomeConfig(snap) {
+  if (!snap) return "SEM JOGADA";
+
+  return (
+    NOMES[snap.motor]+
+    " C"+snap.rx
+  );
+}
+
+function diagnosticarEscolha(
+  numero,
+  snapEscolhido,
+  rankingAnterior,
+  historicoAnterior
+) {
+  if (!snapEscolhido) {
+    return {
+      tipo:"SEM_JOGADA",
+      titulo:"AGUARDANDO JOGADA",
+      texto:
+        "Ainda não havia configuração válida.",
+      detalhes:[]
+    };
+  }
+
+  const resultado=classificar(
+    numero,
+    jogadaSnapshot(snapEscolhido)
+  );
+
+  const alternativas=
+    rankingAnterior.map((config,i)=>{
+      const teste=classificar(
+        numero,
+        config.jogada
+      );
+
+      return {
+        posicao:i+1,
+        motor:config.motor,
+        rx:config.rx,
+        scoreAuto:config.scoreAuto,
+        acertou:teste.green,
+        classificacao:teste.tipo,
+        centro:teste.centro
+      };
+    });
+
+  const acertaram=
+    alternativas.filter(x=>x.acertou);
+
+  const escolhidaPosicao=
+    snapEscolhido.posicaoRanking||
+    alternativas.find(x=>
+      x.motor===snapEscolhido.motor&&
+      x.rx===snapEscolhido.rx
+    )?.posicao||
+    null;
+
+  const detalhes=[
+    "Resultado: "+numero,
+    "Escolha anterior: "+
+      nomeConfig(snapEscolhido),
+    "Posição da escolha: "+
+      (
+        escolhidaPosicao
+          ? escolhidaPosicao+"º"
+          : "MANUAL"
+      ),
+    "Pontuação da escolha: "+
+      formatar(snapEscolhido.scoreAuto),
+    "Cobertura: 28 de 37 números"
+  ];
+
+  if (estado.autoAlternado) {
+    detalhes.push(
+      "AUTO ALTERNADO: 2º ⇄ 3º"
+    );
+  }
+
+  if (resultado.green) {
+    detalhes.push(
+      "Acerto: "+resultado.tipo+
+      " do centro "+resultado.centro
+    );
+
+    return {
+      tipo:"ACERTO",
+      titulo:"ACERTO NA PRIMEIRA ENTRADA",
+      texto:
+        "A configuração escolhida antes "+
+        "do resultado cobria o número "+
+        numero+".",
+      detalhes,
+      resultadoOriginal:numero
+    };
+  }
+
+  const alternativa=acertaram[0]||null;
+
+  const outras=acertaram
+    .map(x=>
+      x.posicao+"º "+
+      NOMES[x.motor]+
+      " C"+x.rx+
+      " ("+
+      formatar(x.scoreAuto)+
+      ")"
+    )
+    .join(" • ");
+
+  detalhes.push(
+    "Alternativas que acertariam: "+
+    (outras||"NENHUMA")
+  );
+
+  detalhes.push(
+    "Distância além da cobertura: "+
+    (resultado.gap??"—")
+  );
+
+  let texto;
+
+  if (alternativa) {
+    const diferenca=
+      snapEscolhido.scoreAuto-
+      alternativa.scoreAuto;
+
+    texto=
+      "O número "+numero+
+      " ficou fora da configuração escolhida. "+
+      "O sistema utilizou o "+
+      (escolhidaPosicao||"motor selecionado")+
+      "º colocado, "+
+      nomeConfig(snapEscolhido)+
+      ". O "+
+      alternativa.posicao+
+      "º colocado ("+
+      NOMES[alternativa.motor]+
+      " C"+alternativa.rx+
+      ") cobria esse resultado. ";
+
+    if (diferenca>0) {
+      texto+=
+        "A alternativa recebeu "+
+        formatar(diferenca)+
+        " ponto(s) a menos no ranking. ";
+    } else if (diferenca<0) {
+      texto+=
+        "A alternativa tinha pontuação "+
+        "maior, mas não era a posição "+
+        "configurada. ";
+    } else {
+      texto+=
+        "As pontuações eram equivalentes. ";
     }
 
-    const resultado = classificar(
+    texto+=
+      "Essa comparação é retrospectiva "+
+      "e não garante acerto futuro.";
+
+  } else {
+    texto=
+      "O número "+numero+
+      " ficou fora da configuração escolhida "+
+      "e nenhuma alternativa válida "+
+      "do ranking anterior o cobria. "+
+      "Mudar apenas a posição do AUTO "+
+      "não teria acertado essa entrada.";
+  }
+
+  const anterior=historicoAnterior.length
+    ? historicoAnterior[
+        historicoAnterior.length-1
+      ]
+    : null;
+
+  if (anterior!==null) {
+    detalhes.push(
+      "Resultado anterior: "+anterior
+    );
+  }
+
+  return {
+    tipo:"FALHA_PRIMEIRA",
+    titulo:"POR QUE ESCOLHEMOS ESSA JOGADA?",
+    texto,
+    detalhes,
+    resultadoOriginal:numero,
+    alternativa,
+    alternativasAcertaram:acertaram.length,
+    resultadoG1:null
+  };
+}
+
+function atualizarDiagnosticoG1(numero,snap) {
+  const anterior=estado.diagnostico;
+
+  if (
+    !anterior||
+    anterior.tipo!=="FALHA_PRIMEIRA"
+  ) {
+    return;
+  }
+
+  const resultado=classificar(
+    numero,
+    jogadaSnapshot(snap)
+  );
+
+  estado.diagnostico={
+    ...anterior,
+    resultadoG1:numero,
+    greenG1:resultado.green,
+
+    titulo:resultado.green
+      ? "PRIMEIRA FALHOU • G1 ACERTOU"
+      : "PRIMEIRA E G1 FALHARAM",
+
+    texto:
+      anterior.texto+
+      " No G1, o resultado foi "+
+      numero+
+      (
+        resultado.green
+          ? ", dentro da cobertura congelada."
+          : ", fora da cobertura congelada."
+      )+
+      (
+        estado.autoAlternado
+          ? " Jogada concluída. AUTO alternado "+
+            "para o "+
+            posicaoAutoAtual()+
+            "º colocado."
+          : ""
+      ),
+
+    detalhes:[
+      ...anterior.detalhes,
+      "Resultado G1: "+numero,
+      "G1: "+
+        (resultado.green?"ACERTO":"ERRO")
+    ]
+  };
+}
+
+/*
+ ENTRADAS
+*/
+
+function adicionarNumero(numero) {
+  if (
+    !Number.isInteger(numero)||
+    numero<0||
+    numero>36
+  ) {
+    return;
+  }
+
+  const historicoAnterior=
+    estado.historico.slice();
+
+  const dados=obterConfigs();
+
+  prepararPendentes(dados);
+
+  /*
+   A configuração AUTO deve ser
+   a que estava efetivamente
+   congelada ou pendente ANTES
+   do resultado.
+  */
+
+  const snapAutoAnterior=
+    estado.freezes.AUTO||
+    estado.pendentes.AUTO;
+
+  const ativa=configAtiva(dados);
+
+  const snapAtiva=
+    estado.modo==="AUTO"
+      ? snapAutoAnterior
+      : (
+          estado.freezes[
+            estado.motorManual
+          ][estado.manualRX]||
+          estado.pendentes[
+            estado.motorManual
+          ][estado.manualRX]||
+          snapshot(ativa)
+        );
+
+  const rankingAnterior=
+    dados.ranking.slice();
+
+  /*
+   Avalia primeiro e só então
+   alterna a posição AUTO.
+  */
+
+  avaliarPendentes(numero);
+
+  if (estado.visualFreeze) {
+    const snap=estado.visualFreeze;
+
+    const resultado=classificar(
       numero,
       jogadaSnapshot(snap)
     );
 
-    estado.diagnostico = {
-      ...anterior,
-      resultadoG1:numero,
-      greenG1:resultado.green,
-      titulo:
-        resultado.green
-          ? "PRIMEIRA FALHOU • G1 ACERTOU"
-          : "PRIMEIRA E G1 FALHARAM",
-      texto:
-        anterior.texto+
-        " No G1, o resultado foi "+numero+
-        (resultado.green
-          ? ", dentro da cobertura original."
-          : ", novamente fora da cobertura original."),
-      detalhes:[
-        ...anterior.detalhes,
-        "Resultado G1: "+numero,
-        "G1: "+(resultado.green?"ACERTO":"ERRO")
-      ]
-    };
-  }
+    const ultimo=
+      estado.visual[
+        estado.visual.length-1
+      ];
 
-  /*
-   ENTRADAS
-  */
-
-  function adicionarNumero(numero) {
-    if (
-      !Number.isInteger(numero) ||
-      numero<0 ||
-      numero>36
-    ) {
-      return;
+    if (ultimo) {
+      ultimo.g1=numero;
+      ultimo.green=resultado.green;
+      ultimo.fase=
+        resultado.green?"G1":"LOSS";
     }
 
-    const historicoAnterior =
-      estado.historico.slice();
+    atualizarDiagnosticoG1(
+      numero,
+      snap
+    );
 
-    const dados = obterConfigs();
+    estado.visualFreeze=null;
 
-    prepararPendentes(dados);
-
-    const ativa = configAtiva(dados);
-
-    /*
-      Guardamos as alternativas
-      ANTES de inserir o resultado.
-    */
-
-    const rankingAnterior =
-      dados.ranking.slice();
-
-    const snapAtiva = snapshot(ativa);
-
-    avaliarPendentes(numero);
-
-    if (estado.visualFreeze) {
-      const snap = estado.visualFreeze;
-
-      const resultado = classificar(
-        numero,
-        jogadaSnapshot(snap)
-      );
-
-      const ultimo =
-        estado.visual[estado.visual.length-1];
-
-      if (ultimo) {
-        ultimo.g1 = numero;
-        ultimo.green = resultado.green;
-        ultimo.fase =
-          resultado.green?"G1":"LOSS";
-      }
-
-      atualizarDiagnosticoG1(numero,snap);
-
-      estado.visualFreeze = null;
-
-    } else {
-      const resultado = snapAtiva
-        ? classificar(
-            numero,
-            jogadaSnapshot(snapAtiva)
-          )
-        : null;
-
-      estado.visual.push({
-        resultado:numero,
-        g1:null,
-        green:resultado?.green?true:null,
-        semJogada:!snapAtiva,
-        fase:
-          !snapAtiva
-            ? "SEM"
-            : resultado.green
-              ? "ENTRADA"
-              : "ESPERA_G1"
-      });
-
-      estado.diagnostico =
-        diagnosticarEscolha(
+  } else {
+    const resultado=snapAtiva
+      ? classificar(
           numero,
-          snapAtiva,
-          rankingAnterior,
-          historicoAnterior
-        );
+          jogadaSnapshot(snapAtiva)
+        )
+      : null;
 
-      if (resultado && !resultado.green) {
-        estado.visualFreeze = snapAtiva;
-      }
-    }
+    estado.visual.push({
+      resultado:numero,
+      g1:null,
+      green:resultado?.green?true:null,
+      semJogada:!snapAtiva,
 
-    estado.ultimoNumero = numero;
+      fase:
+        !snapAtiva
+          ? "SEM"
+          : resultado.green
+            ? "ENTRADA"
+            : "ESPERA_G1"
+    });
 
-    estado.historico.push(numero);
-    estado.historico =
-      estado.historico.slice(-MAX_HISTORICO);
-
-    estado.visual =
-      estado.visual.slice(-MAX_VISUAL);
-
-    invalidarCache();
-    salvar();
-    agendarRender();
-  }
-
-  function reiniciarApontamentos() {
-    const novo = criarEstado();
-
-    estado.timelines = novo.timelines;
-    estado.pendentes = novo.pendentes;
-    estado.freezes = novo.freezes;
-    estado.visual = [];
-    estado.visualFreeze = null;
-    estado.diagnostico = null;
-    estado.ultimoNumero = null;
-
-    invalidarCache();
-  }
-
-  function inserirHistorico() {
-    const campo = el("entradaHistorico");
-
-    const encontrados =
-      campo.value.match(
-        /(?:^|[^0-9])(?:[0-9]|[12][0-9]|3[0-6])(?=$|[^0-9])/g
+    estado.diagnostico=
+      diagnosticarEscolha(
+        numero,
+        snapAtiva,
+        rankingAnterior,
+        historicoAnterior
       );
 
-    if (!encontrados) return;
-
-    const numeros = encontrados
-      .map(x=>Number(x.trim()))
-      .filter(n =>
-        Number.isInteger(n) &&
-        n>=0 &&
-        n<=36
-      );
-
-    if (!numeros.length) return;
-
-    estado.historico =
-      limitarHistorico(numeros);
-
-    reiniciarApontamentos();
-
-    campo.value = "";
-    salvar();
-    agendarRender();
-  }
-
-  function apagarUltimo() {
-    if (!estado.historico.length) return;
-
-    estado.historico.pop();
-    reiniciarApontamentos();
-
-    salvar();
-    agendarRender();
-  }
-
-  function apagarTudo() {
-    if (!confirm("Apagar todo o histórico?")) {
-      return;
+    if (resultado&&!resultado.green) {
+      /*
+       Congela a entrada original.
+       Não muda nenhum centro.
+      */
+      estado.visualFreeze=snapAtiva;
     }
-
-    estado.historico = [];
-    reiniciarApontamentos();
-
-    salvar();
-    agendarRender();
   }
 
-  function selecionar(motor,rx) {
-    if (motor==="AUTO") {
-      estado.modo = "AUTO";
-    } else {
-      estado.modo = "MANUAL";
-      estado.motorManual = motor;
-      estado.manualRX = rx;
-    }
+  estado.ultimoNumero=numero;
 
-    salvar();
-    agendarRender();
+  estado.historico.push(numero);
+
+  estado.historico=
+    estado.historico.slice(-MAX_HISTORICO);
+
+  estado.visual=
+    estado.visual.slice(-MAX_VISUAL);
+
+  invalidarCache();
+  salvar();
+  agendarRender();
+}
+
+function reiniciarApontamentos() {
+  const novo=criarEstado();
+
+  estado.timelines=novo.timelines;
+  estado.pendentes=novo.pendentes;
+  estado.freezes=novo.freezes;
+  estado.visual=[];
+  estado.visualFreeze=null;
+  estado.diagnostico=null;
+  estado.ultimoNumero=null;
+
+  if (estado.autoAlternado) {
+    estado.autoProximaPosicao=3;
+    estado.autoPosicao=3;
   }
 
-  function selecionarPosicao(p) {
-    if (![1,2,3,4].includes(p)) return;
+  invalidarCache();
+}
 
-    estado.autoPosicao = p;
-    estado.modo = "AUTO";
+function inserirHistorico() {
+  const campo=el("entradaHistorico");
 
-    /*
-      Se AUTO está aguardando G1,
-      a cobertura congelada não muda.
-    */
+  const encontrados=
+    campo.value.match(
+      /(?:^|[^0-9])(?:[0-9]|[12][0-9]|3[0-6])(?=$|[^0-9])/g
+    );
 
-    if (!estado.freezes.AUTO) {
-      estado.pendentes.AUTO = null;
-    }
+  if (!encontrados) return;
 
-    invalidarCache();
-    salvar();
-    agendarRender();
+  const numeros=encontrados
+    .map(x=>Number(x.trim()))
+    .filter(n=>
+      Number.isInteger(n)&&
+      n>=0&&
+      n<=36
+    );
+
+  if (!numeros.length) return;
+
+  estado.historico=
+    limitarHistorico(numeros);
+
+  reiniciarApontamentos();
+
+  campo.value="";
+
+  salvar();
+  agendarRender();
+}
+
+function apagarUltimo() {
+  if (!estado.historico.length) return;
+
+  estado.historico.pop();
+  reiniciarApontamentos();
+
+  salvar();
+  agendarRender();
+}
+
+function apagarTudo() {
+  if (!confirm("Apagar todo o histórico?")) {
+    return;
+  }
+
+  estado.historico=[];
+  reiniciarApontamentos();
+
+  salvar();
+  agendarRender();
+}
+
+function selecionar(motor,rx) {
+  if (motor==="AUTO") {
+    estado.modo="AUTO";
+  } else {
+    estado.modo="MANUAL";
+    estado.motorManual=motor;
+    estado.manualRX=rx;
+  }
+
+  salvar();
+  agendarRender();
+}
+
+function selecionarPosicao(p) {
+  if (![1,2,3,4].includes(p)) {
+    return;
   }
 
   /*
-   INTERFACE
+   Ao selecionar posição fixa,
+   desativa a alternância.
   */
 
-  document.body.innerHTML = "";
+  estado.autoAlternado=false;
+  estado.autoPosicao=p;
+  estado.autoProximaPosicao=3;
+  estado.modo="AUTO";
 
-  document.body.style.cssText = `
-    margin:0;
-    background:#101014;
-    color:#fff;
-    font-family:Arial,sans-serif;
-  `;
+  /*
+   G1 permanece congelado.
+  */
 
-  const app = document.createElement("div");
+  if (!estado.freezes.AUTO) {
+    estado.pendentes.AUTO=null;
+  }
 
-  app.innerHTML = `
+  invalidarCache();
+  salvar();
+  agendarRender();
+}
+
+/*
+ INTERFACE
+*/
+
+document.body.innerHTML="";
+
+document.body.style.cssText=`
+  margin:0;
+  background:#101014;
+  color:#fff;
+  font-family:Arial,sans-serif;
+`;
+
+const app=document.createElement("div");
+
+app.innerHTML=`
 <style>
-*{box-sizing:border-box}
+*{
+  box-sizing:border-box;
+}
 
 body{
   background:#101014;
@@ -1957,8 +2151,13 @@ button{
   font-size:10px;
 }
 
-.btn.verde{background:#17643b}
-.btn.red{background:#782a35}
+.btn.verde{
+  background:#17643b;
+}
+
+.btn.red{
+  background:#782a35;
+}
 
 .cabecalhoRecolher{
   width:100%;
@@ -2063,7 +2262,8 @@ button{
 
 .posicaoAuto{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:
+    repeat(4,minmax(0,1fr));
   gap:5px;
   margin-top:8px;
 }
@@ -2083,6 +2283,42 @@ button{
   color:white;
 }
 
+/*
+ NOVO BOTÃO DA V3.6
+*/
+
+.autoAlternadoArea{
+  margin-top:7px;
+}
+
+.autoAlternadoBtn{
+  width:100%;
+  min-height:44px;
+  border:2px solid #667083;
+  border-radius:8px;
+  background:#303744;
+  color:#fff;
+  font-size:13px;
+}
+
+.autoAlternadoBtn.ativo{
+  background:#155e43;
+  border-color:#00e676;
+  color:#fff;
+}
+
+.autoAlternadoInfo{
+  margin-top:6px;
+  font-size:10px;
+  font-weight:900;
+  color:#aeb5c5;
+  line-height:1.6;
+}
+
+.autoAlternadoInfo.ativo{
+  color:#00e676;
+}
+
 .posicaoInfo{
   font-size:9px;
   color:#aeb5c5;
@@ -2098,7 +2334,8 @@ button{
 
 .rankingItem{
   display:grid;
-  grid-template-columns:32px minmax(0,1fr) auto;
+  grid-template-columns:
+    32px minmax(0,1fr) auto;
   gap:7px;
   align-items:center;
   padding:8px;
@@ -2201,7 +2438,8 @@ button{
 
 .timelineRow{
   display:grid;
-  grid-template-columns:70px minmax(0,1fr) 38px;
+  grid-template-columns:
+    70px minmax(0,1fr) 38px;
   gap:5px;
   align-items:center;
   margin-top:6px;
@@ -2226,16 +2464,24 @@ button{
   font-weight:900;
 }
 
-.gl.green{background:#00994d}
-.gl.loss{background:#c62828}
+.gl.green{
+  background:#00994d;
+}
+
+.gl.loss{
+  background:#c62828;
+}
+
 .gl.g1{
   background:#ffc107;
   color:#111;
 }
+
 .gl.wait{
   background:#4a3510;
   color:#ffc107;
 }
+
 .gl.sem{
   background:#333;
   color:#999;
@@ -2246,7 +2492,9 @@ button{
   font-weight:900;
 }
 
-.taxaTL{text-align:right}
+.taxaTL{
+  text-align:right;
+}
 
 .duplas14{
   display:grid;
@@ -2265,10 +2513,21 @@ button{
   padding:6px 3px 25px;
 }
 
-.dupla14.green{border-color:#00b85c}
-.dupla14.loss{border-color:#d93a3a}
-.dupla14.g1{border-color:#ffc107}
-.dupla14.wait{border-color:#8a6b00}
+.dupla14.green{
+  border-color:#00b85c;
+}
+
+.dupla14.loss{
+  border-color:#d93a3a;
+}
+
+.dupla14.g1{
+  border-color:#ffc107;
+}
+
+.dupla14.wait{
+  border-color:#8a6b00;
+}
 
 .bolaDupla{
   width:30px;
@@ -2295,13 +2554,22 @@ button{
   white-space:nowrap;
 }
 
-.resultadoEntrada.green{background:#00994d}
-.resultadoEntrada.loss{background:#c62828}
+.resultadoEntrada.green{
+  background:#00994d;
+}
+
+.resultadoEntrada.loss{
+  background:#c62828;
+}
+
 .resultadoEntrada.g1{
   background:#ffc107;
   color:#111;
 }
-.resultadoEntrada.wait{color:#ffc107}
+
+.resultadoEntrada.wait{
+  color:#ffc107;
+}
 
 .jogadaStatus{
   display:block;
@@ -2318,7 +2586,8 @@ button{
 
 .jogadaHorizontal{
   display:grid;
-  grid-template-columns:repeat(6,minmax(0,1fr));
+  grid-template-columns:
+    repeat(6,minmax(0,1fr));
   gap:5px;
   width:100%;
 }
@@ -2344,7 +2613,8 @@ button{
 }
 
 .alvoQuadrado.congelado{
-  box-shadow:0 0 0 1px #ffc107 inset;
+  box-shadow:
+    0 0 0 1px #ffc107 inset;
 }
 
 .legendaJogada{
@@ -2366,8 +2636,13 @@ button{
   vertical-align:middle;
 }
 
-.legendaCor.azul{background:#0089cf}
-.legendaCor.amarelo{background:#ffc107}
+.legendaCor.azul{
+  background:#0089cf;
+}
+
+.legendaCor.amarelo{
+  background:#ffc107;
+}
 
 .teclado{
   display:grid;
@@ -2383,7 +2658,9 @@ button{
   font-size:13px;
 }
 
-.zero{grid-column:span 6}
+.zero{
+  grid-column:span 6;
+}
 
 .virtualCabecalho{
   display:flex;
@@ -2455,7 +2732,8 @@ button{
 
 .virtualDetalhes{
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:
+    repeat(2,minmax(0,1fr));
   gap:5px;
   margin-top:9px;
 }
@@ -2480,15 +2758,18 @@ button{
 
 @media(max-width:600px){
   .resumo{
-    grid-template-columns:repeat(2,1fr);
+    grid-template-columns:
+      repeat(2,1fr);
   }
 
   .duplas14{
-    grid-template-columns:repeat(4,1fr);
+    grid-template-columns:
+      repeat(4,1fr);
   }
 
   .timelineRow{
-    grid-template-columns:63px minmax(0,1fr) 34px;
+    grid-template-columns:
+      63px minmax(0,1fr) 34px;
   }
 
   .gl{
@@ -2503,7 +2784,9 @@ button{
     border-radius:6px;
   }
 
-  .jogadaHorizontal{gap:4px}
+  .jogadaHorizontal{
+    gap:4px;
+  }
 
   .virtualDetalhes{
     grid-template-columns:1fr;
@@ -2513,7 +2796,7 @@ button{
 
 <div class="app">
 
-  <h2>ANÁLISE BETA V3.4</h2>
+  <h2>ANÁLISE BETA V3.6</h2>
 
   <div class="painel">
 
@@ -2554,11 +2837,17 @@ button{
 
     <div class="autoCompacto">
 
-      <button id="btnAUTO" class="autoQuadrado">
+      <button
+        id="btnAUTO"
+        class="autoQuadrado"
+      >
         AUTO
       </button>
 
-      <div id="autoDescricao" class="autoDescricao">
+      <div
+        id="autoDescricao"
+        class="autoDescricao"
+      >
         AGUARDANDO
       </div>
 
@@ -2571,19 +2860,58 @@ button{
       </div>
 
       <div class="posicaoAuto">
-        <button id="autoP1" class="posicaoBtn">1º</button>
-        <button id="autoP2" class="posicaoBtn">2º</button>
-        <button id="autoP3" class="posicaoBtn">3º</button>
-        <button id="autoP4" class="posicaoBtn">4º</button>
+        <button
+          id="autoP1"
+          class="posicaoBtn"
+        >1º</button>
+
+        <button
+          id="autoP2"
+          class="posicaoBtn"
+        >2º</button>
+
+        <button
+          id="autoP3"
+          class="posicaoBtn"
+        >3º</button>
+
+        <button
+          id="autoP4"
+          class="posicaoBtn"
+        >4º</button>
+      </div>
+
+      <!-- NOVO BOTÃO V3.6 -->
+
+      <div class="autoAlternadoArea">
+
+        <button
+          id="autoAlternado"
+          class="autoAlternadoBtn"
+        >
+          AUTO 2º ⇄ 3º
+        </button>
+
+        <div
+          id="autoAlternadoInfo"
+          class="autoAlternadoInfo"
+        >
+          DESATIVADO
+        </div>
+
       </div>
 
       <div class="posicaoInfo">
-        PADRÃO: 3º COLOCADO • RANKING POR PONTUAÇÃO DECRESCENTE
+        PADRÃO: 3º COLOCADO •
+        RANKING POR PONTUAÇÃO DECRESCENTE
       </div>
 
     </div>
 
-    <div id="conteudoCandidatos" class="conteudoRecolher oculto">
+    <div
+      id="conteudoCandidatos"
+      class="conteudoRecolher oculto"
+    >
 
       ${[
         ["NORMAL","NORMAL • DÚZIAS FÍSICAS","N",""],
@@ -2617,7 +2945,10 @@ button{
           RANKING COMPLETO • 12 MOTORES
         </div>
 
-        <div id="rankingLista" class="rankingLista"></div>
+        <div
+          id="rankingLista"
+          class="rankingLista"
+        ></div>
 
       </div>
 
@@ -2629,7 +2960,10 @@ button{
           CONCENTRAÇÃO FÍSICA DAS DÚZIAS
         </div>
 
-        <div id="duzias" class="duziasLinha"></div>
+        <div
+          id="duzias"
+          class="duziasLinha"
+        ></div>
 
       </div>
 
@@ -2653,11 +2987,17 @@ button{
         AUTO
       </div>
 
-      <div id="timelineAUTO" class="timelineRow"></div>
+      <div
+        id="timelineAUTO"
+        class="timelineRow"
+      ></div>
 
     </div>
 
-    <div id="conteudoTimelines" class="oculto">
+    <div
+      id="conteudoTimelines"
+      class="oculto"
+    >
 
       ${[
         ["NORMAL","N"],
@@ -2691,7 +3031,10 @@ button{
       ÚLTIMAS 14 JOGADAS
     </div>
 
-    <div id="ultimos14" class="duplas14"></div>
+    <div
+      id="ultimos14"
+      class="duplas14"
+    ></div>
 
   </div>
 
@@ -2711,7 +3054,10 @@ button{
       TECLADO
     </div>
 
-    <div id="teclado" class="teclado"></div>
+    <div
+      id="teclado"
+      class="teclado"
+    ></div>
 
   </div>
 
@@ -2738,21 +3084,34 @@ button{
 
       </div>
 
-      <span id="setaVirtual" class="seta">−</span>
+      <span
+        id="setaVirtual"
+        class="seta"
+      >−</span>
 
     </button>
 
     <div id="conteudoVirtual">
 
-      <div id="virtualStatus" class="virtualStatus wait">
+      <div
+        id="virtualStatus"
+        class="virtualStatus wait"
+      >
         AGUARDANDO RESULTADO
       </div>
 
-      <div id="virtualTexto" class="virtualTexto">
-        Insira um número para comparar a escolha com as alternativas.
+      <div
+        id="virtualTexto"
+        class="virtualTexto"
+      >
+        Insira um número para comparar
+        a escolha com as alternativas.
       </div>
 
-      <div id="virtualDetalhes" class="virtualDetalhes"></div>
+      <div
+        id="virtualDetalhes"
+        class="virtualDetalhes"
+      ></div>
 
     </div>
 
@@ -2761,589 +3120,719 @@ button{
 </div>
 `;
 
-  document.body.appendChild(app);
+document.body.appendChild(app);
+
+/*
+ EVENTOS
+*/
+
+el("inserir").onclick=inserirHistorico;
+el("apagar").onclick=apagarUltimo;
+el("limpar").onclick=apagarTudo;
+
+el("btnAUTO").onclick=()=>
+  selecionar("AUTO");
+
+for (let p=1;p<=4;p++) {
+  el("autoP"+p).onclick=()=>
+    selecionarPosicao(p);
+}
+
+/*
+ NOVO BOTÃO V3.6
+*/
+
+el("autoAlternado").onclick=
+  selecionarAlternancia;
+
+for (const motor of MOTORES) {
+  for (const rx of RX_LIST) {
+    el("btn"+PREFIXOS[motor]+rx).onclick=
+      ()=>selecionar(motor,rx);
+  }
+}
+
+el("recolherCandidatos").onclick=()=>{
+  estado.painelCandidatosAberto=
+    !estado.painelCandidatosAberto;
+
+  salvar();
+  renderPaineis();
+};
+
+el("recolherTimelines").onclick=()=>{
+  estado.painelTimelinesAberto=
+    !estado.painelTimelinesAberto;
+
+  salvar();
+  renderPaineis();
+};
+
+el("recolherVirtual").onclick=()=>{
+  estado.jogadorVirtualAberto=
+    !estado.jogadorVirtualAberto;
+
+  salvar();
+  renderPaineis();
+};
+
+/*
+ TECLADO
+*/
+
+const teclado=el("teclado");
+
+for (let numero=1;numero<=36;numero++) {
+  const botao=document.createElement("button");
+
+  botao.className="numero";
+  botao.textContent=numero;
+  botao.style.background=corNumero(numero);
+
+  botao.onclick=()=>
+    adicionarNumero(numero);
+
+  teclado.appendChild(botao);
+}
+
+const zero=document.createElement("button");
+
+zero.className="numero zero";
+zero.textContent="0";
+zero.style.background=corNumero(0);
+
+zero.onclick=()=>
+  adicionarNumero(0);
+
+teclado.appendChild(zero);
+
+/*
+ PAINÉIS
+*/
+
+function renderPaineis() {
+  el("conteudoCandidatos").classList.toggle(
+    "oculto",
+    !estado.painelCandidatosAberto
+  );
+
+  el("conteudoTimelines").classList.toggle(
+    "oculto",
+    !estado.painelTimelinesAberto
+  );
+
+  el("conteudoVirtual").classList.toggle(
+    "oculto",
+    !estado.jogadorVirtualAberto
+  );
+
+  el("setaCandidatos").textContent=
+    estado.painelCandidatosAberto?"−":"+";
+
+  el("setaTimelines").textContent=
+    estado.painelTimelinesAberto?"−":"+";
+
+  el("setaVirtual").textContent=
+    estado.jogadorVirtualAberto?"−":"+";
+}
+
+/*
+ TIMELINES
+*/
+
+function renderTimeline(id,nome,lista) {
+  const itens=(lista||[])
+    .slice(-MAX_TIMELINE);
+
+  const validos=itens.filter(item=>
+    !item.semJogada&&
+    !item.aguardandoG1&&
+    typeof item.green==="boolean"
+  );
+
+  const taxa=validos.length
+    ? validos.filter(x=>x.green).length/
+      validos.length*100
+    : null;
+
+  const html=itens.map(item=>{
+    if (item.semJogada) {
+      return '<span class="gl sem">—</span>';
+    }
+
+    if (item.aguardandoG1) {
+      return '<span class="gl wait">…</span>';
+    }
+
+    if (
+      item.green&&
+      item.fase==="G1"
+    ) {
+      return '<span class="gl g1">G1</span>';
+    }
+
+    if (item.green) {
+      return '<span class="gl green">G</span>';
+    }
+
+    return '<span class="gl loss">L</span>';
+  }).join("");
+
+  el(id).innerHTML=`
+    <div class="nomeTL">${nome}</div>
+    <div class="timeline">${html}</div>
+    <div class="taxaTL">
+      ${taxa===null?"—":taxa.toFixed(0)+"%"}
+    </div>
+  `;
+}
+
+/*
+ JOGADA ATUAL
+*/
+
+function renderJogada(config,congelada) {
+  const area=el("jogada");
+
+  if (
+    !config?.valido||
+    !config.jogada?.valido
+  ) {
+    area.innerHTML=`
+      <div class="jogadaStatus">
+        AGUARDANDO JOGADA VÁLIDA
+      </div>
+    `;
+    return;
+  }
+
+  const blocos=[
+    ...config.jogada.blocos2.map(b=>({
+      ...b,
+      um:false
+    })),
+    ...config.jogada.blocos1.map(b=>({
+      ...b,
+      um:true
+    }))
+  ];
+
+  blocos.sort((a,b)=>{
+    const regA=ORDEM_REGIOES.indexOf(
+      regiao(a.centro)
+    );
+
+    const regB=ORDEM_REGIOES.indexOf(
+      regiao(b.centro)
+    );
+
+    return regA-regB||
+      pos(a.centro)-pos(b.centro);
+  });
+
+  const status=congelada
+    ? "G1 • JOGADA CONGELADA"
+    : "JOGADA ATUAL";
+
+  const posicao=config.posicaoRanking
+    ? " • "+config.posicaoRanking+"º RANKING"
+    : "";
+
+  area.innerHTML=`
+    <div class="jogadaStatus ${
+      congelada?"congelada":""
+    }">
+      ${status}
+      • ${NOMES[config.motor]}
+      • C${config.rx}
+      • ${alvoRX(config.rx)}ª DÚZIA
+      ${posicao}
+    </div>
+
+    <div class="jogadaHorizontal">
+      ${blocos.map(bloco=>`
+        <div
+          class="alvoQuadrado
+            ${bloco.um?"um":""}
+            ${congelada?"congelado":""}"
+          title="${
+            bloco.um
+              ? "1 vizinho"
+              : "2 vizinhos"
+          }"
+        >
+          ${bloco.centro}
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="legendaJogada">
+      <span>
+        <span class="legendaCor azul"></span>
+        2 VIZINHOS
+      </span>
+
+      <span>
+        <span class="legendaCor amarelo"></span>
+        1 VIZINHO
+      </span>
+
+      <span>28 NÚMEROS COBERTOS</span>
+    </div>
+  `;
+}
+
+/*
+ ÚLTIMAS 14
+*/
+
+function renderUltimos() {
+  el("ultimos14").innerHTML=
+    estado.visual
+      .slice(-MAX_VISUAL)
+      .map(item=>{
+        const classe=
+          item.semJogada
+            ? "sem"
+            : item.fase==="ESPERA_G1"
+              ? "wait"
+              : item.fase==="G1"
+                ? "g1"
+                : item.green
+                  ? "green"
+                  : "loss";
+
+        const textos={
+          sem:"—",
+          wait:"…",
+          g1:"G1",
+          green:"G",
+          loss:"L"
+        };
+
+        return `
+          <div class="dupla14 ${classe}">
+            <div
+              class="bolaDupla"
+              style="background:${
+                corNumero(item.resultado)
+              }"
+            >
+              ${item.resultado}
+            </div>
+
+            <div class="resultadoEntrada ${classe}">
+              ${textos[classe]}
+              ${
+                item.g1==null
+                  ? ""
+                  : " • "+item.g1
+              }
+            </div>
+          </div>
+        `;
+      }).join("");
+}
+
+/*
+ JOGADOR VIRTUAL
+*/
+
+function renderVirtual() {
+  const d=estado.diagnostico;
+
+  const status=el("virtualStatus");
+  const texto=el("virtualTexto");
+  const detalhes=el("virtualDetalhes");
+
+  if (!d) {
+    status.className="virtualStatus wait";
+    status.textContent="AGUARDANDO RESULTADO";
+
+    texto.textContent=
+      "O próximo resultado será comparado "+
+      "com a escolha e o ranking anteriores.";
+
+    detalhes.innerHTML="";
+    return;
+  }
+
+  const acertou=
+    d.tipo==="ACERTO"||
+    d.greenG1===true;
+
+  const aguardando=
+    d.tipo==="SEM_JOGADA";
+
+  status.className=
+    "virtualStatus "+
+    (
+      aguardando
+        ? "wait"
+        : acertou
+          ? "green"
+          : "loss"
+    );
+
+  status.textContent=d.titulo;
+  texto.textContent=d.texto;
+
+  detalhes.innerHTML="";
+
+  for (const item of d.detalhes||[]) {
+    const div=document.createElement("div");
+
+    div.className="virtualDetalhe";
+    div.textContent=item;
+
+    detalhes.appendChild(div);
+  }
+}
+
+/*
+ RENDER
+*/
+
+let renderPendente=false;
+
+function agendarRender() {
+  if (renderPendente) return;
+
+  renderPendente=true;
+
+  setTimeout(()=>{
+    renderPendente=false;
+    render();
+  },0);
+}
+
+function render() {
+  const dados=obterConfigs();
+
+  prepararPendentes(dados);
+
+  const ativa=configAtiva(dados);
 
   /*
-   EVENTOS
+   BOTÕES DOS MOTORES
   */
-
-  el("inserir").onclick = inserirHistorico;
-  el("apagar").onclick = apagarUltimo;
-  el("limpar").onclick = apagarTudo;
-
-  el("btnAUTO").onclick = () => selecionar("AUTO");
-
-  for (let p=1;p<=4;p++) {
-    el("autoP"+p).onclick = () =>
-      selecionarPosicao(p);
-  }
 
   for (const motor of MOTORES) {
     for (const rx of RX_LIST) {
-      el("btn"+PREFIXOS[motor]+rx).onclick =
-        () => selecionar(motor,rx);
+      const botao=el(
+        "btn"+PREFIXOS[motor]+rx
+      );
+
+      botao.classList.toggle(
+        "ativo",
+        estado.modo==="MANUAL"&&
+        estado.motorManual===motor&&
+        estado.manualRX===rx
+      );
     }
   }
 
-  el("recolherCandidatos").onclick = () => {
-    estado.painelCandidatosAberto =
-      !estado.painelCandidatosAberto;
+  el("btnAUTO").style.background=
+    estado.modo==="AUTO"
+      ? "#007d98"
+      : "#303744";
 
-    salvar();
-    renderPaineis();
-  };
-
-  el("recolherTimelines").onclick = () => {
-    estado.painelTimelinesAberto =
-      !estado.painelTimelinesAberto;
-
-    salvar();
-    renderPaineis();
-  };
-
-  el("recolherVirtual").onclick = () => {
-    estado.jogadorVirtualAberto =
-      !estado.jogadorVirtualAberto;
-
-    salvar();
-    renderPaineis();
-  };
+  el("btnAUTO").style.borderColor=
+    estado.modo==="AUTO"
+      ? "#00e5ff"
+      : "#555c6b";
 
   /*
-   TECLADO
+   BOTÕES INDIVIDUAIS
   */
 
-  const teclado = el("teclado");
-
-  for (let numero=1;numero<=36;numero++) {
-    const botao = document.createElement("button");
-
-    botao.className = "numero";
-    botao.textContent = numero;
-    botao.style.background = corNumero(numero);
-
-    botao.onclick = () => adicionarNumero(numero);
-
-    teclado.appendChild(botao);
-  }
-
-  const zero = document.createElement("button");
-
-  zero.className = "numero zero";
-  zero.textContent = "0";
-  zero.style.background = corNumero(0);
-  zero.onclick = () => adicionarNumero(0);
-
-  teclado.appendChild(zero);
-
-  /*
-   PAINÉIS
-  */
-
-  function renderPaineis() {
-    el("conteudoCandidatos").classList.toggle(
-      "oculto",
-      !estado.painelCandidatosAberto
+  for (let p=1;p<=4;p++) {
+    el("autoP"+p).classList.toggle(
+      "ativo",
+      !estado.autoAlternado&&
+      estado.autoPosicao===p
     );
-
-    el("conteudoTimelines").classList.toggle(
-      "oculto",
-      !estado.painelTimelinesAberto
-    );
-
-    el("conteudoVirtual").classList.toggle(
-      "oculto",
-      !estado.jogadorVirtualAberto
-    );
-
-    el("setaCandidatos").textContent =
-      estado.painelCandidatosAberto?"−":"+";
-
-    el("setaTimelines").textContent =
-      estado.painelTimelinesAberto?"−":"+";
-
-    el("setaVirtual").textContent =
-      estado.jogadorVirtualAberto?"−":"+";
   }
 
   /*
-   TIMELINES
+   NOVO BOTÃO AUTO 2º ⇄ 3º
   */
 
-  function renderTimeline(id,nome,lista) {
-    const itens =
-      (lista||[]).slice(-MAX_TIMELINE);
+  el("autoAlternado").classList.toggle(
+    "ativo",
+    estado.autoAlternado
+  );
 
-    const validos = itens.filter(item =>
-      !item.semJogada &&
-      !item.aguardandoG1 &&
-      typeof item.green==="boolean"
-    );
+  el("autoAlternado").textContent=
+    estado.autoAlternado
+      ? "AUTO 2º ⇄ 3º • ATIVADO"
+      : "ATIVAR AUTO 2º ⇄ 3º";
 
-    const taxa = validos.length
-      ? validos.filter(x=>x.green).length /
-        validos.length*100
-      : null;
+  const freezeAuto=estado.freezes.AUTO;
 
-    const html = itens.map(item => {
-      if (item.semJogada) {
-        return '<span class="gl sem">—</span>';
-      }
+  const posicaoMostrada=freezeAuto
+    ? (
+        freezeAuto.posicaoRanking||
+        posicaoAutoAtual()
+      )
+    : posicaoAutoAtual();
 
-      if (item.aguardandoG1) {
-        return '<span class="gl wait">…</span>';
-      }
+  const infoAlternancia=
+    el("autoAlternadoInfo");
 
-      if (item.green && item.fase==="G1") {
-        return '<span class="gl g1">G1</span>';
-      }
+  infoAlternancia.classList.toggle(
+    "ativo",
+    estado.autoAlternado
+  );
 
-      if (item.green) {
-        return '<span class="gl green">G</span>';
-      }
-
-      return '<span class="gl loss">L</span>';
-    }).join("");
-
-    el(id).innerHTML = `
-      <div class="nomeTL">${nome}</div>
-      <div class="timeline">${html}</div>
-      <div class="taxaTL">
-        ${taxa===null?"—":taxa.toFixed(0)+"%"}
-      </div>
-    `;
+  if (estado.autoAlternado) {
+    infoAlternancia.textContent=
+      freezeAuto
+        ? (
+            "G1 CONGELADO NO "+
+            posicaoMostrada+
+            "º • AGUARDANDO RESULTADO FINAL"
+          )
+        : (
+            "ATIVADO • PRÓXIMA ENTRADA: "+
+            posicaoAutoAtual()+
+            "º COLOCADO"
+          );
+  } else {
+    infoAlternancia.textContent=
+      "DESATIVADO • POSIÇÃO FIXA: "+
+      estado.autoPosicao+"º";
   }
 
   /*
-   JOGADA ATUAL
+   AUTO COMPACTO
   */
 
-  function renderJogada(config,congelada) {
-    const area = el("jogada");
+  const autoExibido=freezeAuto
+    ? freezeAuto
+    : dados.auto;
 
-    if (!config?.valido || !config.jogada?.valido) {
-      area.innerHTML = `
-        <div class="jogadaStatus">
-          AGUARDANDO JOGADA VÁLIDA
+  el("autoDescricao").textContent=
+    autoExibido
+      ? (
+          (
+            freezeAuto
+              ? "G1 CONGELADO • "
+              : estado.autoAlternado
+                ? "AUTO ALTERNADO • "
+                : ""
+          )+
+          posicaoMostrada+
+          "º DO RANKING • "+
+          NOMES[autoExibido.motor]+
+          " C"+autoExibido.rx+
+          " • SCORE "+
+          formatar(autoExibido.scoreAuto)
+        )
+      : "AGUARDANDO JOGADAS VÁLIDAS";
+
+  /*
+   RANKING COMPLETO
+  */
+
+  el("rankingLista").innerHTML=
+    dados.ranking.length
+      ? dados.ranking.map((config,i)=>`
+          <div class="rankingItem ${
+            i===posicaoAutoAtual()-1
+              ? "selecionado"
+              : ""
+          }">
+            <div class="rankingPos">
+              ${i+1}º
+            </div>
+
+            <div>
+              ${NOMES[config.motor]}
+              C${config.rx}
+              ${
+                i===posicaoAutoAtual()-1
+                  ? " • AUTO"
+                  : ""
+              }
+            </div>
+
+            <div class="rankingScore">
+              ${formatar(config.scoreAuto)}
+            </div>
+          </div>
+        `).join("")
+      : `
+        <div class="posicaoInfo">
+          AGUARDANDO HISTÓRICO SUFICIENTE
         </div>
       `;
-      return;
-    }
-
-    const blocos = [
-      ...config.jogada.blocos2.map(b=>({
-        ...b,um:false
-      })),
-      ...config.jogada.blocos1.map(b=>({
-        ...b,um:true
-      }))
-    ];
-
-    blocos.sort((a,b) => {
-      const regA =
-        ORDEM_REGIOES.indexOf(regiao(a.centro));
-
-      const regB =
-        ORDEM_REGIOES.indexOf(regiao(b.centro));
-
-      return regA-regB ||
-        pos(a.centro)-pos(b.centro);
-    });
-
-    const status =
-      congelada
-        ? "G1 • JOGADA CONGELADA"
-        : "JOGADA ATUAL";
-
-    const posicao =
-      config.posicaoRanking
-        ? " • "+config.posicaoRanking+"º RANKING"
-        : "";
-
-    area.innerHTML = `
-      <div class="jogadaStatus ${congelada?"congelada":""}">
-        ${status}
-        • ${NOMES[config.motor]}
-        • C${config.rx}
-        • ${alvoRX(config.rx)}ª DÚZIA
-        ${posicao}
-      </div>
-
-      <div class="jogadaHorizontal">
-        ${blocos.map(bloco=>`
-          <div
-            class="alvoQuadrado
-              ${bloco.um?"um":""}
-              ${congelada?"congelado":""}"
-            title="${bloco.um?"1 vizinho":"2 vizinhos"}"
-          >
-            ${bloco.centro}
-          </div>
-        `).join("")}
-      </div>
-
-      <div class="legendaJogada">
-        <span>
-          <span class="legendaCor azul"></span>
-          2 VIZINHOS
-        </span>
-
-        <span>
-          <span class="legendaCor amarelo"></span>
-          1 VIZINHO
-        </span>
-
-        <span>28 NÚMEROS COBERTOS</span>
-      </div>
-    `;
-  }
 
   /*
-   ÚLTIMAS 14
+   RESUMO
   */
 
-  function renderUltimos() {
-    el("ultimos14").innerHTML =
-      estado.visual
-        .slice(-MAX_VISUAL)
-        .map(item=>{
-          const classe =
-            item.semJogada
-              ? "sem"
-              : item.fase==="ESPERA_G1"
-                ? "wait"
-                : item.fase==="G1"
-                  ? "g1"
-                  : item.green
-                    ? "green"
-                    : "loss";
+  const live=estatisticas(
+    estado.timelines.AUTO
+  );
 
-          const textos = {
-            sem:"—",
-            wait:"…",
-            g1:"G1",
-            green:"G",
-            loss:"L"
-          };
-
-          return `
-            <div class="dupla14 ${classe}">
-              <div
-                class="bolaDupla"
-                style="background:${corNumero(item.resultado)}"
-              >
-                ${item.resultado}
-              </div>
-
-              <div class="resultadoEntrada ${classe}">
-                ${textos[classe]}
-                ${item.g1==null?"":" • "+item.g1}
-              </div>
-            </div>
-          `;
-        }).join("");
-  }
+  el("resumo").innerHTML=[
+    ["REAL 5",live.total?live.taxa5:null],
+    ["REAL 10",live.total?live.taxa10:null],
+    ["REAL 20",live.total?live.taxa20:null],
+    ["PERDAS",live.perdas]
+  ].map(([nome,valor])=>`
+    <div class="card">
+      <small>${nome}</small>
+      <strong>
+        ${
+          valor===null
+            ? "—"
+            : nome==="PERDAS"
+              ? valor
+              : valor.toFixed(0)+"%"
+        }
+      </strong>
+    </div>
+  `).join("");
 
   /*
-   JOGADOR VIRTUAL
+   DÚZIAS
   */
 
-  function renderVirtual() {
-    const d = estado.diagnostico;
+  el("duzias").innerHTML=
+    dados.analise.ranking.map((item,i)=>`
+      <div class="duziaCard ${
+        i===0?"forte":""
+      }">
+        <small>
+          ${item.duzia}ª DÚZIA
+        </small>
 
-    const status = el("virtualStatus");
-    const texto = el("virtualTexto");
-    const detalhes = el("virtualDetalhes");
-
-    if (!d) {
-      status.className = "virtualStatus wait";
-      status.textContent = "AGUARDANDO RESULTADO";
-
-      texto.textContent =
-        "O próximo resultado será comparado " +
-        "com a escolha e o ranking anteriores.";
-
-      detalhes.innerHTML = "";
-      return;
-    }
-
-    const acertou =
-      d.tipo==="ACERTO" ||
-      d.greenG1===true;
-
-    const aguardando =
-      d.tipo==="SEM_JOGADA";
-
-    status.className =
-      "virtualStatus "+
-      (
-        aguardando
-          ? "wait"
-          : acertou
-            ? "green"
-            : "loss"
-      );
-
-    status.textContent = d.titulo;
-    texto.textContent = d.texto;
-
-    detalhes.innerHTML = "";
-
-    for (const item of d.detalhes||[]) {
-      const div = document.createElement("div");
-
-      div.className = "virtualDetalhe";
-      div.textContent = item;
-
-      detalhes.appendChild(div);
-    }
-  }
-
-  /*
-   RENDER
-  */
-
-  let renderPendente = false;
-
-  function agendarRender() {
-    if (renderPendente) return;
-
-    renderPendente = true;
-
-    setTimeout(()=>{
-      renderPendente = false;
-      render();
-    },0);
-  }
-
-  function render() {
-    const dados = obterConfigs();
-
-    prepararPendentes(dados);
-
-    const ativa = configAtiva(dados);
-
-    /*
-      BOTÕES DOS MOTORES
-    */
-
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        const botao =
-          el("btn"+PREFIXOS[motor]+rx);
-
-        botao.classList.toggle(
-          "ativo",
-          estado.modo==="MANUAL" &&
-          estado.motorManual===motor &&
-          estado.manualRX===rx
-        );
-      }
-    }
-
-    el("btnAUTO").style.background =
-      estado.modo==="AUTO"
-        ? "#007d98"
-        : "#303744";
-
-    el("btnAUTO").style.borderColor =
-      estado.modo==="AUTO"
-        ? "#00e5ff"
-        : "#555c6b";
-
-    /*
-      SELETOR DE POSIÇÃO
-    */
-
-    for (let p=1;p<=4;p++) {
-      el("autoP"+p).classList.toggle(
-        "ativo",
-        estado.autoPosicao===p
-      );
-    }
-
-    /*
-      AUTO COMPACTO
-    */
-
-    el("autoDescricao").textContent =
-      dados.auto
-        ? (
-            estado.autoPosicao+
-            "º DO RANKING • "+
-            NOMES[dados.auto.motor]+
-            " C"+dados.auto.rx+
-            " • SCORE "+
-            formatar(dados.auto.scoreAuto)
-          )
-        : "AGUARDANDO JOGADAS VÁLIDAS";
-
-    /*
-      RANKING COMPLETO
-    */
-
-    el("rankingLista").innerHTML =
-      dados.ranking.length
-        ? dados.ranking.map((config,i)=>`
-            <div class="rankingItem ${
-              i===estado.autoPosicao-1
-                ? "selecionado"
-                : ""
-            }">
-              <div class="rankingPos">
-                ${i+1}º
-              </div>
-
-              <div>
-                ${NOMES[config.motor]} C${config.rx}
-                ${i===estado.autoPosicao-1
-                  ? " • AUTO"
-                  : ""}
-              </div>
-
-              <div class="rankingScore">
-                ${formatar(config.scoreAuto)}
-              </div>
-            </div>
-          `).join("")
-        : `
-          <div class="posicaoInfo">
-            AGUARDANDO HISTÓRICO SUFICIENTE
-          </div>
-        `;
-
-    /*
-      RESUMO
-    */
-
-    const live =
-      estatisticas(estado.timelines.AUTO);
-
-    el("resumo").innerHTML = [
-      ["REAL 5",live.total?live.taxa5:null],
-      ["REAL 10",live.total?live.taxa10:null],
-      ["REAL 20",live.total?live.taxa20:null],
-      ["PERDAS",live.perdas]
-    ].map(([nome,valor])=>`
-      <div class="card">
-        <small>${nome}</small>
         <strong>
           ${
-            valor===null
-              ? "—"
-              : nome==="PERDAS"
-                ? valor
-                : valor.toFixed(0)+"%"
-          }
+            (item.intensidade*100)
+              .toFixed(0)
+          }%
         </strong>
+
+        <span>
+          ${item.contagem}/${
+            estado.historico.length
+          }
+          • QUEBRA ${
+            item.quebra.toFixed(1)
+          }
+        </span>
       </div>
     `).join("");
 
-    /*
-      DÚZIAS
-    */
+  /*
+   13 LINHAS DO TEMPO
+  */
 
-    el("duzias").innerHTML =
-      dados.analise.ranking.map((item,i)=>`
-        <div class="duziaCard ${i===0?"forte":""}">
-          <small>${item.duzia}ª DÚZIA</small>
-          <strong>
-            ${(item.intensidade*100).toFixed(0)}%
-          </strong>
-          <span>
-            ${item.contagem}/${estado.historico.length}
-            • QUEBRA ${item.quebra.toFixed(1)}
-          </span>
-        </div>
-      `).join("");
+  renderTimeline(
+    "timelineAUTO",
+    "AUTO",
+    estado.timelines.AUTO
+  );
 
-    /*
-      AUTO + TODAS AS 12 TIMELINES
-
-      As 12 linhas são renderizadas
-      independentemente de o painel
-      estar aberto ou fechado.
-    */
-
-    renderTimeline(
-      "timelineAUTO",
-      "AUTO",
-      estado.timelines.AUTO
-    );
-
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        renderTimeline(
-          "timeline"+PREFIXOS[motor]+rx,
-          motor.startsWith("RX")
-            ? "RX C"+rx
-            : "C"+rx,
-          estado.timelines[motor][rx]
-        );
-      }
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      renderTimeline(
+        "timeline"+PREFIXOS[motor]+rx,
+        motor.startsWith("RX")
+          ? "RX C"+rx
+          : "C"+rx,
+        estado.timelines[motor][rx]
+      );
     }
-
-    /*
-      JOGADA EXIBIDA
-    */
-
-    const freeze =
-      estado.modo==="AUTO"
-        ? estado.freezes.AUTO
-        : estado.freezes[
-            estado.motorManual
-          ][estado.manualRX];
-
-    let configExibida = ativa;
-
-    if (freeze) {
-      configExibida = {
-        valido:true,
-        motor:freeze.motor,
-        rx:freeze.rx,
-        posicaoRanking:freeze.posicaoRanking,
-        jogada:jogadaSnapshot(freeze)
-      };
-    }
-
-    renderJogada(configExibida,!!freeze);
-
-    renderUltimos();
-    renderVirtual();
-
-    /*
-      STATUS
-    */
-
-    const validos = dados.ranking.length;
-
-    const diferentes = new Set(
-      dados.ranking.map(c=>c.assinatura)
-    ).size;
-
-    const dominante =
-      dados.analise.ranking[0];
-
-    el("status").textContent =
-      estado.historico.length+"/20"+
-      " • 12 MOTORES"+
-      " • "+validos+"/12 VÁLIDOS"+
-      " • "+diferentes+" CONFIGURAÇÕES"+
-      " • AUTO "+estado.autoPosicao+"º SCORE"+
-      " • 28 NÚMEROS"+
-      " • SEM SOBREPOSIÇÃO"+
-      " • CONCENTRAÇÃO "+
-      dominante.duzia+"ª DÚZIA"+
-      (freeze?" • G1 CONGELADO":"");
-
-    renderPaineis();
-    salvar();
   }
 
   /*
-   INICIALIZAÇÃO
+   JOGADA EXIBIDA
+
+   Durante G1, usa a cobertura
+   congelada, sem recalcular.
   */
 
-  agendarRender();
+  const freeze=
+    estado.modo==="AUTO"
+      ? estado.freezes.AUTO
+      : estado.freezes[
+          estado.motorManual
+        ][estado.manualRX];
+
+  let configExibida=ativa;
+
+  if (freeze) {
+    configExibida={
+      valido:true,
+      motor:freeze.motor,
+      rx:freeze.rx,
+      posicaoRanking:
+        freeze.posicaoRanking,
+      jogada:jogadaSnapshot(freeze)
+    };
+  }
+
+  renderJogada(
+    configExibida,
+    !!freeze
+  );
+
+  renderUltimos();
+  renderVirtual();
+
+  /*
+   STATUS
+  */
+
+  const validos=dados.ranking.length;
+
+  const diferentes=new Set(
+    dados.ranking.map(c=>c.assinatura)
+  ).size;
+
+  const dominante=
+    dados.analise.ranking[0];
+
+  const textoAuto=
+    estado.autoAlternado
+      ? (
+          "AUTO 2º ⇄ 3º"+
+          " • PRÓXIMA "+
+          posicaoAutoAtual()+"º"
+        )
+      : (
+          "AUTO "+estado.autoPosicao+
+          "º SCORE"
+        );
+
+  el("status").textContent=
+    estado.historico.length+"/20"+
+    " • 12 MOTORES"+
+    " • "+validos+"/12 VÁLIDOS"+
+    " • "+diferentes+" CONFIGURAÇÕES"+
+    " • "+textoAuto+
+    " • 28 NÚMEROS"+
+    " • SEM SOBREPOSIÇÃO"+
+    " • CONCENTRAÇÃO "+
+    dominante.duzia+"ª DÚZIA"+
+    (
+      freeze
+        ? " • G1 CONGELADO"
+        : ""
+    );
+
+  renderPaineis();
+  salvar();
+}
+
+/*
+ INICIALIZAÇÃO
+*/
+
+agendarRender();
 
 })();
