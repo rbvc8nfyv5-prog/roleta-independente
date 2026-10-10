@@ -1,1996 +1,2390 @@
-
-(function(){
-'use strict';
+(function () {
+"use strict";
 
 /*
- ANÁLISE BETA
- 12 MOTORES / DÚZIAS / DUPLAS FÍSICAS
- Histórico: últimos 20 resultados.
- G1 individual para cada linha.
+  ANÁLISE BETA
+  12 MOTORES — ESTRATÉGIA FÍSICA DAS DÚZIAS
+
+  NORMAL C4 / C5 / C6
+  DINÂMICO C4 / C5 / C6
+  RAIO X NORMAL C4 / C5 / C6
+  RAIO X DINÂMICO C4 / C5 / C6
+
+  C4 = PRIMEIRA DÚZIA
+  C5 = SEGUNDA DÚZIA
+  C6 = TERCEIRA DÚZIA
+
+  TODOS OS MOTORES UTILIZAM:
+  - DÚZIAS E SEUS VIZINHOS FÍSICOS
+  - ZONAS DE QUEBRA
+  - CONCENTRAÇÃO FÍSICA
+  - ÚLTIMOS 20 RESULTADOS
+  - 5 ALVOS COM 2 VIZINHOS
+  - 1 ALVO COM 1 VIZINHO
+  - 28 NÚMEROS DISTINTOS
+  - SEM SOBREPOSIÇÃO
+  - SEM BURACO ISOLADO
+  - 12 JOGADAS DIFERENTES
+  - AUTO ENTRE OS 12 MOTORES
+  - G1 INDIVIDUAL
 */
 
-const KEY='ANALISE_BETA_12_DUZIAS_DUPLAS_V2';
-const LEGACY='ANALISE_BETA_HISTORICO_COMPLETO_20_V1';
+const STORAGE = "ANALISE_BETA_DUZIAS_RX_12_V1";
+const MAX_HISTORICO = 20;
 
-const TRACK=[
-32,15,19,4,21,2,25,17,34,6,
-27,13,36,11,30,8,23,10,5,24,
-16,33,1,20,14,31,9,22,18,29,
-7,28,12,35,3,26,0
+const TRACK = [
+  32,15,19,4,21,2,25,17,34,6,
+  27,13,36,11,30,8,23,10,5,24,
+  16,33,1,20,14,31,9,22,18,29,
+  7,28,12,35,3,26,0
 ];
 
-const RED=new Set([
-1,3,5,7,9,12,14,16,18,
-19,21,23,25,27,30,32,34,36
+const VERMELHOS = new Set([
+  1,3,5,7,9,12,14,16,18,
+  19,21,23,25,27,30,32,34,36
 ]);
 
-const MOTORS=[
-'NORMAL',
-'DINAMICO',
-'RX_NORMAL',
-'RX_DINAMICO'
+const MOTORES = [
+  "NORMAL",
+  "DINAMICO",
+  "RX_NORMAL",
+  "RX_DINAMICO"
 ];
 
-const RX=[4,5,6];
+const RX_LIST = [4,5,6];
 
-const BREAK={
-1:[13,14,15,16,17,18],
-2:[0,26,3,35,28,7,6,30],
-3:[23,10,24,20,22,21,4,19]
+const ZONAS_QUEBRA = {
+  1: [13,14,15,16,17,18],
+  2: [0,26,3,35,28,7,6,30],
+  3: [23,10,24,20,22,21,4,19]
 };
 
-const PHYSICAL={
-1:[
-[3,12,7],
-[4,2,21],
-[11,8,5],
-[6,1,9]
-],
-2:[
-[13,36,11,30,8],
-[23,10,5,24,16],
-[15,19,17,14,20,18]
-],
-3:[
-[25,17,34,6,27],
-[32,15,19,4,21],
-[29,7,28,12,35,3,26],
-[31,9,22,18,33]
-]
+const GRUPOS_FISICOS = {
+  1: [
+    [3,12,7],
+    [4,2,21],
+    [11,8,5],
+    [6,1,9]
+  ],
+  2: [
+    [13,36,11,30,8],
+    [23,10,5,24,16],
+    [15,19,17,14,20,18]
+  ],
+  3: [
+    [25,17,34,6,27],
+    [32,15,19,4,21],
+    [29,7,28,12,35,3,26],
+    [31,9,22,18,33]
+  ]
 };
 
-const $=id=>document.getElementById(id);
-const idx=n=>TRACK.indexOf(n);
-const at=i=>TRACK[(i%37+37)%37];
-const offset=(n,d)=>at(idx(n)+d);
-
-const dist=(a,b)=>{
-let d=Math.abs(idx(a)-idx(b));
-return Math.min(d,37-d);
+const REGIOES = {
+  ZERO: new Set([0,32,15,26,3,35,12]),
+  VOISINS: new Set([19,4,21,2,25,28,7,29,18,22]),
+  ORPHELINS: new Set([9,31,14,20,1,17,6,34]),
+  TIERS: new Set([27,13,36,11,30,8,23,10,5,24,16,33])
 };
 
-const setor=(n,r)=>
-Array.from(
-{length:r*2+1},
-(_,i)=>offset(n,i-r)
+const INDICE = new Map(
+  TRACK.map((numero,i) => [numero,i])
 );
 
-const dozen=n=>n===0?0:Math.ceil(n/12);
-
-const mean=a=>
-a.length
-?a.reduce((s,v)=>s+v,0)/a.length
-:0;
-
-const pct=v=>(v*100).toFixed(0)+'%';
-
-const empty=()=>({
-history:[],
-mode:'AUTO',
-motor:'NORMAL',
-rx:6,
-lines:{},
-visual:[],
-selected:null
-});
-
-let state=empty();
-
-try{
-let saved=JSON.parse(
-localStorage.getItem(KEY)||'null'
-);
-
-if(saved&&typeof saved==='object'){
-state={...state,...saved};
-}else{
-let h=JSON.parse(
-localStorage.getItem(LEGACY)||'[]'
-);
-if(Array.isArray(h))state.history=h;
-}
-}catch(e){}
-
-state.history=(state.history||[])
-.map(Number)
-.filter(n=>
-Number.isInteger(n)&&n>=0&&n<=36
-)
-.slice(-20);
-
-state.lines=state.lines||{};
-
-state.visual=Array.isArray(state.visual)
-?state.visual.slice(-14)
-:[];
-
-for(const m of MOTORS){
-for(const r of RX){
-let k=m+'_'+r;
-state.lines[k]=state.lines[k]||{
-events:[],
-pending:null
-};
-}
-}
-
-state.lines.AUTO=state.lines.AUTO||{
-events:[],
-pending:null
-};
-
-function save(){
-state.history=state.history.slice(-20);
-state.visual=state.visual.slice(-14);
-
-for(const l of Object.values(state.lines)){
-l.events=(l.events||[]).slice(-20);
-}
-
-try{
-localStorage.setItem(
-KEY,
-JSON.stringify(state)
-);
-}catch(e){}
-}
-
-function window20(h){
-return h.slice(-20);
-}
-
-function heat(h){
-let a=Array(37).fill(0);
-
-h.forEach((n,i)=>{
-let rec=.48+.52*(i+1)/h.length;
-
-for(let j=0;j<37;j++){
-let d=dist(n,TRACK[j]);
-
-if(d<=5){
-a[j]+=
-rec*[1,.80,.54,.32,.17,.07][d];
-}
-}
-});
-
-let mx=Math.max(.001,...a);
-return a.map(v=>v/mx);
-}
-
-function trend(h){
-
-h=window20(h);
-
-let w={1:0,2:0,3:0};
-let count={1:0,2:0,3:0};
-let pairs={1:0,2:0,3:0};
-let breaks={1:0,2:0,3:0};
-
-let hs=heat(h);
-let transitions=[];
-
-h.forEach((n,i)=>{
-let d=dozen(n);
-if(!d)return;
-
-let rec=
-.40+.60*(i+1)/Math.max(1,h.length);
-
-w[d]+=rec;
-count[d]++;
-
-if(BREAK[d].includes(n)){
-breaks[d]+=rec;
-}
-});
-
-for(let i=1;i<h.length;i++){
-
-let a=h[i-1];
-let b=h[i];
-let d=dist(a,b);
-let rec=.45+.55*(i+1)/h.length;
-
-if(d<=2){
-
-for(let z=1;z<=3;z++){
-
-let own=
-(dozen(a)===z?1:0)+
-(dozen(b)===z?1:0);
-
-pairs[z]+=
-rec*
-(own===2?1:own===1?.45:.12)*
-(d===1?1:.68);
-}
-
-transitions.push({a,b,d,rec});
-}
-}
-
-let raw={};
-
-for(let d=1;d<=3;d++){
-
-let ph=PHYSICAL[d].flat();
-
-let sum=mean(
-ph.map(n=>hs[idx(n)])
-);
-
-raw[d]=
-w[d]*.48+
-sum*3.5+
-pairs[d]*.90+
-breaks[d]*.20;
-}
-
-let max=Math.max(
-.0001,
-...Object.values(raw)
-);
-
-let ranking=[1,2,3]
-.map(d=>({
-d,
-count:count[d],
-strength:raw[d]/max,
-pairs:pairs[d],
-breaks:breaks[d]
-}))
-.sort((a,b)=>b.strength-a.strength);
-
-let center=new Map();
-
-for(let n of TRACK){
-
-let score=0;
-
-for(let d=1;d<=3;d++){
-
-let s=raw[d]/max;
-let own=dozen(n)===d?1:.12;
-
-let physical=0;
-
-for(let group of PHYSICAL[d]){
-for(let q of group){
-
-let dd=dist(n,q);
-
-physical=Math.max(
-physical,
-dd===0?1:
-dd===1?.77:
-dd===2?.48:
-dd===3?.20:0
-);
-}
-}
-
-let br=0;
-
-for(let q of BREAK[d]){
-
-let dd=dist(n,q);
-
-br=Math.max(
-br,
-dd===0?1:
-dd===1?.62:
-dd===2?.26:0
-);
-}
-
-score+=s*(
-own*.55+
-physical*.42+
-br*.16
-);
-}
-
-let pair=0;
-
-for(let t of transitions){
-
-let da=dist(n,t.a);
-let db=dist(n,t.b);
-
-pair+=t.rec*(
-da<=2&&db<=2
-?1
-:da<=3||db<=3?.28:0
-);
-}
-
-center.set(
-n,
-score+
-hs[idx(n)]*.75+
-pair*.24
-);
-}
-
-let maxc=Math.max(
-.001,
-...center.values()
-);
-
-for(let n of TRACK){
-center.set(
-n,
-center.get(n)/maxc
-);
-}
-
-return {
-ranking,
-center,
-heat:hs,
-transitions
-};
-}
-
-function recentScores(h,rx){
-
-let a=new Map(
-TRACK.map(n=>[n,0])
-);
-
-h.forEach((n,i)=>{
-
-let age=h.length-1-i;
-
-let dec=Math.pow(
-rx===4?.77:
-rx===5?.81:.85,
-age
-);
-
-for(let q of TRACK){
-
-let d=dist(n,q);
-
-if(d<=4){
-a.set(
-q,
-a.get(q)+
-dec*[1,.72,.44,.22,.09][d]
-);
-}
-}
-});
-
-let max=Math.max(
-.001,
-...a.values()
-);
-
-for(let n of TRACK){
-a.set(n,a.get(n)/max);
-}
-
-return a;
-}
-
-function replicaScores(h,rx){
-
-let map=new Map(
-TRACK.map(n=>[n,0])
-);
-
-if(h.length<rx*2+3){
-return map;
-}
-
-let now=h.slice(-rx);
-let matches=[];
-
-for(let i=0;i+rx<h.length-rx;i++){
-
-let s=0;
-
-for(let k=0;k<rx;k++){
-
-let d=dist(
-now[k],
-h[i+k]
-);
-
-s+=
-d===0?1:
-d<=2?.62:
-d<=5?.25:0;
-
-if(
-dozen(now[k])===
-dozen(h[i+k])
-){
-s+=.28;
-}
-}
-
-matches.push({
-n:h[i+rx],
-s:s/rx,
-i
-});
-}
-
-matches.sort(
-(a,b)=>b.s-a.s||b.i-a.i
-);
-
-for(let x of matches.slice(
-0,
-Math.max(
-3,
-Math.ceil(matches.length*.28)
-)
-)){
-
-for(let q of TRACK){
-
-let d=dist(x.n,q);
-
-if(d<=4){
-
-map.set(
-q,
-map.get(q)+
-(x.s+.15)*
-[1,.72,.42,.18,.07][d]
-);
-}
-}
-}
-
-let max=Math.max(
-.001,
-...map.values()
-);
-
-for(let n of TRACK){
-map.set(n,map.get(n)/max);
-}
-
-return map;
-}
-
-function centerScores(
-h,m,rx,t,events=[]
-){
-
-let r=recentScores(h,rx);
-let rep=replicaScores(h,rx);
-let scores=new Map();
-
-let losses=events
-.slice(-3)
-.filter(e=>e.status==='LOSS')
-.length;
-
-for(let n of TRACK){
-
-let rec=r.get(n);
-let sim=rep.get(n);
-let tr=t.center.get(n);
-let v;
-
-if(m==='NORMAL'){
-v=rec*.48+tr*1.40+sim*.18;
-}
-else if(m==='DINAMICO'){
-v=rec*.64+tr*1.22+sim*.42;
-}
-else if(m==='RX_NORMAL'){
-v=sim*.80+tr*1.45+rec*.22;
-}
-else{
-v=sim*.91+tr*1.36+rec*.32;
-}
-
-let shifted=0;
-
-if(m.includes('DINAMICO')){
-
-for(let d of [-2,-1,1,2]){
-
-shifted=Math.max(
-shifted,
-(
-r.get(offset(n,d))*.55+
-tr*.45
-)*
-(.93-Math.abs(d)*.08)
-);
-}
-}
-
-scores.set(
-n,
-v+
-shifted*.19+
-losses*.015*tr
-);
-}
-
-return scores;
-}
-
-function hole(covered){
-
-for(let i=0;i<37;i++){
-
-if(
-!covered.has(TRACK[i])&&
-covered.has(at(i-1))&&
-covered.has(at(i+1))
-){
-return true;
-}
-}
-
-return false;
-}
-
-function signature(covered){
-
-return [...covered]
-.sort((a,b)=>a-b)
-.join(',');
-}
-
-function valid(j){
-
-if(
-!j||
-j.blocks2.length!==5||
-j.blocks1.length!==1||
-j.covered.size!==28||
-hole(j.covered)
-){
-return false;
-}
-
-let all=j.blocks2.concat(j.blocks1);
-
-return all.reduce(
-(s,b)=>s+b.numbers.length,
-0
-)===28;
-}
-
-function build(scores,used,seed){
-
-let sorted=TRACK
-.map(n=>({
-n,
-s:scores.get(n)||0
-}))
-.sort(
-(a,b)=>
-b.s-a.s||
-((idx(a.n)+seed)%37)-
-((idx(b.n)+seed)%37)
-);
-
-let best=null;
-let tries=0;
-
-const seeds=sorted.slice(
-0,
-Math.min(37,24)
-);
-
-function visit(
-blocks,
-covered,
-score,
-one
-){
-
-if(++tries>180000)return;
-
-if(blocks.length===6){
-
-if(
-!one||
-covered.size!==28||
-hole(covered)
-){
-return;
-}
-
-let b2=blocks.filter(
-b=>b.radius===2
-);
-
-let b1=blocks.filter(
-b=>b.radius===1
-);
-
-let sig=signature(covered);
-
-if(used.has(sig))return;
-
-let candidate={
-blocks2:b2,
-blocks1:b1,
-covered:[...covered],
-signature:sig,
-score
-};
-
-if(
-!best||
-score>best.score
-){
-best=candidate;
-}
-
-return;
-}
-
-let need2=
-5-blocks.filter(
-b=>b.radius===2
-).length;
-
-let radius=need2>0?2:1;
-
-let list=sorted;
-
-if(blocks.length===0){
-
-list=seeds
-.slice(seed%seeds.length)
-.concat(
-seeds.slice(
-0,
-seed%seeds.length
-)
-);
-}
-
-let count=0;
-
-for(let item of list){
-
-let nums=setor(
-item.n,
-radius
-);
-
-if(
-nums.some(n=>covered.has(n))
-){
-continue;
-}
-
-let next=new Set(covered);
-
-nums.forEach(n=>next.add(n));
-
-if(hole(next))continue;
-
-let b={
-center:item.n,
-radius,
-numbers:nums
-};
-
-visit(
-[...blocks,b],
-next,
-score+item.s+
-(radius===2?.015:0),
-one||radius===1
-);
-
-if(
-++count>=(
-blocks.length===0?17:
-blocks.length===1?15:
-blocks.length===2?12:
-blocks.length===3?10:
-blocks.length===4?8:12
-)
-){
-break;
-}
-
-if(tries>180000)break;
-}
-}
-
-visit(
-[],
-new Set(),
-0,
-false
-);
-
-if(best)return best;
-
-/* Alternativa geométrica */
-
-for(let step=0;step<37;step++){
-
-for(let gap=0;gap<37;gap++){
-
-let sizes=[5,5,5,5,5,3];
-let gaps=[2,2,2,3,0,0];
-
-let shift=gap%6;
-
-gaps=gaps
-.slice(shift)
-.concat(gaps.slice(0,shift));
-
-let blocks=[];
-let covered=new Set();
-let p=(step+seed)%37;
-let score=0;
-
-for(let i=0;i<6;i++){
-
-let radius=
-sizes[i]===5?2:1;
-
-let center=at(p+radius);
-
-let numbers=setor(
-center,
-radius
-);
-
-blocks.push({
-center,
-radius,
-numbers
-});
-
-numbers.forEach(
-n=>covered.add(n)
-);
-
-score+=scores.get(center)||0;
-
-p+=sizes[i]+gaps[i];
-}
-
-let j={
-blocks2:blocks.slice(0,5),
-blocks1:blocks.slice(5),
-covered:[...covered],
-signature:signature(covered),
-score
-};
-
-if(
-valid({
-...j,
-covered:new Set(j.covered)
-})&&
-!used.has(j.signature)&&
-(!best||j.score>best.score)
-){
-best=j;
-}
-}
-}
-
-return best;
-}
-
-function scoreOutcome(n,j){
-
-if(!j)return null;
-
-for(let b of j.blocks2.concat(
-j.blocks1
-)){
-
-if(b.numbers.includes(n)){
-
-return {
-green:true,
-type:
-dist(n,b.center)===0
-?'ALVO'
-:dist(n,b.center)===1
-?'V1'
-:'V2'
-};
-}
-}
-
-return {
-green:false,
-type:'FORA'
-};
-}
-
-function rates(events){
-
-let done=events.filter(e=>
-e.status==='GREEN'||
-e.status==='G1'||
-e.status==='LOSS'
-);
-
-let part=done.slice(-20);
-
-let wins=part.filter(
-e=>e.status!=='LOSS'
-).length;
-
-return {
-total:part.length,
-rate:part.length
-?wins/part.length
-:0,
-first:part.length
-?part.filter(
-e=>e.status==='GREEN'
-).length/part.length
-:0
-};
-}
-
-function backtest(h,m,rx){
-
-let results=[];
-
-for(
-let i=Math.max(9,rx*2+2);
-i<h.length;
-i++
-){
-
-let prev=h.slice(0,i);
-let t=trend(prev);
-
-let scores=centerScores(
-prev,m,rx,t
-);
-
-let j=build(
-scores,
-new Set(),
-i+rx
-);
-
-if(!j)continue;
-
-let o=scoreOutcome(h[i],j);
-
-results.push({
-status:o.green?'GREEN':'LOSS'
-});
-}
-
-return rates(results);
-}
-
-function calculate(h){
-
-let t=trend(h);
-let used=new Set();
-let configs={};
-
-for(let mi=0;mi<MOTORS.length;mi++){
-
-for(let ri=0;ri<RX.length;ri++){
-
-let m=MOTORS[mi];
-let rx=RX[ri];
-let key=m+'_'+rx;
-
-let events=
-state.lines[key].events||[];
-
-let scores=centerScores(
-h,m,rx,t,events
-);
-
-let j=null;
-
-if(h.length>=8){
-
-for(let attempt=0;attempt<18;attempt++){
-
-let c=build(
-scores,
-used,
-mi*41+ri*13+attempt*7
-);
-
-if(
-c&&
-(!j||c.score>j.score)
-){
-j=c;
-}
-}
-
-if(j){
-used.add(j.signature);
-}
-}
-
-let bt=backtest(h,m,rx);
-let live=rates(events);
-
-let loss=events
-.slice(-4)
-.filter(e=>e.status==='LOSS')
-.length;
-
-let autoScore=(
-bt.rate*.42+
-live.rate*.35+
-live.first*.23
-)*100+
-(j?j.score*.9:0)-
-loss*3;
-
-configs[key]={
-key,
-m,
-rx,
-j,
-bt,
-live,
-autoScore
-};
+function indice(n) {
+  return INDICE.has(n) ? INDICE.get(n) : -1;
 }
-}
-
-let candidates=Object.values(configs)
-.filter(c=>c.j);
-
-candidates.sort(
-(a,b)=>
-b.autoScore-a.autoScore||
-b.j.score-a.j.score
-);
-
-let auto=candidates[0]||null;
-
-return {
-t,
-configs,
-auto
-};
-}
-
-function lineKeys(){
-
-return [
-'AUTO',
-...MOTORS.flatMap(
-m=>RX.map(r=>m+'_'+r)
-)
-];
-}
-
-function finishLine(key,n){
-
-let line=state.lines[key];
-let p=line.pending;
-
-if(!p)return false;
-
-let out=scoreOutcome(n,p.j);
-
-let event=line.events[p.eventIndex];
-
-if(event){
-
-event.status=
-out.green?'G1':'LOSS';
-
-event.g1=n;
-event.type=out.type;
-}
-
-line.pending=null;
-
-return true;
-}
-
-function recordLine(key,n,j){
-
-let line=state.lines[key];
 
-if(finishLine(key,n))return;
-
-let out=scoreOutcome(n,j);
-
-let event={
-n,
-g1:null,
-status:
-!out?'SEM':
-out.green?'GREEN':'WAIT',
-type:out?.type||'SEM'
-};
-
-line.events.push(event);
-
-line.events=line.events.slice(-20);
-
-if(out&&!out.green){
-
-line.pending={
-j:JSON.parse(JSON.stringify(j)),
-eventIndex:line.events.length-1
-};
-}
-}
-
-function selectedKey(){
-
-return state.mode==='AUTO'
-?'AUTO'
-:state.motor+'_'+state.rx;
-}
-
-function addNumber(n){
-
-let h=state.history.slice();
-
-let analysis=calculate(h);
-
-let selected=selectedKey();
-
-let active=
-selected==='AUTO'
-?analysis.auto?.j
-:analysis.configs[selected]?.j;
-
-for(let key of lineKeys()){
-
-let j=
-key==='AUTO'
-?analysis.auto?.j
-:analysis.configs[key]?.j;
-
-recordLine(
-key,
-n,
-j||null
-);
+function modulo(n,m) {
+  return ((n % m) + m) % m;
 }
-
-let before=
-state.lines[selected]?.events?.at(-1);
-
-let wasG1=
-before?.g1===n&&
-before?.status!=='WAIT';
-
-state.visual.push({
-n,
-status:before?.status||'SEM',
-g1:wasG1?n:null
-});
-
-state.visual=
-state.visual.slice(-14);
 
-state.history.push(n);
-
-state.history=
-state.history.slice(-20);
-
-save();
-render();
+function numeroOffset(n,offset) {
+  const i = indice(n);
+  return i < 0 ? n : TRACK[modulo(i+offset,37)];
 }
 
-function resetAnalysis(){
+function setor(centro,qtd) {
+  const i = indice(centro);
+  if (i < 0) return [];
 
-for(let k of lineKeys()){
+  const numeros = [];
 
-state.lines[k]={
-events:[],
-pending:null
-};
-}
+  for (let d=-qtd;d<=qtd;d++) {
+    numeros.push(TRACK[modulo(i+d,37)]);
+  }
 
-state.visual=[];
+  return numeros;
 }
-
-function importHistory(){
-
-let raw=$('inputHistory').value;
 
-let nums=(
-raw.match(
-/\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
-)||[]
-)
-.map(Number)
-.slice(-20);
+function distanciaRoda(a,b) {
+  const ia = indice(a);
+  const ib = indice(b);
 
-if(!nums.length)return;
+  if (ia<0 || ib<0) return 99;
 
-state.history=nums;
-
-resetAnalysis();
-
-$('inputHistory').value='';
-
-save();
-render();
+  const d = Math.abs(ia-ib);
+  return Math.min(d,37-d);
 }
 
-function undo(){
+function deltaRoda(a,b) {
+  const ia = indice(a);
+  const ib = indice(b);
 
-if(!state.history.length)return;
+  if (ia<0 || ib<0) return 0;
 
-state.history.pop();
-
-resetAnalysis();
-
-save();
-render();
-}
+  let d = modulo(ib-ia,37);
 
-function clear(){
+  if (d>18) d-=37;
 
-if(!confirm(
-'Apagar todo o histórico?'
-)){
-return;
+  return d;
 }
 
-state.history=[];
-
-resetAnalysis();
-
-save();
-render();
+function duzia(n) {
+  if (n>=1 && n<=12) return 1;
+  if (n>=13 && n<=24) return 2;
+  if (n>=25 && n<=36) return 3;
+  return 0;
 }
-
-function ball(n){
 
-return \`<span class="ball" style="background:\${
-n===0
-?'#087c48'
-:RED.has(n)
-?'#b71c36'
-:'#171717'
-}">\${n}</span>\`;
+function duziaMotor(rx) {
+  return rx===4 ? 1 : rx===5 ? 2 : 3;
 }
 
-function name(m){
-
-return {
-NORMAL:'NORMAL',
-DINAMICO:'DINÂMICO',
-RX_NORMAL:'RAIO-X NORMAL',
-RX_DINAMICO:'RAIO-X DINÂMICO'
-}[m]||m;
+function regiao(n) {
+  for (const [nome,conjunto] of Object.entries(REGIOES)) {
+    if (conjunto.has(n)) return nome;
+  }
+  return "OUTROS";
 }
-
-function renderTimeline(key,label){
-
-let l=state.lines[key];
 
-let events=(
-l?.events||[]
-).slice(-20);
-
-let r=rates(events);
-
-return \`
-<div class="tl">
-<span>\${label}</span>
-<div class="marks">
-\${events.map(e=>\`
-<b class="\${e.status.toLowerCase()}">
-\${
-e.status==='GREEN'?'G':
-e.status==='G1'?'G1':
-e.status==='LOSS'?'L':
-e.status==='WAIT'?'…':'—'
-}
-</b>
-\`).join('')}
-</div>
-<strong>\${
-r.total?pct(r.rate):'—'
-}</strong>
-</div>\`;
+function corRoleta(n) {
+  return n===0
+    ? "#087c48"
+    : VERMELHOS.has(n)
+      ? "#c6283d"
+      : "#181818";
 }
-
-function render(){
-
-let h=state.history;
-let analysis=calculate(h);
-let t=analysis.t;
-
-let activeKey=selectedKey();
 
-let active=
-activeKey==='AUTO'
-?analysis.auto
-:analysis.configs[activeKey];
-
-let frozen=
-state.lines[activeKey]?.pending?.j;
-
-let j=frozen||active?.j;
-
-$('historyCount').textContent=
-h.length+'/20';
-
-$('historyBalls').innerHTML=
-h.map(ball).join('');
-
-$('autoResult').textContent=
-analysis.auto
-?\`AUTO: \${name(analysis.auto.m)} C\${analysis.auto.rx} • SCORE \${analysis.auto.autoScore.toFixed(1)}\`
-:'AUTO: AGUARDANDO DADOS';
-
-$('trend').innerHTML=
-t.ranking.map((d,i)=>\`
-<div class="trend \${i===0?'dominant':''}">
-<small>
-\${d.d}ª DÚZIA
-\${i===0?'• DOMINANTE':''}
-</small>
-<strong>\${pct(d.strength)}</strong>
-<span>
-\${d.count}/20 •
-DUPLAS \${d.pairs.toFixed(1)} •
-QUEBRAS \${d.breaks.toFixed(1)}
-</span>
-</div>
-\`).join('');
-
-$('trendNote').textContent=
-'DÚZIAS: 1–12 | 13–24 | 25–36 • Análise de duplas, vizinhos físicos e zonas de quebra integrada aos 12 motores.';
-
-$('choices').innerHTML=
-\`<button class="mode \${
-state.mode==='AUTO'?'active':''
-}" data-mode="AUTO">AUTO</button>\`+
-MOTORS.map(m=>\`
-<div class="modegroup">
-<small>\${name(m)}</small>
-<div>
-\${RX.map(r=>\`
-<button
-class="mode \${
-state.mode==='MANUAL'&&
-state.motor===m&&
-state.rx===r
-?'active':''
-}"
-data-m="\${m}"
-data-r="\${r}">
-C\${r}
-</button>
-\`).join('')}
-</div>
-</div>
-\`).join('');
-
-$('choices')
-.querySelectorAll('button')
-.forEach(b=>{
-
-b.onclick=()=>{
-
-if(b.dataset.mode==='AUTO'){
-
-state.mode='AUTO';
-
-}else{
-
-state.mode='MANUAL';
-state.motor=b.dataset.m;
-state.rx=Number(b.dataset.r);
+function limitar(base) {
+  return Array.isArray(base)
+    ? base.filter(n => Number.isInteger(n) && n>=0 && n<=36).slice(-20)
+    : [];
 }
-
-save();
-render();
-};
-});
 
-$('timelines').innerHTML=
-renderTimeline('AUTO','AUTO')+
-MOTORS.map(m=>\`
-<div class="tlhead">\${name(m)}</div>
-\${RX.map(r=>
-renderTimeline(
-m+'_'+r,
-'C'+r
-)
-).join('')}
-\`).join('');
-
-$('summary').innerHTML=\`
-<div>
-<small>BT AUTO</small>
-<strong>\${
-analysis.auto
-?pct(analysis.auto.bt.rate)
-:'—'
-}</strong>
-</div>
-<div>
-<small>REAL AUTO</small>
-<strong>\${
-pct(rates(
-state.lines.AUTO.events
-).rate)
-}</strong>
-</div>
-<div>
-<small>MOTOR ATIVO</small>
-<strong>\${
-active?name(active.m):'—'
-}</strong>
-</div>
-<div>
-<small>G1</small>
-<strong>\${
-frozen?'CONGELADO':'LIVRE'
-}</strong>
-</div>
-\`;
-
-$('current').innerHTML=j?\`
-<div class="currentTitle">
-\${
-frozen
-?'JOGADA CONGELADA • G1'
-:'JOGADA ATUAL'
-}
-•
-\${
-active
-?name(active.m)+' C'+active.rx
-:'AUTO'
+function estruturaVazia(valor=null) {
+  return {
+    AUTO: valor,
+    NORMAL: {4:valor,5:valor,6:valor},
+    DINAMICO: {4:valor,5:valor,6:valor},
+    RX_NORMAL: {4:valor,5:valor,6:valor},
+    RX_DINAMICO: {4:valor,5:valor,6:valor}
+  };
 }
-• 28 NÚMEROS
-</div>
-
-<div class="blocks">
-
-\${j.blocks2.map(b=>\`
-<div class="block">
-<small>2 VIZINHOS</small>
-<strong>\${b.center}</strong>
-<span>\${b.numbers.join(' • ')}</span>
-</div>
-\`).join('')}
-
-\${j.blocks1.map(b=>\`
-<div class="block one">
-<small>1 VIZINHO</small>
-<strong>\${b.center}</strong>
-<span>\${b.numbers.join(' • ')}</span>
-</div>
-\`).join('')}
-
-</div>
-
-<div class="numbers">
-COBERTURA:
-\${j.covered.slice()
-.sort((a,b)=>a-b)
-.join(' • ')}
-</div>
-\`:
-'<div class="waiting">AGUARDANDO HISTÓRICO SUFICIENTE</div>';
-
-$('last14').innerHTML=
-state.visual.map(e=>\`
-<div class="last \${e.status.toLowerCase()}">
-\${ball(e.n)}
-<small>
-\${e.status}
-\${e.g1!==null?' • '+e.g1:''}
-</small>
-</div>
-\`).join('');
 
-$('status').textContent=
-\`\${h.length}/20 • 12 MOTORES INDEPENDENTES • 5 CENTROS COM 2 VIZINHOS + 1 CENTRO COM 1 VIZINHO • SEM SOBREPOSIÇÃO • SEM BURACO DE 1 • G1 INDIVIDUAL\`;
+function timelinesVazias() {
+  return estruturaVazia(null);
 }
 
-/* INTERFACE */
+function criarEstado() {
+  const timelines = timelinesVazias();
 
-document.body.innerHTML=\`
+  timelines.AUTO=[];
 
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      timelines[motor][rx]=[];
+    }
+  }
+
+  return {
+    historico:[],
+    modo:"AUTO",
+    motorManual:"NORMAL",
+    manualRX:4,
+    timelines,
+    pendentes:estruturaVazia(null),
+    freezes:estruturaVazia(null),
+    visual:[],
+    visualFreeze:null,
+    offset:0
+  };
+}
+
+let estado = criarEstado();
+
+try {
+  const raw = localStorage.getItem(STORAGE);
+
+  if (raw) {
+    const salvo = JSON.parse(raw);
+
+    if (salvo && typeof salvo==="object") {
+      estado.historico=limitar(salvo.historico);
+
+      if (["AUTO","MANUAL"].includes(salvo.modo)) {
+        estado.modo=salvo.modo;
+      }
+
+      if (MOTORES.includes(salvo.motorManual)) {
+        estado.motorManual=salvo.motorManual;
+      }
+
+      if (RX_LIST.includes(salvo.manualRX)) {
+        estado.manualRX=salvo.manualRX;
+      }
+
+      if (salvo.timelines) {
+        if (Array.isArray(salvo.timelines.AUTO)) {
+          estado.timelines.AUTO=salvo.timelines.AUTO.slice(-20);
+        }
+
+        for (const motor of MOTORES) {
+          for (const rx of RX_LIST) {
+            const lista=salvo.timelines[motor]?.[rx];
+
+            if (Array.isArray(lista)) {
+              estado.timelines[motor][rx]=lista.slice(-20);
+            }
+          }
+        }
+      }
+
+      if (salvo.pendentes) {
+        estado.pendentes=salvo.pendentes;
+      }
+
+      if (salvo.freezes) {
+        estado.freezes=salvo.freezes;
+      }
+
+      if (Array.isArray(salvo.visual)) {
+        estado.visual=salvo.visual.slice(-14);
+      }
+
+      estado.visualFreeze=salvo.visualFreeze||null;
+
+      if (
+        Number.isInteger(salvo.offset) &&
+        Math.abs(salvo.offset)<=2
+      ) {
+        estado.offset=salvo.offset;
+      }
+    }
+  }
+} catch(e) {}
+
+function salvar() {
+  estado.historico=limitar(estado.historico);
+  estado.visual=estado.visual.slice(-14);
+
+  try {
+    localStorage.setItem(STORAGE,JSON.stringify(estado));
+  } catch(e) {}
+}
+
+/* ============================================================
+   ANÁLISE DAS DÚZIAS
+============================================================ */
+
+function analisarDuzias(base) {
+  const janela=limitar(base);
+
+  const calor=new Map(
+    TRACK.map(n=>[n,0])
+  );
+
+  const info={
+    1:{contagem:0,forca:0,duplas:0,concentracao:0,score:0},
+    2:{contagem:0,forca:0,duplas:0,concentracao:0,score:0},
+    3:{contagem:0,forca:0,duplas:0,concentracao:0,score:0}
+  };
+
+  const quebra={1:0,2:0,3:0};
+  const transicoes=[];
+
+  janela.forEach((numero,i)=>{
+    const recencia=.45+.55*(i+1)/Math.max(1,janela.length);
+    const d=duzia(numero);
+
+    if (d) {
+      info[d].contagem++;
+      info[d].forca+=recencia;
+    }
+
+    for (let z=1;z<=3;z++) {
+      if (ZONAS_QUEBRA[z].includes(numero)) {
+        quebra[z]+=recencia;
+      }
+    }
+
+    for (const alvo of TRACK) {
+      const dist=distanciaRoda(numero,alvo);
+      const pesos=[1,.78,.52,.29,.14,.06];
+
+      if (dist<=5) {
+        calor.set(
+          alvo,
+          calor.get(alvo)+pesos[dist]*recencia
+        );
+      }
+    }
+
+    if (i>0) {
+      const anterior=janela[i-1];
+      const dist=distanciaRoda(anterior,numero);
+
+      if (dist<=2) {
+        transicoes.push({
+          anterior,
+          numero,
+          distancia:dist,
+          peso:recencia
+        });
+
+        for (let z=1;z<=3;z++) {
+          const pertence=
+            Number(duzia(anterior)===z)+
+            Number(duzia(numero)===z);
+
+          info[z].duplas+=recencia*(
+            pertence===2 ? 1 :
+            pertence===1 ? .45 : .12
+          );
+        }
+      }
+    }
+  });
+
+  for (let z=1;z<=3;z++) {
+    let soma=0;
+    let quantidade=0;
+
+    for (const grupo of GRUPOS_FISICOS[z]) {
+      for (const numero of grupo) {
+        soma+=calor.get(numero)||0;
+        quantidade++;
+      }
+    }
+
+    info[z].concentracao=quantidade?soma/quantidade:0;
+
+    info[z].score=
+      info[z].forca*.38+
+      info[z].duplas*.28+
+      info[z].concentracao*.26+
+      quebra[z]*.08;
+  }
+
+  const maior=Math.max(
+    .000001,
+    info[1].score,
+    info[2].score,
+    info[3].score
+  );
+
+  const ranking=[1,2,3].map(z=>({
+    duzia:z,
+    ...info[z],
+    intensidade:info[z].score/maior
+  })).sort((a,b)=>b.score-a.score);
+
+  return {
+    janela,
+    calor,
+    info,
+    quebra,
+    transicoes,
+    ranking
+  };
+}
+
+function scoreDuziaNumero(numero,analise,alvoDuzia) {
+  const d=duzia(numero);
+  let score=0;
+
+  const principal=analise.ranking[0]?.score||1;
+  const calorMax=Math.max(.000001,...analise.calor.values());
+
+  if (d) {
+    score+=(analise.info[d].score/principal)*.24;
+  }
+
+  if (d===alvoDuzia) {
+    score+=.75;
+  }
+
+  score+=
+    ((analise.calor.get(numero)||0)/calorMax)*.30;
+
+  for (let z=1;z<=3;z++) {
+    const intensidade=analise.info[z].score/principal;
+    let proximidade=0;
+
+    for (const grupo of GRUPOS_FISICOS[z]) {
+      for (const alvo of grupo) {
+        const dist=distanciaRoda(numero,alvo);
+
+        const peso=
+          dist===0 ? 1 :
+          dist===1 ? .75 :
+          dist===2 ? .45 :
+          dist===3 ? .20 : 0;
+
+        proximidade=Math.max(proximidade,peso);
+      }
+    }
+
+    const fator=z===alvoDuzia ? .40 : .13;
+
+    score+=intensidade*proximidade*fator;
+
+    if (ZONAS_QUEBRA[z].includes(numero)) {
+      score+=intensidade*(z===alvoDuzia?.16:.05);
+    }
+  }
+
+  for (const par of analise.transicoes) {
+    const da=distanciaRoda(numero,par.anterior);
+    const db=distanciaRoda(numero,par.numero);
+
+    if (da<=2 && db<=2) {
+      score+=par.peso*.12;
+    } else if (da<=3 || db<=3) {
+      score+=par.peso*.035;
+    }
+  }
+
+  return score;
+}
+
+/* ============================================================
+   CONTAGEM
+============================================================ */
+
+function mapaContagem(base,rx) {
+  const mapa=new Map(TRACK.map(n=>[n,0]));
+  const decay={4:.78,5:.82,6:.86}[rx];
+
+  let peso=1;
+
+  for (let i=base.length-1;i>=0;i--) {
+    const numero=base[i];
+
+    for (const alvo of TRACK) {
+      const d=distanciaRoda(numero,alvo);
+
+      const p=
+        d===0 ? 1 :
+        d===1 ? .72 :
+        d===2 ? .44 :
+        d===3 ? .22 :
+        d===4 ? .10 : 0;
+
+      if (p) {
+        mapa.set(alvo,mapa.get(alvo)+p*peso);
+      }
+    }
+
+    peso*=decay;
+  }
+
+  const maior=Math.max(.000001,...mapa.values());
+
+  for (const n of TRACK) {
+    mapa.set(n,mapa.get(n)/maior);
+  }
+
+  return mapa;
+}
+
+/* ============================================================
+   RAIO X
+============================================================ */
+
+function analisarRX(base,rx) {
+  if (base.length<rx*2+4) {
+    return {
+      valido:false,
+      frequencia:new Map(TRACK.map(n=>[n,0])),
+      similaridade:0
+    };
+  }
+
+  const atual=base.slice(-rx);
+  const candidatos=[];
+
+  for (let i=0;i+rx<base.length-rx;i++) {
+    const trecho=base.slice(i,i+rx);
+    const proximo=base[i+rx];
+
+    let iguais=0;
+    let fisica=0;
+
+    for (let k=0;k<rx;k++) {
+      if (duzia(trecho[k])===duzia(atual[k])) {
+        iguais++;
+      }
+
+      const dist=distanciaRoda(trecho[k],atual[k]);
+
+      fisica+=Math.max(0,1-dist/19);
+    }
+
+    const similaridade=
+      (iguais/rx)*70+
+      (fisica/rx)*30;
+
+    candidatos.push({
+      proximo,
+      similaridade,
+      inicio:i
+    });
+  }
+
+  candidatos.sort(
+    (a,b)=>b.similaridade-a.similaridade||
+    b.inicio-a.inicio
+  );
+
+  const quantidade=Math.min(
+    candidatos.length,
+    Math.max(4,Math.ceil(candidatos.length*.30))
+  );
+
+  const replicas=candidatos.slice(0,quantidade);
+
+  const frequencia=new Map(TRACK.map(n=>[n,0]));
+
+  for (const rep of replicas) {
+    const peso=.40+.60*rep.similaridade/100;
+
+    for (const alvo of TRACK) {
+      const d=distanciaRoda(rep.proximo,alvo);
+
+      const p=
+        d===0 ? 1 :
+        d===1 ? .70 :
+        d===2 ? .42 :
+        d===3 ? .18 : 0;
+
+      if (p) {
+        frequencia.set(
+          alvo,
+          frequencia.get(alvo)+p*peso
+        );
+      }
+    }
+  }
+
+  const max=Math.max(.000001,...frequencia.values());
+
+  for (const n of TRACK) {
+    frequencia.set(n,frequencia.get(n)/max);
+  }
+
+  return {
+    valido:replicas.length>0,
+    frequencia,
+    replicas,
+    similaridade:replicas.length
+      ? replicas.reduce((s,x)=>s+x.similaridade,0)/replicas.length
+      : 0
+  };
+}
+
+/* ============================================================
+   GEOMETRIA DA JOGADA
+============================================================ */
+
+function assinaturaJogada(jogada) {
+  if (!jogada?.valido) return "";
+
+  return [...jogada.numeros]
+    .sort((a,b)=>a-b)
+    .join(",");
+}
+
+function buracosDeUm(jogada) {
+  if (!jogada?.valido) return [];
+
+  const cobertos=jogada.numeros;
+  const buracos=[];
+
+  for (let i=0;i<37;i++) {
+    const numero=TRACK[i];
+
+    if (cobertos.has(numero)) continue;
+
+    const anterior=TRACK[modulo(i-1,37)];
+    const seguinte=TRACK[modulo(i+1,37)];
+
+    if (
+      cobertos.has(anterior) &&
+      cobertos.has(seguinte)
+    ) {
+      buracos.push(numero);
+    }
+  }
+
+  return buracos;
+}
+
+function validarJogada(jogada) {
+  if (!jogada) return false;
+
+  if (jogada.blocos2.length!==5) return false;
+  if (jogada.blocos1.length!==1) return false;
+  if (jogada.numeros.size!==28) return false;
+
+  const todos=[
+    ...jogada.blocos2.flatMap(x=>x.numeros),
+    ...jogada.blocos1.flatMap(x=>x.numeros)
+  ];
+
+  if (todos.length!==28) return false;
+  if (new Set(todos).size!==28) return false;
+
+  return buracosDeUm({...jogada,valido:true}).length===0;
+}
+
+/*
+  CONSTRUÇÃO EXAUSTIVA COM PODA
+
+  Em vez de escolher os centros de maneira gulosa,
+  percorre combinações de blocos físicos.
+
+  O resultado final sempre é validado.
+*/
+
+function construirJogada(ranking,assinaturasUsadas,variacao=0) {
+  const scoreMapa=new Map(
+    ranking.map(x=>[x.numero,x.score])
+  );
+
+  const candidatos=TRACK.map(numero=>({
+    numero,
+    score:scoreMapa.get(numero)||0
+  })).sort((a,b)=>b.score-a.score);
+
+  const indiceVariacao=modulo(variacao,37);
+
+  const candidatos1=[
+    ...candidatos.slice(indiceVariacao),
+    ...candidatos.slice(0,indiceVariacao)
+  ];
+
+  let melhor=null;
+  let melhorScore=-Infinity;
+
+  const limiteNos=250000;
+  let nos=0;
+
+  const blocos5=TRACK.map(centro=>({
+    centro,
+    qtd:2,
+    numeros:setor(centro,2),
+    score:scoreMapa.get(centro)||0,
+    mask:setor(centro,2).reduce(
+      (m,n)=>m|(1n<<BigInt(indice(n))),
+      0n
+    )
+  }));
+
+  const blocos3=TRACK.map(centro=>({
+    centro,
+    qtd:1,
+    numeros:setor(centro,1),
+    score:scoreMapa.get(centro)||0,
+    mask:setor(centro,1).reduce(
+      (m,n)=>m|(1n<<BigInt(indice(n))),
+      0n
+    )
+  }));
+
+  const ordenar5=blocos5.slice().sort(
+    (a,b)=>b.score-a.score
+  );
+
+  const porCentro3=new Map(
+    blocos3.map(b=>[b.centro,b])
+  );
+
+  function avaliar(blocos,um,score) {
+    const numeros=new Set();
+
+    for (const b of blocos) {
+      b.numeros.forEach(n=>numeros.add(n));
+    }
+
+    um.numeros.forEach(n=>numeros.add(n));
+
+    const jogada={
+      valido:true,
+      blocos2:blocos.map(b=>({
+        centro:b.centro,
+        qtd:2,
+        numeros:b.numeros.slice(),
+        score:b.score
+      })),
+      blocos1:[{
+        centro:um.centro,
+        qtd:1,
+        numeros:um.numeros.slice(),
+        score:um.score
+      }],
+      numeros,
+      score
+    };
+
+    if (!validarJogada(jogada)) return;
+
+    const assinatura=assinaturaJogada(jogada);
+
+    if (assinaturasUsadas?.has(assinatura)) return;
+
+    if (score>melhorScore) {
+      melhor=jogada;
+      melhorScore=score;
+    }
+  }
+
+  /*
+    Para evitar buracos de um número, os 9 números
+    descobertos precisam formar intervalos de pelo
+    menos 2 posições no aro da roleta.
+  */
+
+  function busca(blocos,mask,inicio,score,um) {
+    if (++nos>limiteNos) return;
+
+    if (blocos.length===5) {
+      avaliar(blocos,um,score);
+      return;
+    }
+
+    const faltam=5-blocos.length;
+
+    if (ordenar5.length-inicio<faltam) return;
+
+    for (
+      let i=inicio;
+      i<=ordenar5.length-faltam;
+      i++
+    ) {
+      if (nos>limiteNos) return;
+
+      const candidato=ordenar5[i];
+
+      if ((mask&candidato.mask)!==0n) continue;
+
+      blocos.push(candidato);
+
+      busca(
+        blocos,
+        mask|candidato.mask,
+        i+1,
+        score+candidato.score,
+        um
+      );
+
+      blocos.pop();
+    }
+  }
+
+  /*
+    O centro de 3 números também é escolhido
+    pela pontuação da estratégia da dúzia.
+  */
+
+  for (const item of candidatos1) {
+    if (nos>limiteNos) break;
+
+    const um=porCentro3.get(item.numero);
+
+    if (!um) continue;
+
+    busca([],um.mask,0,um.score,um);
+  }
+
+  return melhor;
+}
+
+/* ============================================================
+   ESTRATÉGIAS DOS 12 MOTORES
+============================================================ */
+
+function gerarConfig(
+  base,
+  motor,
+  rx,
+  assinaturasUsadas=null,
+  variacao=0
+) {
+  base=limitar(base);
+
+  const alvoDuzia=duziaMotor(rx);
+  const analise=analisarDuzias(base);
+
+  const dinamico=
+    motor==="DINAMICO"||
+    motor==="RX_DINAMICO";
+
+  const raioX=
+    motor==="RX_NORMAL"||
+    motor==="RX_DINAMICO";
+
+  const minimo=raioX
+    ? Math.max(14,rx*2+4)
+    : Math.max(8,rx+4);
+
+  if (base.length<minimo) {
+    return {
+      valido:false,
+      motor,
+      rx,
+      alvoDuzia,
+      motivo:"AGUARDANDO DADOS"
+    };
+  }
+
+  const contagem=mapaContagem(base,rx);
+  const rxInfo=raioX?analisarRX(base,rx):null;
+
+  if (raioX && !rxInfo.valido) {
+    return {
+      valido:false,
+      motor,
+      rx,
+      alvoDuzia,
+      motivo:"SEM RÉPLICAS"
+    };
+  }
+
+  const ranking=[];
+
+  for (const numero of TRACK) {
+    const d=duzia(numero);
+
+    const scoreDuzia=
+      scoreDuziaNumero(
+        numero,
+        analise,
+        alvoDuzia
+      );
+
+    const scoreContagem=contagem.get(numero)||0;
+
+    const scoreRX=rxInfo
+      ? rxInfo.frequencia.get(numero)||0
+      : 0;
+
+    const proximidadeDuzia=
+      d===alvoDuzia ? 1 : 0;
+
+    const proximidadeQuebra=
+      ZONAS_QUEBRA[alvoDuzia].some(
+        alvo=>distanciaRoda(numero,alvo)<=2
+      ) ? 1 : 0;
+
+    let score=
+      scoreDuzia*.50+
+      scoreContagem*.28+
+      proximidadeDuzia*.14+
+      proximidadeQuebra*.08;
+
+    if (raioX) {
+      score=
+        scoreDuzia*.40+
+        scoreRX*.36+
+        scoreContagem*.12+
+        proximidadeDuzia*.08+
+        proximidadeQuebra*.04;
+    }
+
+    if (dinamico) {
+      const recentes=base.slice(-Math.min(rx,base.length));
+
+      let direita=0;
+      let esquerda=0;
+
+      recentes.forEach((n,i)=>{
+        const delta=deltaRoda(numero,n);
+        const peso=(i+1)/recentes.length;
+
+        if (Math.abs(delta)<=7) {
+          if (delta>0) direita+=peso;
+          if (delta<0) esquerda+=peso;
+        }
+      });
+
+      const tendencia=
+        (direita-esquerda)/
+        Math.max(.000001,direita+esquerda);
+
+      score+=Math.abs(tendencia)*.12;
+
+      const offset=Math.sign(tendencia);
+
+      if (offset!==0) {
+        const vizinho=numeroOffset(numero,offset);
+
+        score+=
+          scoreDuziaNumero(
+            vizinho,
+            analise,
+            alvoDuzia
+          )*.06;
+      }
+    }
+
+    /*
+      Variação determinística por motor e linha.
+      Não utiliza sorteios futuros.
+    */
+
+    const deslocamento=
+      modulo(indice(numero)+variacao*7,37);
+
+    score+=
+      Math.sin(deslocamento*2.3999632297)*.0001;
+
+    ranking.push({
+      numero,
+      score
+    });
+  }
+
+  ranking.sort((a,b)=>b.score-a.score);
+
+  let jogada=null;
+
+  for (let tentativa=0;tentativa<4;tentativa++) {
+    jogada=construirJogada(
+      ranking,
+      assinaturasUsadas,
+      variacao+tentativa*5
+    );
+
+    if (jogada) break;
+  }
+
+  if (!jogada) {
+    return {
+      valido:false,
+      motor,
+      rx,
+      alvoDuzia,
+      motivo:"SEM COMBINAÇÃO VÁLIDA"
+    };
+  }
+
+  const assinatura=assinaturaJogada(jogada);
+
+  if (assinaturasUsadas?.has(assinatura)) {
+    return {
+      valido:false,
+      motor,
+      rx,
+      alvoDuzia,
+      motivo:"JOGADA REPETIDA"
+    };
+  }
+
+  return {
+    valido:true,
+    motor,
+    rx,
+    alvoDuzia,
+    jogada,
+    analise,
+    similaridade:rxInfo?.similaridade||0,
+    score:jogada.score,
+    assinatura
+  };
+}
+
+/* ============================================================
+   CLASSIFICAÇÃO
+============================================================ */
+
+function classificarJogada(numero,jogada) {
+  if (!jogada?.valido) {
+    return {
+      green:false,
+      tipo:"FORA",
+      lado:0
+    };
+  }
+
+  const blocos=[
+    ...jogada.blocos2,
+    ...jogada.blocos1
+  ];
+
+  for (const bloco of blocos) {
+    if (bloco.numeros.includes(numero)) {
+      const dist=distanciaRoda(numero,bloco.centro);
+
+      return {
+        green:true,
+        tipo:dist===0?"ALVO":dist===1?"V1":"V2",
+        lado:Math.sign(deltaRoda(bloco.centro,numero))
+      };
+    }
+  }
+
+  let melhor=null;
+
+  for (const bloco of blocos) {
+    const delta=deltaRoda(bloco.centro,numero);
+    const gap=Math.abs(delta)-bloco.qtd;
+
+    if (gap>0 && (!melhor||gap<melhor.gap)) {
+      melhor={
+        gap,
+        lado:Math.sign(delta)
+      };
+    }
+  }
+
+  return {
+    green:false,
+    tipo:
+      melhor?.gap===1?"FORA1":
+      melhor?.gap===2?"FORA2":"FORA",
+    lado:melhor?.lado||0
+  };
+}
+
+/* ============================================================
+   BACKTEST
+============================================================ */
+
+function backtest(base,motor,rx) {
+  base=limitar(base);
+
+  const timeline=[];
+
+  const minimo=
+    motor.startsWith("RX")||
+    motor==="DINAMICO"
+      ? Math.max(14,rx*2+4)
+      : Math.max(8,rx+4);
+
+  for (let i=minimo;i<base.length;i++) {
+    const passado=base.slice(0,i);
+    const config=gerarConfig(passado,motor,rx);
+
+    if (!config.valido) {
+      timeline.push({
+        resultado:base[i],
+        semJogada:true,
+        green:null
+      });
+      continue;
+    }
+
+    const r=classificarJogada(base[i],config.jogada);
+
+    timeline.push({
+      resultado:base[i],
+      semJogada:false,
+      green:r.green,
+      tipo:r.tipo,
+      lado:r.lado
+    });
+  }
+
+  return statsTimeline(timeline);
+}
+
+function statsTimeline(lista) {
+  const validos=(lista||[])
+    .filter(x=>
+      !x.semJogada &&
+      !x.aguardandoG1 &&
+      x.green!==null &&
+      x.green!==undefined
+    )
+    .slice(-20);
+
+  function taxa(qtd) {
+    const itens=validos.slice(-qtd);
+
+    return itens.length
+      ? itens.filter(x=>x.green).length/itens.length*100
+      : 0;
+  }
+
+  let losses=0;
+
+  for (let i=validos.length-1;i>=0;i--) {
+    if (validos[i].green) break;
+    losses++;
+  }
+
+  return {
+    total:validos.length,
+    taxa5:taxa(5),
+    taxa10:taxa(10),
+    taxa20:taxa(20),
+    lossSeguidos:losses,
+    timeline:lista||[]
+  };
+}
+
+/* ============================================================
+   12 CONFIGURAÇÕES INDEPENDENTES
+============================================================ */
+
+function calcularDoze(base) {
+  const resultado={
+    NORMAL:{},
+    DINAMICO:{},
+    RX_NORMAL:{},
+    RX_DINAMICO:{}
+  };
+
+  const usadas=new Set();
+  let variacao=0;
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      const cfg=gerarConfig(
+        base,
+        motor,
+        rx,
+        usadas,
+        variacao++
+      );
+
+      if (cfg.valido) {
+        usadas.add(cfg.assinatura);
+
+        cfg.backtest=backtest(base,motor,rx);
+        cfg.live=statsTimeline(estado.timelines[motor][rx]);
+
+        cfg.scoreAuto=
+          cfg.backtest.taxa5*.28+
+          cfg.backtest.taxa10*.26+
+          cfg.backtest.taxa20*.18+
+          cfg.live.taxa10*.15+
+          cfg.live.taxa20*.08+
+          cfg.similaridade*.05-
+          cfg.live.lossSeguidos*3;
+
+        cfg.scoreAuto+=
+          Math.min(10,cfg.score*.15);
+      }
+
+      resultado[motor][rx]=cfg;
+    }
+  }
+
+  return resultado;
+}
+
+function escolherAuto(configs) {
+  const candidatos=[];
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      const cfg=configs[motor][rx];
+
+      if (cfg?.valido) {
+        candidatos.push(cfg);
+      }
+    }
+  }
+
+  candidatos.sort(
+    (a,b)=>b.scoreAuto-a.scoreAuto||
+    b.score-a.score
+  );
+
+  return candidatos[0]||null;
+}
+
+function configManual(configs) {
+  return configs[estado.motorManual]?.[estado.manualRX]||null;
+}
+
+function configAtiva(configs,auto) {
+  return estado.modo==="AUTO"
+    ? auto
+    : configManual(configs);
+}
+
+/* ============================================================
+   SNAPSHOT E G1
+============================================================ */
+
+function snapshot(config) {
+  if (!config?.valido) return null;
+
+  return {
+    motor:config.motor,
+    rx:config.rx,
+    centros2:config.jogada.blocos2.map(b=>b.centro),
+    centro1:config.jogada.blocos1[0].centro,
+    assinaturaHistorico:estado.historico.join(",")
+  };
+}
+
+function jogadaDeSnapshot(p) {
+  if (!p) return null;
+
+  const blocos2=(p.centros2||[]).map(centro=>({
+    centro,
+    qtd:2,
+    numeros:setor(centro,2)
+  }));
+
+  const blocos1=p.centro1===null||p.centro1===undefined
+    ? []
+    : [{
+        centro:p.centro1,
+        qtd:1,
+        numeros:setor(p.centro1,1)
+      }];
+
+  const numeros=new Set(
+    [...blocos2,...blocos1].flatMap(b=>b.numeros)
+  );
+
+  return {
+    valido:true,
+    blocos2,
+    blocos1,
+    numeros
+  };
+}
+
+function avaliarLinha(numero,pendente,freeze,lista,sig) {
+  lista=(lista||[]).slice(-20);
+
+  if (freeze) {
+    const r=classificarJogada(
+      numero,
+      jogadaDeSnapshot(freeze)
+    );
+
+    const pos=lista.findLastIndex(
+      x=>x.aguardandoG1===true
+    );
+
+    const item={
+      resultadoG1:numero,
+      green:r.green,
+      tipo:r.tipo,
+      lado:r.lado,
+      fase:r.green?"G1":"LOSS",
+      g1:r.green,
+      aguardandoG1:false,
+      semJogada:false
+    };
+
+    if (pos>=0) {
+      lista[pos]={...lista[pos],...item};
+    } else {
+      lista.push({
+        resultado:numero,
+        ...item
+      });
+    }
+
+    return {
+      lista:lista.slice(-20),
+      freeze:null,
+      pendente:null
+    };
+  }
+
+  if (
+    !pendente ||
+    pendente.assinaturaHistorico!==sig
+  ) {
+    lista.push({
+      resultado:numero,
+      semJogada:true,
+      green:null,
+      fase:"SEM"
+    });
+
+    return {
+      lista:lista.slice(-20),
+      freeze:null,
+      pendente:null
+    };
+  }
+
+  const r=classificarJogada(
+    numero,
+    jogadaDeSnapshot(pendente)
+  );
+
+  if (r.green) {
+    lista.push({
+      resultado:numero,
+      semJogada:false,
+      green:true,
+      tipo:r.tipo,
+      lado:r.lado,
+      fase:"ENTRADA",
+      aguardandoG1:false
+    });
+
+    return {
+      lista:lista.slice(-20),
+      freeze:null,
+      pendente:null
+    };
+  }
+
+  lista.push({
+    resultado:numero,
+    semJogada:false,
+    green:null,
+    tipo:r.tipo,
+    lado:r.lado,
+    fase:"ESPERA_G1",
+    aguardandoG1:true
+  });
+
+  return {
+    lista:lista.slice(-20),
+    freeze:{...pendente},
+    pendente:null
+  };
+}
+
+function avaliarPendentes(numero) {
+  const sig=estado.historico.join(",");
+
+  const auto=avaliarLinha(
+    numero,
+    estado.pendentes.AUTO,
+    estado.freezes.AUTO,
+    estado.timelines.AUTO,
+    sig
+  );
+
+  estado.timelines.AUTO=auto.lista;
+  estado.freezes.AUTO=auto.freeze;
+  estado.pendentes.AUTO=auto.pendente;
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      const r=avaliarLinha(
+        numero,
+        estado.pendentes[motor][rx],
+        estado.freezes[motor][rx],
+        estado.timelines[motor][rx],
+        sig
+      );
+
+      estado.timelines[motor][rx]=r.lista;
+      estado.freezes[motor][rx]=r.freeze;
+      estado.pendentes[motor][rx]=r.pendente;
+    }
+  }
+}
+
+function garantirPendentes(configs,auto) {
+  const sig=estado.historico.join(",");
+
+  if (!estado.freezes.AUTO) {
+    if (
+      !estado.pendentes.AUTO ||
+      estado.pendentes.AUTO.assinaturaHistorico!==sig
+    ) {
+      estado.pendentes.AUTO=snapshot(auto);
+    }
+  }
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      if (estado.freezes[motor]?.[rx]) continue;
+
+      const atual=estado.pendentes[motor]?.[rx];
+
+      if (!atual||atual.assinaturaHistorico!==sig) {
+        estado.pendentes[motor][rx]=snapshot(
+          configs[motor][rx]
+        );
+      }
+    }
+  }
+
+  salvar();
+}
+
+/* ============================================================
+   ENTRADA
+============================================================ */
+
+function adicionarNumero(numero) {
+  if (!Number.isInteger(numero)||numero<0||numero>36) return;
+
+  const configs=calcularDoze(estado.historico);
+  const auto=escolherAuto(configs);
+  const ativa=configAtiva(configs,auto);
+
+  garantirPendentes(configs,auto);
+
+  const estavaG1=!!estado.visualFreeze;
+
+  avaliarPendentes(numero);
+
+  if (estavaG1) {
+    const r=classificarJogada(
+      numero,
+      jogadaDeSnapshot(estado.visualFreeze)
+    );
+
+    const ultimo=estado.visual[estado.visual.length-1];
+
+    if (ultimo) {
+      ultimo.g1=numero;
+      ultimo.g1Green=r.green;
+      ultimo.green=r.green;
+      ultimo.fase=r.green?"G1":"LOSS";
+    }
+
+    estado.visualFreeze=null;
+  } else {
+    const snap=snapshot(ativa);
+
+    const r=snap
+      ? classificarJogada(numero,jogadaDeSnapshot(snap))
+      : null;
+
+    const item={
+      resultado:numero,
+      g1:null,
+      g1Green:null,
+      green:r?.green===true?true:null,
+      semJogada:!snap,
+      fase:!snap
+        ? "SEM"
+        : r.green
+          ? "ENTRADA"
+          : "ESPERA_G1",
+      motor:ativa?.motor||null,
+      rx:ativa?.rx||null
+    };
+
+    estado.visual.push(item);
+
+    if (r && !r.green) {
+      estado.visualFreeze=snap;
+    }
+  }
+
+  estado.historico.push(numero);
+  estado.historico=estado.historico.slice(-20);
+
+  salvar();
+  render();
+}
+
+function extrairNumeros(texto) {
+  const encontrados=String(texto).match(
+    /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
+  );
+
+  return encontrados
+    ? encontrados.map(Number).slice(-20)
+    : [];
+}
+
+function resetarAnalise() {
+  const novo=criarEstado();
+
+  estado.timelines=novo.timelines;
+  estado.pendentes=novo.pendentes;
+  estado.freezes=novo.freezes;
+  estado.visual=[];
+  estado.visualFreeze=null;
+  estado.offset=0;
+}
+
+function inserirHistorico() {
+  const campo=document.getElementById("entradaHistorico");
+  const numeros=extrairNumeros(campo.value);
+
+  if (!numeros.length) return;
+
+  estado.historico=numeros;
+
+  resetarAnalise();
+  salvar();
+
+  campo.value="";
+  render();
+}
+
+function apagarUltimo() {
+  if (!estado.historico.length) return;
+
+  estado.historico.pop();
+  resetarAnalise();
+  salvar();
+  render();
+}
+
+function apagarTudo() {
+  if (!confirm("Apagar histórico?")) return;
+
+  estado.historico=[];
+  resetarAnalise();
+  salvar();
+  render();
+}
+
+function selecionarAuto() {
+  estado.modo="AUTO";
+  salvar();
+  render();
+}
+
+function selecionarManual(motor,rx) {
+  estado.modo="MANUAL";
+  estado.motorManual=motor;
+  estado.manualRX=rx;
+  salvar();
+  render();
+}
+
+/* ============================================================
+   INTERFACE
+============================================================ */
+
+document.body.innerHTML="";
+
+document.body.style.cssText=
+  "margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif";
+
+const app=document.createElement("div");
+
+app.innerHTML=`
 <style>
-
-*{
-box-sizing:border-box
+*{box-sizing:border-box}
+body{background:#101010}
+.app{max-width:900px;margin:auto;padding:7px}
+h2{text-align:center;font-size:20px;margin:5px}
+.painel{
+  background:#1c1c1f;
+  border:1px solid #414141;
+  border-radius:10px;
+  padding:8px;
+  margin-bottom:7px
 }
-
-body{
-margin:0;
-background:#101012;
-color:#f6f6f6;
-font-family:Arial,sans-serif
+.titulo{
+  font-size:9px;
+  font-weight:900;
+  color:#999;
+  margin-bottom:6px
 }
-
-.app{
-max-width:950px;
-margin:auto;
-padding:9px
-}
-
-h2{
-text-align:center;
-margin:9px;
-font-size:21px
-}
-
-.panel{
-background:#1c1c20;
-border:1px solid #414147;
-border-radius:11px;
-padding:10px;
-margin-bottom:8px
-}
-
-.label{
-color:#a1a1a1;
-font-size:10px;
-font-weight:900;
-margin:5px 0 8px
-}
-
 textarea{
-width:100%;
-height:58px;
-background:#0e0e10;
-border:1px solid #56565d;
-color:white;
-border-radius:8px;
-padding:9px
+  width:100%;
+  height:60px;
+  background:#111;
+  color:#fff;
+  border:1px solid #555;
+  border-radius:7px;
+  padding:7px
 }
-
-.buttons{
-display:flex;
-flex-wrap:wrap;
-gap:6px;
-margin-top:8px
+.botoes,.modos{
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+  margin-top:5px
 }
-
 button{
-font-family:inherit;
-cursor:pointer;
-font-weight:bold;
-color:white;
-border:1px solid #5b5b60;
-border-radius:7px;
-background:#34343a;
-padding:9px
+  cursor:pointer;
+  font-family:Arial;
+  font-weight:900
 }
-
-.ok{
-background:#176b3e
+.btn{
+  border:1px solid #555;
+  background:#333;
+  color:#fff;
+  border-radius:7px;
+  padding:7px 10px
 }
-
-.danger{
-background:#812d35
+.btn.verde{background:#17643b}
+.btn.red{background:#762832}
+.seletorGrupo{margin-top:9px}
+.seletorTitulo{
+  font-size:9px;
+  font-weight:900;
+  color:#999
 }
-
-.mode{
-margin:3px;
-background:#29292e
+.modo{
+  background:#222;
+  color:#aaa;
+  border:1px solid #555;
+  border-radius:7px;
+  padding:8px 12px
 }
-
-.mode.active{
-background:#006d86;
-border-color:#00d9ff
+.modo.ativo{
+  background:#007d98;
+  border-color:#00e5ff;
+  color:#fff
 }
-
-.modegroup{
-display:inline-block;
-vertical-align:top;
-margin:6px 8px 3px 0
+.modo.dinamico.ativo{
+  background:#6c4d00;
+  border-color:#ffc107
 }
-
-.modegroup small{
-display:block;
-font-size:9px;
-color:#aaa;
-font-weight:bold
+.modo.raiox.ativo{
+  background:#4b236b;
+  border-color:#d27cff
 }
-
-.auto{
-color:#00e5ff;
-border:1px solid #007b93;
-background:#111;
-border-radius:7px;
-padding:9px;
-margin:8px 0;
-font-size:11px;
-font-weight:bold
+.modo.raiox.dinamico.ativo{
+  background:#7a3d00;
+  border-color:#ff9800
 }
-
-.trends{
-display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:6px
+.origemAuto{
+  margin-top:8px;
+  padding:8px;
+  background:#111;
+  border:1px solid #00e5ff;
+  border-radius:7px;
+  font-size:10px;
+  font-weight:900;
+  text-align:center;
+  color:#00e5ff
 }
-
-.trend{
-background:#121214;
-border:1px solid #48484a;
-border-radius:8px;
-padding:9px;
-text-align:center
+.resumo{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:4px;
+  margin-top:8px
 }
-
-.trend.dominant{
-border-color:#00e676
+.card{
+  background:#111;
+  border:1px solid #333;
+  border-radius:7px;
+  padding:8px;
+  text-align:center
 }
-
-.trend small,
-.trend span{
-display:block;
-color:#aaa;
-font-size:9px
+.card small{
+  display:block;
+  font-size:8px;
+  color:#999;
+  font-weight:900
 }
-
-.trend strong{
-display:block;
-font-size:22px;
-margin:4px
+.card strong{font-size:16px}
+.duziasLinha{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:5px
 }
-
-.hint{
-font-size:9px;
-color:#aaa;
-margin:8px 0
+.duziaCard{
+  background:#111;
+  border:1px solid #444;
+  border-radius:7px;
+  padding:8px;
+  text-align:center
 }
-
-.summary{
-display:grid;
-grid-template-columns:repeat(4,1fr);
-gap:5px
+.duziaCard.forte{border-color:#00e676}
+.duziaCard small{
+  display:block;
+  font-size:8px;
+  color:#aaa
 }
-
-.summary>div{
-background:#111;
-border:1px solid #393939;
-border-radius:7px;
-padding:8px;
-text-align:center
+.duziaCard strong{
+  display:block;
+  font-size:17px;
+  margin:4px
 }
-
-.summary small{
-display:block;
-color:#aaa;
-font-size:8px
+.duziaCard span{
+  font-size:8px;
+  color:#aaa
 }
-
-.summary strong{
-display:block;
-font-size:12px;
-margin-top:4px
+.timelineSecao{
+  margin-top:10px;
+  padding-top:7px;
+  border-top:1px solid #333
 }
-
-.tlhead{
-font-size:9px;
-color:#999;
-margin-top:12px;
-border-top:1px solid #383838;
-padding-top:8px;
-font-weight:900
+.timelineTituloGrupo{
+  font-size:9px;
+  font-weight:900;
+  color:#aaa
 }
-
-.tl{
-display:grid;
-grid-template-columns:82px 1fr 45px;
-align-items:center;
-gap:5px;
-margin:5px 0;
-font-size:10px
+.timelineRow{
+  display:grid;
+  grid-template-columns:85px 1fr 42px;
+  gap:4px;
+  align-items:center;
+  margin-top:5px
 }
-
-.tl>strong{
-text-align:right
+.timeline{
+  display:flex;
+  gap:2px;
+  justify-content:flex-end;
+  overflow:hidden
 }
-
-.marks{
-display:flex;
-justify-content:flex-end;
-gap:2px;
-overflow:hidden
+.gl{
+  width:18px;
+  height:18px;
+  min-width:18px;
+  border-radius:4px;
+  font-size:7px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900
 }
-
-.marks b{
-display:inline-flex;
-align-items:center;
-justify-content:center;
-min-width:19px;
-height:20px;
-border-radius:4px;
-background:#555;
-font-size:8px
+.gl.green{background:#00994d}
+.gl.loss{background:#c62828}
+.gl.g1{background:#ffc107;color:#111}
+.gl.wait{
+  background:#4a3510;
+  border:1px solid #ffc107;
+  color:#ffc107
 }
-
-.marks .green{
-background:#008f4c
+.gl.sem{
+  background:#333;
+  color:#999
 }
-
-.marks .g1{
-background:#e0a600;
-color:#151515
+.nomeTL,.taxaTL{
+  font-size:8px;
+  font-weight:900
 }
-
-.marks .loss{
-background:#bf2634
+.taxaTL{text-align:right}
+.duplas14{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:5px
 }
-
-.marks .wait{
-background:#765a13
+.dupla14{
+  min-height:65px;
+  border-radius:7px;
+  background:#272727;
+  border:2px solid #555;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  position:relative;
+  padding:6px 4px 26px
 }
-
-.ball{
-display:inline-flex;
-align-items:center;
-justify-content:center;
-width:31px;
-height:31px;
-min-width:31px;
-border:1px solid #888;
-border-radius:50%;
-font-size:12px;
-font-weight:900
+.dupla14.green{border-color:#00b85c}
+.dupla14.loss{border-color:#d93a3a}
+.dupla14.g1{border-color:#ffc107}
+.dupla14.wait{border-color:#8a6b00}
+.bolaDupla{
+  width:31px;
+  height:31px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:11px;
+  font-weight:900;
+  border:2px solid #aaa
 }
-
-.historyBalls{
-display:flex;
-flex-wrap:wrap;
-gap:4px;
-margin:8px 0
+.resultadoEntrada{
+  position:absolute;
+  bottom:3px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#171717;
+  border:1px solid #777;
+  border-radius:5px;
+  padding:3px 5px;
+  font-size:8px;
+  white-space:nowrap
 }
-
-.blocks{
-display:flex;
-overflow-x:auto;
-gap:6px;
-padding:5px 0
+.resultadoEntrada.green{background:#00994d}
+.resultadoEntrada.loss{background:#c62828}
+.resultadoEntrada.g1{
+  background:#ffc107;
+  color:#111
 }
-
-.block{
-min-width:130px;
-background:#111;
-border:1px solid #00bce0;
-border-radius:8px;
-text-align:center;
-padding:8px
+.resultadoEntrada.wait{color:#ffc107}
+.jogadaStatus{
+  display:inline-block;
+  font-size:9px;
+  font-weight:900;
+  color:#00e5ff;
+  border:1px solid #007d98;
+  background:#15323a;
+  padding:6px;
+  border-radius:6px;
+  margin-bottom:7px
 }
-
-.block.one{
-border-color:#ffc107
+.jogadaStatus.congelada{
+  color:#ffc107;
+  border-color:#ffc107;
+  background:#4a3510
 }
-
-.block small{
-display:block;
-font-size:9px;
-color:#aaa
+.grupoRegiao{
+  margin-bottom:8px;
+  background:#161616;
+  border:1px solid #333;
+  border-radius:8px;
+  padding:6px
 }
-
-.block strong{
-display:block;
-font-size:24px;
-margin:5px
+.grupoRegiaoTitulo{
+  font-size:9px;
+  font-weight:900;
+  color:#aaa;
+  margin-bottom:5px
 }
-
-.block span{
-display:block;
-border-top:1px solid #444;
-padding-top:5px;
-font-size:10px
+.jogada{
+  display:flex;
+  gap:5px;
+  overflow-x:auto
 }
-
-.currentTitle{
-font-size:10px;
-color:#00e5ff;
-font-weight:bold
+.bloco{
+  min-width:135px;
+  background:#111;
+  border:1px solid #00e5ff;
+  border-radius:8px;
+  padding:7px;
+  text-align:center
 }
-
-.numbers{
-font-size:10px;
-color:#bbb;
-line-height:1.8;
-margin-top:9px
+.bloco.um{border-color:#ffc107}
+.bloco small{
+  font-size:8px;
+  color:#999;
+  font-weight:900
 }
-
-.waiting{
-color:#888;
-padding:15px
+.bloco strong{
+  display:block;
+  font-size:22px;
+  margin:4px
 }
-
-.last14{
-display:grid;
-grid-template-columns:repeat(7,1fr);
-gap:5px
+.numeros{
+  border-top:1px solid #333;
+  padding-top:5px;
+  font-size:10px;
+  font-weight:900
 }
-
-.last{
-border:1px solid #555;
-border-radius:7px;
-text-align:center;
-padding:7px 2px;
-background:#252525
+.teclado{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:4px
 }
-
-.last.green{
-border-color:#00ad62
+.numero{
+  height:39px;
+  border:1px solid #666;
+  border-radius:6px;
+  color:#fff
 }
-
-.last.g1{
-border-color:#ffc107
-}
-
-.last.loss{
-border-color:#e13a46
-}
-
-.last.wait{
-border-color:#c49a18
-}
-
-.last small{
-display:block;
-margin-top:4px;
-font-size:8px
-}
-
-.keyboard{
-display:grid;
-grid-template-columns:repeat(6,1fr);
-gap:5px
-}
-
-.keyboard button{
-height:41px;
-font-size:14px
-}
-
-.keyboard .zero{
-grid-column:span 6
-}
-
+.zero{grid-column:span 6}
 .status{
-color:#00e676;
-font-size:9px;
-font-weight:bold;
-line-height:1.6;
-margin-top:9px
+  font-size:9px;
+  font-weight:900;
+  color:#00e676;
+  margin-top:7px;
+  line-height:1.6
 }
-
 @media(max-width:600px){
-
-.trends{
-grid-template-columns:repeat(3,1fr)
+  .resumo{grid-template-columns:repeat(2,1fr)}
+  .duplas14{grid-template-columns:repeat(4,1fr)}
+  .timelineRow{grid-template-columns:70px 1fr 36px}
 }
-
-.trend span{
-font-size:8px
-}
-
-.summary{
-grid-template-columns:repeat(2,1fr)
-}
-
-.last14{
-grid-template-columns:repeat(4,1fr)
-}
-
-.tl{
-grid-template-columns:55px 1fr 35px
-}
-
-.marks b{
-min-width:15px;
-height:18px;
-font-size:7px
-}
-
-}
-
 </style>
 
 <div class="app">
 
 <h2>ANÁLISE BETA</h2>
 
-<div class="panel">
+<div class="painel">
+  <textarea
+    id="entradaHistorico"
+    placeholder="Cole o histórico — últimos 20"
+  ></textarea>
 
-<div class="label">
-HISTÓRICO •
-<span id="historyCount"></span>
+  <div class="botoes">
+    <button id="inserir" class="btn verde">INSERIR</button>
+    <button id="apagar" class="btn">APAGAR ÚLTIMO</button>
+    <button id="limpar" class="btn red">APAGAR TUDO</button>
+  </div>
+
+  <div id="status" class="status">PRONTO</div>
 </div>
 
-<textarea
-id="inputHistory"
-placeholder="Cole até 20 resultados, do mais antigo ao mais recente">
-</textarea>
+<div class="painel">
 
-<div class="buttons">
+  <div class="seletorGrupo">
+    <div class="seletorTitulo">AUTO • 12 CANDIDATOS</div>
+    <div class="modos">
+      <button id="btnAUTO" class="modo">AUTO</button>
+    </div>
+  </div>
 
-<button class="ok" id="insert">
-INSERIR
-</button>
+  <div class="seletorGrupo">
+    <div class="seletorTitulo">NORMAL • DÚZIAS FÍSICAS</div>
+    <div class="modos">
+      <button id="btnN4" class="modo">C4</button>
+      <button id="btnN5" class="modo">C5</button>
+      <button id="btnN6" class="modo">C6</button>
+    </div>
+  </div>
 
-<button id="undo">
-APAGAR ÚLTIMO
-</button>
+  <div class="seletorGrupo">
+    <div class="seletorTitulo">DINÂMICO • DÚZIAS FÍSICAS</div>
+    <div class="modos">
+      <button id="btnD4" class="modo dinamico">C4</button>
+      <button id="btnD5" class="modo dinamico">C5</button>
+      <button id="btnD6" class="modo dinamico">C6</button>
+    </div>
+  </div>
 
-<button class="danger" id="clear">
-APAGAR TUDO
-</button>
+  <div class="seletorGrupo">
+    <div class="seletorTitulo">RAIO X NORMAL</div>
+    <div class="modos">
+      <button id="btnRN4" class="modo raiox">RX C4</button>
+      <button id="btnRN5" class="modo raiox">RX C5</button>
+      <button id="btnRN6" class="modo raiox">RX C6</button>
+    </div>
+  </div>
 
-</div>
+  <div class="seletorGrupo">
+    <div class="seletorTitulo">RAIO X DINÂMICO</div>
+    <div class="modos">
+      <button id="btnRD4" class="modo raiox dinamico">RX C4</button>
+      <button id="btnRD5" class="modo raiox dinamico">RX C5</button>
+      <button id="btnRD6" class="modo raiox dinamico">RX C6</button>
+    </div>
+  </div>
 
-<div
-id="historyBalls"
-class="historyBalls">
-</div>
+  <div id="origemAuto" class="origemAuto">AUTO</div>
+  <div id="resumo" class="resumo"></div>
 
-<div
-class="status"
-id="status">
-</div>
+  <div class="timelineSecao">
+    <div class="timelineTituloGrupo">CONCENTRAÇÃO FÍSICA DAS DÚZIAS</div>
+    <div id="duzias" class="duziasLinha"></div>
+  </div>
 
-</div>
+  <div class="timelineSecao">
+    <div class="timelineTituloGrupo">AUTO FINAL</div>
+    <div id="timelineAUTO" class="timelineRow"></div>
+  </div>
 
-<div class="panel">
+  <div class="timelineSecao">
+    <div class="timelineTituloGrupo">NORMAL</div>
+    <div id="timelineN4" class="timelineRow"></div>
+    <div id="timelineN5" class="timelineRow"></div>
+    <div id="timelineN6" class="timelineRow"></div>
+  </div>
 
-<div class="label">
-AUTO • 12 JOGADAS INDEPENDENTES
-</div>
+  <div class="timelineSecao">
+    <div class="timelineTituloGrupo">DINÂMICO</div>
+    <div id="timelineD4" class="timelineRow"></div>
+    <div id="timelineD5" class="timelineRow"></div>
+    <div id="timelineD6" class="timelineRow"></div>
+  </div>
 
-<div id="choices"></div>
+  <div class="timelineSecao">
+    <div class="timelineTituloGrupo">RAIO X NORMAL</div>
+    <div id="timelineRN4" class="timelineRow"></div>
+    <div id="timelineRN5" class="timelineRow"></div>
+    <div id="timelineRN6" class="timelineRow"></div>
+  </div>
 
-<div
-class="auto"
-id="autoResult">
-</div>
-
-<div class="label">
-TENDÊNCIA DE DÚZIAS •
-DUPLAS FÍSICAS •
-ZONAS DE QUEBRA
-</div>
-
-<div
-id="trend"
-class="trends">
-</div>
-
-<div
-id="trendNote"
-class="hint">
-</div>
-
-<div
-id="summary"
-class="summary">
-</div>
-
-<div
-class="label"
-style="margin-top:14px">
-TIMELINES INDIVIDUAIS • G1
-</div>
-
-<div id="timelines"></div>
-
-</div>
-
-<div class="panel">
-
-<div class="label">
-ÚLTIMAS 14 JOGADAS
-</div>
-
-<div
-id="last14"
-class="last14">
-</div>
-
-</div>
-
-<div class="panel">
-
-<div class="label">
-JOGADA
-</div>
-
-<div id="current"></div>
+  <div class="timelineSecao">
+    <div class="timelineTituloGrupo">RAIO X DINÂMICO</div>
+    <div id="timelineRD4" class="timelineRow"></div>
+    <div id="timelineRD5" class="timelineRow"></div>
+    <div id="timelineRD6" class="timelineRow"></div>
+  </div>
 
 </div>
 
-<div class="panel">
-
-<div class="label">
-TECLADO
+<div class="painel">
+  <div class="titulo">ÚLTIMAS 14 • JOGADA SELECIONADA</div>
+  <div id="ultimos14" class="duplas14"></div>
 </div>
 
-<div
-id="keyboard"
-class="keyboard">
+<div class="painel">
+  <div class="titulo">JOGADA</div>
+  <div id="jogada"></div>
+</div>
+
+<div class="painel">
+  <div class="titulo">TECLADO</div>
+  <div id="teclado" class="teclado"></div>
 </div>
 
 </div>
+`;
 
-</div>
-\`;
+document.body.appendChild(app);
 
-$('insert').onclick=importHistory;
-$('undo').onclick=undo;
-$('clear').onclick=clear;
+/* ============================================================
+   EVENTOS
+============================================================ */
 
-for(let n=1;n<=36;n++){
+document.getElementById("inserir").onclick=inserirHistorico;
+document.getElementById("apagar").onclick=apagarUltimo;
+document.getElementById("limpar").onclick=apagarTudo;
+document.getElementById("btnAUTO").onclick=selecionarAuto;
 
-let b=document.createElement(
-'button'
-);
+for (const rx of RX_LIST) {
+  document.getElementById("btnN"+rx).onclick=
+    ()=>selecionarManual("NORMAL",rx);
 
-b.textContent=n;
+  document.getElementById("btnD"+rx).onclick=
+    ()=>selecionarManual("DINAMICO",rx);
 
-b.style.background=
-RED.has(n)
-?'#b71c36'
-:'#171717';
+  document.getElementById("btnRN"+rx).onclick=
+    ()=>selecionarManual("RX_NORMAL",rx);
 
-b.onclick=()=>addNumber(n);
-
-$('keyboard').appendChild(b);
+  document.getElementById("btnRD"+rx).onclick=
+    ()=>selecionarManual("RX_DINAMICO",rx);
 }
 
-let z=document.createElement(
-'button'
-);
+/* ============================================================
+   TECLADO
+============================================================ */
 
-z.textContent='0';
-z.className='zero';
-z.style.background='#087c48';
-z.onclick=()=>addNumber(0);
+const teclado=document.getElementById("teclado");
 
-$('keyboard').appendChild(z);
+for (let n=1;n<=36;n++) {
+  const b=document.createElement("button");
 
-save();
+  b.className="numero";
+  b.textContent=n;
+  b.style.background=corRoleta(n);
+  b.onclick=()=>adicionarNumero(n);
+
+  teclado.appendChild(b);
+}
+
+const zero=document.createElement("button");
+
+zero.className="numero zero";
+zero.textContent="0";
+zero.style.background=corRoleta(0);
+zero.onclick=()=>adicionarNumero(0);
+
+teclado.appendChild(zero);
+
+/* ============================================================
+   RENDER TIMELINES
+============================================================ */
+
+function renderTimeline(id,nome,lista) {
+  const itens=(lista||[]).slice(-20);
+
+  const validos=itens.filter(x=>
+    !x.semJogada &&
+    !x.aguardandoG1 &&
+    x.green!==null &&
+    x.green!==undefined
+  );
+
+  const taxa=validos.length
+    ? validos.filter(x=>x.green).length/validos.length*100
+    : 0;
+
+  const html=itens.map(x=>{
+    if (x.semJogada) {
+      return '<span class="gl sem">—</span>';
+    }
+
+    if (x.aguardandoG1) {
+      return '<span class="gl wait">…</span>';
+    }
+
+    if (x.green && x.fase==="G1") {
+      return '<span class="gl g1">G1</span>';
+    }
+
+    if (x.green) {
+      return '<span class="gl green">G</span>';
+    }
+
+    return '<span class="gl loss">L</span>';
+  }).join("");
+
+  document.getElementById(id).innerHTML=
+    '<div class="nomeTL">'+nome+'</div>'+
+    '<div class="timeline">'+html+'</div>'+
+    '<div class="taxaTL">'+
+    (validos.length?taxa.toFixed(0)+"%":"—")+
+    '</div>';
+}
+
+function renderDuzias(analise) {
+  document.getElementById("duzias").innerHTML=
+    analise.ranking.map((x,i)=>`
+      <div class="duziaCard ${i===0?"forte":""}">
+        <small>${x.duzia}ª DÚZIA</small>
+        <strong>${(x.intensidade*100).toFixed(0)}%</strong>
+        <span>${x.contagem}/20 • FÍSICA</span>
+      </div>
+    `).join("");
+}
+
+function nomeMotor(motor) {
+  return {
+    NORMAL:"NORMAL",
+    DINAMICO:"DINÂMICO",
+    RX_NORMAL:"RAIO X NORMAL",
+    RX_DINAMICO:"RAIO X DINÂMICO"
+  }[motor]||"—";
+}
+
+function renderJogada(config,congelada=false) {
+  const area=document.getElementById("jogada");
+
+  if (!config?.valido||!config.jogada?.valido) {
+    area.innerHTML=
+      '<div style="color:#999">AGUARDANDO JOGADA VÁLIDA</div>';
+    return;
+  }
+
+  const blocos=[
+    ...config.jogada.blocos2.map(b=>({...b,um:false})),
+    ...config.jogada.blocos1.map(b=>({...b,um:true}))
+  ];
+
+  const ordem=["TIERS","ORPHELINS","ZERO","VOISINS","OUTROS"];
+
+  blocos.sort((a,b)=>
+    ordem.indexOf(regiao(a.centro))-
+    ordem.indexOf(regiao(b.centro))
+  );
+
+  const grupos=new Map();
+
+  for (const bloco of blocos) {
+    const nome=regiao(bloco.centro);
+
+    if (!grupos.has(nome)) grupos.set(nome,[]);
+
+    grupos.get(nome).push(bloco);
+  }
+
+  let html=`
+    <div class="jogadaStatus ${congelada?"congelada":""}">
+      ${congelada?"JOGADA CONGELADA • G1":"JOGADA ATUAL"}
+      • ${nomeMotor(config.motor)} C${config.rx}
+      • ${config.alvoDuzia||duziaMotor(config.rx)}ª DÚZIA
+      • 28 NÚMEROS
+    </div>
+  `;
+
+  for (const [nome,itens] of grupos) {
+    html+=`
+      <div class="grupoRegiao">
+        <div class="grupoRegiaoTitulo">${nome}</div>
+        <div class="jogada">
+          ${itens.map(b=>`
+            <div class="bloco ${b.um?"um":""}">
+              <small>${b.um?"1 VIZINHO":"2 VIZINHOS"} DO</small>
+              <strong>${b.centro}</strong>
+              <div class="numeros">
+                ${b.numeros.join(" • ")}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  area.innerHTML=html;
+}
+
+function renderUltimos14() {
+  document.getElementById("ultimos14").innerHTML=
+    estado.visual.slice(-14).map(x=>{
+      let classe="loss";
+      let texto="L";
+
+      if (x.semJogada) {
+        classe="sem";
+        texto="—";
+      } else if (x.fase==="ESPERA_G1") {
+        classe="wait";
+        texto="…";
+      } else if (x.fase==="G1") {
+        classe="g1";
+        texto="G1";
+      } else if (x.green) {
+        classe="green";
+        texto="G";
+      }
+
+      return `
+        <div class="dupla14 ${classe}">
+          <div
+            class="bolaDupla"
+            style="background:${corRoleta(x.resultado)}"
+          >${x.resultado}</div>
+          <div class="resultadoEntrada ${classe}">
+            ${texto}${x.g1!==null&&x.g1!==undefined?" • "+x.g1:""}
+          </div>
+        </div>
+      `;
+    }).join("");
+}
+
+/* ============================================================
+   RENDER PRINCIPAL
+============================================================ */
+
+function render() {
+  const base=limitar(estado.historico);
+  const analise=analisarDuzias(base);
+
+  const configs=calcularDoze(base);
+  const auto=escolherAuto(configs);
+  const ativa=configAtiva(configs,auto);
+
+  garantirPendentes(configs,auto);
+
+  const botoes=[
+    "btnAUTO",
+    "btnN4","btnN5","btnN6",
+    "btnD4","btnD5","btnD6",
+    "btnRN4","btnRN5","btnRN6",
+    "btnRD4","btnRD5","btnRD6"
+  ];
+
+  for (const id of botoes) {
+    document.getElementById(id).classList.remove("ativo");
+  }
+
+  if (estado.modo==="AUTO") {
+    document.getElementById("btnAUTO").classList.add("ativo");
+  } else {
+    const prefixo={
+      NORMAL:"btnN",
+      DINAMICO:"btnD",
+      RX_NORMAL:"btnRN",
+      RX_DINAMICO:"btnRD"
+    }[estado.motorManual];
+
+    document.getElementById(
+      prefixo+estado.manualRX
+    ).classList.add("ativo");
+  }
+
+  document.getElementById("origemAuto").textContent=
+    auto
+      ? "AUTO ESCOLHEU • "+
+        nomeMotor(auto.motor)+
+        " • C"+auto.rx+
+        " • "+auto.alvoDuzia+"ª DÚZIA"+
+        " • SCORE "+auto.scoreAuto.toFixed(1)
+      : "AUTO • AGUARDANDO JOGADAS VÁLIDAS";
+
+  const bt=auto?.backtest;
+  const live=statsTimeline(estado.timelines.AUTO);
+
+  const resumo=[
+    ["BT10 AUTO",bt?.taxa10],
+    ["BT20 AUTO",bt?.taxa20],
+    ["REAL10 AUTO",live.total?live.taxa10:null],
+    ["REAL20 AUTO",live.total?live.taxa20:null]
+  ];
+
+  document.getElementById("resumo").innerHTML=
+    resumo.map(([nome,valor])=>`
+      <div class="card">
+        <small>${nome}</small>
+        <strong>${Number.isFinite(valor)?valor.toFixed(0)+"%":"—"}</strong>
+      </div>
+    `).join("");
+
+  renderDuzias(analise);
+
+  renderTimeline(
+    "timelineAUTO",
+    "AUTO",
+    estado.timelines.AUTO
+  );
+
+  const prefixos={
+    NORMAL:"N",
+    DINAMICO:"D",
+    RX_NORMAL:"RN",
+    RX_DINAMICO:"RD"
+  };
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      renderTimeline(
+        "timeline"+prefixos[motor]+rx,
+        (motor.startsWith("RX")?"RX C":"C")+rx,
+        estado.timelines[motor][rx]
+      );
+    }
+  }
+
+  renderUltimos14();
+
+  let configExibida=ativa;
+  let congelada=false;
+
+  const freeze=estado.modo==="AUTO"
+    ? estado.freezes.AUTO
+    : estado.freezes[estado.motorManual]?.[estado.manualRX];
+
+  if (freeze) {
+    configExibida={
+      valido:true,
+      motor:freeze.motor,
+      rx:freeze.rx,
+      alvoDuzia:duziaMotor(freeze.rx),
+      jogada:jogadaDeSnapshot(freeze)
+    };
+
+    congelada=true;
+  }
+
+  renderJogada(configExibida,congelada);
+
+  const totalValidas=MOTORES.reduce(
+    (s,motor)=>s+RX_LIST.filter(
+      rx=>configs[motor][rx]?.valido
+    ).length,
+    0
+  );
+
+  const assinaturas=new Set();
+
+  for (const motor of MOTORES) {
+    for (const rx of RX_LIST) {
+      const cfg=configs[motor][rx];
+
+      if (cfg?.valido) {
+        assinaturas.add(cfg.assinatura);
+      }
+    }
+  }
+
+  const dominante=analise.ranking[0];
+
+  document.getElementById("status").textContent=
+    base.length+"/20"+
+    " • 12 MOTORES"+
+    " • "+totalValidas+"/12 JOGADAS VÁLIDAS"+
+    " • "+assinaturas.size+" COBERTURAS DIFERENTES"+
+    " • 5 ALVOS ±2 + 1 ALVO ±1"+
+    " • SEM SOBREPOSIÇÃO"+
+    " • SEM BURACO DE 1"+
+    " • AUTO ATIVO"+
+    (dominante
+      ?" • CONCENTRAÇÃO: "+dominante.duzia+"ª DÚZIA"
+      :"")+
+    (congelada?" • G1 CONGELADO":"");
+
+  salvar();
+}
+
+/* ============================================================
+   INICIALIZAÇÃO
+============================================================ */
+
 render();
 
 })();
