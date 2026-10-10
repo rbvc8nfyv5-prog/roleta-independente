@@ -2,25 +2,48 @@
   "use strict";
 
   /*
-   * ANÁLISE BETA
-   * 12 MOTORES — DÚZIAS, VIZINHOS E RAIO X
-   *
-   * CORREÇÕES:
-   * - Renderização sem busca combinatória pesada.
-   * - Cálculo das jogadas com cache.
-   * - Sem recalcular backtest a cada clique.
-   * - Zonas de quebra incluídas.
-   * - Número 11 incluído na análise física.
-   * - Cinco setores de 5 números.
-   * - Um setor de 3 números.
-   * - Total de 28 números sem sobreposição.
-   * - Sem buracos isolados na roda.
-   * - AUTO entre os 12 motores.
-   * - G1 individual por estratégia.
-   */
+   ============================================================
+   ANÁLISE BETA — VERSÃO 3.0
+   ============================================================
 
-  const STORAGE = "ANALISE_BETA_DUZIAS_RX_12_V2";
+   12 MOTORES:
+   - NORMAL C4 / C5 / C6
+   - DINÂMICO C4 / C5 / C6
+   - RAIO-X C4 / C5 / C6
+   - RAIO-X DINÂMICO C4 / C5 / C6
+
+   ALTERAÇÕES:
+   1. Jogada atual somente com os números centrais.
+   2. Quadrados azuis = 2 vizinhos.
+   3. Quadrado amarelo = 1 vizinho.
+   4. Todos os alvos em uma linha horizontal.
+   5. Ordem VOISINS antes de ZERO.
+   6. Painel de candidatos minimizável.
+   7. Timelines minimizáveis, mostrando somente AUTO.
+   8. Jogador virtual abaixo do teclado.
+   9. Diagnóstico automático quando a entrada não acerta.
+   10. Análise da primeira entrada e do G1.
+   11. Cache para evitar cálculos repetidos.
+   12. Renderização otimizada.
+   13. Histórico persistente.
+   14. G1 independente para cada motor.
+   15. Sem sobreposição dos setores.
+   16. Sem buracos isolados.
+   17. Cobertura de 28 números.
+   18. Zonas de quebra e concentração física.
+
+   OBSERVAÇÃO:
+   O jogador virtual explica matematicamente o resultado
+   em relação à cobertura e aos critérios usados.
+   Ele não identifica causas reais de resultados aleatórios
+   nem garante previsões futuras.
+   ============================================================
+  */
+
+  const STORAGE = "ANALISE_BETA_VIRTUAL_V3";
   const MAX_HISTORICO = 20;
+  const MAX_TIMELINE = 20;
+  const MAX_VISUAL = 14;
 
   const TRACK = [
     32, 15, 19, 4, 21, 2, 25, 17, 34, 6,
@@ -43,13 +66,13 @@
 
   const RX_LIST = [4, 5, 6];
 
-  const ZONAS = {
+  const ZONAS_QUEBRA = {
     1: [13, 14, 15, 16, 17, 18],
     2: [0, 26, 3, 35, 28, 7, 6, 30],
     3: [23, 10, 24, 20, 22, 21, 4, 19]
   };
 
-  const GRUPOS = {
+  const GRUPOS_FISICOS = {
     1: [
       [3, 12, 7],
       [4, 2, 21],
@@ -70,34 +93,65 @@
   };
 
   const REGIOES = {
-    ZERO: new Set([0, 32, 15, 26, 3, 35, 12]),
     VOISINS: new Set([
       19, 4, 21, 2, 25, 28, 7, 29, 18, 22
     ]),
-    ORPHELINS: new Set([
-      9, 31, 14, 20, 1, 17, 6, 34
+    ZERO: new Set([
+      0, 32, 15, 26, 3, 35, 12
     ]),
     TIERS: new Set([
-      27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33
+      27, 13, 36, 11, 30, 8,
+      23, 10, 5, 24, 16, 33
+    ]),
+    ORPHELINS: new Set([
+      9, 31, 14, 20, 1, 17, 6, 34
     ])
   };
 
+  const ORDEM_REGIOES = [
+    "VOISINS",
+    "ZERO",
+    "TIERS",
+    "ORPHELINS",
+    "OUTROS"
+  ];
+
+  const PREFIXOS = {
+    NORMAL: "N",
+    DINAMICO: "D",
+    RX_NORMAL: "RN",
+    RX_DINAMICO: "RD"
+  };
+
   const INDICE = new Map(
-    TRACK.map((numero, i) => [numero, i])
+    TRACK.map((n, i) => [n, i])
   );
 
   const mod = (n, m) => ((n % m) + m) % m;
 
-  const pos = n => INDICE.get(n) ?? -1;
+  function pos(n) {
+    return INDICE.get(n) ?? -1;
+  }
 
   function distancia(a, b) {
-    const d = Math.abs(pos(a) - pos(b));
+    const ia = pos(a);
+    const ib = pos(b);
+
+    if (ia < 0 || ib < 0) return 99;
+
+    const d = Math.abs(ia - ib);
+
     return Math.min(d, 37 - d);
   }
 
   function delta(a, b) {
+    if (pos(a) < 0 || pos(b) < 0) return 0;
+
     let d = mod(pos(b) - pos(a), 37);
-    return d > 18 ? d - 37 : d;
+
+    if (d > 18) d -= 37;
+
+    return d;
   }
 
   function vizinhos(numero, quantidade) {
@@ -107,17 +161,23 @@
 
     const resultado = [];
 
-    for (let d = -quantidade; d <= quantidade; d++) {
-      resultado.push(TRACK[mod(i + d, 37)]);
+    for (
+      let d = -quantidade;
+      d <= quantidade;
+      d++
+    ) {
+      resultado.push(
+        TRACK[mod(i + d, 37)]
+      );
     }
 
     return resultado;
   }
 
-  function duzia(numero) {
-    if (numero === 0) return 0;
-    if (numero <= 12) return 1;
-    if (numero <= 24) return 2;
+  function duzia(n) {
+    if (n === 0) return 0;
+    if (n <= 12) return 1;
+    if (n <= 24) return 2;
     return 3;
   }
 
@@ -125,23 +185,35 @@
     return rx - 3;
   }
 
-  function cor(numero) {
-    if (numero === 0) return "#087c48";
+  function corNumero(n) {
+    if (n === 0) return "#087c48";
 
-    return VERMELHOS.has(numero)
+    return VERMELHOS.has(n)
       ? "#c6283d"
       : "#181818";
   }
 
-  function regiao(numero) {
-    for (const [nome, numeros] of Object.entries(REGIOES)) {
-      if (numeros.has(numero)) return nome;
+  function regiao(n) {
+    for (
+      const [nome, numeros]
+      of Object.entries(REGIOES)
+    ) {
+      if (numeros.has(n)) return nome;
     }
 
     return "OUTROS";
   }
 
-  function normalizarHistorico(lista) {
+  function nomeMotor(motor) {
+    return {
+      NORMAL: "NORMAL",
+      DINAMICO: "DINÂMICO",
+      RX_NORMAL: "RAIO-X",
+      RX_DINAMICO: "RAIO-X DINÂMICO"
+    }[motor] || "—";
+  }
+
+  function limitarHistorico(lista) {
     if (!Array.isArray(lista)) return [];
 
     return lista
@@ -154,13 +226,35 @@
       .slice(-MAX_HISTORICO);
   }
 
+  /*
+   ============================================================
+   ESTADO
+   ============================================================
+  */
+
   function estrutura(valor) {
     return {
       AUTO: valor,
-      NORMAL: { 4: valor, 5: valor, 6: valor },
-      DINAMICO: { 4: valor, 5: valor, 6: valor },
-      RX_NORMAL: { 4: valor, 5: valor, 6: valor },
-      RX_DINAMICO: { 4: valor, 5: valor, 6: valor }
+      NORMAL: {
+        4: valor,
+        5: valor,
+        6: valor
+      },
+      DINAMICO: {
+        4: valor,
+        5: valor,
+        6: valor
+      },
+      RX_NORMAL: {
+        4: valor,
+        5: valor,
+        6: valor
+      },
+      RX_DINAMICO: {
+        4: valor,
+        5: valor,
+        6: valor
+      }
     };
   }
 
@@ -180,29 +274,46 @@
       modo: "AUTO",
       motorManual: "NORMAL",
       manualRX: 4,
+
       timelines,
       pendentes: estrutura(null),
       freezes: estrutura(null),
+
       visual: [],
-      visualFreeze: null
+      visualFreeze: null,
+
+      painelCandidatosAberto: false,
+      painelTimelinesAberto: false,
+
+      jogadorVirtualAberto: true,
+      diagnostico: null,
+
+      ultimoNumero: null
     };
   }
 
   let estado = criarEstado();
 
-  try {
-    const salvo = JSON.parse(
-      localStorage.getItem(STORAGE) || "null"
-    );
+  function carregar() {
+    try {
+      const raw = localStorage.getItem(STORAGE);
 
-    if (salvo) {
-      estado.historico = normalizarHistorico(
+      if (!raw) return;
+
+      const salvo = JSON.parse(raw);
+
+      if (!salvo || typeof salvo !== "object") {
+        return;
+      }
+
+      estado.historico = limitarHistorico(
         salvo.historico
       );
 
-      if (["AUTO", "MANUAL"].includes(salvo.modo)) {
-        estado.modo = salvo.modo;
-      }
+      estado.modo =
+        salvo.modo === "MANUAL"
+          ? "MANUAL"
+          : "AUTO";
 
       if (MOTORES.includes(salvo.motorManual)) {
         estado.motorManual = salvo.motorManual;
@@ -212,100 +323,119 @@
         estado.manualRX = salvo.manualRX;
       }
 
+      estado.painelCandidatosAberto =
+        !!salvo.painelCandidatosAberto;
+
+      estado.painelTimelinesAberto =
+        !!salvo.painelTimelinesAberto;
+
+      estado.jogadorVirtualAberto =
+        salvo.jogadorVirtualAberto !== false;
+
+      estado.diagnostico =
+        salvo.diagnostico || null;
+
+      estado.ultimoNumero =
+        salvo.ultimoNumero ?? null;
+
       if (salvo.timelines) {
         if (Array.isArray(salvo.timelines.AUTO)) {
           estado.timelines.AUTO =
-            salvo.timelines.AUTO.slice(-20);
+            salvo.timelines.AUTO.slice(-MAX_TIMELINE);
         }
 
         for (const motor of MOTORES) {
           for (const rx of RX_LIST) {
-            const lista = salvo.timelines[motor]?.[rx];
+            const lista =
+              salvo.timelines[motor]?.[rx];
 
             if (Array.isArray(lista)) {
               estado.timelines[motor][rx] =
-                lista.slice(-20);
+                lista.slice(-MAX_TIMELINE);
             }
           }
         }
       }
 
-      if (salvo.pendentes) {
-        estado.pendentes.AUTO =
-          salvo.pendentes.AUTO || null;
+      for (
+        const campo
+        of ["pendentes", "freezes"]
+      ) {
+        if (!salvo[campo]) continue;
+
+        estado[campo].AUTO =
+          salvo[campo].AUTO || null;
 
         for (const motor of MOTORES) {
           for (const rx of RX_LIST) {
-            estado.pendentes[motor][rx] =
-              salvo.pendentes[motor]?.[rx] || null;
+            estado[campo][motor][rx] =
+              salvo[campo][motor]?.[rx] || null;
           }
         }
       }
 
-      if (salvo.freezes) {
-        estado.freezes.AUTO =
-          salvo.freezes.AUTO || null;
-
-        for (const motor of MOTORES) {
-          for (const rx of RX_LIST) {
-            estado.freezes[motor][rx] =
-              salvo.freezes[motor]?.[rx] || null;
-          }
-        }
+      if (Array.isArray(salvo.visual)) {
+        estado.visual =
+          salvo.visual.slice(-MAX_VISUAL);
       }
-
-      estado.visual = Array.isArray(salvo.visual)
-        ? salvo.visual.slice(-14)
-        : [];
 
       estado.visualFreeze =
         salvo.visualFreeze || null;
+
+    } catch (erro) {
+      console.warn(
+        "Erro ao carregar histórico:",
+        erro
+      );
     }
-  } catch (erro) {
-    console.warn("Histórico não recuperado:", erro);
   }
 
   function salvar() {
-    estado.historico = normalizarHistorico(
-      estado.historico
-    );
-
     try {
       localStorage.setItem(
         STORAGE,
         JSON.stringify(estado)
       );
     } catch (erro) {
-      console.warn("Falha ao salvar:", erro);
+      console.warn(
+        "Erro ao salvar:",
+        erro
+      );
     }
   }
 
+  carregar();
+
   /*
-   * ANÁLISE FÍSICA
-   *
-   * Considera:
-   * - Dúzias.
-   * - Vizinhos.
-   * - Zonas de quebra.
-   * - Concentração física.
-   * - Últimos 20 resultados.
-   */
+   ============================================================
+   ANÁLISE FÍSICA
+   ============================================================
+  */
 
-  function analisar(base) {
-    base = normalizarHistorico(base);
-
+  function analisarFisica(base) {
     const calor = new Float64Array(37);
 
     const contagem = [0, 0, 0, 0];
     const forca = [0, 0, 0, 0];
     const quebra = [0, 0, 0, 0];
 
+    const pesos = [
+      1,
+      0.78,
+      0.52,
+      0.29,
+      0.14,
+      0.06
+    ];
+
     for (let i = 0; i < base.length; i++) {
       const numero = base[i];
 
       const peso =
         0.45 +
-        0.55 * (i + 1) / Math.max(1, base.length);
+        0.55 *
+        (i + 1) /
+        Math.max(1, base.length);
 
       const d = duzia(numero);
 
@@ -315,27 +445,19 @@
       }
 
       for (let z = 1; z <= 3; z++) {
-        if (ZONAS[z].includes(numero)) {
+        if (ZONAS_QUEBRA[z].includes(numero)) {
           quebra[z] += peso;
         }
       }
 
       for (let j = 0; j < 37; j++) {
-        const distanciaFisica =
-          distancia(numero, TRACK[j]);
+        const dist = distancia(
+          numero,
+          TRACK[j]
+        );
 
-        const pesos = [
-          1,
-          0.78,
-          0.52,
-          0.29,
-          0.14,
-          0.06
-        ];
-
-        if (distanciaFisica <= 5) {
-          calor[j] +=
-            pesos[distanciaFisica] * peso;
+        if (dist <= 5) {
+          calor[j] += pesos[dist] * peso;
         }
       }
     }
@@ -344,7 +466,9 @@
 
     for (let z = 1; z <= 3; z++) {
       const numeros = [
-        ...new Set(GRUPOS[z].flat())
+        ...new Set(
+          GRUPOS_FISICOS[z].flat()
+        )
       ];
 
       const fisica =
@@ -378,15 +502,21 @@
     const ranking = [1, 2, 3]
       .map(z => ({
         ...info[z],
-        intensidade: info[z].score / maior
+        intensidade:
+          info[z].score / maior
       }))
-      .sort((a, b) => b.score - a.score);
+      .sort(
+        (a, b) => b.score - a.score
+      );
 
     return {
       calor,
       info,
       ranking,
-      maxCalor: Math.max(0.00001, ...calor)
+      maxCalor: Math.max(
+        0.00001,
+        ...calor
+      )
     };
   }
 
@@ -399,35 +529,55 @@
       6: 0.86
     }[rx];
 
+    const pesos = [
+      1,
+      0.72,
+      0.44,
+      0.22,
+      0.10
+    ];
+
     let peso = 1;
 
-    for (let i = base.length - 1; i >= 0; i--) {
+    for (
+      let i = base.length - 1;
+      i >= 0;
+      i--
+    ) {
       for (let j = 0; j < 37; j++) {
-        const d = distancia(base[i], TRACK[j]);
+        const dist = distancia(
+          base[i],
+          TRACK[j]
+        );
 
-        const pesos = [
-          1,
-          0.72,
-          0.44,
-          0.22,
-          0.10
-        ];
-
-        if (d <= 4) {
-          mapa[j] += pesos[d] * peso;
+        if (dist <= 4) {
+          mapa[j] +=
+            pesos[dist] * peso;
         }
       }
 
       peso *= decay;
     }
 
-    const maior = Math.max(0.00001, ...mapa);
+    const maior = Math.max(
+      0.00001,
+      ...mapa
+    );
 
-    return mapa.map(valor => valor / maior);
+    return mapa.map(
+      valor => valor / maior
+    );
   }
 
+  /*
+   ============================================================
+   RAIO-X
+   ============================================================
+  */
+
   function analisarRaioX(base, rx) {
-    const frequencia = new Float64Array(37);
+    const frequencia =
+      new Float64Array(37);
 
     if (base.length < rx * 2 + 4) {
       return {
@@ -451,7 +601,10 @@
         const antigo = base[i + k];
         const recente = atual[k];
 
-        if (duzia(antigo) === duzia(recente)) {
+        if (
+          duzia(antigo) ===
+          duzia(recente)
+        ) {
           score += 0.70;
         }
 
@@ -459,7 +612,8 @@
           0.30 *
           Math.max(
             0,
-            1 - distancia(antigo, recente) / 19
+            1 -
+            distancia(antigo, recente) / 19
           );
       }
 
@@ -476,31 +630,34 @@
         b.indice - a.indice
     );
 
-    const escolhidos = candidatos.slice(
-      0,
-      Math.max(
-        4,
-        Math.ceil(candidatos.length * 0.30)
-      )
-    );
+    const escolhidos =
+      candidatos.slice(
+        0,
+        Math.max(
+          4,
+          Math.ceil(
+            candidatos.length * 0.30
+          )
+        )
+      );
+
+    const pesos = [
+      1,
+      0.70,
+      0.42,
+      0.18
+    ];
 
     for (const item of escolhidos) {
       for (let j = 0; j < 37; j++) {
-        const d = distancia(
+        const dist = distancia(
           item.numero,
           TRACK[j]
         );
 
-        const pesos = [
-          1,
-          0.70,
-          0.42,
-          0.18
-        ];
-
-        if (d <= 3) {
+        if (dist <= 3) {
           frequencia[j] +=
-            pesos[d] *
+            pesos[dist] *
             (0.40 + 0.60 * item.score);
         }
       }
@@ -511,13 +668,15 @@
       ...frequencia
     );
 
-    const similaridade = escolhidos.length
-      ? escolhidos.reduce(
-          (soma, item) =>
-            soma + item.score,
-          0
-        ) / escolhidos.length * 100
-      : 0;
+    const similaridade =
+      escolhidos.length
+        ? escolhidos.reduce(
+            (soma, item) =>
+              soma + item.score,
+            0
+          ) /
+          escolhidos.length * 100
+        : 0;
 
     return {
       valido: escolhidos.length > 0,
@@ -528,39 +687,63 @@
     };
   }
 
-  function pontuacoes(base, motor, rx) {
-    const analise = analisar(base);
-    const contagem = contagemFisica(base, rx);
+  /*
+   ============================================================
+   PONTUAÇÃO DOS 12 MOTORES
+   ============================================================
+  */
 
-    const usaRaioX = motor.startsWith("RX");
-    const dinamico = motor.includes("DINAMICO");
+  function pontuarMotor(
+    base,
+    motor,
+    rx,
+    analise,
+    contagem,
+    raioX
+  ) {
+    const usaRaioX =
+      motor.startsWith("RX");
 
-    const raioX = usaRaioX
-      ? analisarRaioX(base, rx)
-      : null;
+    const dinamico =
+      motor.includes("DINAMICO");
 
-    if (usaRaioX && !raioX.valido) {
+    if (
+      usaRaioX &&
+      !raioX?.valido
+    ) {
       return null;
     }
 
     const alvoDuzia = alvoRX(rx);
-    const scores = new Float64Array(37);
+
+    const scores =
+      new Float64Array(37);
 
     for (let j = 0; j < 37; j++) {
       const numero = TRACK[j];
 
       const principal =
-        duzia(numero) === alvoDuzia ? 1 : 0;
+        duzia(numero) === alvoDuzia
+          ? 1
+          : 0;
 
       let proximidade = 0;
 
-      for (const grupo of GRUPOS[alvoDuzia]) {
+      for (
+        const grupo
+        of GRUPOS_FISICOS[alvoDuzia]
+      ) {
         for (const alvo of grupo) {
-          const d = distancia(numero, alvo);
+          const d = distancia(
+            numero,
+            alvo
+          );
 
-          const peso = d <= 3
-            ? [1, 0.75, 0.45, 0.20][d]
-            : 0;
+          const peso =
+            d === 0 ? 1 :
+            d === 1 ? 0.75 :
+            d === 2 ? 0.45 :
+            d === 3 ? 0.20 : 0;
 
           proximidade = Math.max(
             proximidade,
@@ -569,12 +752,15 @@
         }
       }
 
-      const quebra = ZONAS[alvoDuzia].some(
-        alvo => distancia(numero, alvo) <= 2
-      ) ? 1 : 0;
+      const quebra =
+        ZONAS_QUEBRA[alvoDuzia].some(
+          alvo =>
+            distancia(numero, alvo) <= 2
+        ) ? 1 : 0;
 
       const fisica =
-        analise.calor[j] / analise.maxCalor;
+        analise.calor[j] /
+        analise.maxCalor;
 
       let score =
         principal * 0.52 +
@@ -594,26 +780,39 @@
       }
 
       if (dinamico) {
-        const ultimos = base.slice(-rx);
+        const ultimos =
+          base.slice(-rx);
 
         let direcao = 0;
         let total = 0;
 
-        ultimos.forEach((n, i) => {
-          const d = delta(numero, n);
+        ultimos.forEach(
+          (n, i) => {
+            const d = delta(
+              numero,
+              n
+            );
 
-          if (Math.abs(d) <= 7) {
-            const peso =
-              (i + 1) / ultimos.length;
+            if (
+              Math.abs(d) <= 7
+            ) {
+              const peso =
+                (i + 1) /
+                ultimos.length;
 
-            direcao += Math.sign(d) * peso;
-            total += peso;
+              direcao +=
+                Math.sign(d) * peso;
+
+              total += peso;
+            }
           }
-        });
+        );
 
         if (total > 0) {
           score +=
-            Math.abs(direcao / total) * 0.11;
+            Math.abs(
+              direcao / total
+            ) * 0.11;
         }
       }
 
@@ -622,39 +821,47 @@
 
     return {
       scores,
-      similaridade: raioX?.similaridade || 0
+      similaridade:
+        raioX?.similaridade || 0
     };
   }
 
   /*
-   * GEOMETRIA OTIMIZADA
-   *
-   * A roda possui 37 posições.
-   * A jogada cobre 28.
-   *
-   * 5 blocos de 5 = 25
-   * 1 bloco de 3 = 3
-   *
-   * Restam 9 posições descobertas.
-   *
-   * Cada intervalo descoberto precisa ter
-   * tamanho zero ou pelo menos dois.
-   *
-   * Os modelos são preparados uma única vez.
-   */
+   ============================================================
+   GEOMETRIA PRÉ-CALCULADA
+   ============================================================
+
+   5 setores de 5 números = 25
+   1 setor de 3 números = 3
+
+   Total = 28 números.
+
+   A busca de combinações é preparada apenas uma vez.
+   Nenhuma recursão é executada durante os cliques.
+   ============================================================
+  */
 
   const PADROES = [];
 
-  function gerarPadroes(restante, atual) {
+  function gerarPadroes(
+    restante,
+    atual
+  ) {
     if (atual.length === 6) {
       if (restante === 0) {
-        PADROES.push(atual.slice());
+        PADROES.push(
+          atual.slice()
+        );
       }
 
       return;
     }
 
-    for (let gap = 0; gap <= restante; gap++) {
+    for (
+      let gap = 0;
+      gap <= restante;
+      gap++
+    ) {
       if (gap === 1) continue;
 
       atual.push(gap);
@@ -672,46 +879,76 @@
 
   const MODELOS = [];
 
-  (function prepararModelos() {
-    const assinaturas = new Set();
+  function prepararModelos() {
+    const assinaturas =
+      new Set();
 
-    for (let inicio = 0; inicio < 37; inicio++) {
-      for (let posicao3 = 0; posicao3 < 6; posicao3++) {
-        for (const gaps of PADROES) {
+    for (
+      let inicio = 0;
+      inicio < 37;
+      inicio++
+    ) {
+      for (
+        let posicao3 = 0;
+        posicao3 < 6;
+        posicao3++
+      ) {
+        for (
+          const gaps
+          of PADROES
+        ) {
           let cursor = inicio;
 
           const blocos5 = [];
           let bloco3 = -1;
 
-          for (let k = 0; k < 6; k++) {
+          for (
+            let k = 0;
+            k < 6;
+            k++
+          ) {
             const tamanho =
-              k === posicao3 ? 3 : 5;
+              k === posicao3
+                ? 3
+                : 5;
 
             const centro = mod(
-              cursor + Math.floor(tamanho / 2),
+              cursor +
+              Math.floor(
+                tamanho / 2
+              ),
               37
             );
 
             if (k === posicao3) {
               bloco3 = centro;
             } else {
-              blocos5.push(centro);
+              blocos5.push(
+                centro
+              );
             }
 
             cursor = mod(
-              cursor + tamanho + gaps[k],
+              cursor +
+              tamanho +
+              gaps[k],
               37
             );
           }
 
           const chave =
-            blocos5.slice().sort(
-              (a, b) => a - b
-            ).join("-") +
+            blocos5
+              .slice()
+              .sort(
+                (a, b) => a - b
+              )
+              .join("-") +
             "|" +
             bloco3;
 
-          if (assinaturas.has(chave)) {
+          if (
+            assinaturas.has(chave)
+          ) {
             continue;
           }
 
@@ -725,81 +962,130 @@
         }
       }
     }
-  })();
+  }
+
+  prepararModelos();
 
   /*
-   * CÁLCULO RÁPIDO
-   *
-   * Sem recursão durante o clique.
-   * Sem montar milhares de Sets por tentativa.
-   */
+   ============================================================
+   ESCOLHA DA JOGADA
+   ============================================================
+  */
 
   function construirJogada(
     scores,
-    assinaturasUsadas,
+    usadas,
     variacao = 0
   ) {
-    const pontos5 = new Float64Array(37);
-    const pontos3 = new Float64Array(37);
+    const pontos5 =
+      new Float64Array(37);
 
-    for (let centro = 0; centro < 37; centro++) {
-      for (let d = -2; d <= 2; d++) {
+    const pontos3 =
+      new Float64Array(37);
+
+    for (
+      let centro = 0;
+      centro < 37;
+      centro++
+    ) {
+      for (
+        let d = -2;
+        d <= 2;
+        d++
+      ) {
         const peso =
           d === 0 ? 1.22 :
-          Math.abs(d) === 1 ? 1.08 : 1;
+          Math.abs(d) === 1
+            ? 1.08
+            : 1;
 
         pontos5[centro] +=
-          scores[mod(centro + d, 37)] * peso;
+          scores[
+            mod(
+              centro + d,
+              37
+            )
+          ] * peso;
       }
 
-      for (let d = -1; d <= 1; d++) {
+      for (
+        let d = -1;
+        d <= 1;
+        d++
+      ) {
         pontos3[centro] +=
-          scores[mod(centro + d, 37)] *
-          (d === 0 ? 1.22 : 1);
+          scores[
+            mod(
+              centro + d,
+              37
+            )
+          ] *
+          (d === 0
+            ? 1.22
+            : 1);
       }
     }
 
     let melhor = null;
-    let maiorScore = -Infinity;
+    let maior = -Infinity;
 
-    for (const modelo of MODELOS) {
+    for (
+      const modelo
+      of MODELOS
+    ) {
       if (
-        assinaturasUsadas &&
-        assinaturasUsadas.has(modelo.chave)
+        usadas?.has(
+          modelo.chave
+        )
       ) {
         continue;
       }
 
-      let score = pontos3[modelo.bloco3];
+      let score =
+        pontos3[
+          modelo.bloco3
+        ];
 
-      for (const centro of modelo.blocos5) {
-        score += pontos5[centro];
+      for (
+        const centro
+        of modelo.blocos5
+      ) {
+        score +=
+          pontos5[centro];
       }
 
       score +=
-        0.00001 *
         Math.sin(
           (variacao + 1) *
           (modelo.bloco3 + 1) *
           0.77
-        );
+        ) * 0.00001;
 
-      if (score > maiorScore) {
-        maiorScore = score;
+      if (
+        score > maior
+      ) {
+        maior = score;
         melhor = modelo;
       }
     }
 
     if (!melhor) return null;
 
-    const blocos2 = melhor.blocos5.map(i => ({
-      centro: TRACK[i],
-      qtd: 2,
-      numeros: vizinhos(TRACK[i], 2)
-    }));
+    const blocos2 =
+      melhor.blocos5.map(
+        i => ({
+          centro: TRACK[i],
+          qtd: 2,
+          numeros: vizinhos(
+            TRACK[i],
+            2
+          )
+        })
+      );
 
     const blocos1 = [{
-      centro: TRACK[melhor.bloco3],
+      centro:
+        TRACK[melhor.bloco3],
       qtd: 1,
       numeros: vizinhos(
         TRACK[melhor.bloco3],
@@ -808,22 +1094,38 @@
     }];
 
     const numeros = new Set(
-      [...blocos2, ...blocos1].flatMap(
-        bloco => bloco.numeros
+      [
+        ...blocos2,
+        ...blocos1
+      ].flatMap(
+        b => b.numeros
       )
     );
 
-    if (numeros.size !== 28) {
+    if (
+      numeros.size !== 28
+    ) {
       return null;
     }
 
-    for (let i = 0; i < 37; i++) {
+    for (
+      let i = 0;
+      i < 37;
+      i++
+    ) {
       const numero = TRACK[i];
 
-      if (numeros.has(numero)) continue;
+      if (
+        numeros.has(numero)
+      ) {
+        continue;
+      }
 
-      const anterior = TRACK[mod(i - 1, 37)];
-      const seguinte = TRACK[mod(i + 1, 37)];
+      const anterior =
+        TRACK[mod(i - 1, 37)];
+
+      const seguinte =
+        TRACK[mod(i + 1, 37)];
 
       if (
         numeros.has(anterior) &&
@@ -838,58 +1140,85 @@
       blocos2,
       blocos1,
       numeros,
-      score: maiorScore,
-      assinatura: melhor.chave
+      score: maior,
+      assinatura:
+        melhor.chave
     };
   }
+
+  /*
+   ============================================================
+   CONFIGURAÇÕES
+   ============================================================
+  */
 
   function gerarConfig(
     base,
     motor,
     rx,
-    assinaturasUsadas = null,
-    variacao = 0
+    usadas,
+    variacao,
+    analise,
+    contagem,
+    raioX
   ) {
-    const minimo = motor.startsWith("RX")
-      ? Math.max(14, rx * 2 + 4)
-      : Math.max(8, rx + 4);
+    const minimo =
+      motor.startsWith("RX")
+        ? Math.max(
+            14,
+            rx * 2 + 4
+          )
+        : Math.max(
+            8,
+            rx + 4
+          );
 
-    if (base.length < minimo) {
+    if (
+      base.length < minimo
+    ) {
       return {
         valido: false,
         motor,
         rx,
-        motivo: "AGUARDANDO DADOS"
+        motivo:
+          "AGUARDANDO HISTÓRICO"
       };
     }
 
-    const info = pontuacoes(
-      base,
-      motor,
-      rx
-    );
+    const info =
+      pontuarMotor(
+        base,
+        motor,
+        rx,
+        analise,
+        contagem,
+        raioX
+      );
 
     if (!info) {
       return {
         valido: false,
         motor,
         rx,
-        motivo: "SEM RÉPLICAS"
+        motivo:
+          "SEM RÉPLICAS"
       };
     }
 
-    const jogada = construirJogada(
-      info.scores,
-      assinaturasUsadas,
-      variacao
-    );
+    const jogada =
+      construirJogada(
+        info.scores,
+        usadas,
+        variacao
+      );
 
     if (!jogada) {
       return {
         valido: false,
         motor,
         rx,
-        motivo: "SEM JOGADA VÁLIDA"
+        motivo:
+          "SEM JOGADA VÁLIDA"
       };
     }
 
@@ -897,29 +1226,53 @@
       valido: true,
       motor,
       rx,
-      alvoDuzia: alvoRX(rx),
+      alvoDuzia:
+        alvoRX(rx),
       jogada,
-      score: jogada.score,
-      assinatura: jogada.assinatura,
-      similaridade: info.similaridade
+      score:
+        jogada.score,
+      assinatura:
+        jogada.assinatura,
+      similaridade:
+        info.similaridade
     };
   }
 
-  function classificar(numero, jogada) {
-    if (!jogada?.valido) {
+  /*
+   ============================================================
+   CLASSIFICAÇÃO
+   ============================================================
+  */
+
+  function classificar(
+    numero,
+    jogada
+  ) {
+    if (
+      !jogada?.valido
+    ) {
       return {
         green: false,
-        tipo: "FORA"
+        tipo: "SEM",
+        distancia: null,
+        centro: null
       };
     }
 
+    const blocos = [
+      ...jogada.blocos2,
+      ...jogada.blocos1
+    ];
+
     for (
-      const bloco of [
-        ...jogada.blocos2,
-        ...jogada.blocos1
-      ]
+      const bloco
+      of blocos
     ) {
-      if (bloco.numeros.includes(numero)) {
+      if (
+        bloco.numeros.includes(
+          numero
+        )
+      ) {
         const d = distancia(
           numero,
           bloco.centro
@@ -928,34 +1281,120 @@
         return {
           green: true,
           tipo:
-            d === 0 ? "ALVO" :
-            d === 1 ? "V1" : "V2"
+            d === 0
+              ? "ALVO"
+              : d === 1
+                ? "V1"
+                : "V2",
+          distancia: d,
+          centro:
+            bloco.centro,
+          lado:
+            Math.sign(
+              delta(
+                bloco.centro,
+                numero
+              )
+            )
+        };
+      }
+    }
+
+    let maisProximo = null;
+
+    for (
+      const bloco
+      of blocos
+    ) {
+      const d = distancia(
+        numero,
+        bloco.centro
+      );
+
+      const gap =
+        d - bloco.qtd;
+
+      if (
+        gap > 0 &&
+        (
+          !maisProximo ||
+          gap <
+          maisProximo.gap
+        )
+      ) {
+        maisProximo = {
+          centro:
+            bloco.centro,
+          distancia: d,
+          gap,
+          qtd:
+            bloco.qtd,
+          lado:
+            Math.sign(
+              delta(
+                bloco.centro,
+                numero
+              )
+            )
         };
       }
     }
 
     return {
       green: false,
-      tipo: "FORA"
+      tipo:
+        maisProximo?.gap === 1
+          ? "FORA1"
+          : maisProximo?.gap === 2
+            ? "FORA2"
+            : "FORA",
+      distancia:
+        maisProximo?.distancia ??
+        null,
+      centro:
+        maisProximo?.centro ??
+        null,
+      gap:
+        maisProximo?.gap ??
+        null,
+      lado:
+        maisProximo?.lado ??
+        0
     };
   }
 
-  function estatisticas(lista) {
-    const validos = (lista || [])
-      .filter(item =>
-        !item.semJogada &&
-        !item.aguardandoG1 &&
-        typeof item.green === "boolean"
-      )
-      .slice(-20);
+  /*
+   ============================================================
+   ESTATÍSTICAS
+   ============================================================
+  */
+
+  function estatisticas(
+    lista
+  ) {
+    const validos =
+      (lista || [])
+        .filter(
+          item =>
+            !item.semJogada &&
+            !item.aguardandoG1 &&
+            typeof item.green ===
+              "boolean"
+        )
+        .slice(-20);
 
     function taxa(qtd) {
-      const itens = validos.slice(-qtd);
+      const itens =
+        validos.slice(-qtd);
 
-      if (!itens.length) return 0;
+      if (!itens.length) {
+        return 0;
+      }
 
       return (
-        itens.filter(x => x.green).length /
+        itens.filter(
+          x => x.green
+        ).length /
         itens.length
       ) * 100;
     }
@@ -963,29 +1402,38 @@
     let perdas = 0;
 
     for (
-      let i = validos.length - 1;
+      let i =
+        validos.length - 1;
       i >= 0;
       i--
     ) {
-      if (validos[i].green) break;
+      if (
+        validos[i].green
+      ) {
+        break;
+      }
+
       perdas++;
     }
 
     return {
-      total: validos.length,
-      taxa5: taxa(5),
-      taxa10: taxa(10),
-      taxa20: taxa(20),
+      total:
+        validos.length,
+      taxa5:
+        taxa(5),
+      taxa10:
+        taxa(10),
+      taxa20:
+        taxa(20),
       perdas
     };
   }
 
   /*
-   * CACHE DE CÁLCULO
-   *
-   * Cada histórico é calculado uma vez.
-   * Renderizar a interface não recalcula as jogadas.
-   */
+   ============================================================
+   CACHE
+   ============================================================
+  */
 
   let cacheChave = null;
   let cacheResultado = null;
@@ -1003,65 +1451,130 @@
       RX_DINAMICO: {}
     };
 
+    const analise =
+      analisarFisica(base);
+
+    const contagens = {};
+    const raioXs = {};
+
+    for (const rx of RX_LIST) {
+      contagens[rx] =
+        contagemFisica(
+          base,
+          rx
+        );
+
+      raioXs[rx] =
+        analisarRaioX(
+          base,
+          rx
+        );
+    }
+
     const usadas = new Set();
 
     let variacao = 0;
 
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        const config = gerarConfig(
-          base,
-          motor,
-          rx,
-          usadas,
-          variacao++
-        );
-
-        if (config.valido) {
-          usadas.add(config.assinatura);
-
-          const live = estatisticas(
-            estado.timelines[motor][rx]
+    for (
+      const motor
+      of MOTORES
+    ) {
+      for (
+        const rx
+        of RX_LIST
+      ) {
+        const config =
+          gerarConfig(
+            base,
+            motor,
+            rx,
+            usadas,
+            variacao++,
+            analise,
+            contagens[rx],
+            raioXs[rx]
           );
+
+        if (
+          config.valido
+        ) {
+          usadas.add(
+            config.assinatura
+          );
+
+          const live =
+            estatisticas(
+              estado.timelines[
+                motor
+              ][rx]
+            );
 
           config.scoreAuto =
             config.score +
-            live.taxa10 * 0.02 +
-            live.taxa20 * 0.01 -
-            live.perdas * 0.30 +
-            config.similaridade * 0.005;
+            live.taxa10 *
+              0.02 +
+            live.taxa20 *
+              0.01 -
+            live.perdas *
+              0.30 +
+            config.similaridade *
+              0.005;
         }
 
-        configs[motor][rx] = config;
+        configs[motor][rx] =
+          config;
       }
     }
 
-    return configs;
+    return {
+      configs,
+      analise
+    };
   }
 
-  function escolherAuto(configs) {
+  function escolherAuto(
+    configs
+  ) {
     const candidatos = [];
 
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        const config = configs[motor][rx];
+    for (
+      const motor
+      of MOTORES
+    ) {
+      for (
+        const rx
+        of RX_LIST
+      ) {
+        const config =
+          configs[motor][rx];
 
-        if (config?.valido) {
-          candidatos.push(config);
+        if (
+          config?.valido
+        ) {
+          candidatos.push(
+            config
+          );
         }
       }
     }
 
     candidatos.sort(
       (a, b) =>
-        b.scoreAuto - a.scoreAuto
+        b.scoreAuto -
+        a.scoreAuto
     );
 
-    return candidatos[0] || null;
+    return (
+      candidatos[0] ||
+      null
+    );
   }
 
   function obterConfigs() {
-    const chave = estado.historico.join(",");
+    const chave =
+      estado.historico.join(
+        ","
+      );
 
     if (
       cacheChave === chave &&
@@ -1070,100 +1583,172 @@
       return cacheResultado;
     }
 
-    const configs = calcularDoze(
-      estado.historico
-    );
+    const resultado =
+      calcularDoze(
+        estado.historico
+      );
 
-    const auto = escolherAuto(configs);
+    resultado.auto =
+      escolherAuto(
+        resultado.configs
+      );
 
     cacheChave = chave;
-    cacheResultado = {
-      configs,
-      auto
-    };
+    cacheResultado =
+      resultado;
 
-    return cacheResultado;
+    return resultado;
   }
 
-  function configAtiva(configs, auto) {
-    if (estado.modo === "AUTO") {
+  function configAtiva(
+    configs,
+    auto
+  ) {
+    if (
+      estado.modo ===
+      "AUTO"
+    ) {
       return auto;
     }
 
-    return configs[estado.motorManual]
-      ?.[estado.manualRX] || null;
+    return (
+      configs[
+        estado.motorManual
+      ]?.[
+        estado.manualRX
+      ] ||
+      null
+    );
   }
 
   /*
-   * G1 INDIVIDUAL
-   */
+   ============================================================
+   SNAPSHOT E G1
+   ============================================================
+  */
 
-  function snapshot(config) {
-    if (!config?.valido) return null;
+  function snapshot(
+    config
+  ) {
+    if (
+      !config?.valido
+    ) {
+      return null;
+    }
 
     return {
-      motor: config.motor,
-      rx: config.rx,
-      centros2: config.jogada.blocos2.map(
-        bloco => bloco.centro
-      ),
+      motor:
+        config.motor,
+      rx:
+        config.rx,
+      centros2:
+        config.jogada.blocos2.map(
+          b => b.centro
+        ),
       centro1:
-        config.jogada.blocos1[0].centro,
-      historico: estado.historico.join(",")
+        config.jogada.blocos1[0]
+          .centro,
+      historico:
+        estado.historico.join(
+          ","
+        )
     };
   }
 
-  function jogadaSnapshot(snap) {
+  function jogadaSnapshot(
+    snap
+  ) {
     if (!snap) return null;
 
-    const blocos2 = (snap.centros2 || [])
-      .map(centro => ({
-        centro,
-        qtd: 2,
-        numeros: vizinhos(centro, 2)
-      }));
+    const blocos2 =
+      (snap.centros2 || [])
+        .map(
+          centro => ({
+            centro,
+            qtd: 2,
+            numeros:
+              vizinhos(
+                centro,
+                2
+              )
+          })
+        );
 
     const blocos1 = [{
-      centro: snap.centro1,
+      centro:
+        snap.centro1,
       qtd: 1,
-      numeros: vizinhos(snap.centro1, 1)
+      numeros:
+        vizinhos(
+          snap.centro1,
+          1
+        )
     }];
 
     return {
       valido: true,
       blocos2,
       blocos1,
-      numeros: new Set(
-        [...blocos2, ...blocos1].flatMap(
-          bloco => bloco.numeros
+      numeros:
+        new Set(
+          [
+            ...blocos2,
+            ...blocos1
+          ].flatMap(
+            b => b.numeros
+          )
         )
-      )
     };
   }
 
-  function prepararPendentes(configs, auto) {
-    const chave = estado.historico.join(",");
+  function prepararPendentes(
+    configs,
+    auto
+  ) {
+    const chave =
+      estado.historico.join(
+        ","
+      );
 
-    if (!estado.freezes.AUTO) {
-      if (
-        estado.pendentes.AUTO?.historico !== chave
-      ) {
-        estado.pendentes.AUTO =
-          snapshot(auto);
-      }
+    if (
+      !estado.freezes.AUTO &&
+      estado.pendentes.AUTO
+        ?.historico !== chave
+    ) {
+      estado.pendentes.AUTO =
+        snapshot(auto);
     }
 
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        if (estado.freezes[motor][rx]) {
+    for (
+      const motor
+      of MOTORES
+    ) {
+      for (
+        const rx
+        of RX_LIST
+      ) {
+        if (
+          estado.freezes[
+            motor
+          ][rx]
+        ) {
           continue;
         }
 
         if (
-          estado.pendentes[motor][rx]?.historico !== chave
+          estado.pendentes[
+            motor
+          ][rx]?.historico !==
+          chave
         ) {
-          estado.pendentes[motor][rx] =
-            snapshot(configs[motor][rx]);
+          estado.pendentes[
+            motor
+          ][rx] =
+            snapshot(
+              configs[
+                motor
+              ][rx]
+            );
         }
       }
     }
@@ -1176,41 +1761,74 @@
     timeline,
     chave
   ) {
-    const lista = timeline.slice(-20);
+    const lista =
+      timeline.slice(
+        -MAX_TIMELINE
+      );
 
     if (freeze) {
-      const resultado = classificar(
-        numero,
-        jogadaSnapshot(freeze)
-      );
+      const resultado =
+        classificar(
+          numero,
+          jogadaSnapshot(
+            freeze
+          )
+        );
 
-      const ultimo = lista.findLastIndex(
-        item => item.aguardandoG1
-      );
+      let ultimo = -1;
+
+      for (
+        let i =
+          lista.length - 1;
+        i >= 0;
+        i--
+      ) {
+        if (
+          lista[i]
+            .aguardandoG1
+        ) {
+          ultimo = i;
+          break;
+        }
+      }
 
       const atualizacao = {
-        resultadoG1: numero,
-        green: resultado.green,
-        tipo: resultado.tipo,
-        fase: resultado.green ? "G1" : "LOSS",
-        aguardandoG1: false,
-        semJogada: false
+        resultadoG1:
+          numero,
+        green:
+          resultado.green,
+        tipo:
+          resultado.tipo,
+        fase:
+          resultado.green
+            ? "G1"
+            : "LOSS",
+        aguardandoG1:
+          false,
+        semJogada:
+          false
       };
 
-      if (ultimo >= 0) {
+      if (
+        ultimo >= 0
+      ) {
         lista[ultimo] = {
           ...lista[ultimo],
           ...atualizacao
         };
       } else {
         lista.push({
-          resultado: numero,
+          resultado:
+            numero,
           ...atualizacao
         });
       }
 
       return {
-        timeline: lista.slice(-20),
+        timeline:
+          lista.slice(
+            -MAX_TIMELINE
+          ),
         pendente: null,
         freeze: null
       };
@@ -1218,96 +1836,542 @@
 
     if (
       !pendente ||
-      pendente.historico !== chave
+      pendente.historico !==
+      chave
     ) {
       lista.push({
-        resultado: numero,
+        resultado:
+          numero,
         green: null,
-        semJogada: true,
+        semJogada:
+          true,
         fase: "SEM"
       });
 
       return {
-        timeline: lista.slice(-20),
+        timeline:
+          lista.slice(
+            -MAX_TIMELINE
+          ),
         pendente: null,
         freeze: null
       };
     }
 
-    const resultado = classificar(
-      numero,
-      jogadaSnapshot(pendente)
-    );
+    const resultado =
+      classificar(
+        numero,
+        jogadaSnapshot(
+          pendente
+        )
+      );
 
-    if (resultado.green) {
+    if (
+      resultado.green
+    ) {
       lista.push({
-        resultado: numero,
+        resultado:
+          numero,
         green: true,
-        tipo: resultado.tipo,
-        semJogada: false,
-        fase: "ENTRADA"
+        tipo:
+          resultado.tipo,
+        semJogada:
+          false,
+        fase:
+          "ENTRADA"
       });
 
       return {
-        timeline: lista.slice(-20),
+        timeline:
+          lista.slice(
+            -MAX_TIMELINE
+          ),
         pendente: null,
         freeze: null
       };
     }
 
     lista.push({
-      resultado: numero,
+      resultado:
+        numero,
       green: null,
-      semJogada: false,
-      aguardandoG1: true,
-      fase: "ESPERA_G1"
+      semJogada:
+        false,
+      aguardandoG1:
+        true,
+      fase:
+        "ESPERA_G1"
     });
 
     return {
-      timeline: lista.slice(-20),
+      timeline:
+        lista.slice(
+          -MAX_TIMELINE
+        ),
       pendente: null,
-      freeze: { ...pendente }
+      freeze: {
+        ...pendente
+      }
     };
   }
 
-  function avaliarPendentes(numero) {
-    const chave = estado.historico.join(",");
+  function avaliarPendentes(
+    numero
+  ) {
+    const chave =
+      estado.historico.join(
+        ","
+      );
 
-    const auto = avaliarLinha(
-      numero,
-      estado.pendentes.AUTO,
-      estado.freezes.AUTO,
-      estado.timelines.AUTO,
-      chave
-    );
+    const auto =
+      avaliarLinha(
+        numero,
+        estado.pendentes.AUTO,
+        estado.freezes.AUTO,
+        estado.timelines.AUTO,
+        chave
+      );
 
-    estado.timelines.AUTO = auto.timeline;
-    estado.pendentes.AUTO = auto.pendente;
-    estado.freezes.AUTO = auto.freeze;
+    estado.timelines.AUTO =
+      auto.timeline;
 
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        const resultado = avaliarLinha(
-          numero,
-          estado.pendentes[motor][rx],
-          estado.freezes[motor][rx],
-          estado.timelines[motor][rx],
-          chave
-        );
+    estado.pendentes.AUTO =
+      auto.pendente;
 
-        estado.timelines[motor][rx] =
+    estado.freezes.AUTO =
+      auto.freeze;
+
+    for (
+      const motor
+      of MOTORES
+    ) {
+      for (
+        const rx
+        of RX_LIST
+      ) {
+        const resultado =
+          avaliarLinha(
+            numero,
+            estado.pendentes[
+              motor
+            ][rx],
+            estado.freezes[
+              motor
+            ][rx],
+            estado.timelines[
+              motor
+            ][rx],
+            chave
+          );
+
+        estado.timelines[
+          motor
+        ][rx] =
           resultado.timeline;
 
-        estado.pendentes[motor][rx] =
+        estado.pendentes[
+          motor
+        ][rx] =
           resultado.pendente;
 
-        estado.freezes[motor][rx] =
+        estado.freezes[
+          motor
+        ][rx] =
           resultado.freeze;
       }
     }
   }
 
-  function adicionarNumero(numero) {
+  /*
+   ============================================================
+   JOGADOR VIRTUAL
+   ============================================================
+
+   Quando o número não está na jogada:
+   - Identifica o número sorteado.
+   - Identifica a dúzia.
+   - Identifica a zona de quebra.
+   - Mede a distância física até a cobertura.
+   - Identifica o setor mais próximo.
+   - Verifica se foi falha de primeira entrada.
+   - Mantém o G1 separado.
+   - Não altera a jogada retroativamente.
+   ============================================================
+  */
+
+  function zonaDoNumero(
+    numero
+  ) {
+    const zonas = [];
+
+    for (
+      let z = 1;
+      z <= 3;
+      z++
+    ) {
+      if (
+        ZONAS_QUEBRA[
+          z
+        ].includes(
+          numero
+        )
+      ) {
+        zonas.push(z);
+      }
+    }
+
+    return zonas;
+  }
+
+  function analisarFalha(
+    numero,
+    snap,
+    historicoAnterior
+  ) {
+    if (!snap) {
+      return {
+        tipo:
+          "SEM_JOGADA",
+        numero,
+        titulo:
+          "AGUARDANDO HISTÓRICO",
+        texto:
+          "Ainda não havia uma jogada válida para avaliar.",
+        detalhes: []
+      };
+    }
+
+    const jogada =
+      jogadaSnapshot(
+        snap
+      );
+
+    const resultado =
+      classificar(
+        numero,
+        jogada
+      );
+
+    const d =
+      duzia(numero);
+
+    const zonas =
+      zonaDoNumero(
+        numero
+      );
+
+    const cobertos =
+      jogada.numeros;
+
+    const vizinhoEsquerdo =
+      TRACK[
+        mod(
+          pos(numero) - 1,
+          37
+        )
+      ];
+
+    const vizinhoDireito =
+      TRACK[
+        mod(
+          pos(numero) + 1,
+          37
+        )
+      ];
+
+    const anterior =
+      historicoAnterior.length
+        ? historicoAnterior[
+            historicoAnterior.length - 1
+          ]
+        : null;
+
+    const deslocamento =
+      anterior === null
+        ? null
+        : delta(
+            anterior,
+            numero
+          );
+
+    const detalhes = [];
+
+    detalhes.push(
+      "Número sorteado: " +
+      numero
+    );
+
+    detalhes.push(
+      "Dúzia: " +
+      (
+        d === 0
+          ? "ZERO"
+          : d + "ª"
+      )
+    );
+
+    detalhes.push(
+      "Motor utilizado: " +
+      nomeMotor(
+        snap.motor
+      ) +
+      " C" +
+      snap.rx
+    );
+
+    detalhes.push(
+      "Vizinhos físicos do resultado: " +
+      vizinhoEsquerdo +
+      " / " +
+      vizinhoDireito
+    );
+
+    if (
+      zonas.length
+    ) {
+      detalhes.push(
+        "Zona de quebra: " +
+        zonas.join(
+          ", "
+        )
+      );
+    } else {
+      detalhes.push(
+        "Fora das zonas de quebra cadastradas"
+      );
+    }
+
+    if (
+      anterior !== null
+    ) {
+      detalhes.push(
+        "Último resultado anterior: " +
+        anterior
+      );
+
+      detalhes.push(
+        "Deslocamento físico: " +
+        Math.abs(
+          deslocamento
+        ) +
+        " posições"
+      );
+    }
+
+    if (
+      resultado.green
+    ) {
+      return {
+        tipo:
+          "ACERTO",
+        numero,
+        titulo:
+          "ACERTO NA PRIMEIRA ENTRADA",
+        texto:
+          "O número " +
+          numero +
+          " estava dentro da cobertura da jogada.",
+        detalhes: [
+          ...detalhes,
+          "Classificação: " +
+          resultado.tipo,
+          "Centro atingido: " +
+          resultado.centro
+        ]
+      };
+    }
+
+    const faltou =
+      resultado.gap ?? null;
+
+    const centro =
+      resultado.centro;
+
+    const setor =
+      jogada.blocos2.find(
+        b =>
+          b.centro ===
+          centro
+      ) ||
+      jogada.blocos1.find(
+        b =>
+          b.centro ===
+          centro
+      );
+
+    const margem =
+      setor?.qtd ?? 0;
+
+    const descobertos =
+      TRACK.filter(
+        n =>
+          !cobertos.has(n)
+      );
+
+    detalhes.push(
+      "Centro coberto mais próximo: " +
+      (
+        centro ??
+        "NÃO IDENTIFICADO"
+      )
+    );
+
+    detalhes.push(
+      "Cobertura desse centro: ±" +
+      margem +
+      " vizinho(s)"
+    );
+
+    detalhes.push(
+      "Distância até o centro: " +
+      (
+        resultado.distancia ??
+        "—"
+      )
+    );
+
+    detalhes.push(
+      "Distância além da cobertura: " +
+      (
+        faltou ??
+        "—"
+      )
+    );
+
+    detalhes.push(
+      "Números descobertos: " +
+      descobertos.join(
+        ", "
+      )
+    );
+
+    let explicacao = "";
+
+    if (
+      faltou === 1
+    ) {
+      explicacao =
+        "O resultado ficou imediatamente fora de um dos setores cobertos. " +
+        "Faltou uma posição física para alcançar o número " +
+        numero +
+        ".";
+    } else if (
+      faltou === 2
+    ) {
+      explicacao =
+        "O resultado ficou duas posições além da borda do setor mais próximo.";
+    } else {
+      explicacao =
+        "O número sorteado estava em uma região descoberta pela configuração atual.";
+    }
+
+    if (
+      zonas.length
+    ) {
+      explicacao +=
+        " Ele também pertence à zona de quebra " +
+        zonas.join(
+          ", "
+        ) +
+        ".";
+    }
+
+    return {
+      tipo:
+        "FALHA_PRIMEIRA",
+      numero,
+      titulo:
+        "POR QUE NÃO PEGOU DE PRIMEIRA?",
+      texto:
+        explicacao,
+      detalhes,
+      centro,
+      distancia:
+        resultado.distancia,
+      faltou,
+      zona:
+        zonas,
+      resultadoG1:
+        null
+    };
+  }
+
+  function atualizarDiagnosticoG1(
+    numero,
+    snap
+  ) {
+    const resultado =
+      classificar(
+        numero,
+        jogadaSnapshot(
+          snap
+        )
+      );
+
+    const anterior =
+      estado.diagnostico;
+
+    if (
+      !anterior ||
+      anterior.tipo !==
+        "FALHA_PRIMEIRA"
+    ) {
+      return;
+    }
+
+    const diagnostico = {
+      ...anterior,
+      resultadoG1:
+        numero,
+      greenG1:
+        resultado.green
+    };
+
+    if (
+      resultado.green
+    ) {
+      diagnostico.titulo =
+        "PRIMEIRA FALHOU • G1 ACERTOU";
+
+      diagnostico.texto +=
+        " No G1, saiu " +
+        numero +
+        ", que estava na mesma cobertura congelada.";
+    } else {
+      diagnostico.titulo =
+        "PRIMEIRA E G1 NÃO ACERTARAM";
+
+      diagnostico.texto +=
+        " No G1, saiu " +
+        numero +
+        ", também fora da cobertura congelada.";
+    }
+
+    diagnostico.detalhes = [
+      ...anterior.detalhes,
+      "Resultado do G1: " +
+      numero,
+      "G1: " +
+      (
+        resultado.green
+          ? "ACERTO"
+          : "ERRO"
+      )
+    ];
+
+    estado.diagnostico =
+      diagnostico;
+  }
+
+  /*
+   ============================================================
+   ENTRADA DOS NÚMEROS
+   ============================================================
+  */
+
+  function adicionarNumero(
+    numero
+  ) {
     if (
       !Number.isInteger(numero) ||
       numero < 0 ||
@@ -1316,65 +2380,135 @@
       return;
     }
 
-    const { configs, auto } = obterConfigs();
+    const historicoAnterior =
+      estado.historico.slice();
 
-    prepararPendentes(configs, auto);
+    const {
+      configs,
+      auto
+    } = obterConfigs();
 
-    const ativa = configAtiva(configs, auto);
+    prepararPendentes(
+      configs,
+      auto
+    );
 
-    avaliarPendentes(numero);
-
-    if (estado.visualFreeze) {
-      const resultado = classificar(
-        numero,
-        jogadaSnapshot(estado.visualFreeze)
+    const ativa =
+      configAtiva(
+        configs,
+        auto
       );
 
+    avaliarPendentes(
+      numero
+    );
+
+    if (
+      estado.visualFreeze
+    ) {
+      const snap =
+        estado.visualFreeze;
+
+      const resultado =
+        classificar(
+          numero,
+          jogadaSnapshot(
+            snap
+          )
+        );
+
       const ultimo =
-        estado.visual[estado.visual.length - 1];
+        estado.visual[
+          estado.visual.length - 1
+        ];
 
       if (ultimo) {
-        ultimo.g1 = numero;
-        ultimo.green = resultado.green;
+        ultimo.g1 =
+          numero;
+
+        ultimo.green =
+          resultado.green;
+
         ultimo.fase =
-          resultado.green ? "G1" : "LOSS";
+          resultado.green
+            ? "G1"
+            : "LOSS";
       }
 
-      estado.visualFreeze = null;
-    } else {
-      const snap = snapshot(ativa);
+      atualizarDiagnosticoG1(
+        numero,
+        snap
+      );
 
-      const resultado = snap
-        ? classificar(
-            numero,
-            jogadaSnapshot(snap)
-          )
-        : null;
+      estado.visualFreeze =
+        null;
+
+    } else {
+      const snap =
+        snapshot(
+          ativa
+        );
+
+      const resultado =
+        snap
+          ? classificar(
+              numero,
+              jogadaSnapshot(
+                snap
+              )
+            )
+          : null;
 
       estado.visual.push({
-        resultado: numero,
+        resultado:
+          numero,
         g1: null,
-        green: resultado?.green ? true : null,
-        semJogada: !snap,
-        fase: !snap
-          ? "SEM"
-          : resultado.green
-            ? "ENTRADA"
-            : "ESPERA_G1"
+        green:
+          resultado?.green
+            ? true
+            : null,
+        semJogada:
+          !snap,
+        fase:
+          !snap
+            ? "SEM"
+            : resultado.green
+              ? "ENTRADA"
+              : "ESPERA_G1"
       });
 
-      if (resultado && !resultado.green) {
-        estado.visualFreeze = snap;
+      estado.diagnostico =
+        analisarFalha(
+          numero,
+          snap,
+          historicoAnterior
+        );
+
+      if (
+        resultado &&
+        !resultado.green
+      ) {
+        estado.visualFreeze =
+          snap;
       }
     }
 
-    estado.historico.push(numero);
+    estado.ultimoNumero =
+      numero;
+
+    estado.historico.push(
+      numero
+    );
 
     estado.historico =
-      estado.historico.slice(-20);
+      estado.historico.slice(
+        -MAX_HISTORICO
+      );
 
     estado.visual =
-      estado.visual.slice(-14);
+      estado.visual.slice(
+        -MAX_VISUAL
+      );
 
     invalidarCache();
     salvar();
@@ -1382,31 +2516,54 @@
   }
 
   function reiniciarApontamentos() {
-    const novo = criarEstado();
+    const novo =
+      criarEstado();
 
-    estado.timelines = novo.timelines;
-    estado.pendentes = novo.pendentes;
-    estado.freezes = novo.freezes;
+    estado.timelines =
+      novo.timelines;
+
+    estado.pendentes =
+      novo.pendentes;
+
+    estado.freezes =
+      novo.freezes;
+
     estado.visual = [];
-    estado.visualFreeze = null;
+
+    estado.visualFreeze =
+      null;
+
+    estado.diagnostico =
+      null;
+
+    estado.ultimoNumero =
+      null;
 
     invalidarCache();
   }
 
   function inserirHistorico() {
-    const campo = document.getElementById(
-      "entradaHistorico"
-    );
+    const campo =
+      document.getElementById(
+        "entradaHistorico"
+      );
 
-    const encontrados = campo.value.match(
-      /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
-    );
+    const encontrados =
+      campo.value.match(
+        /\b(?:[0-9]|[12][0-9]|3[0-6])\b/g
+      );
 
-    if (!encontrados) return;
+    if (
+      !encontrados
+    ) {
+      return;
+    }
 
     estado.historico =
-      normalizarHistorico(
-        encontrados.map(Number)
+      limitarHistorico(
+        encontrados.map(
+          Number
+        )
       );
 
     reiniciarApontamentos();
@@ -1418,7 +2575,11 @@
   }
 
   function apagarUltimo() {
-    if (!estado.historico.length) return;
+    if (
+      !estado.historico.length
+    ) {
+      return;
+    }
 
     estado.historico.pop();
 
@@ -1429,7 +2590,11 @@
   }
 
   function apagarTudo() {
-    if (!confirm("Apagar todo o histórico?")) {
+    if (
+      !confirm(
+        "Apagar todo o histórico?"
+      )
+    ) {
       return;
     }
 
@@ -1441,13 +2606,24 @@
     agendarRender();
   }
 
-  function selecionar(motor, rx) {
-    if (motor === "AUTO") {
-      estado.modo = "AUTO";
+  function selecionar(
+    motor,
+    rx
+  ) {
+    if (
+      motor === "AUTO"
+    ) {
+      estado.modo =
+        "AUTO";
     } else {
-      estado.modo = "MANUAL";
-      estado.motorManual = motor;
-      estado.manualRX = rx;
+      estado.modo =
+        "MANUAL";
+
+      estado.motorManual =
+        motor;
+
+      estado.manualRX =
+        rx;
     }
 
     salvar();
@@ -1455,19 +2631,25 @@
   }
 
   /*
-   * INTERFACE
-   */
+   ============================================================
+   INTERFACE
+   ============================================================
+  */
 
-  document.body.innerHTML = "";
+  document.body.innerHTML =
+    "";
 
   document.body.style.cssText = `
-    margin: 0;
-    background: #101010;
-    color: #fff;
-    font-family: Arial, sans-serif;
+    margin:0;
+    background:#101014;
+    color:#fff;
+    font-family:Arial,sans-serif;
   `;
 
-  const app = document.createElement("div");
+  const app =
+    document.createElement(
+      "div"
+    );
 
   app.innerHTML = `
 <style>
@@ -1475,8 +2657,12 @@
   box-sizing: border-box;
 }
 
+body {
+  background: #101014;
+}
+
 .app {
-  max-width: 900px;
+  max-width: 950px;
   margin: auto;
   padding: 8px;
 }
@@ -1484,32 +2670,41 @@
 h2 {
   text-align: center;
   font-size: 20px;
-  margin: 7px;
+  margin: 8px 0;
+  color: #fff;
 }
 
 .painel {
-  background: #1c1c1f;
-  border: 1px solid #414141;
-  border-radius: 10px;
-  padding: 9px;
-  margin-bottom: 8px;
+  background: #1b1c23;
+  border: 1px solid #363843;
+  border-radius: 11px;
+  padding: 10px;
+  margin-bottom: 9px;
 }
 
 .titulo {
   font-size: 10px;
   font-weight: 900;
-  color: #aaa;
-  margin-bottom: 7px;
+  color: #aeb5c5;
+  margin-bottom: 8px;
 }
 
 textarea {
   width: 100%;
   height: 60px;
-  background: #111;
+  background: #101116;
   color: white;
-  border: 1px solid #555;
+  border: 1px solid #515666;
   border-radius: 7px;
-  padding: 8px;
+  padding: 9px;
+  resize: vertical;
+}
+
+button {
+  font-family: Arial, sans-serif;
+  font-weight: 900;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .botoes,
@@ -1517,21 +2712,16 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 6px;
-}
-
-button {
-  cursor: pointer;
-  font-family: Arial;
-  font-weight: 900;
+  margin-top: 7px;
 }
 
 .btn {
-  background: #333;
+  background: #333846;
   color: white;
-  border: 1px solid #555;
+  border: 1px solid #555e70;
   border-radius: 7px;
-  padding: 8px 10px;
+  padding: 9px 11px;
+  font-size: 10px;
 }
 
 .btn.verde {
@@ -1539,31 +2729,94 @@ button {
 }
 
 .btn.red {
-  background: #762832;
+  background: #782a35;
+}
+
+.cabecalhoRecolher {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #232632;
+  border: 1px solid #414756;
+  border-radius: 8px;
+  padding: 10px;
+  color: white;
+  text-align: left;
+}
+
+.cabecalhoRecolher strong {
+  font-size: 11px;
+}
+
+.seta {
+  color: #00d9ff;
+  font-size: 15px;
+}
+
+.conteudoRecolher {
+  margin-top: 8px;
+}
+
+.oculto {
+  display: none !important;
+}
+
+.autoCompacto {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  background: #111820;
+  border: 1px solid #007d98;
+  border-radius: 8px;
+  margin-top: 7px;
+}
+
+.autoQuadrado {
+  min-width: 53px;
+  height: 42px;
+  background: #007d98;
+  border: 1px solid #00e5ff;
+  border-radius: 8px;
+  color: white;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.autoDescricao {
+  flex: 1;
+  min-width: 100px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #00e5ff;
 }
 
 .seletorGrupo {
-  margin-top: 10px;
+  margin-top: 11px;
 }
 
 .seletorTitulo {
-  font-size: 10px;
+  font-size: 9px;
+  color: #aeb5c5;
   font-weight: 900;
-  color: #aaa;
 }
 
 .modo {
-  background: #222;
-  color: #aaa;
-  border: 1px solid #555;
+  background: #262936;
+  color: #c3c7d0;
+  border: 1px solid #555c6b;
   border-radius: 7px;
   padding: 9px 12px;
+  font-size: 11px;
 }
 
 .modo.ativo {
   background: #007d98;
-  border-color: #00e5ff;
   color: white;
+  border-color: #00e5ff;
 }
 
 .modo.dinamico.ativo {
@@ -1581,41 +2834,31 @@ button {
   border-color: #ff9800;
 }
 
-.origemAuto {
-  margin-top: 9px;
-  padding: 9px;
-  background: #111;
-  border: 1px solid #00e5ff;
-  border-radius: 7px;
-  font-size: 10px;
-  font-weight: 900;
-  text-align: center;
-  color: #00e5ff;
-}
-
 .resumo {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 5px;
-  margin-top: 9px;
+  margin-top: 10px;
 }
 
 .card {
-  background: #111;
-  border: 1px solid #333;
+  background: #101116;
+  border: 1px solid #333947;
   border-radius: 7px;
-  padding: 8px;
+  padding: 9px 5px;
   text-align: center;
 }
 
 .card small {
   display: block;
-  font-size: 9px;
-  color: #999;
+  font-size: 8px;
+  color: #a4aab7;
 }
 
 .card strong {
-  font-size: 17px;
+  display: block;
+  font-size: 18px;
+  margin-top: 4px;
 }
 
 .duziasLinha {
@@ -1625,8 +2868,8 @@ button {
 }
 
 .duziaCard {
-  background: #111;
-  border: 1px solid #444;
+  background: #101116;
+  border: 1px solid #414653;
   border-radius: 7px;
   padding: 8px;
   text-align: center;
@@ -1638,36 +2881,36 @@ button {
 
 .duziaCard small {
   display: block;
-  font-size: 9px;
-  color: #aaa;
+  font-size: 8px;
+  color: #aeb5c5;
 }
 
 .duziaCard strong {
   display: block;
-  font-size: 18px;
+  font-size: 17px;
   margin: 5px 0;
 }
 
 .duziaCard span {
-  font-size: 9px;
-  color: #aaa;
+  font-size: 8px;
+  color: #aeb5c5;
 }
 
 .timelineSecao {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid #333;
+  border-top: 1px solid #363843;
 }
 
 .timelineTituloGrupo {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
-  color: #aaa;
+  color: #aeb5c5;
 }
 
 .timelineRow {
   display: grid;
-  grid-template-columns: 80px 1fr 42px;
+  grid-template-columns: 70px minmax(0,1fr) 38px;
   gap: 5px;
   align-items: center;
   margin-top: 6px;
@@ -1681,8 +2924,8 @@ button {
 }
 
 .gl {
-  width: 18px;
-  min-width: 18px;
+  width: 17px;
+  min-width: 17px;
   height: 18px;
   border-radius: 4px;
   font-size: 8px;
@@ -1732,14 +2975,14 @@ button {
 }
 
 .dupla14 {
-  min-height: 65px;
+  min-height: 63px;
   border-radius: 7px;
-  background: #272727;
+  background: #272a34;
   border: 2px solid #555;
   display: flex;
   justify-content: center;
   position: relative;
-  padding: 6px 4px 26px;
+  padding: 6px 3px 25px;
 }
 
 .dupla14.green {
@@ -1759,8 +3002,8 @@ button {
 }
 
 .bolaDupla {
-  width: 31px;
-  height: 31px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1779,7 +3022,7 @@ button {
   border: 1px solid #777;
   border-radius: 5px;
   padding: 3px 5px;
-  font-size: 9px;
+  font-size: 8px;
   white-space: nowrap;
 }
 
@@ -1800,92 +3043,187 @@ button {
   color: #ffc107;
 }
 
+/*
+  JOGADA ATUAL:
+  SOMENTE 6 QUADRADOS HORIZONTAIS
+*/
+
 .jogadaStatus {
-  display: inline-block;
+  display: block;
   font-size: 10px;
   font-weight: 900;
   color: #00e5ff;
-  border: 1px solid #007d98;
-  background: #15323a;
-  padding: 7px;
-  border-radius: 6px;
-  margin-bottom: 8px;
+  margin-bottom: 9px;
+  line-height: 1.5;
 }
 
 .jogadaStatus.congelada {
   color: #ffc107;
-  border-color: #ffc107;
-  background: #4a3510;
 }
 
-.grupoRegiao {
-  margin-bottom: 8px;
-  background: #161616;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 7px;
+.jogadaHorizontal {
+  display: grid;
+  grid-template-columns: repeat(6,minmax(0,1fr));
+  gap: 5px;
+  width: 100%;
 }
 
-.grupoRegiaoTitulo {
-  font-size: 10px;
-  font-weight: 900;
-  color: #aaa;
-  margin-bottom: 6px;
-}
-
-.jogada {
+.alvoQuadrado {
+  aspect-ratio: 1 / 1;
+  min-height: 45px;
+  background: #006ca6;
+  border: 2px solid #00cfff;
+  border-radius: 9px;
+  color: #fff;
   display: flex;
-  gap: 6px;
-  overflow-x: auto;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(16px,4vw,27px);
+  font-weight: 900;
 }
 
-.bloco {
-  min-width: 135px;
-  background: #111;
-  border: 1px solid #00e5ff;
-  border-radius: 8px;
-  padding: 8px;
-  text-align: center;
+.alvoQuadrado.um {
+  background: #b78300;
+  border-color: #ffd54f;
+  color: #111;
 }
 
-.bloco.um {
-  border-color: #ffc107;
+.alvoQuadrado.congelado {
+  box-shadow: 0 0 0 1px #ffc107 inset;
 }
 
-.bloco small {
+.legendaJogada {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  margin-top: 9px;
+  flex-wrap: wrap;
   font-size: 9px;
-  color: #999;
-  font-weight: 900;
+  color: #aeb5c5;
 }
 
-.bloco strong {
-  display: block;
-  font-size: 23px;
-  margin: 5px;
+.legendaCor {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
 }
 
-.numeros {
-  border-top: 1px solid #333;
-  padding-top: 6px;
-  font-size: 11px;
-  font-weight: 900;
+.legendaCor.azul {
+  background: #0089cf;
+}
+
+.legendaCor.amarelo {
+  background: #ffc107;
 }
 
 .teclado {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(6,1fr);
   gap: 5px;
 }
 
 .numero {
-  height: 42px;
+  height: 43px;
   border: 1px solid #666;
   border-radius: 6px;
   color: white;
+  font-size: 13px;
 }
 
 .zero {
   grid-column: span 6;
+}
+
+/*
+  JOGADOR VIRTUAL
+*/
+
+.virtualCabecalho {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.virtualAvatar {
+  width: 39px;
+  height: 39px;
+  background: #133e50;
+  border: 1px solid #00d9ff;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.virtualTitulo {
+  font-size: 13px;
+  font-weight: 900;
+  color: #00d9ff;
+}
+
+.virtualSubtitulo {
+  font-size: 9px;
+  color: #aeb5c5;
+  margin-top: 3px;
+}
+
+.virtualStatus {
+  padding: 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+.virtualStatus.green {
+  background: #123b2b;
+  color: #00e676;
+  border: 1px solid #008e52;
+}
+
+.virtualStatus.loss {
+  background: #451d25;
+  color: #ff6c78;
+  border: 1px solid #a33142;
+}
+
+.virtualStatus.wait {
+  background: #373015;
+  color: #ffd54f;
+  border: 1px solid #977c20;
+}
+
+.virtualTexto {
+  background: #11141b;
+  border: 1px solid #363b48;
+  border-radius: 8px;
+  padding: 11px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e4e8f0;
+}
+
+.virtualDetalhes {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.virtualDetalhe {
+  background: #12151d;
+  border: 1px solid #333b4a;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #c5cedc;
 }
 
 .status {
@@ -1893,31 +3231,53 @@ button {
   font-weight: 900;
   color: #00e676;
   margin-top: 8px;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
-@media (max-width: 600px) {
+@media(max-width:600px) {
   .resumo {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2,1fr);
   }
 
   .duplas14 {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4,1fr);
   }
 
   .timelineRow {
-    grid-template-columns: 70px 1fr 36px;
+    grid-template-columns: 63px minmax(0,1fr) 34px;
+  }
+
+  .gl {
+    width: 15px;
+    min-width: 15px;
+    height: 17px;
+    font-size: 7px;
+  }
+
+  .alvoQuadrado {
+    min-height: 42px;
+    border-radius: 6px;
+  }
+
+  .jogadaHorizontal {
+    gap: 4px;
+  }
+
+  .virtualDetalhes {
+    grid-template-columns: 1fr;
   }
 }
 </style>
 
 <div class="app">
+
   <h2>ANÁLISE BETA</h2>
 
   <div class="painel">
+
     <textarea
       id="entradaHistorico"
-      placeholder="Cole o histórico — últimos 20"
+      placeholder="Cole o histórico — últimos 20 números"
     ></textarea>
 
     <div class="botoes">
@@ -1937,234 +3297,650 @@ button {
     <div id="status" class="status">
       PRONTO
     </div>
+
   </div>
 
   <div class="painel">
-    <div class="seletorGrupo">
-      <div class="seletorTitulo">
+
+    <button
+      id="recolherCandidatos"
+      class="cabecalhoRecolher"
+    >
+      <strong>
         AUTO • 12 CANDIDATOS
-      </div>
+      </strong>
 
-      <div class="modos">
-        <button id="btnAUTO" class="modo">
-          AUTO
-        </button>
+      <span
+        id="setaCandidatos"
+        class="seta"
+      >
+        +
+      </span>
+    </button>
+
+    <div
+      id="autoCompacto"
+      class="autoCompacto"
+    >
+      <button
+        id="btnAUTO"
+        class="autoQuadrado"
+      >
+        AUTO
+      </button>
+
+      <div
+        id="autoDescricao"
+        class="autoDescricao"
+      >
+        AGUARDANDO
       </div>
     </div>
 
-    ${[
-      ["NORMAL", "NORMAL • DÚZIAS FÍSICAS", "N", ""],
-      ["DINAMICO", "DINÂMICO • DÚZIAS FÍSICAS", "D", "dinamico"],
-      ["RX_NORMAL", "RAIO X NORMAL", "RN", "raiox"],
-      ["RX_DINAMICO", "RAIO X DINÂMICO", "RD", "raiox dinamico"]
-    ].map(([motor, nome, prefixo, classe]) => `
-      <div class="seletorGrupo">
-        <div class="seletorTitulo">
-          ${nome}
+    <div
+      id="conteudoCandidatos"
+      class="conteudoRecolher oculto"
+    >
+
+      ${[
+        [
+          "NORMAL",
+          "NORMAL • DÚZIAS FÍSICAS",
+          "N",
+          ""
+        ],
+        [
+          "DINAMICO",
+          "DINÂMICO • DÚZIAS FÍSICAS",
+          "D",
+          "dinamico"
+        ],
+        [
+          "RX_NORMAL",
+          "RAIO-X NORMAL",
+          "RN",
+          "raiox"
+        ],
+        [
+          "RX_DINAMICO",
+          "RAIO-X DINÂMICO",
+          "RD",
+          "raiox dinamico"
+        ]
+      ].map(
+        ([
+          motor,
+          nome,
+          prefixo,
+          classe
+        ]) => `
+          <div class="seletorGrupo">
+
+            <div class="seletorTitulo">
+              ${nome}
+            </div>
+
+            <div class="modos">
+
+              ${RX_LIST.map(
+                rx => `
+                  <button
+                    id="btn${prefixo}${rx}"
+                    class="modo ${classe}"
+                  >
+                    ${prefixo.startsWith("R") ? "RX " : ""}C${rx}
+                  </button>
+                `
+              ).join("")}
+
+            </div>
+
+          </div>
+        `
+      ).join("")}
+
+      <div
+        id="resumo"
+        class="resumo"
+      ></div>
+
+      <div class="timelineSecao">
+
+        <div class="timelineTituloGrupo">
+          CONCENTRAÇÃO FÍSICA DAS DÚZIAS
         </div>
 
-        <div class="modos">
-          ${RX_LIST.map(rx => `
-            <button
-              id="btn${prefixo}${rx}"
-              class="modo ${classe}"
-            >
-              ${prefixo.startsWith("R") ? "RX " : ""}C${rx}
-            </button>
-          `).join("")}
-        </div>
+        <div
+          id="duzias"
+          class="duziasLinha"
+        ></div>
+
       </div>
-    `).join("")}
 
-    <div id="origemAuto" class="origemAuto">
-      AUTO
     </div>
 
-    <div id="resumo" class="resumo"></div>
+  </div>
+
+  <div class="painel">
+
+    <button
+      id="recolherTimelines"
+      class="cabecalhoRecolher"
+    >
+      <strong>
+        LINHAS DO TEMPO
+      </strong>
+
+      <span
+        id="setaTimelines"
+        class="seta"
+      >
+        +
+      </span>
+    </button>
 
     <div class="timelineSecao">
+
       <div class="timelineTituloGrupo">
-        CONCENTRAÇÃO FÍSICA DAS DÚZIAS
+        AUTO
       </div>
 
-      <div id="duzias" class="duziasLinha"></div>
+      <div
+        id="timelineAUTO"
+        class="timelineRow"
+      ></div>
+
     </div>
 
-    ${[
-      ["AUTO FINAL", "AUTO", ["AUTO"]],
-      ["NORMAL", "N", RX_LIST],
-      ["DINÂMICO", "D", RX_LIST],
-      ["RAIO X NORMAL", "RN", RX_LIST],
-      ["RAIO X DINÂMICO", "RD", RX_LIST]
-    ].map(([nome, prefixo, linhas]) => `
-      <div class="timelineSecao">
-        <div class="timelineTituloGrupo">
-          ${nome}
-        </div>
+    <div
+      id="conteudoTimelines"
+      class="oculto"
+    >
 
-        ${linhas.map(rx => `
-          <div
-            id="timeline${prefixo}${rx === "AUTO" ? "" : rx}"
-            class="timelineRow"
-          ></div>
-        `).join("")}
-      </div>
-    `).join("")}
+      ${[
+        [
+          "NORMAL",
+          "N"
+        ],
+        [
+          "DINÂMICO",
+          "D"
+        ],
+        [
+          "RAIO-X NORMAL",
+          "RN"
+        ],
+        [
+          "RAIO-X DINÂMICO",
+          "RD"
+        ]
+      ].map(
+        ([nome, prefixo]) => `
+          <div class="timelineSecao">
+
+            <div class="timelineTituloGrupo">
+              ${nome}
+            </div>
+
+            ${RX_LIST.map(
+              rx => `
+                <div
+                  id="timeline${prefixo}${rx}"
+                  class="timelineRow"
+                ></div>
+              `
+            ).join("")}
+
+          </div>
+        `
+      ).join("")}
+
+    </div>
+
   </div>
 
   <div class="painel">
+
     <div class="titulo">
-      ÚLTIMAS 14 • JOGADA SELECIONADA
+      ÚLTIMAS 14 JOGADAS
     </div>
 
-    <div id="ultimos14" class="duplas14"></div>
+    <div
+      id="ultimos14"
+      class="duplas14"
+    ></div>
+
   </div>
 
   <div class="painel">
-    <div class="titulo">JOGADA</div>
+
+    <div class="titulo">
+      JOGADA ATUAL
+    </div>
 
     <div id="jogada"></div>
+
   </div>
 
   <div class="painel">
-    <div class="titulo">TECLADO</div>
 
-    <div id="teclado" class="teclado"></div>
+    <div class="titulo">
+      TECLADO
+    </div>
+
+    <div
+      id="teclado"
+      class="teclado"
+    ></div>
+
   </div>
+
+  <div class="painel">
+
+    <button
+      id="recolherVirtual"
+      class="cabecalhoRecolher"
+    >
+      <div class="virtualCabecalho">
+
+        <div class="virtualAvatar">
+          🤖
+        </div>
+
+        <div>
+          <div class="virtualTitulo">
+            JOGADOR VIRTUAL
+          </div>
+
+          <div class="virtualSubtitulo">
+            ANÁLISE DA PRIMEIRA ENTRADA E G1
+          </div>
+        </div>
+
+      </div>
+
+      <span
+        id="setaVirtual"
+        class="seta"
+      >
+        −
+      </span>
+
+    </button>
+
+    <div
+      id="conteudoVirtual"
+    >
+
+      <div
+        id="virtualStatus"
+        class="virtualStatus wait"
+      >
+        AGUARDANDO RESULTADO
+      </div>
+
+      <div
+        id="virtualTexto"
+        class="virtualTexto"
+      >
+        Insira um número no teclado para iniciar a análise.
+      </div>
+
+      <div
+        id="virtualDetalhes"
+        class="virtualDetalhes"
+      ></div>
+
+    </div>
+
+  </div>
+
 </div>
 `;
 
-  document.body.appendChild(app);
+  document.body.appendChild(
+    app
+  );
 
   /*
-   * EVENTOS
-   */
+   ============================================================
+   EVENTOS
+   ============================================================
+  */
 
-  document.getElementById("inserir").onclick =
+  document.getElementById(
+    "inserir"
+  ).onclick =
     inserirHistorico;
 
-  document.getElementById("apagar").onclick =
+  document.getElementById(
+    "apagar"
+  ).onclick =
     apagarUltimo;
 
-  document.getElementById("limpar").onclick =
+  document.getElementById(
+    "limpar"
+  ).onclick =
     apagarTudo;
 
-  document.getElementById("btnAUTO").onclick =
-    () => selecionar("AUTO");
+  document.getElementById(
+    "btnAUTO"
+  ).onclick = () =>
+    selecionar(
+      "AUTO"
+    );
 
-  const PREFIXOS = {
-    NORMAL: "N",
-    DINAMICO: "D",
-    RX_NORMAL: "RN",
-    RX_DINAMICO: "RD"
-  };
-
-  for (const motor of MOTORES) {
-    for (const rx of RX_LIST) {
+  for (
+    const motor
+    of MOTORES
+  ) {
+    for (
+      const rx
+      of RX_LIST
+    ) {
       document.getElementById(
-        "btn" + PREFIXOS[motor] + rx
-      ).onclick = () => selecionar(motor, rx);
+        "btn" +
+        PREFIXOS[motor] +
+        rx
+      ).onclick = () =>
+        selecionar(
+          motor,
+          rx
+        );
     }
   }
 
+  document.getElementById(
+    "recolherCandidatos"
+  ).onclick = () => {
+    estado.painelCandidatosAberto =
+      !estado.painelCandidatosAberto;
+
+    salvar();
+    renderPaineis();
+  };
+
+  document.getElementById(
+    "recolherTimelines"
+  ).onclick = () => {
+    estado.painelTimelinesAberto =
+      !estado.painelTimelinesAberto;
+
+    salvar();
+    renderPaineis();
+  };
+
+  document.getElementById(
+    "recolherVirtual"
+  ).onclick = () => {
+    estado.jogadorVirtualAberto =
+      !estado.jogadorVirtualAberto;
+
+    salvar();
+    renderPaineis();
+  };
+
   /*
-   * TECLADO
-   */
+   ============================================================
+   TECLADO
+   ============================================================
+  */
 
-  const teclado = document.getElementById(
-    "teclado"
-  );
-
-  for (let numero = 1; numero <= 36; numero++) {
-    const botao = document.createElement("button");
-
-    botao.className = "numero";
-    botao.textContent = numero;
-    botao.style.background = cor(numero);
-
-    botao.onclick = () => adicionarNumero(numero);
-
-    teclado.appendChild(botao);
-  }
-
-  const zero = document.createElement("button");
-
-  zero.className = "numero zero";
-  zero.textContent = "0";
-  zero.style.background = cor(0);
-  zero.onclick = () => adicionarNumero(0);
-
-  teclado.appendChild(zero);
-
-  /*
-   * RENDERIZAÇÃO
-   */
-
-  function renderTimeline(id, nome, lista) {
-    const itens = (lista || []).slice(-20);
-
-    const validos = itens.filter(
-      item =>
-        !item.semJogada &&
-        !item.aguardandoG1 &&
-        typeof item.green === "boolean"
+  const teclado =
+    document.getElementById(
+      "teclado"
     );
 
-    const taxa = validos.length
-      ? validos.filter(x => x.green).length /
-        validos.length * 100
-      : null;
+  for (
+    let numero = 1;
+    numero <= 36;
+    numero++
+  ) {
+    const botao =
+      document.createElement(
+        "button"
+      );
 
-    const html = itens.map(item => {
-      if (item.semJogada) {
-        return '<span class="gl sem">—</span>';
-      }
+    botao.className =
+      "numero";
 
-      if (item.aguardandoG1) {
-        return '<span class="gl wait">…</span>';
-      }
+    botao.textContent =
+      numero;
 
-      if (item.green && item.fase === "G1") {
-        return '<span class="gl g1">G1</span>';
-      }
+    botao.style.background =
+      corNumero(numero);
 
-      if (item.green) {
-        return '<span class="gl green">G</span>';
-      }
+    botao.onclick = () =>
+      adicionarNumero(
+        numero
+      );
 
-      return '<span class="gl loss">L</span>';
-    }).join("");
+    teclado.appendChild(
+      botao
+    );
+  }
 
-    document.getElementById(id).innerHTML = `
-      <div class="nomeTL">${nome}</div>
+  const zero =
+    document.createElement(
+      "button"
+    );
+
+  zero.className =
+    "numero zero";
+
+  zero.textContent =
+    "0";
+
+  zero.style.background =
+    corNumero(0);
+
+  zero.onclick = () =>
+    adicionarNumero(0);
+
+  teclado.appendChild(
+    zero
+  );
+
+  /*
+   ============================================================
+   PAINÉIS RECOLHÍVEIS
+   ============================================================
+  */
+
+  function renderPaineis() {
+    const candidatos =
+      document.getElementById(
+        "conteudoCandidatos"
+      );
+
+    const timelines =
+      document.getElementById(
+        "conteudoTimelines"
+      );
+
+    const virtual =
+      document.getElementById(
+        "conteudoVirtual"
+      );
+
+    candidatos.classList.toggle(
+      "oculto",
+      !estado.painelCandidatosAberto
+    );
+
+    timelines.classList.toggle(
+      "oculto",
+      !estado.painelTimelinesAberto
+    );
+
+    virtual.classList.toggle(
+      "oculto",
+      !estado.jogadorVirtualAberto
+    );
+
+    document.getElementById(
+      "setaCandidatos"
+    ).textContent =
+      estado.painelCandidatosAberto
+        ? "−"
+        : "+";
+
+    document.getElementById(
+      "setaTimelines"
+    ).textContent =
+      estado.painelTimelinesAberto
+        ? "−"
+        : "+";
+
+    document.getElementById(
+      "setaVirtual"
+    ).textContent =
+      estado.jogadorVirtualAberto
+        ? "−"
+        : "+";
+  }
+
+  /*
+   ============================================================
+   TIMELINES
+   ============================================================
+  */
+
+  function renderTimeline(
+    id,
+    nome,
+    lista
+  ) {
+    const itens =
+      (lista || []).slice(
+        -MAX_TIMELINE
+      );
+
+    const validos =
+      itens.filter(
+        item =>
+          !item.semJogada &&
+          !item.aguardandoG1 &&
+          typeof item.green ===
+            "boolean"
+      );
+
+    const taxa =
+      validos.length
+        ? validos.filter(
+            x => x.green
+          ).length /
+          validos.length * 100
+        : null;
+
+    const html =
+      itens.map(
+        item => {
+          if (
+            item.semJogada
+          ) {
+            return `
+              <span class="gl sem">
+                —
+              </span>
+            `;
+          }
+
+          if (
+            item.aguardandoG1
+          ) {
+            return `
+              <span class="gl wait">
+                …
+              </span>
+            `;
+          }
+
+          if (
+            item.green &&
+            item.fase ===
+              "G1"
+          ) {
+            return `
+              <span class="gl g1">
+                G1
+              </span>
+            `;
+          }
+
+          if (
+            item.green
+          ) {
+            return `
+              <span class="gl green">
+                G
+              </span>
+            `;
+          }
+
+          return `
+            <span class="gl loss">
+              L
+            </span>
+          `;
+        }
+      ).join("");
+
+    document.getElementById(
+      id
+    ).innerHTML = `
+      <div class="nomeTL">
+        ${nome}
+      </div>
 
       <div class="timeline">
         ${html}
       </div>
 
       <div class="taxaTL">
-        ${taxa === null ? "—" : taxa.toFixed(0) + "%"}
+        ${taxa === null
+          ? "—"
+          : taxa.toFixed(0) + "%"
+        }
       </div>
     `;
   }
 
-  function nomeMotor(motor) {
-    return {
-      NORMAL: "NORMAL",
-      DINAMICO: "DINÂMICO",
-      RX_NORMAL: "RAIO X NORMAL",
-      RX_DINAMICO: "RAIO X DINÂMICO"
-    }[motor] || "—";
-  }
+  /*
+   ============================================================
+   JOGADA HORIZONTAL
+   ============================================================
 
-  function renderJogada(config, congelada) {
-    const area = document.getElementById(
-      "jogada"
-    );
+   EXEMPLO VISUAL:
 
-    if (!config?.valido || !config.jogada?.valido) {
+   [30] [24] [11] [06] [19] [33]
+
+   AZUL:
+   Centro + 2 vizinhos de cada lado.
+
+   AMARELO:
+   Centro + 1 vizinho de cada lado.
+
+   Não exibe os números vizinhos.
+   Apenas o centro.
+   ============================================================
+  */
+
+  function renderJogada(
+    config,
+    congelada
+  ) {
+    const area =
+      document.getElementById(
+        "jogada"
+      );
+
+    if (
+      !config?.valido ||
+      !config.jogada?.valido
+    ) {
       area.innerHTML = `
-        <div style="color:#999">
+        <div class="jogadaStatus">
           AGUARDANDO JOGADA VÁLIDA
         </div>
       `;
@@ -2174,232 +3950,484 @@ button {
 
     const blocos = [
       ...config.jogada.blocos2.map(
-        bloco => ({ ...bloco, um: false })
+        b => ({
+          ...b,
+          um: false
+        })
       ),
       ...config.jogada.blocos1.map(
-        bloco => ({ ...bloco, um: true })
+        b => ({
+          ...b,
+          um: true
+        })
       )
     ];
 
-    const ordem = [
-      "TIERS",
-      "ORPHELINS",
-      "ZERO",
-      "VOISINS",
-      "OUTROS"
-    ];
-
     blocos.sort(
-      (a, b) =>
-        ordem.indexOf(regiao(a.centro)) -
-        ordem.indexOf(regiao(b.centro))
+      (a, b) => {
+        const regA =
+          ORDEM_REGIOES.indexOf(
+            regiao(
+              a.centro
+            )
+          );
+
+        const regB =
+          ORDEM_REGIOES.indexOf(
+            regiao(
+              b.centro
+            )
+          );
+
+        return (
+          regA - regB ||
+          pos(a.centro) -
+          pos(b.centro)
+        );
+      }
     );
 
-    const grupos = new Map();
+    const status =
+      congelada
+        ? "G1 • JOGADA CONGELADA"
+        : "JOGADA ATUAL";
 
-    for (const bloco of blocos) {
-      const nome = regiao(bloco.centro);
-
-      if (!grupos.has(nome)) {
-        grupos.set(nome, []);
-      }
-
-      grupos.get(nome).push(bloco);
-    }
-
-    let html = `
-      <div class="jogadaStatus ${congelada ? "congelada" : ""}">
-        ${congelada ? "JOGADA CONGELADA • G1" : "JOGADA ATUAL"}
+    area.innerHTML = `
+      <div
+        class="jogadaStatus ${congelada ? "congelada" : ""}"
+      >
+        ${status}
         • ${nomeMotor(config.motor)}
         • C${config.rx}
         • ${alvoRX(config.rx)}ª DÚZIA
-        • 28 NÚMEROS
+      </div>
+
+      <div class="jogadaHorizontal">
+
+        ${blocos.map(
+          bloco => `
+            <div
+              class="alvoQuadrado
+              ${bloco.um ? "um" : ""}
+              ${congelada ? "congelado" : ""}"
+              title="${bloco.um ? "1 vizinho" : "2 vizinhos"}"
+            >
+              ${bloco.centro}
+            </div>
+          `
+        ).join("")}
+
+      </div>
+
+      <div class="legendaJogada">
+
+        <span>
+          <span class="legendaCor azul"></span>
+          2 VIZINHOS
+        </span>
+
+        <span>
+          <span class="legendaCor amarelo"></span>
+          1 VIZINHO
+        </span>
+
+        <span>
+          28 NÚMEROS COBERTOS
+        </span>
+
       </div>
     `;
-
-    for (const [nome, itens] of grupos) {
-      html += `
-        <div class="grupoRegiao">
-          <div class="grupoRegiaoTitulo">
-            ${nome}
-          </div>
-
-          <div class="jogada">
-            ${itens.map(bloco => `
-              <div class="bloco ${bloco.um ? "um" : ""}">
-                <small>
-                  ${bloco.um ? "1 VIZINHO" : "2 VIZINHOS"} DO
-                </small>
-
-                <strong>${bloco.centro}</strong>
-
-                <div class="numeros">
-                  ${bloco.numeros.join(" • ")}
-                </div>
-              </div>
-            `).join("")}
-          </div>
-        </div>
-      `;
-    }
-
-    area.innerHTML = html;
-  }
-
-  function renderUltimos() {
-    const area = document.getElementById(
-      "ultimos14"
-    );
-
-    area.innerHTML = estado.visual
-      .slice(-14)
-      .map(item => {
-        const classe = item.semJogada
-          ? "sem"
-          : item.fase === "ESPERA_G1"
-            ? "wait"
-            : item.fase === "G1"
-              ? "g1"
-              : item.green
-                ? "green"
-                : "loss";
-
-        const textos = {
-          sem: "—",
-          wait: "…",
-          g1: "G1",
-          green: "G",
-          loss: "L"
-        };
-
-        return `
-          <div class="dupla14 ${classe}">
-            <div
-              class="bolaDupla"
-              style="background:${cor(item.resultado)}"
-            >
-              ${item.resultado}
-            </div>
-
-            <div class="resultadoEntrada ${classe}">
-              ${textos[classe]}
-              ${item.g1 == null ? "" : " • " + item.g1}
-            </div>
-          </div>
-        `;
-      })
-      .join("");
   }
 
   /*
-   * RENDER AGENDADO
-   *
-   * Um único render por ciclo de interação.
-   * Evita várias atualizações consecutivas.
-   */
+   ============================================================
+   ÚLTIMOS 14
+   ============================================================
+  */
 
-  let renderPendente = false;
+  function renderUltimos() {
+    const area =
+      document.getElementById(
+        "ultimos14"
+      );
+
+    area.innerHTML =
+      estado.visual
+        .slice(-MAX_VISUAL)
+        .map(
+          item => {
+            const classe =
+              item.semJogada
+                ? "sem"
+                : item.fase ===
+                    "ESPERA_G1"
+                  ? "wait"
+                  : item.fase ===
+                      "G1"
+                    ? "g1"
+                    : item.green
+                      ? "green"
+                      : "loss";
+
+            const textos = {
+              sem: "—",
+              wait: "…",
+              g1: "G1",
+              green: "G",
+              loss: "L"
+            };
+
+            return `
+              <div
+                class="dupla14 ${classe}"
+              >
+
+                <div
+                  class="bolaDupla"
+                  style="background:${corNumero(item.resultado)}"
+                >
+                  ${item.resultado}
+                </div>
+
+                <div
+                  class="resultadoEntrada ${classe}"
+                >
+                  ${textos[classe]}
+
+                  ${item.g1 == null
+                    ? ""
+                    : " • " + item.g1
+                  }
+                </div>
+
+              </div>
+            `;
+          }
+        ).join("");
+  }
+
+  /*
+   ============================================================
+   RENDER JOGADOR VIRTUAL
+   ============================================================
+  */
+
+  function renderVirtual() {
+    const diagnostico =
+      estado.diagnostico;
+
+    const status =
+      document.getElementById(
+        "virtualStatus"
+      );
+
+    const texto =
+      document.getElementById(
+        "virtualTexto"
+      );
+
+    const detalhes =
+      document.getElementById(
+        "virtualDetalhes"
+      );
+
+    if (!diagnostico) {
+      status.className =
+        "virtualStatus wait";
+
+      status.textContent =
+        "AGUARDANDO RESULTADO";
+
+      texto.textContent =
+        "Quando você clicar em um número, vou comparar o resultado com a jogada que estava ativa antes do sorteio.";
+
+      detalhes.innerHTML =
+        "";
+
+      return;
+    }
+
+    const acertou =
+      diagnostico.tipo ===
+        "ACERTO" ||
+      diagnostico.greenG1 ===
+        true;
+
+    const aguardando =
+      diagnostico.tipo ===
+        "SEM_JOGADA";
+
+    status.className =
+      "virtualStatus " +
+      (
+        aguardando
+          ? "wait"
+          : acertou
+            ? "green"
+            : "loss"
+      );
+
+    status.textContent =
+      diagnostico.titulo;
+
+    texto.textContent =
+      diagnostico.texto;
+
+    detalhes.innerHTML =
+      (diagnostico.detalhes || [])
+        .map(
+          detalhe => {
+            const div =
+              document.createElement(
+                "div"
+              );
+
+            div.className =
+              "virtualDetalhe";
+
+            div.textContent =
+              detalhe;
+
+            return div.outerHTML;
+          }
+        ).join("");
+  }
+
+  /*
+   ============================================================
+   RENDER OTIMIZADO
+   ============================================================
+  */
+
+  let renderPendente =
+    false;
 
   function agendarRender() {
-    if (renderPendente) return;
+    if (
+      renderPendente
+    ) {
+      return;
+    }
 
-    renderPendente = true;
+    renderPendente =
+      true;
 
-    setTimeout(() => {
-      renderPendente = false;
-      render();
-    }, 0);
+    setTimeout(
+      () => {
+        renderPendente =
+          false;
+
+        render();
+      },
+      0
+    );
   }
 
   function render() {
-    const base = estado.historico;
+    const base =
+      estado.historico;
 
-    const analise = analisar(base);
+    const {
+      configs,
+      auto,
+      analise
+    } = obterConfigs();
 
-    const { configs, auto } = obterConfigs();
+    prepararPendentes(
+      configs,
+      auto
+    );
 
-    prepararPendentes(configs, auto);
+    const ativa =
+      configAtiva(
+        configs,
+        auto
+      );
 
-    const ativa = configAtiva(configs, auto);
+    /*
+      SELEÇÃO DOS BOTÕES
+    */
 
-    const ids = ["btnAUTO"];
+    const ids = [
+      "btnAUTO"
+    ];
 
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
+    for (
+      const motor
+      of MOTORES
+    ) {
+      for (
+        const rx
+        of RX_LIST
+      ) {
         ids.push(
-          "btn" + PREFIXOS[motor] + rx
+          "btn" +
+          PREFIXOS[motor] +
+          rx
         );
       }
     }
 
-    for (const id of ids) {
-      document.getElementById(id)
-        .classList.remove("ativo");
+    for (
+      const id
+      of ids
+    ) {
+      document.getElementById(
+        id
+      ).classList.remove(
+        "ativo"
+      );
     }
 
-    const idAtivo = estado.modo === "AUTO"
-      ? "btnAUTO"
-      : "btn" +
-        PREFIXOS[estado.motorManual] +
+    if (
+      estado.modo ===
+      "AUTO"
+    ) {
+      document.getElementById(
+        "btnAUTO"
+      ).style.background =
+        "#007d98";
+
+      document.getElementById(
+        "btnAUTO"
+      ).style.borderColor =
+        "#00e5ff";
+
+    } else {
+      document.getElementById(
+        "btnAUTO"
+      ).style.background =
+        "#303744";
+
+      document.getElementById(
+        "btnAUTO"
+      ).style.borderColor =
+        "#555c6b";
+
+      const idAtivo =
+        "btn" +
+        PREFIXOS[
+          estado.motorManual
+        ] +
         estado.manualRX;
 
-    document.getElementById(idAtivo)
-      .classList.add("ativo");
+      document.getElementById(
+        idAtivo
+      ).classList.add(
+        "ativo"
+      );
+    }
+
+    /*
+      AUTO COMPACTO
+    */
 
     document.getElementById(
-      "origemAuto"
-    ).textContent = auto
-      ? (
-          "AUTO ESCOLHEU • " +
-          nomeMotor(auto.motor) +
-          " • C" + auto.rx +
-          " • " + auto.alvoDuzia + "ª DÚZIA" +
-          " • SCORE " + auto.scoreAuto.toFixed(1)
-        )
-      : "AUTO • AGUARDANDO JOGADAS VÁLIDAS";
+      "autoDescricao"
+    ).textContent =
+      auto
+        ? (
+            nomeMotor(
+              auto.motor
+            ) +
+            " • C" +
+            auto.rx +
+            " • " +
+            auto.alvoDuzia +
+            "ª DÚZIA"
+          )
+        : "AGUARDANDO JOGADAS";
 
-    const live = estatisticas(
-      estado.timelines.AUTO
-    );
+    /*
+      RESUMO
+    */
 
-    document.getElementById("resumo").innerHTML = [
-      ["REAL5 AUTO", live.total ? live.taxa5 : null],
-      ["REAL10 AUTO", live.total ? live.taxa10 : null],
-      ["REAL20 AUTO", live.total ? live.taxa20 : null],
-      ["PERDAS", live.perdas]
-    ].map(([nome, valor]) => `
-      <div class="card">
-        <small>${nome}</small>
+    const live =
+      estatisticas(
+        estado.timelines.AUTO
+      );
 
-        <strong>
-          ${valor === null
-            ? "—"
-            : nome === "PERDAS"
-              ? valor
-              : valor.toFixed(0) + "%"
-          }
-        </strong>
-      </div>
-    `).join("");
+    document.getElementById(
+      "resumo"
+    ).innerHTML =
+      [
+        [
+          "REAL 5",
+          live.total
+            ? live.taxa5
+            : null
+        ],
+        [
+          "REAL 10",
+          live.total
+            ? live.taxa10
+            : null
+        ],
+        [
+          "REAL 20",
+          live.total
+            ? live.taxa20
+            : null
+        ],
+        [
+          "PERDAS",
+          live.perdas
+        ]
+      ].map(
+        ([nome, valor]) => `
+          <div class="card">
 
-    document.getElementById("duzias").innerHTML =
-      analise.ranking.map((item, i) => `
-        <div class="duziaCard ${i === 0 ? "forte" : ""}">
-          <small>
-            ${item.duzia}ª DÚZIA
-          </small>
+            <small>
+              ${nome}
+            </small>
 
-          <strong>
-            ${(item.intensidade * 100).toFixed(0)}%
-          </strong>
+            <strong>
+              ${valor === null
+                ? "—"
+                : nome === "PERDAS"
+                  ? valor
+                  : valor.toFixed(0) + "%"
+              }
+            </strong>
 
-          <span>
-            ${item.contagem}/20
-            • FÍSICA
-            • QUEBRA ${item.quebra.toFixed(1)}
-          </span>
-        </div>
-      `).join("");
+          </div>
+        `
+      ).join("");
+
+    /*
+      DÚZIAS
+    */
+
+    document.getElementById(
+      "duzias"
+    ).innerHTML =
+      analise.ranking.map(
+        (item, i) => `
+          <div
+            class="duziaCard ${i === 0 ? "forte" : ""}"
+          >
+
+            <small>
+              ${item.duzia}ª DÚZIA
+            </small>
+
+            <strong>
+              ${(item.intensidade * 100).toFixed(0)}%
+            </strong>
+
+            <span>
+              ${item.contagem}/20
+              • QUEBRA
+              ${item.quebra.toFixed(1)}
+            </span>
+
+          </div>
+        `
+      ).join("");
+
+    /*
+      TIMELINES
+    */
 
     renderTimeline(
       "timelineAUTO",
@@ -2407,33 +4435,58 @@ button {
       estado.timelines.AUTO
     );
 
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
+    for (
+      const motor
+      of MOTORES
+    ) {
+      for (
+        const rx
+        of RX_LIST
+      ) {
         renderTimeline(
-          "timeline" + PREFIXOS[motor] + rx,
-          motor.startsWith("RX")
+          "timeline" +
+          PREFIXOS[motor] +
+          rx,
+          motor.startsWith(
+            "RX"
+          )
             ? "RX C" + rx
             : "C" + rx,
-          estado.timelines[motor][rx]
+          estado.timelines[
+            motor
+          ][rx]
         );
       }
     }
 
-    renderUltimos();
+    /*
+      JOGADA
+    */
 
-    const freeze = estado.modo === "AUTO"
-      ? estado.freezes.AUTO
-      : estado.freezes[estado.motorManual]
-          [estado.manualRX];
+    const freeze =
+      estado.modo ===
+        "AUTO"
+        ? estado.freezes.AUTO
+        : estado.freezes[
+            estado.motorManual
+          ][
+            estado.manualRX
+          ];
 
-    let configExibida = ativa;
+    let configExibida =
+      ativa;
 
     if (freeze) {
       configExibida = {
         valido: true,
-        motor: freeze.motor,
-        rx: freeze.rx,
-        jogada: jogadaSnapshot(freeze)
+        motor:
+          freeze.motor,
+        rx:
+          freeze.rx,
+        jogada:
+          jogadaSnapshot(
+            freeze
+          )
       };
     }
 
@@ -2442,43 +4495,85 @@ button {
       !!freeze
     );
 
+    /*
+      HISTÓRICO E VIRTUAL
+    */
+
+    renderUltimos();
+
+    renderVirtual();
+
+    /*
+      STATUS
+    */
+
     const validos = [];
 
-    for (const motor of MOTORES) {
-      for (const rx of RX_LIST) {
-        const config = configs[motor][rx];
+    for (
+      const motor
+      of MOTORES
+    ) {
+      for (
+        const rx
+        of RX_LIST
+      ) {
+        const config =
+          configs[motor][rx];
 
-        if (config.valido) {
-          validos.push(config);
+        if (
+          config?.valido
+        ) {
+          validos.push(
+            config
+          );
         }
       }
     }
 
-    const diferentes = new Set(
-      validos.map(config => config.assinatura)
-    ).size;
+    const diferentes =
+      new Set(
+        validos.map(
+          config =>
+            config.assinatura
+        )
+      ).size;
 
-    const dominante = analise.ranking[0];
+    const dominante =
+      analise.ranking[0];
 
-    document.getElementById("status").textContent =
-      base.length + "/20" +
+    document.getElementById(
+      "status"
+    ).textContent =
+      base.length +
+      "/20" +
       " • 12 MOTORES" +
-      " • " + validos.length + "/12 JOGADAS VÁLIDAS" +
-      " • " + diferentes + " COBERTURAS DIFERENTES" +
-      " • 5 ALVOS ±2 + 1 ALVO ±1" +
+      " • " +
+      validos.length +
+      "/12 VÁLIDOS" +
+      " • " +
+      diferentes +
+      " JOGADAS DIFERENTES" +
+      " • 28 NÚMEROS" +
       " • SEM SOBREPOSIÇÃO" +
-      " • SEM BURACO ISOLADO" +
-      " • ZONAS DE QUEBRA 1/2/3" +
-      " • CONCENTRAÇÃO: " +
-      dominante.duzia + "ª DÚZIA" +
-      (freeze ? " • G1 CONGELADO" : "");
+      " • CONCENTRAÇÃO " +
+      dominante.duzia +
+      "ª DÚZIA" +
+      (
+        freeze
+          ? " • G1 CONGELADO"
+          : ""
+      );
+
+    renderPaineis();
 
     salvar();
   }
 
   /*
-   * INICIALIZAÇÃO
-   */
+   ============================================================
+   INICIALIZAÇÃO
+   ============================================================
+  */
 
   agendarRender();
 
