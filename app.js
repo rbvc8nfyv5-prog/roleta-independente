@@ -3,114 +3,108 @@
 "use strict";
 
 /*
-  ANÁLISE BETA V5.6
-  BASE: CÓDIGO V5.5 ENVIADO PELO USUÁRIO
+ ANÁLISE BETA V5.7
 
-  PRESERVADO:
-  - HTML e estrutura visual original
-  - 12 motores
-  - Geometria de 28 números
-  - Estratégias existentes
-  - Teclado 0–36
-  - Importação de 200 números
-  - Histórico e tempo real
-  - GREEN, GALE e LOSS
-  - Ranking, auditoria e linha do tempo
+ BASE PRESERVADA:
+ - HTML e identidade visual
+ - 12 motores
+ - Geometria de 28 números
+ - Estratégias originais
+ - Teclado 0–36
+ - Histórico de 200 números
+ - GREEN / GALE / LOSS
+ - Treinador e laboratório
+ - Ranking e linha do tempo
 
-  ACRESCENTADO:
-  - Treinador Estratégico Virtual
-  - Backtest cronológico
-  - Auditoria dos 12 motores
-  - Estratégias adaptativas
-  - Laboratório de regras e parâmetros
-  - Diagnóstico de erros e acertos
-  - Comparação de estratégias
-  - Recomendações concretas
-  - Criação de botões de estratégia
-  - Ativação das estratégias criadas
-  - Persistência das configurações
+ NOVO:
+ - Botão TREINADOR ESTRATÉGICO
+ - Treinador escolhe automaticamente a
+   configuração recomendada
+ - 12 estratégias adaptativas nos botões
+ - Cada adaptativa pode ser ativada sozinha
+ - Estratégias criadas permanecem disponíveis
+ - Resultado geral expansível
+ - Ranking virtual expansível
+ - Oportunidades expansíveis
+ - Plano de cobertura expansível
+ - Comparações expansíveis
+ - Cache de cálculos e renderização
+ - Análise cronológica sem antecipar resultados
 
-  IMPORTANTE:
-  O backtest mede desempenho histórico.
-  Não garante vantagem futura na roleta.
+ AVISO:
+ A melhor configuração observada no
+ histórico não garante acertos futuros.
 */
 
-const VERSION = "5.6";
-const KEY = "ANALISE_BETA_V55_COMPLETO";
-const MAX = 200;
+const VERSION="5.7";
+const KEY="ANALISE_BETA_V55_COMPLETO";
+const MAX=200;
 
-const W = [
+const W=[
   32,15,19,4,21,2,25,17,34,6,
   27,13,36,11,30,8,23,10,5,24,
   16,33,1,20,14,31,9,22,18,29,
   7,28,12,35,3,26,0
 ];
 
-const RED = new Set([
+const RED=new Set([
   1,3,5,7,9,12,14,16,18,
   19,21,23,25,27,30,32,34,36
 ]);
 
-const SECTORS = {
-  TIERS:[
-    27,13,36,11,30,8,23,10,5,24,16,33
-  ],
-  ORFAOS:[
-    17,34,6,1,20,14,31,9
-  ],
-  VOISINS:[
-    22,18,29,7,25,2,21,4,19
-  ],
-  ZERO:[
-    28,12,35,3,26,0,32,15
-  ]
+const SECTORS={
+  TIERS:[27,13,36,11,30,8,23,10,5,24,16,33],
+  ORFAOS:[17,34,6,1,20,14,31,9],
+  VOISINS:[22,18,29,7,25,2,21,4,19],
+  ZERO:[28,12,35,3,26,0,32,15]
 };
 
-const FAMILIES = [
+const FAMILIES=[
   "NORMAL",
   "DINAMICO",
   "RX_NORMAL",
   "RX_DINAMICO"
 ];
 
-const RADII = [4,5,6];
+const RADII=[4,5,6];
 
-const $ = id => document.getElementById(id);
+const $=id=>document.getElementById(id);
+const mod=n=>(n%37+37)%37;
+const index=n=>W.indexOf(n);
 
-const mod = n => (n % 37 + 37) % 37;
+const fmt=n=>Number.isFinite(n)
+  ?n.toFixed(1).replace(".",",")
+  :"—";
 
-const index = n => W.indexOf(n);
+const pct=(a,b)=>b
+  ?fmt(100*a/b)+"%"
+  :"—";
 
-const fmt = n =>
-  Number.isFinite(n)
-    ? n.toFixed(1).replace(".",",")
-    : "—";
-
-const pct = (a,b) =>
-  b ? fmt(100*a/b)+"%" : "—";
-
-const esc = x =>
-  String(x ?? "").replace(
-    /[&<>"']/g,
-    c => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#39;"
-    }[c])
-  );
+const esc=x=>String(x??"").replace(
+  /[&<>"']/g,
+  c=>({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
+  }[c])
+);
 
 function sector(n){
   return Object.keys(SECTORS).find(
-    k => SECTORS[k].includes(n)
-  ) || "—";
+    k=>SECTORS[k].includes(n)
+  )||"—";
 }
 
 function distance(a,b){
-  const d = Math.abs(index(a)-index(b));
+  const d=Math.abs(index(a)-index(b));
   return Math.min(d,37-d);
 }
+
+/* ======================================
+   ESTADO
+====================================== */
 
 function fresh(){
   return {
@@ -122,43 +116,49 @@ function fresh(){
     g1:true,
     secondHouse:false,
     galeSkip:false,
-    createdStrategies:[],
+    activeAdaptive:null,
     activeCreated:null,
-    trainerMin:12,
+    createdStrategies:[],
     open:{
+      general:true,
       trainer:true,
       lab:true,
       motors:false,
-      timeline:false
+      timeline:false,
+      virtualRanking:false,
+      opportunities:false,
+      coveragePlan:false,
+      comparisons:false,
+      created:false
     }
   };
 }
 
-let state = fresh();
+let state=fresh();
 
-try {
-  const old = JSON.parse(
-    localStorage.getItem(KEY) || "null"
+try{
+  const old=JSON.parse(
+    localStorage.getItem(KEY)||"null"
   );
 
   if(old){
-    state = {
+    state={
       ...fresh(),
       ...old,
-      createdStrategies:
-        Array.isArray(old.createdStrategies)
-          ? old.createdStrategies
-          : [],
       open:{
         ...fresh().open,
-        ...old.open
-      }
+        ...(old.open||{})
+      },
+      createdStrategies:
+        Array.isArray(old.createdStrategies)
+          ?old.createdStrategies
+          :[]
     };
   }
 }catch(e){}
 
 function save(){
-  try {
+  try{
     localStorage.setItem(
       KEY,
       JSON.stringify(state)
@@ -166,14 +166,179 @@ function save(){
   }catch(e){}
 }
 
-/* ==========================================
+/* ======================================
+   CONFIGURAÇÕES ADAPTATIVAS
+
+   Todas aparecem nos botões.
+====================================== */
+
+const ADAPTATIVES=[
+  {
+    id:"A01",
+    name:"ADAPTATIVA 01",
+    window:10,
+    margin:.05,
+    minSamples:6,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A02",
+    name:"ADAPTATIVA 02",
+    window:10,
+    margin:.10,
+    minSamples:6,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A03",
+    name:"ADAPTATIVA 03",
+    window:10,
+    margin:.15,
+    minSamples:6,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A04",
+    name:"ADAPTATIVA 04",
+    window:20,
+    margin:.05,
+    minSamples:10,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A05",
+    name:"ADAPTATIVA 05",
+    window:20,
+    margin:.10,
+    minSamples:10,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A06",
+    name:"ADAPTATIVA 06",
+    window:20,
+    margin:.15,
+    minSamples:10,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A07",
+    name:"ADAPTATIVA 07",
+    window:30,
+    margin:.05,
+    minSamples:12,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A08",
+    name:"ADAPTATIVA 08",
+    window:30,
+    margin:.10,
+    minSamples:12,
+    persistence:3,
+    maxRank:12,
+    lossPenalty:0,
+    consensus:0,
+    recentWeight:0,
+    switchAfterLoss:false
+  },
+  {
+    id:"A09",
+    name:"ADAPTATIVA 09",
+    window:20,
+    margin:.08,
+    minSamples:10,
+    persistence:2,
+    maxRank:12,
+    lossPenalty:.025,
+    consensus:0,
+    recentWeight:.4,
+    switchAfterLoss:true
+  },
+  {
+    id:"A10",
+    name:"ADAPTATIVA 10",
+    window:30,
+    margin:.12,
+    minSamples:12,
+    persistence:3,
+    maxRank:6,
+    lossPenalty:.02,
+    consensus:.04,
+    recentWeight:.3,
+    switchAfterLoss:false
+  },
+  {
+    id:"A11",
+    name:"ADAPTATIVA 11",
+    window:20,
+    margin:.10,
+    minSamples:10,
+    persistence:3,
+    maxRank:4,
+    lossPenalty:.03,
+    consensus:.05,
+    recentWeight:.5,
+    switchAfterLoss:true
+  },
+  {
+    id:"A12",
+    name:"ADAPTATIVA 12",
+    window:30,
+    margin:.08,
+    minSamples:12,
+    persistence:2,
+    maxRank:8,
+    lossPenalty:.015,
+    consensus:.08,
+    recentWeight:.35,
+    switchAfterLoss:true
+  }
+];
+
+/* ======================================
    12 MOTORES ORIGINAIS
-   ========================================== */
+====================================== */
 
 function motorWeights(history,family,radius){
 
-  const weights = Array(37).fill(.01);
-  const recent = history.slice(-60);
+  const weights=Array(37).fill(.01);
+  const recent=history.slice(-60);
 
   for(let k=0;k<recent.length;k++){
 
@@ -185,8 +350,7 @@ function motorWeights(history,family,radius){
       const d=distance(n,W[j]);
 
       if(d<=6){
-        weights[j]+=
-          decay*(7-d)/7;
+        weights[j]+=decay*(7-d)/7;
       }
     }
   }
@@ -206,8 +370,7 @@ function motorWeights(history,family,radius){
         const d=distance(n,W[j]);
 
         if(d<=3){
-          weights[j]+=
-            (4-d)/(k+2)*1.7;
+          weights[j]+=(4-d)/(k+2)*1.7;
         }
       }
     }
@@ -250,9 +413,7 @@ function motorWeights(history,family,radius){
         });
       }
 
-      matches.sort(
-        (a,b)=>b.score-a.score
-      );
+      matches.sort((a,b)=>b.score-a.score);
 
       const selected=matches.slice(
         0,
@@ -266,10 +427,7 @@ function motorWeights(history,family,radius){
 
         for(let j=0;j<37;j++){
 
-          const d=distance(
-            match.next,
-            W[j]
-          );
+          const d=distance(match.next,W[j]);
 
           if(d<=3){
             weights[j]+=
@@ -283,12 +441,12 @@ function motorWeights(history,family,radius){
   return weights;
 }
 
-/* ==========================================
+/* ======================================
    GEOMETRIA ORIGINAL
-   5 BLOCOS DE 5
-   1 BLOCO DE 3
-   TOTAL 28 NÚMEROS
-   ========================================== */
+   5 CENTROS ±2
+   1 CENTRO ±1
+   TOTAL 28
+====================================== */
 
 function geometry(weights){
 
@@ -321,8 +479,8 @@ function geometry(weights){
 
         if(k===6){
           return g===9
-            ? {score:0,gaps:[]}
-            : null;
+            ?{score:0,gaps:[]}
+            :null;
         }
 
         const key=k+"|"+g;
@@ -350,39 +508,25 @@ function geometry(weights){
 
         let winner=null;
 
-        for(
-          let gap=0;
-          gap<=9-g;
-          gap++
-        ){
+        for(let gap=0;gap<=9-g;gap++){
 
           if(gap===1)continue;
 
-          const next=solve(
-            k+1,
-            g+gap
-          );
+          const next=solve(k+1,g+gap);
 
           if(!next)continue;
 
           const score=value+next.score;
 
-          if(
-            !winner||
-            score>winner.score
-          ){
+          if(!winner||score>winner.score){
             winner={
               score,
-              gaps:[
-                gap,
-                ...next.gaps
-              ]
+              gaps:[gap,...next.gaps]
             };
           }
         }
 
         memo.set(key,winner);
-
         return winner;
       }
 
@@ -390,13 +534,11 @@ function geometry(weights){
 
       if(!result)continue;
 
-      if(
-        best&&
-        result.score<=best.score
-      )continue;
+      if(best&&result.score<=best.score){
+        continue;
+      }
 
       let cursor=start;
-
       const centers5=[];
       let center3=null;
       const blocks=[];
@@ -406,8 +548,7 @@ function geometry(weights){
         const size=sizes[k];
 
         const centerIndex=mod(
-          cursor+
-          Math.floor(size/2)
+          cursor+Math.floor(size/2)
         );
 
         const center=W[centerIndex];
@@ -430,18 +571,16 @@ function geometry(weights){
           centers5.push(center);
         }
 
-        cursor+=
-          size+
-          result.gaps[k];
+        cursor+=size+result.gaps[k];
       }
 
       const numbers=blocks.flatMap(
         x=>x.numbers
       );
 
-      if(
-        new Set(numbers).size!==28
-      )continue;
+      if(new Set(numbers).size!==28){
+        continue;
+      }
 
       best={
         score:result.score,
@@ -491,45 +630,33 @@ function candidates(history){
     }
   }
 
-  result.sort(
-    (a,b)=>b.score-a.score
-  );
+  result.sort((a,b)=>b.score-a.score);
 
-  result.forEach(
-    (c,i)=>c.rank=i+1
-  );
+  result.forEach((c,i)=>{
+    c.rank=i+1;
+  });
 
   return result;
 }
 
-/* ==========================================
-   MEMÓRIA DO BACKTEST
+/* ======================================
+   CACHE DOS MOTORES
 
-   Os motores são calculados uma vez
-   por posição histórica e reutilizados
-   pelas estratégias.
+   Evita calcular os 12 motores
+   repetidamente para cada estratégia.
+====================================== */
 
-   Nenhuma decisão usa o número
-   que ainda será sorteado.
-   ========================================== */
-
-let engineCache={
+let frameCache={
   signature:null,
   frames:[]
 };
 
-function historySignature(history){
-  return history.join(",");
-}
-
 function buildFrames(history){
 
-  const signature=historySignature(history);
+  const signature=history.join(",");
 
-  if(
-    engineCache.signature===signature
-  ){
-    return engineCache.frames;
+  if(frameCache.signature===signature){
+    return frameCache.frames;
   }
 
   const frames=[];
@@ -538,7 +665,6 @@ function buildFrames(history){
 
     frames.push({
       turn:i+1,
-      before:history.slice(0,i),
       candidates:candidates(
         history.slice(0,i)
       ),
@@ -549,7 +675,7 @@ function buildFrames(history){
     });
   }
 
-  engineCache={
+  frameCache={
     signature,
     frames
   };
@@ -557,27 +683,17 @@ function buildFrames(history){
   return frames;
 }
 
-/* ==========================================
-   ESTATÍSTICA HISTÓRICA DE MOTORES
+/* ======================================
+   ESTATÍSTICA VIRTUAL
+====================================== */
 
-   Cada motor é avaliado virtualmente
-   em todos os giros anteriores,
-   independentemente de ter sido escolhido.
-   ========================================== */
+function previousStats(key,records,window=20){
 
-function motorStats(
-  key,
-  records,
-  window=20
-){
-
-  const past=records
-    .filter(r=>
-      r.candidates.some(
-        c=>c.key===key
-      )
+  const past=records.filter(
+    r=>r.candidates.some(
+      c=>c.key===key
     )
-    .slice(-window);
+  ).slice(-window);
 
   let hits=0;
 
@@ -587,9 +703,7 @@ function motorStats(
       x=>x.key===key
     );
 
-    if(
-      c.play.numbers.includes(r.n)
-    ){
+    if(c.play.numbers.includes(r.n)){
       hits++;
     }
   }
@@ -604,21 +718,9 @@ function motorStats(
   };
 }
 
-function previousStats(
-  key,
-  records,
-  window=20
-){
-  return motorStats(
-    key,
-    records,
-    window
-  );
-}
-
-/* ==========================================
-   REGRAS ADAPTATIVAS
-   ========================================== */
+/* ======================================
+   MOTOR ADAPTATIVO
+====================================== */
 
 function adaptiveChoose(
   cs,
@@ -627,10 +729,12 @@ function adaptiveChoose(
   config
 ){
 
+  if(!cs.length)return null;
+
   const {
     window=20,
-    minSamples=12,
-    margin=.08,
+    minSamples=10,
+    margin=.10,
     persistence=3,
     maxRank=12,
     lossPenalty=0,
@@ -643,29 +747,23 @@ function adaptiveChoose(
     c=>c.rank<=maxRank
   );
 
-  if(!eligible.length){
-    return cs[0]||null;
-  }
-
-  const recent=records.slice(-window);
+  if(!eligible.length)return cs[0];
 
   const ranked=eligible.map(c=>{
 
-    const stats=motorStats(
+    const stats=previousStats(
       c.key,
       records,
       window
     );
 
-    let score=stats.rate??0;
-
-    if(stats.total<minSamples){
-      score=.5;
-    }
+    let score=stats.total>=minSamples
+      ?stats.rate
+      :.5;
 
     if(recentWeight){
 
-      const short=motorStats(
+      const short=previousStats(
         c.key,
         records,
         Math.max(
@@ -675,6 +773,7 @@ function adaptiveChoose(
       );
 
       if(short.rate!==null){
+
         score=
           score*(1-recentWeight)+
           short.rate*recentWeight;
@@ -683,7 +782,7 @@ function adaptiveChoose(
 
     if(lossPenalty){
 
-      const last=records
+      const misses=records
         .slice(-5)
         .filter(r=>{
 
@@ -695,22 +794,19 @@ function adaptiveChoose(
             !old.play.numbers.includes(r.n);
         }).length;
 
-      score-=
-        last*lossPenalty;
+      score-=misses*lossPenalty;
     }
 
     if(consensus){
 
-      const votes=c.play.numbers.reduce(
-        (total,n)=>{
+      let votes=0;
 
-          return total+
-            cs.filter(x=>
-              x.play.numbers.includes(n)
-            ).length;
+      for(const n of c.play.numbers){
 
-        },0
-      );
+        votes+=cs.filter(
+          x=>x.play.numbers.includes(n)
+        ).length;
+      }
 
       score+=
         consensus*
@@ -722,7 +818,9 @@ function adaptiveChoose(
       score,
       stats
     };
-  }).sort(
+  });
+
+  ranked.sort(
     (a,b)=>
       b.score-a.score||
       a.c.rank-b.c.rank
@@ -738,32 +836,30 @@ function adaptiveChoose(
 
   if(!old)return best.c;
 
-  if(
-    old.c.key===best.c.key
-  ){
+  if(old.c.key===best.c.key){
     return old.c;
   }
 
-  const recentPrevious=records
-    .slice(-persistence)
-    .filter(r=>{
+  if(switchAfterLoss){
 
-      const c=r.candidates.find(
-        x=>x.key===previous
-      );
+    const recent=records.slice(-persistence);
 
-      return c&&
-        !c.play.numbers.includes(r.n);
-    });
+    if(recent.length===persistence){
 
-  const consecutiveMisses=
-    recentPrevious.length===persistence;
+      const failures=recent.every(r=>{
 
-  if(
-    switchAfterLoss&&
-    consecutiveMisses
-  ){
-    return best.c;
+        const c=r.candidates.find(
+          x=>x.key===previous
+        );
+
+        return c&&
+          !c.play.numbers.includes(r.n);
+      });
+
+      if(failures){
+        return best.c;
+      }
+    }
   }
 
   if(
@@ -777,9 +873,16 @@ function adaptiveChoose(
   return old.c;
 }
 
-/* ==========================================
-   ESTRATÉGIAS ORIGINAIS
-   ========================================== */
+/* ======================================
+   ESCOLHA DAS ESTRATÉGIAS
+
+   TREINADOR:
+   usa a configuração selecionada
+   pelo laboratório.
+
+   ADAPTATIVA:
+   usa apenas sua própria regra.
+====================================== */
 
 function choose(
   cs,
@@ -787,7 +890,8 @@ function choose(
   rule,
   rank=3,
   previous=null,
-  config=null
+  config=null,
+  manualKey=null
 ){
 
   if(!cs.length)return null;
@@ -802,27 +906,26 @@ function choose(
   if(rule==="MANUAL"){
 
     return cs.find(
-      x=>x.key===state.manual
+      x=>x.key===(manualKey||state.manual)
     )||fixed;
   }
 
-  if(rule==="CREATED"){
+  if(
+    rule==="ADAPTIVE"||
+    rule==="CREATED"
+  ){
 
     return adaptiveChoose(
       cs,
       records,
       previous,
-      config||{}
+      config||ADAPTATIVES[0]
     );
   }
 
-  if(rule==="FIXED"){
-    return fixed;
-  }
+  if(rule==="FIXED")return fixed;
 
-  if(rule==="GEO"){
-    return cs[0];
-  }
+  if(rule==="GEO")return cs[0];
 
   if(rule==="BEST"){
 
@@ -846,7 +949,6 @@ function choose(
 
       return br-ar||
         a.rank-b.rank;
-
     })[0];
   }
 
@@ -904,10 +1006,9 @@ function choose(
 
     const votes=Array(37).fill(0);
 
-    const selected=
-      rule==="UNION"
-        ?cs.slice(0,3)
-        :cs;
+    const selected=rule==="UNION"
+      ?cs.slice(0,3)
+      :cs;
 
     for(const c of selected){
 
@@ -935,6 +1036,10 @@ function choose(
   return fixed;
 }
 
+/* ======================================
+   SNAPSHOT
+====================================== */
+
 function snapshot(c){
 
   if(!c)return null;
@@ -947,27 +1052,21 @@ function snapshot(c){
     score:c.score,
     play:{
       score:c.play.score,
-      centers5:[
-        ...c.play.centers5
-      ],
+      centers5:[...c.play.centers5],
       center3:c.play.center3,
-      numbers:[
-        ...c.play.numbers
-      ],
+      numbers:[...c.play.numbers],
       blocks:c.play.blocks.map(b=>({
         center:b.center,
         radius:b.radius,
-        numbers:[
-          ...b.numbers
-        ]
+        numbers:[...b.numbers]
       }))
     }
   };
 }
 
-/* ==========================================
+/* ======================================
    GALE ORIGINAL
-   ========================================== */
+====================================== */
 
 function tuneG1(candidate,miss){
 
@@ -997,17 +1096,9 @@ function tuneG1(candidate,miss){
   };
 }
 
-/* ==========================================
-   MOTOR DE BACKTEST
-
-   - Replay cronológico
-   - Decisão antes do resultado
-   - Snapshot dos 12 motores
-   - Registro de entrada
-   - Registro de Gale
-   - Registro de LOSS
-   - Registro de oportunidades
-   ========================================== */
+/* ======================================
+   SIMULAÇÃO CRONOLÓGICA
+====================================== */
 
 function simulate(
   history,
@@ -1016,7 +1107,8 @@ function simulate(
   rank=3,
   options={},
   config=null,
-  frames=null
+  frames=null,
+  manualKey=null
 ){
 
   frames=frames||buildFrames(history);
@@ -1025,7 +1117,7 @@ function simulate(
   const cycles=[];
   const entries=[];
   const audits=[];
-  const decisions=[];
+  const allRecords=[];
 
   let phase="ENTRY";
   let frozen=null;
@@ -1034,9 +1126,6 @@ function simulate(
   let activeSource="HISTÓRICO";
   let activeCycle=null;
   let activeMotor=null;
-  let activeEntry=null;
-
-  const allRecords=[];
 
   for(let i=0;i<history.length;i++){
 
@@ -1049,12 +1138,11 @@ function simulate(
       rule,
       rank,
       previous,
-      config
+      config,
+      manualKey
     );
 
-    const selectedSnap=snapshot(
-      selected
-    );
+    const selectedSnap=snapshot(selected);
 
     const source=
       sources?.[i]||
@@ -1071,14 +1159,7 @@ function simulate(
       source
     };
 
-    /*
-      Estatística virtual dos motores:
-      primeiro decide, depois registra
-      o resultado para o próximo giro.
-    */
-
-    const actual=
-      frozen||selectedSnap;
+    const actual=frozen||selectedSnap;
 
     const play=actual?.play||null;
 
@@ -1096,14 +1177,11 @@ function simulate(
 
     else if(phase==="ENTRY"){
 
-      if(selected){
-        previous=selected.key;
-      }
+      previous=selected.key;
 
       activeMotor=selectedSnap;
       activeSource=source;
       activeCycle=i+1;
-      activeEntry=decision;
 
       if(options.secondHouse){
 
@@ -1130,7 +1208,6 @@ function simulate(
 
           activeMotor=null;
           activeCycle=null;
-          activeEntry=null;
 
           label="GREEN";
 
@@ -1177,7 +1254,6 @@ function simulate(
 
         activeMotor=null;
         activeCycle=null;
-        activeEntry=null;
 
         label="GREEN";
 
@@ -1223,77 +1299,52 @@ function simulate(
 
       activeMotor=null;
       activeCycle=null;
-      activeEntry=null;
     }
 
     const alternatives=cs.filter(
       c=>c.play.numbers.includes(n)
     );
 
-    const missed=
-      play&&!covered;
+    if(play&&!covered){
 
-    const counterfactual=alternatives.map(
-      c=>{
-
-        const stats=motorStats(
+      const ranked=alternatives.map(c=>({
+        c,
+        stats:previousStats(
           c.key,
           allRecords,
           20
-        );
+        )
+      })).sort(
+        (a,b)=>
+          (b.stats.rate??-1)-
+          (a.stats.rate??-1)
+      );
 
-        return {
-          key:c.key,
-          rank:c.rank,
-          previous:stats
-        };
-      }
-    );
+      const best=ranked[0]?.c||null;
 
-    counterfactual.sort(
-      (a,b)=>
-        (b.previous.rate??-1)-
-        (a.previous.rate??-1)||
-        a.rank-b.rank
-    );
-
-    if(missed){
-
-      const best=counterfactual[0];
-
-      const bestCandidate=best
-        ?cs.find(
-          x=>x.key===best.key
+      const selectedStats=selected
+        ?previousStats(
+          selected.key,
+          allRecords,
+          20
         )
         :null;
 
-      const selectedStats=
-        selected
-          ?motorStats(
-            selected.key,
-            allRecords,
-            20
-          )
-          :null;
-
-      let category=
-        "LACUNA DE COBERTURA";
+      let category="LACUNA DE COBERTURA";
 
       if(alternatives.length){
-        category=
-          "OPORTUNIDADE RETROSPECTIVA";
+        category="OPORTUNIDADE RETROSPECTIVA";
       }
 
       if(
         best&&
         selectedStats&&
-        best.previous.total>=12&&
+        ranked[0].stats.total>=12&&
         selectedStats.total>=12&&
-        best.previous.rate>
+        ranked[0].stats.rate>
           selectedStats.rate+.10
       ){
-        category=
-          "MELHORIA CANDIDATA";
+        category="MELHORIA CANDIDATA";
       }
 
       audits.push({
@@ -1303,27 +1354,17 @@ function simulate(
         selected:actual.key,
         category,
         alternatives:
-          alternatives.map(
-            c=>c.key
-          ),
+          alternatives.map(c=>c.key),
         best:best?.key||null,
-        previousBest:
-          best?.previous||null,
-        previousSelected:
-          selectedStats,
-        removed:bestCandidate
+        removed:best
           ?play.numbers.filter(
-            x=>
-              !bestCandidate.play.numbers
-                .includes(x)
+            x=>!best.play.numbers.includes(x)
           )
           :[],
-        added:bestCandidate
-          ?bestCandidate.play.numbers
-            .filter(
-              x=>
-                !play.numbers.includes(x)
-            )
+        added:best
+          ?best.play.numbers.filter(
+            x=>!play.numbers.includes(x)
+          )
           :[]
       });
     }
@@ -1332,47 +1373,16 @@ function simulate(
       turn:i+1,
       n,
       label,
-      selected:
-        actual?.key||"—",
+      selected:actual?.key||"—",
       region:sector(n),
       source,
       phase:beforePhase,
       covered,
       alternatives:
-        alternatives.map(
-          c=>c.key
-        )
+        alternatives.map(c=>c.key)
     });
 
-    decisions.push({
-      turn:i+1,
-      n,
-      source,
-      phase:beforePhase,
-      motor:
-        actual?.key||null,
-      selected:
-        selected?.key||null,
-      covered,
-      result:label,
-      sector:sector(n),
-      candidateCoverage:
-        cs.map(c=>({
-          key:c.key,
-          covered:
-            c.play.numbers.includes(n),
-          rank:c.rank
-        }))
-    });
-
-    allRecords.push({
-      turn:i+1,
-      n,
-      candidates:cs.map(snapshot),
-      selected:selectedSnap,
-      phase:beforePhase,
-      source
-    });
+    allRecords.push(decision);
   }
 
   return {
@@ -1380,7 +1390,6 @@ function simulate(
     cycles,
     entries,
     audits,
-    decisions,
     allRecords,
     phase,
     current:frozen,
@@ -1388,9 +1397,9 @@ function simulate(
   };
 }
 
-/* ==========================================
-   INDICADORES ORIGINAIS
-   ========================================== */
+/* ======================================
+   MÉTRICAS
+====================================== */
 
 function metrics(cycles){
 
@@ -1442,14 +1451,10 @@ function tracking(result){
     const key=r.selected.key;
 
     if(key===last){
-
       streak++;
-
     }else{
 
-      if(last!==null){
-        switches++;
-      }
+      if(last!==null)switches++;
 
       streak=1;
       last=key;
@@ -1461,7 +1466,6 @@ function tracking(result){
     );
 
     if(!byMotor[key]){
-
       byMotor[key]={
         decisions:0,
         covered:0
@@ -1485,10 +1489,9 @@ function tracking(result){
   };
 }
 
-/* ==========================================
+/* ======================================
    TREINADOR VIRTUAL
-   AUDITORIA DE TODOS OS GIROS
-   ========================================== */
+====================================== */
 
 function virtualTrainer(
   history,
@@ -1538,9 +1541,7 @@ function virtualTrainer(
     }
   }
 
-  for(const name of Object.keys(
-    SECTORS
-  )){
+  for(const name of Object.keys(SECTORS)){
 
     regions[name]={
       total:0,
@@ -1554,7 +1555,6 @@ function virtualTrainer(
     const region=sector(n);
 
     const frame=frames[i];
-
     const entry=result.entries[i];
 
     if(regions[region]){
@@ -1627,8 +1627,10 @@ function virtualTrainer(
       );
     }
 
-    if(entry?.selected&&
-       entry.selected!=="—"){
+    if(
+      entry?.selected&&
+      entry.selected!=="—"
+    ){
 
       if(entry.selected===currentMotor){
 
@@ -1650,8 +1652,10 @@ function virtualTrainer(
       );
     }
 
-    if(entry?.label==="GREEN"||
-       entry?.label==="GREEN G1"){
+    if(
+      entry?.label==="GREEN"||
+      entry?.label==="GREEN G1"
+    ){
 
       greenCount++;
 
@@ -1659,7 +1663,6 @@ function virtualTrainer(
         turn:i+1,
         n,
         motor:entry.selected,
-        phase:entry.phase,
         label:entry.label
       });
     }
@@ -1679,10 +1682,9 @@ function virtualTrainer(
 
       uncovered++;
 
-      const alternatives=frame.candidates
-        .filter(c=>
-          c.play.numbers.includes(n)
-        );
+      const alternatives=frame.candidates.filter(
+        c=>c.play.numbers.includes(n)
+      );
 
       if(alternatives.length){
         alternativeHits++;
@@ -1716,15 +1718,11 @@ function virtualTrainer(
         (a.rate??-1)
     );
 
-  const total=result.cycles.length;
-
   return {
     totalNumbers:history.length,
-    evaluated:result.decisions.length,
     greenCount,
     galeCount,
     lossCount,
-    totalCycles:total,
     uncovered,
     alternativeHits,
     nobodyCovered,
@@ -1742,9 +1740,9 @@ function virtualTrainer(
   };
 }
 
-/* ==========================================
-   LABORATÓRIO ORIGINAL
-   ========================================== */
+/* ======================================
+   LABORATÓRIO
+====================================== */
 
 const RULES=[
   ["FIXED",1,"AUTO 1º"],
@@ -1758,82 +1756,6 @@ const RULES=[
   ["CONSENSUS",3,"CONSENSO"],
   ["UNION",3,"UNIÃO"]
 ];
-
-/* ==========================================
-   NOVAS REGRAS QUE O TREINADOR TESTA
-
-   O laboratório compara parâmetros
-   diferentes sem olhar antecipadamente
-   o resultado de cada giro.
-   ========================================== */
-
-function candidateConfigurations(){
-
-  const configs=[];
-
-  const windows=[10,20,30];
-
-  const margins=[.05,.10,.15];
-
-  for(const window of windows){
-
-    for(const margin of margins){
-
-      configs.push({
-        window,
-        margin,
-        minSamples:Math.min(
-          12,
-          Math.max(6,Math.floor(window/2))
-        ),
-        persistence:3,
-        maxRank:12,
-        lossPenalty:0,
-        consensus:0,
-        recentWeight:0,
-        switchAfterLoss:false
-      });
-    }
-  }
-
-  configs.push(
-    {
-      window:20,
-      margin:.08,
-      minSamples:10,
-      persistence:2,
-      maxRank:12,
-      lossPenalty:.025,
-      consensus:0,
-      recentWeight:.4,
-      switchAfterLoss:true
-    },
-    {
-      window:30,
-      margin:.12,
-      minSamples:12,
-      persistence:3,
-      maxRank:6,
-      lossPenalty:.02,
-      consensus:.04,
-      recentWeight:.3,
-      switchAfterLoss:false
-    },
-    {
-      window:20,
-      margin:.10,
-      minSamples:10,
-      persistence:3,
-      maxRank:4,
-      lossPenalty:.03,
-      consensus:.05,
-      recentWeight:.5,
-      switchAfterLoss:true
-    }
-  );
-
-  return configs;
-}
 
 function optionsNow(){
   return {
@@ -1883,17 +1805,18 @@ function evaluateStrategy(
   );
 
   return {
-    result,
     train,
     valid,
     total
   };
 }
 
-function laboratory(
-  history,
-  frames
-){
+let labCache={
+  signature:null,
+  data:null
+};
+
+function laboratory(history,frames){
 
   if(history.length<30){
 
@@ -1901,9 +1824,19 @@ function laboratory(
       status:"HISTÓRICO INSUFICIENTE",
       rows:[],
       recommendation:null,
-      baseline:null,
-      generated:[]
+      baseline:null
     };
+  }
+
+  const signature=[
+    history.join(","),
+    state.g1,
+    state.galeSkip,
+    state.secondHouse
+  ].join("|");
+
+  if(labCache.signature===signature){
+    return labCache.data;
   }
 
   const sources=history.map(
@@ -1914,21 +1847,56 @@ function laboratory(
 
   for(const [rule,rank,name] of RULES){
 
-    const evaluation=evaluateStrategy(
-      history,
-      sources,
-      rule,
-      rank,
-      null,
-      frames
-    );
-
     rows.push({
       rule,
       rank,
       name,
       config:null,
-      ...evaluation
+      ...evaluateStrategy(
+        history,
+        sources,
+        rule,
+        rank,
+        null,
+        frames
+      )
+    });
+  }
+
+  for(const config of ADAPTATIVES){
+
+    rows.push({
+      rule:"ADAPTIVE",
+      rank:3,
+      name:config.name,
+      config,
+      ...evaluateStrategy(
+        history,
+        sources,
+        "ADAPTIVE",
+        3,
+        config,
+        frames
+      )
+    });
+  }
+
+  for(const created of state.createdStrategies){
+
+    rows.push({
+      rule:"CREATED",
+      rank:3,
+      name:created.name,
+      config:created.config,
+      createdId:created.id,
+      ...evaluateStrategy(
+        history,
+        sources,
+        "CREATED",
+        3,
+        created.config,
+        frames
+      )
     });
   }
 
@@ -1938,99 +1906,83 @@ function laboratory(
       x.rank===3
   );
 
-  const generated=[];
-
-  for(const config of candidateConfigurations()){
-
-    const evaluation=evaluateStrategy(
-      history,
-      sources,
-      "CREATED",
-      3,
-      config,
-      frames
-    );
-
-    const name=
-      "ADAPTATIVA "+
-      config.window+
-      " / "+
-      Math.round(config.margin*100)+"%";
-
-    generated.push({
-      rule:"CREATED",
-      rank:3,
-      name,
-      config,
-      ...evaluation
-    });
-  }
-
-  const all=[
-    ...rows,
-    ...generated
-  ];
-
-  /*
-    A ordenação considera a validação.
-    Não transforma o melhor resultado
-    da amostra em garantia futura.
-  */
-
-  all.sort((a,b)=>{
-
-    const ar=a.valid.rate??-1;
-    const br=b.valid.rate??-1;
-
-    return br-ar||
+  rows.sort(
+    (a,b)=>
+      (b.valid.rate??-1)-
+      (a.valid.rate??-1)||
       a.valid.loss-b.valid.loss||
-      b.valid.total-a.valid.total;
-  });
+      b.valid.total-a.valid.total
+  );
 
-  const eligible=all.filter(
+  const eligible=rows.filter(
     x=>x.valid.total>=8
   );
 
   const recommendation=
     eligible[0]||null;
 
-  return {
+  const data={
     status:recommendation
       ?"COMPARAÇÃO HISTÓRICA CONCLUÍDA"
-      :"AMOSTRA DE VALIDAÇÃO INSUFICIENTE",
-    rows:all,
+      :"AMOSTRA INSUFICIENTE",
+    rows,
     recommendation,
-    baseline,
-    generated
+    baseline
+  };
+
+  labCache={
+    signature,
+    data
+  };
+
+  return data;
+}
+
+/* ======================================
+   TREINADOR AUTOMÁTICO
+
+   A recomendação é aprendida
+   no histórico disponível.
+
+   Ao ativar TREINADOR, o motor
+   selecionado passa a usar a regra
+   recomendada, e não o número
+   futuro.
+
+   A escolha de parâmetros a partir
+   da validação é exploratória.
+====================================== */
+
+function trainerRule(lab){
+
+  const rec=lab?.recommendation;
+
+  if(!rec){
+    return {
+      rule:"FIXED",
+      rank:state.rank,
+      config:null,
+      name:"AUTO RANKING"
+    };
+  }
+
+  return {
+    rule:rec.rule,
+    rank:rec.rank,
+    config:rec.config,
+    name:rec.name
   };
 }
 
-/* ==========================================
-   DIAGNÓSTICO ESTRATÉGICO
-
-   O treinador identifica:
-   - regras com menos LOSS
-   - regras com mais GREEN
-   - regras que reduziram Gale
-   - custo das trocas
-   - estabilidade
-   - resultado fora do desenvolvimento
-   ========================================== */
-
-function strategicDiagnosis(
-  lab,
-  trainer
-){
+function strategicDiagnosis(lab,trainer){
 
   if(!lab.recommendation){
 
     return {
       title:"AGUARDANDO MAIS DADOS",
       messages:[
-        "Ainda não há ciclos suficientes para comparar estratégias com segurança."
-      ],
-      config:null,
-      recommended:null
+        "Importe mais números para comparar estratégias."
+      ]
     };
   }
 
@@ -2039,241 +1991,223 @@ function strategicDiagnosis(
 
   const messages=[];
 
-  const bestRate=best.valid.rate;
-  const baseRate=baseline?.valid.rate;
-
   messages.push(
     "Foram analisados "+
     trainer.totalNumbers+
     " números e "+
     lab.rows.length+
-    " configurações de estratégia."
+    " configurações."
   );
 
   messages.push(
-    "A configuração com maior percentual observado na validação foi "+
+    "Melhor resultado observado na comparação: "+
     best.name+
     ", com "+
     pct(
       best.valid.green,
       best.valid.total
     )+
-    " de GREEN em "+
+    " em "+
     best.valid.total+
-    " ciclos completos."
+    " ciclos de validação."
   );
 
   if(baseline){
 
     messages.push(
-      "A referência AUTO 3º apresentou "+
+      "AUTO 3º: "+
       pct(
         baseline.valid.green,
         baseline.valid.total
       )+
-      " na validação."
+      " na mesma etapa."
     );
-
-    if(
-      bestRate!==null&&
-      baseRate!==null
-    ){
-
-      const difference=
-        (bestRate-baseRate)*100;
-
-      if(difference>0){
-
-        messages.push(
-          "Diferença observada em relação ao AUTO 3º: +"+
-          fmt(difference)+
-          " pontos percentuais."
-        );
-
-      }else if(difference<0){
-
-        messages.push(
-          "A configuração selecionada não superou o AUTO 3º em percentual."
-        );
-
-      }else{
-
-        messages.push(
-          "O percentual foi igual ao AUTO 3º."
-        );
-      }
-    }
   }
 
   messages.push(
-    "O treinador encontrou "+
+    "Foram encontrados "+
     trainer.alternativeHits+
-    " giros descobertos em que pelo menos outro motor teria coberto o número."
+    " giros descobertos nos quais outro motor cobria o resultado."
   );
 
   messages.push(
     "Em "+
     trainer.nobodyCovered+
-    " giros descobertos, nenhum dos motores disponíveis cobria o resultado."
-  );
-
-  messages.push(
-    "Essas oportunidades são retrospectivas. Para trocar antes do giro, a regra precisa se basear no desempenho anterior."
+    " giros descobertos, nenhum dos 12 motores cobria o número."
   );
 
   if(best.config){
 
-    const c=best.config;
-
     messages.push(
-      "REGRA PROPOSTA: avaliar os últimos "+
-      c.window+
-      " giros, exigir pelo menos "+
-      c.minSamples+
-      " amostras por motor e trocar quando a vantagem estimada atingir "+
-      fmt(c.margin*100)+
+      "Regra: janela de "+
+      best.config.window+
+      " giros, amostra mínima de "+
+      best.config.minSamples+
+      " e margem de troca de "+
+      fmt(best.config.margin*100)+
       " pontos percentuais."
     );
 
     messages.push(
-      "Limitar a escolha aos "+
-      c.maxRank+
-      " primeiros motores do ranking."
+      "Escolher entre os "+
+      best.config.maxRank+
+      " primeiros motores elegíveis."
     );
 
-    if(c.switchAfterLoss){
+    if(best.config.switchAfterLoss){
 
       messages.push(
-        "Permitir antecipação de troca após "+
-        c.persistence+
-        " falhas recentes do motor mantido."
+        "Antecipar a troca após "+
+        best.config.persistence+
+        " falhas consecutivas do motor mantido."
       );
     }
-
-    if(c.lossPenalty){
-
-      messages.push(
-        "Aplicar penalidade de "+
-        fmt(c.lossPenalty*100)+
-        " pontos por falha recente no cálculo da prioridade."
-      );
-    }
-
-    if(c.consensus){
-
-      messages.push(
-        "Adicionar peso de consenso entre os motores para avaliar estabilidade geométrica."
-      );
-    }
-
-  }else{
-
-    messages.push(
-      "A melhor configuração observada já corresponde a uma estratégia existente: "+
-      best.name+
-      ". Não é necessário criar um botão duplicado."
-    );
   }
 
   messages.push(
-    "O resultado deve ser acompanhado em novos giros antes de considerar a estratégia validada. Nenhuma configuração garante ganhos."
+    "O botão TREINADOR ESTRATÉGICO usa essa regra automaticamente. A comparação histórica não garante vantagem futura."
   );
 
   return {
     title:best.name,
-    messages,
-    config:best.config,
-    recommended:best
+    messages
   };
 }
 
-/* ==========================================
-   CRIAÇÃO DE ESTRATÉGIAS
-   ========================================== */
+/* ======================================
+   IDENTIFICAR REGRA ATIVA
+====================================== */
 
-function createStrategy(
-  recommendation
-){
+function activeRule(lab){
 
-  if(!recommendation)return;
+  if(state.manual){
 
-  if(
-    recommendation.rule!=="CREATED"||
-    !recommendation.config
-  ){
-    state.manual=null;
-    state.activeCreated=null;
-
-    state.strategy=
-      recommendation.rule;
-
-    state.rank=
-      recommendation.rank;
-
-    refresh();
-    return;
-  }
-
-  const config={
-    ...recommendation.config
-  };
-
-  const signature=JSON.stringify(config);
-
-  let existing=state.createdStrategies.find(
-    x=>JSON.stringify(x.config)===signature
-  );
-
-  if(!existing){
-
-    const id="TREINADOR_"+
-      Date.now().toString(36);
-
-    existing={
-      id,
-      name:"ESTRATÉGIA VIRTUAL "+
-        (state.createdStrategies.length+1),
-      config,
-      createdAt:new Date().toISOString(),
-      reference:{
-        validTotal:
-          recommendation.valid.total,
-        validGreen:
-          recommendation.valid.green,
-        validGale:
-          recommendation.valid.gale,
-        validLoss:
-          recommendation.valid.loss
-      }
+    return {
+      rule:"MANUAL",
+      rank:state.rank,
+      config:null,
+      name:state.manual
     };
-
-    state.createdStrategies.push(
-      existing
-    );
   }
 
-  state.activeCreated=existing.id;
+  if(state.strategy==="TRAINER"){
+
+    return trainerRule(lab);
+  }
+
+  if(state.strategy==="ADAPTIVE"){
+
+    const config=ADAPTATIVES.find(
+      x=>x.id===state.activeAdaptive
+    )||ADAPTATIVES[0];
+
+    return {
+      rule:"ADAPTIVE",
+      rank:3,
+      config,
+      name:config.name
+    };
+  }
+
+  if(state.strategy==="CREATED"){
+
+    const created=state.createdStrategies.find(
+      x=>x.id===state.activeCreated
+    );
+
+    if(created){
+
+      return {
+        rule:"CREATED",
+        rank:3,
+        config:created.config,
+        name:created.name
+      };
+    }
+  }
+
+  return {
+    rule:state.strategy,
+    rank:state.rank,
+    config:null,
+    name:state.strategy
+  };
+}
+
+/* ======================================
+   CRIAR E ATIVAR
+====================================== */
+
+function activateRecommendation(rec){
+
+  if(!rec)return;
+
   state.manual=null;
-  state.strategy="CREATED";
+  state.activeCreated=null;
+  state.activeAdaptive=null;
+
+  if(rec.rule==="ADAPTIVE"){
+
+    state.strategy="ADAPTIVE";
+    state.activeAdaptive=rec.config.id;
+
+  }else if(rec.rule==="CREATED"){
+
+    state.strategy="CREATED";
+    state.activeCreated=rec.createdId;
+
+  }else{
+
+    state.strategy=rec.rule;
+    state.rank=rec.rank;
+  }
 
   refresh();
 }
 
-function activeConfig(){
+function createStrategy(rec){
 
-  if(!state.activeCreated){
-    return null;
+  if(!rec||!rec.config)return;
+
+  const signature=JSON.stringify({
+    ...rec.config,
+    id:undefined,
+    name:undefined
+  });
+
+  let existing=state.createdStrategies.find(
+    x=>JSON.stringify({
+      ...x.config,
+      id:undefined,
+      name:undefined
+    })===signature
+  );
+
+  if(!existing){
+
+    existing={
+      id:"VIRTUAL_"+Date.now(),
+      name:"ESTRATÉGIA VIRTUAL "+
+        (state.createdStrategies.length+1),
+      config:{...rec.config}
+    };
+
+    state.createdStrategies.push(existing);
   }
 
-  return state.createdStrategies.find(
-    x=>x.id===state.activeCreated
-  )?.config||null;
+  state.manual=null;
+  state.activeAdaptive=null;
+  state.activeCreated=existing.id;
+  state.strategy="CREATED";
+
+  labCache.signature=null;
+
+  refresh();
 }
 
-/* ==========================================
-   INTERFACE ORIGINAL
-   HTML E CSS PRESERVADOS
-   ========================================== */
+/* ======================================
+   CSS ORIGINAL + EXPANSÃO
+====================================== */
 
 const css=`
 *{box-sizing:border-box}
@@ -2468,9 +2402,6 @@ td,th{
   text-align:left;
 }
 th{color:#50d9ee}
-
-/* COMPONENTES ADICIONAIS */
-
 .virtualHero{
   background:#102b3a;
   border:1px solid #1cacc8;
@@ -2478,29 +2409,12 @@ th{color:#50d9ee}
   padding:14px;
   margin:12px 0;
 }
-.virtualHero h3{
-  margin:0 0 10px;
-  color:#54e6ff;
-  font-size:15px;
-}
 .virtualRecommendation{
   background:#102f27;
   border:1px solid #35a981;
   border-radius:10px;
   padding:14px;
   margin:10px 0;
-}
-.virtualRecommendation h3{
-  margin:0 0 10px;
-  color:#58edb0;
-}
-.virtualWarning{
-  border-left:3px solid #d9a63c;
-  padding:9px;
-  background:#2b281f;
-  color:#e8d5a6;
-  font-size:11px;
-  line-height:1.6;
 }
 .virtualLine{
   padding:8px 0;
@@ -2522,12 +2436,51 @@ th{color:#50d9ee}
 }
 .virtualButton.active{
   background:#176eaa;
-  border-color:#5fd5ff;
 }
-.virtualSmall{
-  color:#b9d0dd;
+.virtualWarning{
+  border-left:3px solid #d9a63c;
+  padding:9px;
+  background:#2b281f;
+  color:#e8d5a6;
   font-size:11px;
-  line-height:1.7;
+  line-height:1.6;
+}
+.miniHead{
+  display:flex;
+  justify-content:space-between;
+  width:100%;
+  margin:10px 0 0;
+  padding:11px;
+  background:#24364b;
+  border:1px solid #4c6985;
+  border-radius:8px;
+  color:#d6eafa;
+  font-size:11px;
+  font-weight:bold;
+  cursor:pointer;
+}
+.miniContent{
+  padding:8px 2px;
+}
+.strategyGroup{
+  margin-top:12px;
+  padding-top:8px;
+  border-top:1px solid #34485e;
+}
+.strategyLabel{
+  font-size:10px;
+  color:#7fe1f3;
+  font-weight:bold;
+  margin:8px 0;
+}
+.trainerActive{
+  background:#0d896c!important;
+  border-color:#69ffcf!important;
+}
+.loading{
+  color:#83d9e8;
+  font-size:11px;
+  padding:8px;
 }
 `;
 
@@ -2544,6 +2497,7 @@ document.body.innerHTML=`
 </div>
 
 <section class="panel">
+
   <div class="title">IMPORTAR HISTÓRICO</div>
 
   <textarea id="paste"
@@ -2567,6 +2521,7 @@ document.body.innerHTML=`
   </div>
 
   <div class="muted" id="status"></div>
+
 </section>
 
 <section class="panel">
@@ -2603,7 +2558,10 @@ document.body.innerHTML=`
 
 <section class="panel">
 
-  <div class="title">RESULTADO GERAL</div>
+  <button class="head" data-panel="general">
+    RESULTADO GERAL
+    <span>−</span>
+  </button>
 
   <div id="general"></div>
 
@@ -2656,9 +2614,9 @@ document.body.innerHTML=`
 </main>
 `;
 
-/* ==========================================
-   BOTÕES ORIGINAIS
-   ========================================== */
+/* ======================================
+   BOTÕES DE ESTRATÉGIAS
+====================================== */
 
 const STRATEGIES=[
   ["FIXED","AUTO RANKING"],
@@ -2670,49 +2628,197 @@ const STRATEGIES=[
   ["UNION","UNIÃO"]
 ];
 
-for(const [key,name] of STRATEGIES){
+function strategyButton(
+  label,
+  callback,
+  group,
+  extraClass=""
+){
 
-  const b=document.createElement(
-    "button"
-  );
+  const b=document.createElement("button");
 
-  b.className="btn";
-  b.textContent=name;
-  b.dataset.strategy=key;
+  b.className="btn "+extraClass;
+  b.textContent=label;
+  b.onclick=callback;
 
-  b.onclick=()=>{
+  group.appendChild(b);
 
-    state.manual=null;
-    state.activeCreated=null;
-    state.strategy=key;
-
-    refresh();
-  };
-
-  $("strategies").appendChild(b);
+  return b;
 }
 
-for(let rank=1;rank<=4;rank++){
+function buildStrategyButtons(){
 
-  const b=document.createElement(
-    "button"
+  const root=$("strategies");
+
+  root.innerHTML="";
+
+  const trainerGroup=document.createElement("div");
+  trainerGroup.className="strategyGroup";
+  trainerGroup.style.width="100%";
+
+  trainerGroup.innerHTML=`
+    <div class="strategyLabel">
+      TREINADOR AUTOMÁTICO
+    </div>
+  `;
+
+  const trainerButton=strategyButton(
+    "TREINADOR ESTRATÉGICO",
+    ()=>{
+
+      state.manual=null;
+      state.activeAdaptive=null;
+      state.activeCreated=null;
+      state.strategy="TRAINER";
+
+      refresh();
+    },
+    trainerGroup,
+    "trainerActive"
   );
 
-  b.className="btn";
-  b.textContent="AUTO "+rank+"º";
+  trainerButton.dataset.trainer="1";
 
-  b.onclick=()=>{
+  root.appendChild(trainerGroup);
 
-    state.manual=null;
-    state.activeCreated=null;
-    state.strategy="FIXED";
-    state.rank=rank;
+  const originals=document.createElement("div");
 
-    refresh();
-  };
+  originals.className="strategyGroup";
+  originals.style.width="100%";
 
-  $("strategies").appendChild(b);
+  originals.innerHTML=`
+    <div class="strategyLabel">
+      ESTRATÉGIAS ORIGINAIS
+    </div>
+  `;
+
+  const originalRow=document.createElement("div");
+  originalRow.className="row";
+
+  for(const [key,name] of STRATEGIES){
+
+    const b=strategyButton(
+      name,
+      ()=>{
+
+        state.manual=null;
+        state.activeAdaptive=null;
+        state.activeCreated=null;
+        state.strategy=key;
+
+        refresh();
+      },
+      originalRow
+    );
+
+    b.dataset.strategy=key;
+  }
+
+  for(let rank=1;rank<=4;rank++){
+
+    const b=strategyButton(
+      "AUTO "+rank+"º",
+      ()=>{
+
+        state.manual=null;
+        state.activeAdaptive=null;
+        state.activeCreated=null;
+        state.strategy="FIXED";
+        state.rank=rank;
+
+        refresh();
+      },
+      originalRow
+    );
+
+    b.dataset.rank=rank;
+  }
+
+  originals.appendChild(originalRow);
+  root.appendChild(originals);
+
+  const adaptiveGroup=document.createElement("div");
+
+  adaptiveGroup.className="strategyGroup";
+  adaptiveGroup.style.width="100%";
+
+  adaptiveGroup.innerHTML=`
+    <div class="strategyLabel">
+      ESTRATÉGIAS ADAPTATIVAS
+      — SELEÇÃO INDIVIDUAL
+    </div>
+  `;
+
+  const adaptiveRow=document.createElement("div");
+  adaptiveRow.className="row";
+
+  for(const config of ADAPTATIVES){
+
+    const b=strategyButton(
+      config.name,
+      ()=>{
+
+        state.manual=null;
+        state.activeCreated=null;
+        state.strategy="ADAPTIVE";
+        state.activeAdaptive=config.id;
+
+        refresh();
+      },
+      adaptiveRow
+    );
+
+    b.dataset.adaptive=config.id;
+  }
+
+  adaptiveGroup.appendChild(adaptiveRow);
+  root.appendChild(adaptiveGroup);
+
+  if(state.createdStrategies.length){
+
+    const createdGroup=document.createElement("div");
+
+    createdGroup.className="strategyGroup";
+    createdGroup.style.width="100%";
+
+    createdGroup.innerHTML=`
+      <div class="strategyLabel">
+        ESTRATÉGIAS CRIADAS
+      </div>
+    `;
+
+    const createdRow=document.createElement("div");
+    createdRow.className="row";
+
+    for(const created of state.createdStrategies){
+
+      const b=strategyButton(
+        created.name,
+        ()=>{
+
+          state.manual=null;
+          state.activeAdaptive=null;
+          state.activeCreated=created.id;
+          state.strategy="CREATED";
+
+          refresh();
+        },
+        createdRow
+      );
+
+      b.dataset.createdStrategy=created.id;
+    }
+
+    createdGroup.appendChild(createdRow);
+    root.appendChild(createdGroup);
+  }
 }
+
+buildStrategyButtons();
+
+/* ======================================
+   OPÇÕES ORIGINAIS
+====================================== */
 
 for(const [field,name] of [
   ["g1","G1 AJUSTE FINO"],
@@ -2720,9 +2826,7 @@ for(const [field,name] of [
   ["secondHouse","2ª CASA"]
 ]){
 
-  const b=document.createElement(
-    "button"
-  );
+  const b=document.createElement("button");
 
   b.className="btn";
   b.dataset.option=field;
@@ -2732,11 +2836,17 @@ for(const [field,name] of [
 
     state[field]=!state[field];
 
+    labCache.signature=null;
+
     refresh();
   };
 
   $("options").appendChild(b);
 }
+
+/* ======================================
+   MOTORES ORIGINAIS
+====================================== */
 
 for(const family of FAMILIES){
 
@@ -2744,9 +2854,7 @@ for(const family of FAMILIES){
 
     const key=family+"_"+radius;
 
-    const b=document.createElement(
-      "button"
-    );
+    const b=document.createElement("button");
 
     b.className="btn";
     b.textContent=key;
@@ -2754,6 +2862,7 @@ for(const family of FAMILIES){
     b.onclick=()=>{
 
       state.manual=key;
+      state.activeAdaptive=null;
       state.activeCreated=null;
 
       refresh();
@@ -2763,18 +2872,15 @@ for(const family of FAMILIES){
   }
 }
 
-/* ==========================================
+/* ======================================
    TECLADO ORIGINAL
-   ========================================== */
+====================================== */
 
 for(let n=0;n<=36;n++){
 
-  const b=document.createElement(
-    "button"
-  );
+  const b=document.createElement("button");
 
-  b.className=
-    "key"+(n===0?" zero":"");
+  b.className="key"+(n===0?" zero":"");
 
   b.textContent=n;
 
@@ -2788,16 +2894,10 @@ for(let n=0;n<=36;n++){
   b.onclick=()=>{
 
     state.history.push(n);
+    state.sources.push("TEMPO REAL");
 
-    state.sources.push(
-      "TEMPO REAL"
-    );
-
-    state.history=
-      state.history.slice(-MAX);
-
-    state.sources=
-      state.sources.slice(-MAX);
+    state.history=state.history.slice(-MAX);
+    state.sources=state.sources.slice(-MAX);
 
     refresh();
   };
@@ -2805,35 +2905,67 @@ for(let n=0;n<=36;n++){
   $("keys").appendChild(b);
 }
 
-/* ==========================================
-   EXPANDIR / RECOLHER
-   ========================================== */
+/* ======================================
+   EXPANSÃO / RECOLHIMENTO
 
-for(const b of document.querySelectorAll(
-  "[data-panel]"
-)){
+   Funciona também nos quadros internos.
+====================================== */
 
-  b.onclick=()=>{
+function applyOpenState(){
 
-    const name=b.dataset.panel;
+  for(const [name,open] of Object.entries(
+    state.open
+  )){
 
-    state.open[name]=
-      !state.open[name];
+    const element=$(name);
 
-    render();
-  };
+    const button=document.querySelector(
+      '[data-panel="'+name+'"]'
+    );
+
+    if(element){
+
+      element.classList.toggle(
+        "hide",
+        !open
+      );
+    }
+
+    if(button){
+
+      const span=button.querySelector("span");
+
+      if(span){
+        span.textContent=open?"−":"+";
+      }
+    }
+  }
 }
 
-/* ==========================================
-   IMPORTAÇÃO
-   ========================================== */
+document.addEventListener("click",e=>{
+
+  const button=e.target.closest(
+    "[data-panel]"
+  );
+
+  if(!button)return;
+
+  const name=button.dataset.panel;
+
+  state.open[name]=!state.open[name];
+
+  applyOpenState();
+  save();
+});
+
+/* ======================================
+   IMPORTAR / APAGAR / ZERAR
+====================================== */
 
 $("import").onclick=()=>{
 
-  const raw=$("paste").value;
-
   const numbers=(
-    raw.match(/\d+/g)||[]
+    $("paste").value.match(/\d+/g)||[]
   )
   .map(Number)
   .filter(n=>n>=0&&n<=36)
@@ -2841,10 +2973,7 @@ $("import").onclick=()=>{
 
   if(!numbers.length){
 
-    alert(
-      "Cole números de 0 a 36."
-    );
-
+    alert("Cole números de 0 a 36.");
     return;
   }
 
@@ -2869,20 +2998,23 @@ $("undo").onclick=()=>{
 
 $("clear").onclick=()=>{
 
-  if(
-    !confirm(
-      "Apagar histórico e análises?"
-    )
-  )return;
+  if(!confirm(
+    "Apagar histórico e análises?"
+  ))return;
 
   state=fresh();
+
+  frameCache.signature=null;
+  labCache.signature=null;
+
+  buildStrategyButtons();
 
   refresh();
 };
 
-/* ==========================================
-   MÉTRICAS VISUAIS ORIGINAIS
-   ========================================== */
+/* ======================================
+   RESULTADO GERAL ORIGINAL
+====================================== */
 
 function metricHTML(data){
 
@@ -2924,219 +3056,58 @@ function metricHTML(data){
   </div>`;
 }
 
-/* ==========================================
-   PAINEL DO TREINADOR VIRTUAL
-   ========================================== */
+/* ======================================
+   MINI QUADRO EXPANSÍVEL
+====================================== */
 
-function trainerHTML(
-  trainer,
-  result,
-  diagnosis
+function miniPanel(
+  id,
+  title,
+  content
 ){
 
-  const track=tracking(result);
-
-  const lastAudit=result.audits.at(-1);
-
-  const ranking=trainer.ranking;
+  const open=!!state.open[id];
 
   return `
+    <button
+      class="miniHead"
+      data-panel="${esc(id)}"
+    >
+      ${esc(title)}
+      <span>${open?"−":"+"}</span>
+    </button>
 
-  <div class="virtualHero">
-
-    <h3>
-      TREINADOR ESTRATÉGICO VIRTUAL
-    </h3>
-
-    <div class="virtualSmall">
-      Auditoria cronológica de todos os
-      números, motores, regiões, entradas,
-      Gale, LOSS e estratégias alternativas.
+    <div
+      id="${esc(id)}"
+      class="miniContent ${
+        open?"":"hide"
+      }"
+    >
+      ${content}
     </div>
+  `;
+}
 
-    <div class="metrics">
+/* ======================================
+   RANKING VIRTUAL OCULTO
+====================================== */
 
-      <div class="metric">
-        <small>NÚMEROS ANALISADOS</small>
-        <b>${trainer.totalNumbers}</b>
-      </div>
+function virtualRankingHTML(trainer){
 
-      <div class="metric">
-        <small>MOTORES ANALISADOS</small>
-        <b>12</b>
-      </div>
-
-      <div class="metric">
-        <small>TROCAS DE MOTOR</small>
-        <b>${track.switches}</b>
-      </div>
-
-      <div class="metric">
-        <small>PERMANÊNCIA ATUAL</small>
-        <b>${track.streak}</b>
-      </div>
-
-      <div class="metric">
-        <small>MAIOR PERMANÊNCIA</small>
-        <b>${track.maxStreak}</b>
-      </div>
-
-      <div class="metric">
-        <small>MAIOR PERMANÊNCIA REGIÃO</small>
-        <b>${trainer.maxRegionStreak}</b>
-      </div>
-
-    </div>
-
-  </div>
-
-  <div class="title">
-    DIAGNÓSTICO COMPLETO
-  </div>
-
-  <div class="metrics">
-
-    <div class="metric">
-      <small>GREEN REGISTRADOS</small>
-      <b class="good">
-        ${trainer.greenCount}
-      </b>
-    </div>
-
-    <div class="metric">
-      <small>ENTRADAS PARA GALE</small>
-      <b>${trainer.galeCount}</b>
-    </div>
-
-    <div class="metric">
-      <small>LOSS</small>
-      <b class="bad">
-        ${trainer.lossCount}
-      </b>
-    </div>
-
-    <div class="metric">
-      <small>GIROS DESCOBERTOS</small>
-      <b>${trainer.uncovered}</b>
-    </div>
-
-    <div class="metric">
-      <small>OUTRO MOTOR COBRIA</small>
-      <b>${trainer.alternativeHits}</b>
-    </div>
-
-    <div class="metric">
-      <small>NENHUM MOTOR COBRIA</small>
-      <b>${trainer.nobodyCovered}</b>
-    </div>
-
-  </div>
-
-  <div class="title">
-    CONCLUSÃO DO TREINADOR
-  </div>
-
-  <div class="virtualRecommendation">
-
-    <h3>
-      ${esc(diagnosis.title)}
-    </h3>
-
-    ${diagnosis.messages.map(
-      message=>`
-        <div class="virtualLine">
-          ${esc(message)}
-        </div>
-      `
-    ).join("")}
-
-  </div>
-
-  <div class="title">
-    ANÁLISE DE OPORTUNIDADES
-  </div>
-
-  ${lastAudit?`
-
-    <div class="box">
-
-      <b>
-        ${esc(lastAudit.category)}
-      </b>
-
-      <p>
-        GIRO ${lastAudit.turn}
-        • NÚMERO ${lastAudit.n}
-      </p>
-
-      <p>
-        MOTOR:
-        ${esc(lastAudit.selected)}
-      </p>
-
-      <p>
-        FASE:
-        ${esc(lastAudit.phase)}
-      </p>
-
-      <p>
-        OUTROS MOTORES QUE COBRIAM:
-        ${esc(
-          lastAudit.alternatives.join(", ")||
-          "NENHUM"
-        )}
-      </p>
-
-      <p>
-        ALTERNATIVA:
-        ${esc(lastAudit.best||"NENHUMA")}
-      </p>
-
-      <p>
-        NÚMEROS QUE ENTRARIAM:
-        ${esc(
-          lastAudit.added.join(", ")||
-          "—"
-        )}
-      </p>
-
-      <p>
-        NÚMEROS QUE SAIRIAM:
-        ${esc(
-          lastAudit.removed.join(", ")||
-          "—"
-        )}
-      </p>
-
-    </div>
-
-  `:`
-
-    <div class="box">
-      Aguardando decisões para auditoria.
-    </div>
-
-  `}
-
-  <div class="title">
-    RANKING VIRTUAL DOS 12 MOTORES
-  </div>
-
-  ${ranking.map(
+  return trainer.ranking.map(
     (m,i)=>`
 
       <div class="listrow">
 
         <b>
-          ${i+1}º
-          ${esc(m.key)}
+          ${i+1}º ${esc(m.key)}
         </b>
 
         <div class="muted">
 
-          ${m.total} giros avaliados
+          ${m.total} giros
 
-          • ${m.hits} coberturas
+          • ${m.hits} cobertos
 
           • ${m.misses} descobertos
 
@@ -3144,312 +3115,370 @@ function trainerHTML(
 
         </div>
 
-        <div class="muted">
-
-          Maior sequência coberta:
-          ${m.maxHits}
-
-          • Maior sequência descoberta:
-          ${m.maxMisses}
-
-        </div>
-
       </div>
 
     `
-  ).join("")}
+  ).join("");
+}
 
-  <div class="title">
-    PERMANÊNCIA POR REGIÃO
-  </div>
+/* ======================================
+   OPORTUNIDADES OCULTAS
+====================================== */
 
-  ${Object.entries(
-    trainer.regions
-  ).map(
-    ([name,r])=>`
+function opportunitiesHTML(result){
 
-      <div class="listrow">
+  const last=result.audits.at(-1);
 
-        <b>${esc(name)}</b>
+  return `
 
-        • ${r.total} ocorrências
+    ${last?`
 
-        • maior sequência:
-        ${r.longest}
+      <div class="box">
+
+        <b>
+          ${esc(last.category)}
+        </b>
+
+        <p>
+          GIRO ${last.turn}
+          • NÚMERO ${last.n}
+        </p>
+
+        <p>
+          MOTOR:
+          ${esc(last.selected)}
+        </p>
+
+        <p>
+          FASE:
+          ${esc(last.phase)}
+        </p>
+
+        <p>
+          OUTROS MOTORES:
+          ${esc(
+            last.alternatives.join(", ")||
+            "NENHUM"
+          )}
+        </p>
+
+        <p>
+          ALTERNATIVA:
+          ${esc(last.best||"NENHUMA")}
+        </p>
+
+        <p>
+          ENTRARIAM:
+          ${esc(
+            last.added.join(", ")||
+            "—"
+          )}
+        </p>
+
+        <p>
+          SAIRIAM:
+          ${esc(
+            last.removed.join(", ")||
+            "—"
+          )}
+        </p>
 
       </div>
 
-    `
-  ).join("")}
+    `:""}
 
-  <div class="title">
-    RASTREAMENTO POR MOTOR ESCOLHIDO
-  </div>
+    ${result.audits
+      .slice(-20)
+      .reverse()
+      .map(
+        x=>`
 
-  ${Object.entries(
-    track.byMotor
-  ).map(
-    ([key,x])=>`
+          <div class="listrow">
 
-      <div class="listrow">
+            <b>
+              ${esc(x.category)}
+            </b>
 
-        ${esc(key)}
+            • GIRO ${x.turn}
 
-        • ${x.decisions} decisões
+            • ${x.n}
 
-        • cobertura direta
-        ${pct(
-          x.covered,
-          x.decisions
-        )}
+            • ${esc(x.selected)}
 
-      </div>
+            <div class="muted">
 
-    `
-  ).join("")}
+              Alternativas:
+              ${esc(
+                x.alternatives.join(", ")||
+                "nenhuma"
+              )}
 
-  <div class="title">
-    ÚLTIMAS 20 OPORTUNIDADES
-  </div>
+            </div>
 
-  ${result.audits
-    .slice(-20)
-    .reverse()
-    .map(
-      x=>`
+          </div>
+
+        `
+      ).join("")}
+
+  `;
+}
+
+/* ======================================
+   PLANO DE COBERTURA
+====================================== */
+
+function coveragePlanHTML(
+  result,
+  trainer
+){
+
+  const track=tracking(result);
+
+  return `
+
+    <div class="box">
+
+      <b>
+        ANÁLISE DE COBERTURA
+      </b>
+
+      <p>
+        Giros descobertos:
+        ${trainer.uncovered}
+      </p>
+
+      <p>
+        Outro motor cobria:
+        ${trainer.alternativeHits}
+      </p>
+
+      <p>
+        Nenhum motor cobria:
+        ${trainer.nobodyCovered}
+      </p>
+
+      <p>
+        Trocas realizadas:
+        ${track.switches}
+      </p>
+
+      <p>
+        Maior permanência:
+        ${track.maxStreak}
+      </p>
+
+    </div>
+
+    <div class="title">
+      REGIÕES
+    </div>
+
+    ${Object.entries(
+      trainer.regions
+    ).map(
+      ([name,r])=>`
 
         <div class="listrow">
 
-          <b>
-            ${esc(x.category)}
-          </b>
+          <b>${esc(name)}</b>
 
-          • GIRO ${x.turn}
+          • ${r.total} ocorrências
 
-          • ${x.n}
-
-          • ${esc(x.selected)}
-
-          <div class="muted">
-
-            Alternativas:
-            ${esc(
-              x.alternatives.join(", ")||
-              "nenhuma"
-            )}
-
-          </div>
+          • maior sequência:
+          ${r.longest}
 
         </div>
 
       `
     ).join("")}
 
+    <div class="title">
+      MOTORES UTILIZADOS
+    </div>
+
+    ${Object.entries(
+      track.byMotor
+    ).map(
+      ([key,x])=>`
+
+        <div class="listrow">
+
+          ${esc(key)}
+
+          • ${x.decisions} decisões
+
+          • cobertura:
+          ${pct(
+            x.covered,
+            x.decisions
+          )}
+
+        </div>
+
+      `
+    ).join("")}
+
+  `;
+}
+
+/* ======================================
+   TREINADOR VISUAL
+====================================== */
+
+function trainerHTML(
+  trainer,
+  result,
+  diagnosis,
+  lab
+){
+
+  const track=tracking(result);
+
+  const recommended=lab.recommendation;
+
+  return `
+
+  <div class="virtualHero">
+
+    <div class="title">
+      TREINADOR ESTRATÉGICO VIRTUAL
+    </div>
+
+    <div class="muted">
+
+      Auditoria de todos os números,
+      motores, regiões, GREEN,
+      Gale, LOSS e estratégias.
+
+    </div>
+
+    <div class="metrics">
+
+      <div class="metric">
+        <small>NÚMEROS</small>
+        <b>${trainer.totalNumbers}</b>
+      </div>
+
+      <div class="metric">
+        <small>MOTORES</small>
+        <b>12</b>
+      </div>
+
+      <div class="metric">
+        <small>TROCAS</small>
+        <b>${track.switches}</b>
+      </div>
+
+      <div class="metric">
+        <small>GREEN</small>
+        <b class="good">
+          ${trainer.greenCount}
+        </b>
+      </div>
+
+      <div class="metric">
+        <small>GALE</small>
+        <b>${trainer.galeCount}</b>
+      </div>
+
+      <div class="metric">
+        <small>LOSS</small>
+        <b class="bad">
+          ${trainer.lossCount}
+        </b>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="virtualRecommendation">
+
+    <div class="title">
+      RECOMENDAÇÃO DO TREINADOR
+    </div>
+
+    <b>
+      ${esc(diagnosis.title)}
+    </b>
+
+    ${diagnosis.messages.map(
+      x=>`
+
+        <div class="virtualLine">
+          ${esc(x)}
+        </div>
+
+      `
+    ).join("")}
+
+    ${recommended?`
+
+      <button
+        class="virtualButton"
+        id="activateTrainer"
+      >
+        ATIVAR TREINADOR ESTRATÉGICO
+      </button>
+
+      <button
+        class="virtualButton"
+        id="activateRecommended"
+      >
+        ATIVAR SOMENTE
+        ${esc(recommended.name)}
+      </button>
+
+    `:""}
+
+  </div>
+
+  ${miniPanel(
+    "virtualRanking",
+    "RANKING VIRTUAL DOS 12 MOTORES",
+    state.open.virtualRanking
+      ?virtualRankingHTML(trainer)
+      :""
+  )}
+
+  ${miniPanel(
+    "opportunities",
+    "ÚLTIMAS 20 OPORTUNIDADES",
+    state.open.opportunities
+      ?opportunitiesHTML(result)
+      :""
+  )}
+
+  ${miniPanel(
+    "coveragePlan",
+    "PLANO DE COBERTURA E REGIÕES",
+    state.open.coveragePlan
+      ?coveragePlanHTML(
+        result,
+        trainer
+      )
+      :""
+  )}
+
   <div class="virtualWarning">
 
-    Uma estratégia pode acertar muitos
-    números no histórico e falhar em
-    novos giros. Os resultados da
-    auditoria não significam que o
-    próximo sorteio seja previsível.
+    O treinador recomenda a configuração
+    com melhor resultado observado
+    no backtest. Não há garantia de
+    acerto nos próximos giros.
 
   </div>
 
   `;
 }
 
-/* ==========================================
-   PAINEL LABORATÓRIO
-   ========================================== */
+/* ======================================
+   COMPARAÇÕES EXPANSÍVEIS
+====================================== */
 
-function laboratoryHTML(
-  lab,
-  diagnosis
-){
-
-  const recommendation=
-    lab.recommendation;
-
-  const baseline=lab.baseline;
-
-  const generated=lab.generated;
+function comparisonsHTML(lab){
 
   return `
-
-  <div class="box">
-
-    <b>
-      ${esc(lab.status)}
-    </b>
-
-    <p class="muted">
-
-      O treinador testa estratégias
-      existentes e configurações
-      adaptativas usando somente os
-      giros anteriores a cada decisão.
-
-      Os primeiros 65% do histórico
-      compõem o desenvolvimento.
-
-      Os últimos 35% são usados
-      para comparação fora do
-      desenvolvimento.
-
-      A escolha final entre muitas
-      configurações continua sendo
-      exploratória.
-
-    </p>
-
-  </div>
-
-  ${recommendation?`
-
-    <div class="virtualRecommendation">
-
-      <h3>
-        ESTRATÉGIA RECOMENDADA
-      </h3>
-
-      <b>
-        ${esc(recommendation.name)}
-      </b>
-
-      <div class="virtualLine">
-
-        GREEN NA VALIDAÇÃO:
-
-        <b>
-          ${pct(
-            recommendation.valid.green,
-            recommendation.valid.total
-          )}
-        </b>
-
-      </div>
-
-      <div class="virtualLine">
-
-        GREEN:
-        ${recommendation.valid.green}
-
-        • GALE:
-        ${recommendation.valid.gale}
-
-        • LOSS:
-        ${recommendation.valid.loss}
-
-      </div>
-
-      <div class="virtualLine">
-
-        CICLOS:
-        ${recommendation.valid.total}
-
-      </div>
-
-      ${recommendation.config?`
-
-        <div class="virtualLine">
-
-          JANELA:
-          ${recommendation.config.window}
-          giros
-
-        </div>
-
-        <div class="virtualLine">
-
-          VANTAGEM PARA TROCA:
-          ${fmt(
-            recommendation.config.margin*100
-          )}
-          pontos percentuais
-
-        </div>
-
-        <div class="virtualLine">
-
-          AMOSTRA MÍNIMA:
-          ${recommendation.config.minSamples}
-
-        </div>
-
-        <div class="virtualLine">
-
-          MOTORES ELEGÍVEIS:
-          ${recommendation.config.maxRank}
-
-        </div>
-
-        <div class="virtualLine">
-
-          ANTECIPAR TROCA POR FALHAS:
-          ${recommendation.config.switchAfterLoss
-            ?"SIM"
-            :"NÃO"}
-
-        </div>
-
-      `:""}
-
-      <button
-        class="virtualButton"
-        id="createRecommended"
-      >
-
-        ${recommendation.config
-          ?"CRIAR E ATIVAR ESTRATÉGIA"
-          :"ATIVAR ESTRATÉGIA EXISTENTE"}
-
-      </button>
-
-      <div class="virtualSmall">
-
-        A ativação usa a regra
-        calculada antes de cada
-        novo resultado.
-
-        O desempenho anterior não
-        garante resultados futuros.
-
-      </div>
-
-    </div>
-
-  `:""}
-
-  ${baseline?`
-
-    <div class="box">
-
-      <div class="title">
-        REFERÊNCIA AUTO 3º
-      </div>
-
-      GREEN:
-      ${baseline.valid.green}
-
-      • GALE:
-      ${baseline.valid.gale}
-
-      • LOSS:
-      ${baseline.valid.loss}
-
-      • TAXA:
-      ${pct(
-        baseline.valid.green,
-        baseline.valid.total
-      )}
-
-    </div>
-
-  `:""}
-
-  <div class="title">
-    TODAS AS ESTRATÉGIAS TESTADAS
-  </div>
 
   <div class="tablewrap">
 
@@ -3458,14 +3487,12 @@ function laboratoryHTML(
       <thead>
 
         <tr>
-
           <th>ESTRATÉGIA</th>
           <th>DESENV.</th>
           <th>VALIDAÇÃO</th>
           <th>GALE</th>
           <th>LOSS</th>
           <th>CICLOS</th>
-
         </tr>
 
       </thead>
@@ -3518,96 +3545,250 @@ function laboratoryHTML(
 
   </div>
 
-  <div class="title">
-    ESTRATÉGIAS CRIADAS PELO TREINADOR
+  `;
+}
+
+/* ======================================
+   LABORATÓRIO VISUAL
+====================================== */
+
+function laboratoryHTML(lab){
+
+  const rec=lab.recommendation;
+
+  return `
+
+  <div class="box">
+
+    <b>
+      ${esc(lab.status)}
+    </b>
+
+    <p class="muted">
+
+      Estratégias originais e adaptativas
+      avaliadas em sequência.
+
+      Desenvolvimento: 65%.
+
+      Comparação: 35%.
+
+      A escolha da melhor entre várias
+      configurações é exploratória.
+
+    </p>
+
   </div>
 
-  <div id="createdStrategies">
+  ${rec?`
 
-    ${state.createdStrategies.length
+    <div class="virtualRecommendation">
+
+      <div class="title">
+        ESTRATÉGIA INDICADA
+      </div>
+
+      <b>
+        ${esc(rec.name)}
+      </b>
+
+      <div class="virtualLine">
+
+        GREEN:
+        ${rec.valid.green}
+
+        • GALE:
+        ${rec.valid.gale}
+
+        • LOSS:
+        ${rec.valid.loss}
+
+      </div>
+
+      <div class="virtualLine">
+
+        TAXA:
+        ${pct(
+          rec.valid.green,
+          rec.valid.total
+        )}
+
+      </div>
+
+      <div class="virtualLine">
+
+        CICLOS:
+        ${rec.valid.total}
+
+      </div>
+
+      ${rec.config?`
+
+        <div class="virtualLine">
+
+          JANELA:
+          ${rec.config.window}
+
+          • MARGEM:
+          ${fmt(
+            rec.config.margin*100
+          )}%
+
+        </div>
+
+        <div class="virtualLine">
+
+          AMOSTRA:
+          ${rec.config.minSamples}
+
+          • RANKING:
+          ${rec.config.maxRank}
+
+        </div>
+
+      `:""}
+
+      <button
+        class="virtualButton"
+        id="labActivate"
+      >
+        ATIVAR ESTRATÉGIA INDICADA
+      </button>
+
+      ${rec.config?`
+
+        <button
+          class="virtualButton"
+          id="labCreate"
+        >
+          CRIAR BOTÃO PERSONALIZADO
+        </button>
+
+      `:""}
+
+    </div>
+
+  `:""}
+
+  ${miniPanel(
+    "comparisons",
+    "COMPARAÇÃO DE TODAS AS ESTRATÉGIAS",
+    state.open.comparisons
+      ?comparisonsHTML(lab)
+      :""
+  )}
+
+  ${miniPanel(
+    "created",
+    "ESTRATÉGIAS PERSONALIZADAS",
+    state.open.created
       ?state.createdStrategies.map(
         x=>`
 
           <button
-            class="virtualButton ${
-              state.activeCreated===x.id
-                ?"active"
-                :""
-            }"
+            class="virtualButton"
             data-created="${esc(x.id)}"
           >
-
             ${esc(x.name)}
-
-            • JANELA
-            ${x.config.window}
-
+            • JANELA ${x.config.window}
             • TROCA
             ${fmt(x.config.margin*100)}%
-
-            ${state.activeCreated===x.id
-              ?" • ATIVA"
-              :""}
-
           </button>
 
         `
-      ).join("")
-      :`
-
+      ).join("")||`
         <div class="box">
-
-          Nenhuma estratégia
-          personalizada criada ainda.
-
+          Nenhuma estratégia criada.
         </div>
-
-      `}
-
-  </div>
-
-  <div class="virtualWarning">
-
-    O laboratório compara configurações,
-    mas não pode eliminar a vantagem
-    matemática da casa nem garantir
-    que uma regra vencedora no
-    backtest continue vencedora.
-
-  </div>
+      `
+      :""
+  )}
 
   `;
 }
 
-/* ==========================================
-   RENDERIZAÇÃO PRINCIPAL
-   ========================================== */
+/* ======================================
+   RENDERIZAÇÃO ASSÍNCRONA
+
+   O quadro principal aparece primeiro.
+   Laboratório é processado depois,
+   evitando reconstruir os painéis
+   pesados durante a digitação.
+====================================== */
+
+let renderToken=0;
 
 function render(){
+
+  const token=++renderToken;
 
   const history=state.history;
   const sources=state.sources;
 
-  const frames=buildFrames(
-    history
+  $("status").textContent=
+    history.length+
+    "/200 números • ANALISANDO";
+
+  /*
+    A interface cede um ciclo para
+    atualizar o status antes do
+    cálculo.
+  */
+
+  setTimeout(()=>{
+
+    if(token!==renderToken)return;
+
+    try{
+
+      performRender(token);
+
+    }catch(error){
+
+      console.error(
+        "ANÁLISE BETA:",
+        error
+      );
+
+      $("status").textContent=
+        "ERRO NA ANÁLISE: "+
+        error.message;
+    }
+
+  },0);
+}
+
+function performRender(token){
+
+  const history=state.history;
+  const sources=state.sources;
+
+  const frames=buildFrames(history);
+
+  /*
+    O laboratório fica em cache
+    enquanto histórico e opções
+    não mudarem.
+  */
+
+  const lab=laboratory(
+    history,
+    frames
   );
 
-  const rule=state.manual
-    ?"MANUAL"
-    :state.strategy;
+  if(token!==renderToken)return;
 
-  const config=rule==="CREATED"
-    ?activeConfig()
-    :null;
+  const active=activeRule(lab);
 
   const result=simulate(
     history,
     sources,
-    rule,
-    state.rank,
+    active.rule,
+    active.rank,
     optionsNow(),
-    config,
-    frames
+    active.config,
+    frames,
+    state.manual
   );
 
   const cs=frames.at(-1)?.candidates||[];
@@ -3615,10 +3796,11 @@ function render(){
   const selected=choose(
     cs,
     result.allRecords,
-    rule,
-    state.rank,
+    active.rule,
+    active.rank,
     result.previous,
-    config
+    active.config,
+    state.manual
   );
 
   const play=
@@ -3633,6 +3815,10 @@ function render(){
     "/12 motores disponíveis • "+
     result.phase;
 
+  /* ====================================
+     ESTADO DOS BOTÕES
+  ==================================== */
+
   for(const b of document.querySelectorAll(
     "[data-strategy]"
   )){
@@ -3640,8 +3826,56 @@ function render(){
     b.classList.toggle(
       "active",
       !state.manual&&
-      !state.activeCreated&&
-      b.dataset.strategy===state.strategy
+      state.strategy===b.dataset.strategy
+    );
+  }
+
+  for(const b of document.querySelectorAll(
+    "[data-adaptive]"
+  )){
+
+    b.classList.toggle(
+      "active",
+      !state.manual&&
+      state.strategy==="ADAPTIVE"&&
+      state.activeAdaptive===
+        b.dataset.adaptive
+    );
+  }
+
+  for(const b of document.querySelectorAll(
+    "[data-created-strategy]"
+  )){
+
+    b.classList.toggle(
+      "active",
+      !state.manual&&
+      state.strategy==="CREATED"&&
+      state.activeCreated===
+        b.dataset.createdStrategy
+    );
+  }
+
+  for(const b of document.querySelectorAll(
+    "[data-trainer]"
+  )){
+
+    b.classList.toggle(
+      "active",
+      !state.manual&&
+      state.strategy==="TRAINER"
+    );
+  }
+
+  for(const b of document.querySelectorAll(
+    "[data-rank]"
+  )){
+
+    b.classList.toggle(
+      "active",
+      !state.manual&&
+      state.strategy==="FIXED"&&
+      state.rank===Number(b.dataset.rank)
     );
   }
 
@@ -3655,19 +3889,13 @@ function render(){
     );
   }
 
+  /* ====================================
+     JOGADA ATIVA
+  ==================================== */
+
   $("selected").textContent=
-    (
-      state.manual||
-      (
-        state.activeCreated
-          ?state.createdStrategies.find(
-            x=>x.id===state.activeCreated
-          )?.name
-          :state.strategy
-      )||
-      state.strategy
-    )+
-    " • "+
+    active.name+
+    " • MOTOR "+
     (selected?.key||"AGUARDANDO")+
     " • "+
     result.phase;
@@ -3677,18 +3905,14 @@ function render(){
       b=>`
 
         <div class="center ${
-          b.radius===1
-            ?"short"
-            :""
+          b.radius===1?"short":""
         }">
 
           ${b.center}
 
           <small>
-
             ${sector(b.center)}
             • ${b.radius}V
-
           </small>
 
         </div>
@@ -3700,6 +3924,10 @@ function render(){
   $("coverage").textContent=play
     ?"28 NÚMEROS COBERTOS • 9 DESCOBERTOS"
     :"Importe pelo menos 8 números.";
+
+  /* ====================================
+     ÚLTIMOS 14
+  ==================================== */
 
   $("last").innerHTML=result.entries
     .slice(-14)
@@ -3727,6 +3955,10 @@ function render(){
       `
     ).join("");
 
+  /* ====================================
+     RESULTADO GERAL
+  ==================================== */
+
   const historical=result.cycles.filter(
     x=>x.source==="HISTÓRICO"
   );
@@ -3735,44 +3967,38 @@ function render(){
     x=>x.source==="TEMPO REAL"
   );
 
-  $("general").innerHTML=`
+  if(state.open.general){
 
-    <div class="title">
-      HISTÓRICO
-    </div>
+    $("general").innerHTML=`
 
-    ${metricHTML(historical)}
+      <div class="title">
+        HISTÓRICO
+      </div>
 
-    <div class="title">
-      TEMPO REAL
-    </div>
+      ${metricHTML(historical)}
 
-    ${metricHTML(live)}
+      <div class="title">
+        TEMPO REAL
+      </div>
 
-    <div class="title">
-      TOTAL ACUMULADO
-    </div>
+      ${metricHTML(live)}
 
-    ${metricHTML(result.cycles)}
+      <div class="title">
+        TOTAL ACUMULADO
+      </div>
 
-  `;
+      ${metricHTML(result.cycles)}
 
-  /* ======================================
-     TREINADOR VIRTUAL
-     ====================================== */
+    `;
+  }
+
+  /* ====================================
+     TREINADOR
+  ==================================== */
 
   const trainer=virtualTrainer(
     history,
     result,
-    frames
-  );
-
-  /* ======================================
-     LABORATÓRIO
-     ====================================== */
-
-  const lab=laboratory(
-    history,
     frames
   );
 
@@ -3781,108 +4007,157 @@ function render(){
     trainer
   );
 
-  $("trainer").innerHTML=trainerHTML(
-    trainer,
-    result,
-    diagnosis
-  );
+  if(state.open.trainer){
 
-  $("lab").innerHTML=laboratoryHTML(
-    lab,
-    diagnosis
-  );
+    $("trainer").innerHTML=trainerHTML(
+      trainer,
+      result,
+      diagnosis,
+      lab
+    );
 
-  /* ======================================
-     CRIAR E ATIVAR ESTRATÉGIA
-     ====================================== */
+    const trainerButton=$(
+      "activateTrainer"
+    );
 
-  const createButton=$(
-    "createRecommended"
-  );
+    if(trainerButton){
 
-  if(
-    createButton&&
-    lab.recommendation
-  ){
+      trainerButton.onclick=()=>{
 
-    createButton.onclick=()=>{
+        state.manual=null;
+        state.activeAdaptive=null;
+        state.activeCreated=null;
+        state.strategy="TRAINER";
 
-      createStrategy(
-        lab.recommendation
-      );
-    };
+        refresh();
+      };
+    }
+
+    const recommendedButton=$(
+      "activateRecommended"
+    );
+
+    if(
+      recommendedButton&&
+      lab.recommendation
+    ){
+
+      recommendedButton.onclick=()=>{
+
+        activateRecommendation(
+          lab.recommendation
+        );
+      };
+    }
   }
 
-  for(const b of document.querySelectorAll(
-    "[data-created]"
-  )){
+  /* ====================================
+     LABORATÓRIO
+  ==================================== */
 
-    b.onclick=()=>{
+  if(state.open.lab){
 
-      const id=b.dataset.created;
+    $("lab").innerHTML=laboratoryHTML(
+      lab
+    );
 
-      const found=
-        state.createdStrategies.find(
-          x=>x.id===id
+    const activate=$("labActivate");
+
+    if(activate&&lab.recommendation){
+
+      activate.onclick=()=>{
+
+        activateRecommendation(
+          lab.recommendation
+        );
+      };
+    }
+
+    const create=$("labCreate");
+
+    if(create&&lab.recommendation){
+
+      create.onclick=()=>{
+
+        createStrategy(
+          lab.recommendation
         );
 
-      if(!found)return;
+        buildStrategyButtons();
+      };
+    }
 
-      state.activeCreated=id;
-      state.manual=null;
-      state.strategy="CREATED";
+    for(const b of document.querySelectorAll(
+      "[data-created]"
+    )){
 
-      refresh();
-    };
+      b.onclick=()=>{
+
+        const id=b.dataset.created;
+
+        const found=
+          state.createdStrategies.find(
+            x=>x.id===id
+          );
+
+        if(!found)return;
+
+        state.manual=null;
+        state.activeAdaptive=null;
+        state.activeCreated=id;
+        state.strategy="CREATED";
+
+        refresh();
+      };
+    }
   }
 
-  /* ======================================
+  /* ====================================
      RANKING ORIGINAL
-     ====================================== */
+  ==================================== */
 
-  $("motors").querySelectorAll(
-    ".listrow"
-  ).forEach(
-    x=>x.remove()
-  );
+  if(state.open.motors){
 
-  $("motors").insertAdjacentHTML(
-    "beforeend",
+    $("motors").querySelectorAll(
+      ".listrow"
+    ).forEach(x=>x.remove());
 
-    cs.map(
-      c=>`
+    $("motors").insertAdjacentHTML(
+      "beforeend",
 
-        <div class="listrow">
+      cs.map(
+        c=>`
 
-          <b>
-            ${c.rank}º
-          </b>
+          <div class="listrow">
 
-          • ${esc(c.key)}
+            <b>${c.rank}º</b>
 
-          • SCORE
-          ${fmt(c.score)}
+            • ${esc(c.key)}
 
-          <div class="muted">
+            • SCORE ${fmt(c.score)}
 
-            ${c.play.centers5.join(", ")}
+            <div class="muted">
 
-            + ${c.play.center3}
+              ${c.play.centers5.join(", ")}
+
+              + ${c.play.center3}
+
+            </div>
 
           </div>
 
-        </div>
+        `
+      ).join("")
+    );
+  }
 
-      `
-    ).join("")
-  );
-
-  /* ======================================
+  /* ====================================
      LINHA DO TEMPO ORIGINAL
-     ====================================== */
+  ==================================== */
 
-  $("timeline").innerHTML=
-    result.entries
+  if(state.open.timeline){
+
+    $("timeline").innerHTML=result.entries
       .slice(-80)
       .reverse()
       .map(
@@ -3908,9 +4183,7 @@ function render(){
               ${esc(x.phase)}
 
               • COBERTURA:
-              ${x.covered
-                ?"SIM"
-                :"NÃO"}
+              ${x.covered?"SIM":"NÃO"}
 
               • ALTERNATIVAS:
               ${esc(
@@ -3924,37 +4197,9 @@ function render(){
 
         `
       ).join("");
-
-  /* ======================================
-     EXPANSÃO ORIGINAL
-     ====================================== */
-
-  for(const [name,open] of Object.entries(
-    state.open
-  )){
-
-    const element=$(name);
-
-    const button=document.querySelector(
-      '[data-panel="'+name+'"]'
-    );
-
-    if(element){
-
-      element.classList.toggle(
-        "hide",
-        !open
-      );
-    }
-
-    if(button){
-
-      button.querySelector(
-        "span"
-      ).textContent=
-        open?"−":"+";
-    }
   }
+
+  applyOpenState();
 
   save();
 }
@@ -3963,9 +4208,9 @@ function refresh(){
   render();
 }
 
-/* ==========================================
+/* ======================================
    INICIALIZAÇÃO
-   ========================================== */
+====================================== */
 
 render();
 
