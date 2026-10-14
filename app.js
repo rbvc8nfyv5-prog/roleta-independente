@@ -3,1758 +3,1994 @@
 "use strict";
 
 /* ==========================================================
-   ANÁLISE BETA V5.9 — OTIMIZADA
-   ==========================================================
-   - 12 motores originais
-   - 12 estratégias adaptativas
-   - Treinador Estratégico com borda luminosa
-   - Centros ordenados: TIERS / ÓRFÃOS / VOISINS / ZERO
-   - Gale normal mantém exatamente a mesma jogada
-   - G1 ajusta para último número + vizinhos físicos
-   - GREEN / GALE / LOSS registrados definitivamente
-   - Mudança de estratégia não reescreve o histórico
-   - Linha do tempo preservada
-   - Ranking e comparações recolhíveis
-   - Cálculos incrementais e importação em lotes
+   ANÁLISE BETA V5.10
+   BASE ORIGINAL V5.9
+
+   ALTERAÇÕES AUTORIZADAS:
+   1. ÚLTIMOS RESULTADOS:
+      GREEN = BORDA VERDE
+      GALE = BORDA AMARELA
+      LOSS = BORDA VERMELHA / ROSA
+
+   2. TREINADOR:
+      REAVALIA AS 12 ADAPTATIVAS A CADA 3 GIROS
+      PROCURA A MELHOR LINHA NA JANELA RECENTE
+      MUDA DE ADAPTATIVA A CADA BLOCO DE 3
+      NÃO TROCA DURANTE UM CICLO DE GALE
+
+   PRESERVADOS:
+   - 12 motores
+   - Geometria 5x5 + 1x3
+   - 28 números
+   - Gale normal
+   - G1 Ajuste Fino
+   - Linha do tempo definitiva
+   - Histórico
+   - Ranking
+   - Laboratório
+   - Painéis recolhíveis
+   - Ordem TIERS / ÓRFÃOS / VOISINS / ZERO
    ========================================================== */
 
-const VERSION = "5.9";
-const KEY = "ANALISE_BETA_V59";
-const OLD_KEY = "ANALISE_BETA_V55_COMPLETO";
-const MAX = 200;
+const VERSION="5.10";
+const KEY="ANALISE_BETA_V59";
+const OLD_KEY="ANALISE_BETA_V55_COMPLETO";
+const MAX=200;
 
-const W = [
-  32,15,19,4,21,2,25,17,34,6,
-  27,13,36,11,30,8,23,10,5,24,
-  16,33,1,20,14,31,9,22,18,29,
-  7,28,12,35,3,26,0
+const W=[
+32,15,19,4,21,2,25,17,34,6,
+27,13,36,11,30,8,23,10,5,24,
+16,33,1,20,14,31,9,22,18,29,
+7,28,12,35,3,26,0
 ];
 
-const RED = new Set([
-  1,3,5,7,9,12,14,16,18,
-  19,21,23,25,27,30,32,34,36
+const RED=new Set([
+1,3,5,7,9,12,14,16,18,
+19,21,23,25,27,30,32,34,36
 ]);
 
-const FAMILIES = [
-  "NORMAL",
-  "DINAMICO",
-  "RX_NORMAL",
-  "RX_DINAMICO"
+const FAMILIES=[
+"NORMAL",
+"DINAMICO",
+"RX_NORMAL",
+"RX_DINAMICO"
 ];
 
-const RADII = [4,5,6];
+const RADII=[4,5,6];
 
-const SECTORS = {
-  TIERS: [27,13,36,11,30,8,23,10,5,24,16,33],
-  ORFAOS: [17,34,6,1,20,14,31,9],
-  VOISINS: [22,18,29,7,25,2,21,4,19],
-  ZERO: [28,12,35,3,26,0,32,15]
+const SECTORS={
+TIERS:[27,13,36,11,30,8,23,10,5,24,16,33],
+ORFAOS:[17,34,6,1,20,14,31,9],
+VOISINS:[22,18,29,7,25,2,21,4,19],
+ZERO:[28,12,35,3,26,0,32,15]
 };
 
-const SECTOR_ORDER = [
-  "TIERS",
-  "ORFAOS",
-  "VOISINS",
-  "ZERO"
+const SECTOR_ORDER=[
+"TIERS","ORFAOS","VOISINS","ZERO"
 ];
 
-const $ = id => document.getElementById(id);
-const mod = n => (n % 37 + 37) % 37;
-const idx = n => W.indexOf(n);
-const copy = x => JSON.parse(JSON.stringify(x));
+const $=id=>document.getElementById(id);
+const mod=n=>(n%37+37)%37;
+const idx=n=>W.indexOf(n);
+const copy=x=>JSON.parse(JSON.stringify(x));
 
-const fmt = n =>
-  Number.isFinite(n)
-    ? n.toFixed(1).replace(".", ",")
-    : "—";
+const fmt=n=>Number.isFinite(n)
+?n.toFixed(1).replace(".",",")
+:"—";
 
-const pct = (a,b) =>
-  b ? fmt(a / b * 100) + "%" : "—";
+const pct=(a,b)=>b
+?fmt(a/b*100)+"%"
+:"—";
 
-const esc = x =>
-  String(x ?? "").replace(
-    /[&<>"']/g,
-    c => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#39;"
-    }[c])
-  );
+const esc=x=>String(x??"").replace(
+/[&<>"']/g,
+c=>({
+"&":"&amp;",
+"<":"&lt;",
+">":"&gt;",
+'"':"&quot;",
+"'":"&#39;"
+}[c])
+);
 
-function distance(a,b) {
-  const d = Math.abs(idx(a)-idx(b));
-  return Math.min(d,37-d);
+function distance(a,b){
+const d=Math.abs(idx(a)-idx(b));
+return Math.min(d,37-d);
 }
 
-function neighbors(n,r=1) {
-  const p = idx(n);
-  return Array.from(
-    {length:2*r+1},
-    (_,i)=>W[mod(p+i-r)]
-  );
+function neighbors(n,r=1){
+const p=idx(n);
+return Array.from(
+{length:r*2+1},
+(_,i)=>W[mod(p+i-r)]
+);
 }
 
-function sector(n) {
-  return SECTOR_ORDER.find(
-    k=>SECTORS[k].includes(n)
-  ) || "ZERO";
+function sector(n){
+return SECTOR_ORDER.find(
+k=>SECTORS[k].includes(n)
+)||"ZERO";
 }
 
 /* ==========================================================
-   ESTRATÉGIAS
+   ESTRATÉGIAS ORIGINAIS
    ========================================================== */
 
-const ADAPTATIVES = [
-  ["A01",10,.05,6,12,0,0,0,false,3],
-  ["A02",10,.10,6,12,0,0,0,false,3],
-  ["A03",10,.15,6,12,0,0,0,false,3],
-  ["A04",20,.05,10,12,0,0,0,false,3],
-  ["A05",20,.10,10,12,0,0,0,false,3],
-  ["A06",20,.15,10,12,0,0,0,false,3],
-  ["A07",30,.05,12,12,0,0,0,false,3],
-  ["A08",30,.10,12,12,0,0,0,false,3],
-  ["A09",20,.08,10,12,.025,0,.4,true,2],
-  ["A10",30,.12,12,6,.02,.04,.3,false,3],
-  ["A11",20,.10,10,4,.03,.05,.5,true,3],
-  ["A12",30,.08,12,8,.015,.08,.35,true,2]
+const ADAPTATIVES=[
+["A01",10,.05,6,12,0,0,0,false,3],
+["A02",10,.10,6,12,0,0,0,false,3],
+["A03",10,.15,6,12,0,0,0,false,3],
+["A04",20,.05,10,12,0,0,0,false,3],
+["A05",20,.10,10,12,0,0,0,false,3],
+["A06",20,.15,10,12,0,0,0,false,3],
+["A07",30,.05,12,12,0,0,0,false,3],
+["A08",30,.10,12,12,0,0,0,false,3],
+["A09",20,.08,10,12,.025,0,.4,true,2],
+["A10",30,.12,12,6,.02,.04,.3,false,3],
+["A11",20,.10,10,4,.03,.05,.5,true,3],
+["A12",30,.08,12,8,.015,.08,.35,true,2]
 ].map(x=>({
-  id:x[0],
-  name:"ADAPTATIVA "+x[0].slice(1),
-  window:x[1],
-  margin:x[2],
-  minSamples:x[3],
-  maxRank:x[4],
-  lossPenalty:x[5],
-  consensus:x[6],
-  recentWeight:x[7],
-  switchAfterLoss:x[8],
-  persistence:x[9]
+id:x[0],
+name:"ADAPTATIVA "+x[0].slice(1),
+window:x[1],
+margin:x[2],
+minSamples:x[3],
+maxRank:x[4],
+lossPenalty:x[5],
+consensus:x[6],
+recentWeight:x[7],
+switchAfterLoss:x[8],
+persistence:x[9]
 }));
 
-const ORIGINALS = [
-  ["FIXED","AUTO RANKING"],
-  ["GEO","MELHOR GEOMETRIA"],
-  ["BEST","MELHOR DESEMPENHO"],
-  ["STABLE","ESTABILIDADE"],
-  ["SWITCH","TROCA INTELIGENTE"],
-  ["CONSENSUS","CONSENSO"],
-  ["UNION","UNIÃO"]
+const ORIGINALS=[
+["FIXED","AUTO RANKING"],
+["GEO","MELHOR GEOMETRIA"],
+["BEST","MELHOR DESEMPENHO"],
+["STABLE","ESTABILIDADE"],
+["SWITCH","TROCA INTELIGENTE"],
+["CONSENSUS","CONSENSO"],
+["UNION","UNIÃO"]
 ];
 
 /* ==========================================================
    ESTADO
    ========================================================== */
 
-function fresh() {
-  return {
-    history:[],
-    sources:[],
-    ledger:[],
-    strategy:"FIXED",
-    rank:3,
-    manual:null,
-    activeAdaptive:"A05",
-    activeCreated:null,
-    createdStrategies:[],
-    g1:true,
-    galeSkip:false,
-    secondHouse:false,
-    phase:"ENTRY",
-    frozen:null,
-    cycle:null,
-    previousMotor:null,
-    trainerChoice:null,
-    open:{
-      general:true,
-      trainer:true,
-      lab:false,
-      motors:false,
-      timeline:true,
-      virtualRanking:false,
-      opportunities:false,
-      coveragePlan:false,
-      comparisons:false,
-      created:false
-    }
-  };
+function fresh(){
+return {
+history:[],
+sources:[],
+ledger:[],
+strategy:"FIXED",
+rank:3,
+manual:null,
+activeAdaptive:"A05",
+activeCreated:null,
+createdStrategies:[],
+g1:true,
+galeSkip:false,
+secondHouse:false,
+phase:"ENTRY",
+frozen:null,
+cycle:null,
+previousMotor:null,
+
+/*
+ TREINADOR V5.10:
+ guarda escolha e momento da última troca.
+*/
+trainerChoice:null,
+trainerStart:0,
+trainerPending:false,
+trainerChanges:0,
+
+open:{
+general:true,
+trainer:true,
+lab:false,
+motors:false,
+timeline:true,
+virtualRanking:false,
+opportunities:false,
+coveragePlan:false,
+comparisons:false,
+created:false
+}
+};
 }
 
-let state = fresh();
+let state=fresh();
 
-try {
-  const saved = JSON.parse(
-    localStorage.getItem(KEY) || "null"
-  );
+try{
+const saved=JSON.parse(
+localStorage.getItem(KEY)||"null"
+);
 
-  if(saved) {
-    state = {
-      ...fresh(),
-      ...saved,
-      open:{
-        ...fresh().open,
-        ...(saved.open||{})
-      }
-    };
-  }
-} catch(e) {}
-
-function save() {
-  try {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify(state)
-    );
-  } catch(e) {}
+if(saved){
+state={
+...fresh(),
+...saved,
+open:{
+...fresh().open,
+...(saved.open||{})
 }
+};
+}
+}catch(e){}
 
-/* ==========================================================
-   MOTOR DE PESOS
-   ========================================================== */
-
-function motorWeights(history,family,radius) {
-
-  const weights = Array(37).fill(.01);
-  const recent = history.slice(-60);
-
-  for(let k=0;k<recent.length;k++) {
-
-    const n = recent[recent.length-1-k];
-    const decay = Math.exp(-k/(radius*2.3));
-    const p = idx(n);
-
-    for(let j=0;j<37;j++) {
-
-      const d = Math.min(
-        Math.abs(p-j),
-        37-Math.abs(p-j)
-      );
-
-      if(d<=6) {
-        weights[j] += decay*(7-d)/7;
-      }
-    }
-  }
-
-  if(family.includes("DINAMICO")) {
-
-    for(
-      let k=0;
-      k<Math.min(radius+2,history.length);
-      k++
-    ) {
-
-      const n = history[history.length-1-k];
-      const p = idx(n);
-
-      for(let j=0;j<37;j++) {
-
-        const d = Math.min(
-          Math.abs(p-j),
-          37-Math.abs(p-j)
-        );
-
-        if(d<=3) {
-          weights[j] += (4-d)/(k+2)*1.7;
-        }
-      }
-    }
-  }
-
-  if(family.startsWith("RX")) {
-
-    const length = Math.min(
-      radius,
-      history.length-2
-    );
-
-    if(length>=2) {
-
-      const current = history.slice(-length);
-      const matches = [];
-
-      for(
-        let i=0;
-        i+length<history.length-1;
-        i++
-      ) {
-
-        let score=0;
-
-        for(let j=0;j<length;j++) {
-
-          score += Math.max(
-            0,
-            6-distance(current[j],history[i+j])
-          )/6;
-        }
-
-        matches.push({
-          score:score/length,
-          next:history[i+length]
-        });
-      }
-
-      matches.sort((a,b)=>b.score-a.score);
-
-      const selected = matches.slice(
-        0,
-        Math.max(3,Math.ceil(matches.length*.2))
-      );
-
-      for(const m of selected) {
-
-        const p = idx(m.next);
-
-        for(let j=0;j<37;j++) {
-
-          const d = Math.min(
-            Math.abs(p-j),
-            37-Math.abs(p-j)
-          );
-
-          if(d<=3) {
-            weights[j] += (4-d)*m.score*.45;
-          }
-        }
-      }
-    }
-  }
-
-  return weights;
+function save(){
+try{
+localStorage.setItem(
+KEY,
+JSON.stringify(state)
+);
+}catch(e){}
 }
 
 /* ==========================================================
-   GEOMETRIA OTIMIZADA
-
-   5 blocos de 5 + 1 bloco de 3 = 28 números.
-   Utiliza busca limitada com estados por máscara.
+   MOTOR DE PESOS ORIGINAL
    ========================================================== */
 
-const BLOCKS5 = [];
-const BLOCKS3 = [];
+function motorWeights(history,family,radius){
 
-for(let center=0;center<37;center++) {
+const weights=Array(37).fill(.01);
+const recent=history.slice(-60);
 
-  for(const radius of [1,2]) {
+for(let k=0;k<recent.length;k++){
 
-    const numbers = [];
+const n=recent[recent.length-1-k];
+const decay=Math.exp(-k/(radius*2.3));
+const p=idx(n);
 
-    for(let d=-radius;d<=radius;d++) {
-      numbers.push(W[mod(center+d)]);
-    }
+for(let j=0;j<37;j++){
 
-    const mask = numbers.reduce(
-      (m,n)=>m|(1n<<BigInt(idx(n))),
-      0n
-    );
+const d=Math.min(
+Math.abs(p-j),
+37-Math.abs(p-j)
+);
 
-    const block = {
-      center:W[center],
-      radius,
-      numbers,
-      mask
-    };
-
-    if(radius===1) BLOCKS3.push(block);
-    else BLOCKS5.push(block);
-  }
+if(d<=6){
+weights[j]+=decay*(7-d)/7;
+}
+}
 }
 
-function geometry(weights,mandatory=[]) {
+if(family.includes("DINAMICO")){
 
-  const required = new Set(mandatory);
+for(
+let k=0;
+k<Math.min(radius+2,history.length);
+k++
+){
 
-  const scoreBlock = b => {
-    let score=0;
+const n=history[history.length-1-k];
+const p=idx(n);
 
-    for(const n of b.numbers) {
-      score += weights[idx(n)] || 0;
-    }
+for(let j=0;j<37;j++){
 
-    return score;
-  };
+const d=Math.min(
+Math.abs(p-j),
+37-Math.abs(p-j)
+);
 
-  const fives = BLOCKS5.map(b=>({
-    ...b,
-    value:scoreBlock(b)
-  })).sort((a,b)=>b.value-a.value);
+if(d<=3){
+weights[j]+=(4-d)/(k+2)*1.7;
+}
+}
+}
+}
 
-  const threes = BLOCKS3.map(b=>({
-    ...b,
-    value:scoreBlock(b)
-  })).sort((a,b)=>b.value-a.value);
+if(family.startsWith("RX")){
 
-  let best=null;
+const length=Math.min(
+radius,
+history.length-2
+);
 
-  /*
-   Primeiro escolhe bloco de 3.
-   Busca os outros cinco sem sobreposição.
-   Beam search com limite de estados.
-  */
+if(length>=2){
 
-  for(const small of threes) {
+const current=history.slice(-length);
+const matches=[];
 
-    if(required.size) {
+for(
+let i=0;
+i+length<history.length-1;
+i++
+){
 
-      const missing = [...required].filter(
-        n=>!small.numbers.includes(n)
-      );
+let score=0;
 
-      if(missing.length) continue;
-    }
+for(let j=0;j<length;j++){
 
-    let beam=[{
-      blocks:[small],
-      mask:small.mask,
-      score:small.value
-    }];
+score+=Math.max(
+0,
+6-distance(
+current[j],
+history[i+j]
+)
+)/6;
+}
 
-    for(let step=0;step<5;step++) {
+matches.push({
+score:score/length,
+next:history[i+length]
+});
+}
 
-      const next=[];
+matches.sort((a,b)=>b.score-a.score);
 
-      for(const item of beam) {
+const selected=matches.slice(
+0,
+Math.max(
+3,
+Math.ceil(matches.length*.2)
+)
+);
 
-        for(const b of fives) {
+for(const m of selected){
 
-          if((item.mask & b.mask)!==0n) {
-            continue;
-          }
+const p=idx(m.next);
 
-          next.push({
-            blocks:[...item.blocks,b],
-            mask:item.mask|b.mask,
-            score:item.score+b.value
-          });
-        }
-      }
+for(let j=0;j<37;j++){
 
-      if(!next.length) {
-        beam=[];
-        break;
-      }
+const d=Math.min(
+Math.abs(p-j),
+37-Math.abs(p-j)
+);
 
-      next.sort((a,b)=>b.score-a.score);
+if(d<=3){
+weights[j]+=(4-d)*m.score*.45;
+}
+}
+}
+}
+}
 
-      const unique=new Set();
-      const trimmed=[];
+return weights;
+}
 
-      for(const item of next) {
+/* ==========================================================
+   GEOMETRIA ORIGINAL
+   ========================================================== */
 
-        const key=item.mask.toString();
+const BLOCKS5=[];
+const BLOCKS3=[];
 
-        if(unique.has(key)) continue;
+for(let center=0;center<37;center++){
 
-        unique.add(key);
-        trimmed.push(item);
+for(const radius of [1,2]){
 
-        if(trimmed.length>=10) break;
-      }
+const numbers=[];
 
-      beam=trimmed;
-    }
+for(let d=-radius;d<=radius;d++){
+numbers.push(W[mod(center+d)]);
+}
 
-    for(const item of beam) {
+const mask=numbers.reduce(
+(m,n)=>m|(1n<<BigInt(idx(n))),
+0n
+);
 
-      if(item.blocks.length!==6) continue;
+const block={
+center:W[center],
+radius,
+numbers,
+mask
+};
 
-      if(best && item.score<=best.score) {
-        continue;
-      }
+if(radius===1){
+BLOCKS3.push(block);
+}else{
+BLOCKS5.push(block);
+}
+}
+}
 
-      best=item;
-    }
-  }
+function geometry(weights,mandatory=[]){
 
-  if(!best) return null;
+const required=new Set(mandatory);
 
-  const blocks=best.blocks.map(b=>({
-    center:b.center,
-    radius:b.radius,
-    numbers:[...b.numbers]
-  }));
+const scoreBlock=b=>{
+let score=0;
 
-  const numbers=blocks.flatMap(
-    b=>b.numbers
-  );
+for(const n of b.numbers){
+score+=weights[idx(n)]||0;
+}
 
-  if(new Set(numbers).size!==28) {
-    return null;
-  }
+return score;
+};
 
-  return {
-    score:best.score,
-    blocks,
-    numbers,
-    centers5:blocks
-      .filter(b=>b.radius===2)
-      .map(b=>b.center),
-    center3:blocks.find(
-      b=>b.radius===1
-    ).center
-  };
+const fives=BLOCKS5.map(b=>({
+...b,
+value:scoreBlock(b)
+})).sort((a,b)=>b.value-a.value);
+
+const threes=BLOCKS3.map(b=>({
+...b,
+value:scoreBlock(b)
+})).sort((a,b)=>b.value-a.value);
+
+let best=null;
+
+for(const small of threes){
+
+if(required.size){
+
+const missing=[...required].filter(
+n=>!small.numbers.includes(n)
+);
+
+if(missing.length)continue;
+}
+
+let beam=[{
+blocks:[small],
+mask:small.mask,
+score:small.value
+}];
+
+for(let step=0;step<5;step++){
+
+const next=[];
+
+for(const item of beam){
+
+for(const b of fives){
+
+if((item.mask&b.mask)!==0n){
+continue;
+}
+
+next.push({
+blocks:[...item.blocks,b],
+mask:item.mask|b.mask,
+score:item.score+b.value
+});
+}
+}
+
+if(!next.length){
+beam=[];
+break;
+}
+
+next.sort((a,b)=>b.score-a.score);
+
+const unique=new Set();
+const trimmed=[];
+
+for(const item of next){
+
+const key=item.mask.toString();
+
+if(unique.has(key))continue;
+
+unique.add(key);
+trimmed.push(item);
+
+if(trimmed.length>=10)break;
+}
+
+beam=trimmed;
+}
+
+for(const item of beam){
+
+if(item.blocks.length!==6)continue;
+
+if(best&&item.score<=best.score){
+continue;
+}
+
+best=item;
+}
+}
+
+if(!best)return null;
+
+const blocks=best.blocks.map(b=>({
+center:b.center,
+radius:b.radius,
+numbers:[...b.numbers]
+}));
+
+const numbers=blocks.flatMap(
+b=>b.numbers
+);
+
+if(new Set(numbers).size!==28){
+return null;
+}
+
+return {
+score:best.score,
+blocks,
+numbers,
+centers5:blocks
+.filter(b=>b.radius===2)
+.map(b=>b.center),
+center3:blocks.find(
+b=>b.radius===1
+).center
+};
 }
 
 /* ==========================================================
    12 MOTORES
    ========================================================== */
 
-function candidates(history) {
+function candidates(history){
 
-  if(history.length<8) return [];
+if(history.length<8)return [];
 
-  const result=[];
+const result=[];
 
-  for(const family of FAMILIES) {
+for(const family of FAMILIES){
 
-    for(const radius of RADII) {
+for(const radius of RADII){
 
-      if(
-        family.startsWith("RX") &&
-        history.length<radius*2+4
-      ) continue;
+if(
+family.startsWith("RX")&&
+history.length<radius*2+4
+)continue;
 
-      const weights=motorWeights(
-        history,
-        family,
-        radius
-      );
+const weights=motorWeights(
+history,
+family,
+radius
+);
 
-      const play=geometry(weights);
+const play=geometry(weights);
 
-      if(!play) continue;
+if(!play)continue;
 
-      result.push({
-        key:family+"_"+radius,
-        family,
-        radius,
-        score:play.score,
-        play
-      });
-    }
-  }
+result.push({
+key:family+"_"+radius,
+family,
+radius,
+score:play.score,
+play
+});
+}
+}
 
-  result.sort((a,b)=>b.score-a.score);
+result.sort((a,b)=>b.score-a.score);
 
-  result.forEach((c,i)=>{
-    c.rank=i+1;
-  });
+result.forEach((c,i)=>{
+c.rank=i+1;
+});
 
-  return result;
+return result;
 }
 
 /* ==========================================================
-   CACHE INCREMENTAL
+   CACHE
    ========================================================== */
 
 let candidateCache={
-  signature:null,
-  value:[]
+signature:null,
+value:[]
 };
 
-function getCandidates() {
+function getCandidates(){
 
-  const signature=state.history.join(",");
+const signature=state.history.join(",");
 
-  if(candidateCache.signature===signature) {
-    return candidateCache.value;
-  }
-
-  const value=candidates(state.history);
-
-  candidateCache={
-    signature,
-    value
-  };
-
-  return value;
+if(candidateCache.signature===signature){
+return candidateCache.value;
 }
 
-function invalidateCandidates() {
-  candidateCache.signature=null;
+const value=candidates(state.history);
+
+candidateCache={
+signature,
+value
+};
+
+return value;
+}
+
+function invalidateCandidates(){
+candidateCache.signature=null;
 }
 
 /* ==========================================================
    ESTATÍSTICAS VIRTUAIS
-
-   Registros são congelados por giro.
    ========================================================== */
 
 function motorStats(
-  key,
-  window=20,
-  ledger=state.ledger
-) {
+key,
+window=20,
+ledger=state.ledger
+){
 
-  const rows=ledger.filter(
-    r=>r.virtual?.some(
-      x=>x.key===key
-    )
-  ).slice(-window);
+const rows=ledger.filter(
+r=>r.virtual?.some(
+x=>x.key===key
+)
+).slice(-window);
 
-  let hits=0;
+let hits=0;
 
-  for(const row of rows) {
+for(const row of rows){
 
-    const m=row.virtual.find(
-      x=>x.key===key
-    );
+const m=row.virtual.find(
+x=>x.key===key
+);
 
-    if(m.numbers.includes(row.number)) {
-      hits++;
-    }
-  }
-
-  return {
-    total:rows.length,
-    hits,
-    misses:rows.length-hits,
-    rate:rows.length
-      ?hits/rows.length
-      :null
-  };
+if(m.numbers.includes(row.number)){
+hits++;
+}
 }
 
-function virtualSnapshot(cs) {
-  return cs.map(c=>({
-    key:c.key,
-    rank:c.rank,
-    score:c.score,
-    numbers:[...c.play.numbers],
-    centers5:[...c.play.centers5],
-    center3:c.play.center3
-  }));
+return {
+total:rows.length,
+hits,
+misses:rows.length-hits,
+rate:rows.length
+?hits/rows.length
+:null
+};
+}
+
+function virtualSnapshot(cs){
+
+return cs.map(c=>({
+key:c.key,
+rank:c.rank,
+score:c.score,
+numbers:[...c.play.numbers],
+centers5:[...c.play.centers5],
+center3:c.play.center3
+}));
 }
 
 /* ==========================================================
-   ADAPTATIVAS
+   ADAPTATIVAS ORIGINAIS
    ========================================================== */
 
-function adaptiveChoose(cs,config,previous) {
+function adaptiveChoose(cs,config,previous){
 
-  if(!cs.length) return null;
+if(!cs.length)return null;
 
-  const eligible=cs.filter(
-    c=>c.rank<=config.maxRank
-  );
+const eligible=cs.filter(
+c=>c.rank<=config.maxRank
+);
 
-  const ranked=eligible.map(c=>{
+const ranked=eligible.map(c=>{
 
-    const stats=motorStats(
-      c.key,
-      config.window
-    );
+const stats=motorStats(
+c.key,
+config.window
+);
 
-    let score=stats.total>=config.minSamples
-      ?stats.rate
-      :.5;
+let score=stats.total>=config.minSamples
+?stats.rate
+:.5;
 
-    if(config.recentWeight) {
+if(config.recentWeight){
 
-      const recent=motorStats(
-        c.key,
-        Math.max(
-          5,
-          Math.floor(config.window/2)
-        )
-      );
+const recent=motorStats(
+c.key,
+Math.max(
+5,
+Math.floor(config.window/2)
+)
+);
 
-      if(recent.rate!==null) {
+if(recent.rate!==null){
 
-        score=
-          score*(1-config.recentWeight)+
-          recent.rate*config.recentWeight;
-      }
-    }
+score=
+score*(1-config.recentWeight)+
+recent.rate*config.recentWeight;
+}
+}
 
-    if(config.lossPenalty) {
+if(config.lossPenalty){
 
-      const recent=motorStats(c.key,5);
+const recent=motorStats(c.key,5);
 
-      score-=recent.misses*
-        config.lossPenalty;
-    }
+score-=recent.misses*
+config.lossPenalty;
+}
 
-    if(config.consensus) {
+if(config.consensus){
 
-      let votes=0;
+let votes=0;
 
-      for(const n of c.play.numbers) {
+for(const n of c.play.numbers){
 
-        votes+=cs.filter(
-          x=>x.play.numbers.includes(n)
-        ).length;
-      }
+votes+=cs.filter(
+x=>x.play.numbers.includes(n)
+).length;
+}
 
-      score+=config.consensus*
-        votes/(28*cs.length);
-    }
+score+=config.consensus*
+votes/(28*cs.length);
+}
 
-    return {c,score,stats};
-  });
+return {c,score,stats};
+});
 
-  ranked.sort(
-    (a,b)=>
-      b.score-a.score ||
-      a.c.rank-b.c.rank
-  );
+ranked.sort(
+(a,b)=>
+b.score-a.score||
+a.c.rank-b.c.rank
+);
 
-  const best=ranked[0];
+const best=ranked[0];
 
-  if(!best) return cs[0];
-  if(!previous) return best.c;
+if(!best)return cs[0];
+if(!previous)return best.c;
 
-  const old=ranked.find(
-    x=>x.c.key===previous
-  );
+const old=ranked.find(
+x=>x.c.key===previous
+);
 
-  if(!old) return best.c;
+if(!old)return best.c;
 
-  if(old.c.key===best.c.key) {
-    return old.c;
-  }
+if(old.c.key===best.c.key){
+return old.c;
+}
 
-  if(config.switchAfterLoss) {
+if(config.switchAfterLoss){
 
-    const recent=state.ledger
-      .filter(r=>r.virtual?.length)
-      .slice(-config.persistence);
+const recent=state.ledger
+.filter(r=>r.virtual?.length)
+.slice(-config.persistence);
 
-    if(recent.length===config.persistence) {
+if(recent.length===config.persistence){
 
-      const failures=recent.every(r=>{
+const failures=recent.every(r=>{
 
-        const m=r.virtual.find(
-          x=>x.key===previous
-        );
+const m=r.virtual.find(
+x=>x.key===previous
+);
 
-        return m &&
-          !m.numbers.includes(r.number);
-      });
+return m&&
+!m.numbers.includes(r.number);
+});
 
-      if(failures) return best.c;
-    }
-  }
+if(failures)return best.c;
+}
+}
 
-  if(
-    best.stats.total>=config.minSamples &&
-    old.stats.total>=config.minSamples &&
-    best.score>=old.score+config.margin
-  ) {
-    return best.c;
-  }
+if(
+best.stats.total>=config.minSamples&&
+old.stats.total>=config.minSamples&&
+best.score>=old.score+config.margin
+){
+return best.c;
+}
 
-  return old.c;
+return old.c;
 }
 
 /* ==========================================================
    CONSENSO E UNIÃO
    ========================================================== */
 
-function collective(cs,rule) {
+function collective(cs,rule){
 
-  const votes=Array(37).fill(0);
+const votes=Array(37).fill(0);
 
-  const selected=rule==="UNION"
-    ?cs.slice(0,3)
-    :cs;
+const selected=rule==="UNION"
+?cs.slice(0,3)
+:cs;
 
-  for(const c of selected) {
+for(const c of selected){
 
-    for(const n of c.play.numbers) {
+for(const n of c.play.numbers){
 
-      votes[idx(n)]+=
-        rule==="UNION"
-          ?1
-          :1/(1+c.rank*.1);
-    }
-  }
+votes[idx(n)]+=
+rule==="UNION"
+?1
+:1/(1+c.rank*.1);
+}
+}
 
-  const play=geometry(votes);
+const play=geometry(votes);
 
-  return {
-    key:rule,
-    family:rule,
-    radius:0,
-    rank:0,
-    score:play.score,
-    play
-  };
+return {
+key:rule,
+family:rule,
+radius:0,
+rank:0,
+score:play.score,
+play
+};
 }
 
 /* ==========================================================
-   TREINADOR ESTRATÉGICO
+   TREINADOR V5.10
 
-   A recomendação é baseada em backtest
-   cronológico. O próximo número nunca é
-   usado para selecionar a jogada atual.
+   REAVALIAÇÃO A CADA 3 GIROS.
+
+   COMPARAÇÃO:
+   - ÚLTIMOS 3 GIROS
+   - DESEMPENHO RECENTE
+   - PARÂMETROS DA ADAPTATIVA
+
+   REGRA:
+   - TROCAR DE ADAPTATIVA AO COMPLETAR 3 GIROS
+   - NÃO REPETIR A ADAPTATIVA ANTERIOR
+   - NÃO TROCAR DENTRO DE UM GALE
+   - SELECIONAR ENTRE AS ALTERNATIVAS
+     COM MELHOR PONTUAÇÃO DISPONÍVEL
    ========================================================== */
 
 let trainerCache={
-  signature:null,
-  recommendation:null,
-  rows:[]
+signature:null,
+recommendation:null,
+rows:[],
+ranking:[]
 };
 
-function trainerAnalysis() {
+function trainerAnalysis(){
 
-  const signature=[
-    state.history.join(","),
-    state.g1,
-    state.galeSkip,
-    state.secondHouse
-  ].join("|");
+const signature=[
+state.history.join(","),
+state.g1,
+state.galeSkip,
+state.secondHouse
+].join("|");
 
-  if(trainerCache.signature===signature) {
-    return trainerCache;
-  }
-
-  const rows=[];
-
-  /*
-   Ranking de cobertura virtual dos motores.
-   Para não travar o teclado, não refaz
-   todas as 22 simulações completas a cada
-   número digitado.
-  */
-
-  const ranking=[];
-
-  for(const family of FAMILIES) {
-
-    for(const radius of RADII) {
-
-      const key=family+"_"+radius;
-      const stats=motorStats(key,30);
-
-      ranking.push({
-        key,
-        ...stats
-      });
-    }
-  }
-
-  ranking.sort(
-    (a,b)=>
-      (b.rate??-1)-(a.rate??-1)
-  );
-
-  /*
-   Configurações adaptativas são comparadas
-   por uma métrica exploratória de cobertura.
-   Não representa a taxa comprovada da
-   estratégia completa.
-  */
-
-  for(const config of ADAPTATIVES) {
-
-    const recent=state.ledger
-      .filter(r=>r.virtual?.length)
-      .slice(-config.window);
-
-    let hits=0;
-    let total=0;
-
-    for(const row of recent) {
-
-      const eligible=row.virtual
-        .filter(
-          m=>m.rank<=config.maxRank
-        )
-        .sort(
-          (a,b)=>a.rank-b.rank
-        );
-
-      const motor=eligible[0];
-
-      if(!motor) continue;
-
-      total++;
-
-      if(motor.numbers.includes(row.number)) {
-        hits++;
-      }
-    }
-
-    rows.push({
-      id:config.id,
-      name:config.name,
-      config,
-      hits,
-      total,
-      rate:total?hits/total:0
-    });
-  }
-
-  rows.sort(
-    (a,b)=>
-      b.rate-a.rate ||
-      b.total-a.total
-  );
-
-  const recommendation=rows[0]||null;
-
-  trainerCache={
-    signature,
-    recommendation,
-    rows,
-    ranking
-  };
-
-  return trainerCache;
+if(trainerCache.signature===signature){
+return trainerCache;
 }
 
-function invalidateTrainer() {
-  trainerCache.signature=null;
+const rows=[];
+const ranking=[];
+
+for(const family of FAMILIES){
+
+for(const radius of RADII){
+
+const key=family+"_"+radius;
+const stats=motorStats(key,30);
+
+ranking.push({
+key,
+...stats
+});
+}
+}
+
+ranking.sort(
+(a,b)=>
+(b.rate??-1)-(a.rate??-1)
+);
+
+/*
+ A análise do treinador agora prioriza
+ a janela de três giros.
+*/
+
+const last3=state.ledger
+.filter(r=>r.virtual?.length)
+.slice(-3);
+
+for(const config of ADAPTATIVES){
+
+let hits=0;
+let total=0;
+let misses=0;
+let rankSum=0;
+
+for(const row of last3){
+
+const eligible=row.virtual
+.filter(m=>m.rank<=config.maxRank)
+.sort((a,b)=>a.rank-b.rank);
+
+const motor=eligible[0];
+
+if(!motor)continue;
+
+total++;
+rankSum+=motor.rank;
+
+if(motor.numbers.includes(row.number)){
+hits++;
+}else{
+misses++;
+}
+}
+
+const recentRate=total
+?hits/total
+:0;
+
+const longer=state.ledger
+.filter(r=>r.virtual?.length)
+.slice(-config.window);
+
+let longHits=0;
+let longTotal=0;
+
+for(const row of longer){
+
+const eligible=row.virtual
+.filter(m=>m.rank<=config.maxRank)
+.sort((a,b)=>a.rank-b.rank);
+
+const motor=eligible[0];
+
+if(!motor)continue;
+
+longTotal++;
+
+if(motor.numbers.includes(row.number)){
+longHits++;
+}
+}
+
+const longRate=longTotal
+?longHits/longTotal
+:0;
+
+/*
+ Prioridade de 70% para os últimos
+ três giros e 30% para a janela maior.
+*/
+
+let score=
+recentRate*.70+
+longRate*.30;
+
+/*
+ Pequena diferenciação das regras
+ configuradas das adaptativas.
+*/
+
+score-=misses*config.lossPenalty;
+
+if(config.recentWeight){
+score+=recentRate*
+config.recentWeight*.05;
+}
+
+if(config.consensus){
+score+=config.consensus*.05;
+}
+
+if(config.switchAfterLoss&&misses>=2){
+score-=.015;
+}
+
+if(total){
+score+=
+(13-rankSum/total)*.0005;
+}
+
+rows.push({
+id:config.id,
+name:config.name,
+config,
+hits,
+total,
+misses,
+longHits,
+longTotal,
+rate:recentRate,
+score
+});
+}
+
+rows.sort(
+(a,b)=>
+b.score-a.score||
+b.rate-a.rate||
+a.id.localeCompare(b.id)
+);
+
+const recommendation=rows[0]||null;
+
+trainerCache={
+signature,
+recommendation,
+rows,
+ranking
+};
+
+return trainerCache;
+}
+
+function invalidateTrainer(){
+trainerCache.signature=null;
+}
+
+/* ==========================================================
+   CONTROLE DE TROCA A CADA 3 GIROS
+
+   O treinador escolhe uma adaptativa
+   diferente da anterior.
+
+   A escolha só é efetivada quando
+   state.phase === "ENTRY".
+   ========================================================== */
+
+function updateTrainerChoice(){
+
+if(state.strategy!=="TRAINER"){
+return;
+}
+
+if(state.manual){
+return;
+}
+
+/*
+ Durante Gale, não muda.
+*/
+if(state.phase!=="ENTRY"){
+
+if(
+state.trainerChoice &&
+state.history.length-state.trainerStart>=3
+){
+state.trainerPending=true;
+}
+
+return;
+}
+
+const analysis=trainerAnalysis();
+
+if(!analysis.rows.length)return;
+
+const current=state.trainerChoice;
+
+const elapsed=
+state.history.length-
+(state.trainerStart||0);
+
+const needsFirst=!current;
+
+const needsChange=
+!needsFirst&&
+(
+elapsed>=3||
+state.trainerPending
+);
+
+if(!needsFirst&&!needsChange){
+return;
+}
+
+/*
+ Exclui a adaptativa anterior.
+ Assim, ao completar três giros,
+ a troca realmente acontece.
+*/
+
+let alternatives=analysis.rows.filter(
+r=>r.id!==current
+);
+
+if(!alternatives.length){
+alternatives=analysis.rows;
+}
+
+/*
+ Melhor linha disponível na análise
+ recente de três giros.
+*/
+
+const selected=alternatives[0];
+
+if(!selected)return;
+
+if(current&&current!==selected.id){
+state.trainerChanges++;
+}
+
+state.trainerChoice=selected.id;
+state.trainerStart=state.history.length;
+state.trainerPending=false;
+
+save();
+}
+
+function trainerStatus(){
+
+const elapsed=Math.max(
+0,
+state.history.length-
+(state.trainerStart||0)
+);
+
+return {
+adaptive:state.trainerChoice,
+elapsed,
+remaining:Math.max(0,3-elapsed),
+pending:!!state.trainerPending,
+changes:state.trainerChanges||0
+};
 }
 
 /* ==========================================================
    ESTRATÉGIA ATIVA
    ========================================================== */
 
-function activeStrategy() {
+function activeStrategy(){
 
-  if(state.manual) {
-    return {
-      rule:"MANUAL",
-      name:state.manual
-    };
-  }
+if(state.manual){
 
-  if(state.strategy==="TRAINER") {
+return {
+rule:"MANUAL",
+name:state.manual
+};
+}
 
-    const rec=trainerAnalysis().recommendation;
+if(state.strategy==="TRAINER"){
 
-    const config=rec?.config ||
-      ADAPTATIVES[4];
+updateTrainerChoice();
 
-    return {
-      rule:"ADAPTIVE",
-      config,
-      name:"TREINADOR → "+config.name
-    };
-  }
+const config=ADAPTATIVES.find(
+x=>x.id===state.trainerChoice
+)||ADAPTATIVES[4];
 
-  if(state.strategy==="ADAPTIVE") {
+return {
+rule:"ADAPTIVE",
+config,
+name:"TREINADOR → "+config.name
+};
+}
 
-    const config=ADAPTATIVES.find(
-      x=>x.id===state.activeAdaptive
-    ) || ADAPTATIVES[4];
+if(state.strategy==="ADAPTIVE"){
 
-    return {
-      rule:"ADAPTIVE",
-      config,
-      name:config.name
-    };
-  }
+const config=ADAPTATIVES.find(
+x=>x.id===state.activeAdaptive
+)||ADAPTATIVES[4];
 
-  if(state.strategy==="CREATED") {
+return {
+rule:"ADAPTIVE",
+config,
+name:config.name
+};
+}
 
-    const created=state.createdStrategies.find(
-      x=>x.id===state.activeCreated
-    );
+if(state.strategy==="CREATED"){
 
-    if(created) {
-      return {
-        rule:"ADAPTIVE",
-        config:created.config,
-        name:created.name
-      };
-    }
-  }
+const created=state.createdStrategies.find(
+x=>x.id===state.activeCreated
+);
 
-  return {
-    rule:state.strategy,
-    name:ORIGINALS.find(
-      x=>x[0]===state.strategy
-    )?.[1] || state.strategy
-  };
+if(created){
+
+return {
+rule:"ADAPTIVE",
+config:created.config,
+name:created.name
+};
+}
+}
+
+return {
+rule:state.strategy,
+name:ORIGINALS.find(
+x=>x[0]===state.strategy
+)?.[1]||state.strategy
+};
 }
 
 /* ==========================================================
-   ESCOLHA DO MOTOR
+   ESCOLHA DOS MOTORES — ORIGINAL
    ========================================================== */
 
-function selectMotor(cs) {
+function selectMotor(cs){
 
-  if(!cs.length) return null;
+if(!cs.length)return null;
 
-  const active=activeStrategy();
+const active=activeStrategy();
 
-  const fixed=cs[
-    Math.min(
-      Math.max(state.rank-1,0),
-      cs.length-1
-    )
-  ];
+const fixed=cs[
+Math.min(
+Math.max(state.rank-1,0),
+cs.length-1
+)
+];
 
-  const previous=state.previousMotor;
+const previous=state.previousMotor;
 
-  if(active.rule==="MANUAL") {
+if(active.rule==="MANUAL"){
 
-    return cs.find(
-      x=>x.key===state.manual
-    ) || fixed;
-  }
+return cs.find(
+x=>x.key===state.manual
+)||fixed;
+}
 
-  if(active.rule==="FIXED") return fixed;
-  if(active.rule==="GEO") return cs[0];
+if(active.rule==="FIXED")return fixed;
+if(active.rule==="GEO")return cs[0];
 
-  if(active.rule==="ADAPTIVE") {
+if(active.rule==="ADAPTIVE"){
 
-    return adaptiveChoose(
-      cs,
-      active.config,
-      previous
-    );
-  }
+return adaptiveChoose(
+cs,
+active.config,
+previous
+);
+}
 
-  if(active.rule==="STABLE") {
+if(active.rule==="STABLE"){
 
-    const old=cs.find(
-      x=>x.key===previous
-    );
+const old=cs.find(
+x=>x.key===previous
+);
 
-    return old && old.rank<=5
-      ?old
-      :fixed;
-  }
+return old&&old.rank<=5
+?old
+:fixed;
+}
 
-  if(active.rule==="BEST") {
+if(active.rule==="BEST"){
 
-    return [...cs].sort((a,b)=>{
+return [...cs].sort((a,b)=>{
 
-      const A=motorStats(a.key);
-      const B=motorStats(b.key);
+const A=motorStats(a.key);
+const B=motorStats(b.key);
 
-      const ar=A.total>=8?A.rate:-1;
-      const br=B.total>=8?B.rate:-1;
+const ar=A.total>=8?A.rate:-1;
+const br=B.total>=8?B.rate:-1;
 
-      return br-ar || a.rank-b.rank;
-    })[0];
-  }
+return br-ar||a.rank-b.rank;
+})[0];
+}
 
-  if(active.rule==="SWITCH") {
+if(active.rule==="SWITCH"){
 
-    const old=cs.find(
-      x=>x.key===previous
-    ) || fixed;
+const old=cs.find(
+x=>x.key===previous
+)||fixed;
 
-    const oldStats=motorStats(old.key);
+const oldStats=motorStats(old.key);
 
-    const alternatives=cs.map(c=>({
-      c,
-      stats:motorStats(c.key)
-    }))
-    .filter(x=>x.stats.total>=12)
-    .sort(
-      (a,b)=>b.stats.rate-a.stats.rate
-    );
+const alternatives=cs.map(c=>({
+c,
+stats:motorStats(c.key)
+}))
+.filter(x=>x.stats.total>=12)
+.sort(
+(a,b)=>b.stats.rate-a.stats.rate
+);
 
-    if(
-      alternatives.length &&
-      oldStats.total>=12 &&
-      alternatives[0].stats.rate>
-        oldStats.rate+.12
-    ) {
-      return alternatives[0].c;
-    }
+if(
+alternatives.length&&
+oldStats.total>=12&&
+alternatives[0].stats.rate>
+oldStats.rate+.12
+){
+return alternatives[0].c;
+}
 
-    return old;
-  }
+return old;
+}
 
-  if(
-    active.rule==="CONSENSUS" ||
-    active.rule==="UNION"
-  ) {
-    return collective(cs,active.rule);
-  }
+if(
+active.rule==="CONSENSUS"||
+active.rule==="UNION"
+){
+return collective(cs,active.rule);
+}
 
-  return fixed;
+return fixed;
 }
 
 /* ==========================================================
-   G1 AJUSTE FINO
-
-   O último número e seus dois vizinhos
-   são obrigatórios na jogada do G1.
-
-   Gale normal: sem ajuste.
+   G1 AJUSTE FINO — ORIGINAL
    ========================================================== */
 
-function tuneG1(original,lastNumber) {
+function tuneG1(original,lastNumber){
 
-  if(!original) return null;
+if(!original)return null;
 
-  const mandatory=neighbors(lastNumber,1);
+const mandatory=neighbors(lastNumber,1);
 
-  const weights=Array(37).fill(.01);
+const weights=Array(37).fill(.01);
 
-  for(const n of original.play.numbers) {
-    weights[idx(n)]+=100;
-  }
-
-  for(const n of mandatory) {
-    weights[idx(n)]+=100000;
-  }
-
-  let play=geometry(
-    weights,
-    mandatory
-  );
-
-  /*
-   Reserva: caso a busca limitada não
-   consiga completar a geometria,
-   mantém a jogada original e sinaliza
-   que o ajuste não foi possível.
-  */
-
-  if(!play) {
-    return {
-      ...copy(original),
-      g1:false,
-      g1Failed:true,
-      trigger:lastNumber
-    };
-  }
-
-  const covered=mandatory.every(
-    n=>play.numbers.includes(n)
-  );
-
-  if(!covered) {
-    return {
-      ...copy(original),
-      g1:false,
-      g1Failed:true,
-      trigger:lastNumber
-    };
-  }
-
-  return {
-    ...copy(original),
-    play,
-    g1:true,
-    g1Failed:false,
-    trigger:lastNumber
-  };
+for(const n of original.play.numbers){
+weights[idx(n)]+=100;
 }
 
-function snapMotor(m) {
+for(const n of mandatory){
+weights[idx(n)]+=100000;
+}
 
-  if(!m) return null;
+const play=geometry(
+weights,
+mandatory
+);
 
-  return {
-    key:m.key,
-    family:m.family,
-    radius:m.radius,
-    rank:m.rank,
-    score:m.score,
-    play:copy(m.play)
-  };
+if(!play){
+
+return {
+...copy(original),
+g1:false,
+g1Failed:true,
+trigger:lastNumber
+};
+}
+
+const covered=mandatory.every(
+n=>play.numbers.includes(n)
+);
+
+if(!covered){
+
+return {
+...copy(original),
+g1:false,
+g1Failed:true,
+trigger:lastNumber
+};
+}
+
+return {
+...copy(original),
+play,
+g1:true,
+g1Failed:false,
+trigger:lastNumber
+};
+}
+
+function snapMotor(m){
+
+if(!m)return null;
+
+return {
+key:m.key,
+family:m.family,
+radius:m.radius,
+rank:m.rank,
+score:m.score,
+play:copy(m.play)
+};
 }
 
 /* ==========================================================
-   REGISTRO DEFINITIVO DOS GIROS
-
-   Não reprocessa resultados antigos.
+   REGISTRO DEFINITIVO
    ========================================================== */
 
-function recordSpin(number,source="TEMPO REAL") {
+function recordSpin(
+number,
+source="TEMPO REAL"
+){
 
-  const cs=getCandidates();
-  const virtual=virtualSnapshot(cs);
+const cs=getCandidates();
+const virtual=virtualSnapshot(cs);
 
-  const active=activeStrategy();
-  const phaseBefore=state.phase;
+const active=activeStrategy();
+const phaseBefore=state.phase;
 
-  let motor=null;
-  let result="AGUARDANDO";
-  let played=false;
-  let covered=false;
-  let strategyName=active.name;
+let motor=null;
+let result="AGUARDANDO";
+let played=false;
+let covered=false;
+let strategyName=active.name;
 
-  if(state.phase==="ENTRY") {
+if(state.phase==="ENTRY"){
 
-    motor=snapMotor(selectMotor(cs));
+motor=snapMotor(
+selectMotor(cs)
+);
 
-    if(motor) {
+if(motor){
 
-      state.previousMotor=motor.key;
+state.previousMotor=motor.key;
 
-      state.cycle={
-        start:state.history.length+1,
-        strategy:active.name,
-        motor:motor.key,
-        source,
-        original:copy(motor),
-        firstNumber:null,
-        options:{
-          g1:state.g1,
-          galeSkip:state.galeSkip,
-          secondHouse:state.secondHouse
-        }
-      };
+state.cycle={
+start:state.history.length+1,
+strategy:active.name,
+motor:motor.key,
+source,
+original:copy(motor),
+firstNumber:null,
+options:{
+g1:state.g1,
+galeSkip:state.galeSkip,
+secondHouse:state.secondHouse
+}
+};
 
-      if(state.secondHouse) {
+if(state.secondHouse){
 
-        state.frozen=copy(motor);
-        state.phase="SECOND_SKIP";
-        result="2ª CASA";
+state.frozen=copy(motor);
+state.phase="SECOND_SKIP";
+result="2ª CASA";
 
-      } else {
+}else{
 
-        played=true;
+played=true;
 
-        covered=motor.play.numbers.includes(
-          number
-        );
+covered=motor.play.numbers.includes(
+number
+);
 
-        if(covered) {
+if(covered){
 
-          result="GREEN";
+result="GREEN";
 
-          state.phase="ENTRY";
-          state.frozen=null;
-          state.cycle=null;
+state.phase="ENTRY";
+state.frozen=null;
+state.cycle=null;
 
-        } else {
+}else{
 
-          result="GALE";
+result="GALE";
 
-          state.cycle.firstNumber=number;
+state.cycle.firstNumber=number;
 
-          state.frozen=state.g1
-            ?tuneG1(motor,number)
-            :copy(motor);
+state.frozen=state.g1
+?tuneG1(motor,number)
+:copy(motor);
 
-          state.phase=state.galeSkip
-            ?"GALE_SKIP"
-            :"GALE";
-        }
-      }
+state.phase=state.galeSkip
+?"GALE_SKIP"
+:"GALE";
+}
+}
 
-    } else {
-      result="SEM MOTOR";
-    }
-  }
+}else{
 
-  else if(state.phase==="SECOND_SKIP") {
+result="SEM MOTOR";
+}
+}
 
-    motor=copy(state.frozen);
-    strategyName=state.cycle?.strategy||active.name;
+else if(state.phase==="SECOND_SKIP"){
 
-    result="CASA PULADA";
-    state.phase="SECOND_ENTRY";
-  }
+motor=copy(state.frozen);
+strategyName=state.cycle?.strategy||active.name;
 
-  else if(state.phase==="SECOND_ENTRY") {
+result="CASA PULADA";
+state.phase="SECOND_ENTRY";
+}
 
-    motor=copy(state.frozen);
-    strategyName=state.cycle?.strategy||active.name;
+else if(state.phase==="SECOND_ENTRY"){
 
-    played=!!motor;
+motor=copy(state.frozen);
+strategyName=state.cycle?.strategy||active.name;
 
-    covered=!!(
-      motor &&
-      motor.play.numbers.includes(number)
-    );
+played=!!motor;
 
-    if(covered) {
+covered=!!(
+motor&&
+motor.play.numbers.includes(number)
+);
 
-      result="GREEN";
+if(covered){
 
-      state.phase="ENTRY";
-      state.frozen=null;
-      state.cycle=null;
+result="GREEN";
 
-    } else {
+state.phase="ENTRY";
+state.frozen=null;
+state.cycle=null;
 
-      result="GALE";
+}else{
 
-      if(state.cycle) {
-        state.cycle.firstNumber=number;
-      }
+result="GALE";
 
-      state.frozen=state.cycle?.options.g1
-        ?tuneG1(motor,number)
-        :copy(motor);
+if(state.cycle){
+state.cycle.firstNumber=number;
+}
 
-      state.phase=state.cycle?.options.galeSkip
-        ?"GALE_SKIP"
-        :"GALE";
-    }
-  }
+state.frozen=state.cycle?.options.g1
+?tuneG1(motor,number)
+:copy(motor);
 
-  else if(state.phase==="GALE_SKIP") {
+state.phase=state.cycle?.options.galeSkip
+?"GALE_SKIP"
+:"GALE";
+}
+}
 
-    motor=copy(state.frozen);
-    strategyName=state.cycle?.strategy||active.name;
+else if(state.phase==="GALE_SKIP"){
 
-    result="GALE PULADO";
-    state.phase="GALE";
-  }
+motor=copy(state.frozen);
+strategyName=state.cycle?.strategy||active.name;
 
-  else if(state.phase==="GALE") {
+result="GALE PULADO";
+state.phase="GALE";
+}
 
-    motor=copy(state.frozen);
-    strategyName=state.cycle?.strategy||active.name;
+else if(state.phase==="GALE"){
 
-    played=!!motor;
+motor=copy(state.frozen);
+strategyName=state.cycle?.strategy||active.name;
 
-    covered=!!(
-      motor &&
-      motor.play.numbers.includes(number)
-    );
+played=!!motor;
 
-    result=covered
-      ?"GREEN G1"
-      :"LOSS";
+covered=!!(
+motor&&
+motor.play.numbers.includes(number)
+);
 
-    state.phase="ENTRY";
-    state.frozen=null;
-    state.cycle=null;
-  }
+result=covered
+?"GREEN G1"
+:"LOSS";
 
-  const row={
-    id:Date.now()+"_"+state.ledger.length,
-    turn:state.history.length+1,
-    number,
-    source,
-    strategy:strategyName,
-    motor:motor?.key||"—",
-    phase:phaseBefore,
-    result,
-    played,
-    covered,
-    g1:!!motor?.g1,
-    g1Failed:!!motor?.g1Failed,
-    trigger:motor?.trigger??null,
-    play:motor?copy(motor.play):null,
-    virtual,
-    timestamp:Date.now()
-  };
+state.phase="ENTRY";
+state.frozen=null;
+state.cycle=null;
+}
 
-  state.history.push(number);
-  state.sources.push(source);
-  state.ledger.push(row);
+const row={
+id:Date.now()+"_"+state.ledger.length,
+turn:state.history.length+1,
+number,
+source,
+strategy:strategyName,
+motor:motor?.key||"—",
+phase:phaseBefore,
+result,
+played,
+covered,
+g1:!!motor?.g1,
+g1Failed:!!motor?.g1Failed,
+trigger:motor?.trigger??null,
+play:motor?copy(motor.play):null,
+virtual,
+timestamp:Date.now()
+};
 
-  if(state.history.length>MAX) {
-    state.history.shift();
-    state.sources.shift();
-    state.ledger.shift();
-  }
+state.history.push(number);
+state.sources.push(source);
+state.ledger.push(row);
 
-  invalidateCandidates();
-  invalidateTrainer();
+if(state.history.length>MAX){
 
-  save();
+state.history.shift();
+state.sources.shift();
+state.ledger.shift();
 
-  return row;
+/*
+ Ajusta o contador do treinador
+ ao deslocar o histórico.
+*/
+state.trainerStart=Math.max(
+0,
+(state.trainerStart||0)-1
+);
+}
+
+invalidateCandidates();
+invalidateTrainer();
+
+/*
+ A troca do treinador é preparada
+ após o giro, nunca durante Gale.
+*/
+
+if(
+state.strategy==="TRAINER"&&
+!state.manual
+){
+
+if(state.phase==="ENTRY"){
+updateTrainerChoice();
+}else if(
+state.history.length-
+(state.trainerStart||0)>=3
+){
+state.trainerPending=true;
+}
+}
+
+save();
+
+return row;
 }
 
 /* ==========================================================
-   APAGAR ÚLTIMO
-
-   Restaura o estado operacional a partir
-   dos registros, sem reclassificar GREEN.
+   APAGAR ÚLTIMO — ORIGINAL
    ========================================================== */
 
-function undoLast() {
+function undoLast(){
 
-  if(!state.history.length) return;
+if(!state.history.length)return;
 
-  state.history.pop();
-  state.sources.pop();
-  state.ledger.pop();
+state.history.pop();
+state.sources.pop();
+state.ledger.pop();
 
-  state.phase="ENTRY";
-  state.frozen=null;
-  state.cycle=null;
-  state.previousMotor=null;
+state.phase="ENTRY";
+state.frozen=null;
+state.cycle=null;
+state.previousMotor=null;
 
-  let cycle=null;
+let cycle=null;
 
-  for(const row of state.ledger) {
+for(const row of state.ledger){
 
-    if(row.phase==="ENTRY" && row.play) {
+if(row.phase==="ENTRY"&&row.play){
 
-      cycle={
-        start:row.turn,
-        strategy:row.strategy,
-        motor:row.motor,
-        source:row.source,
-        original:{
-          key:row.motor,
-          play:copy(row.play)
-        },
-        firstNumber:null,
-        options:{
-          g1:state.g1,
-          galeSkip:state.galeSkip,
-          secondHouse:state.secondHouse
-        }
-      };
+cycle={
+start:row.turn,
+strategy:row.strategy,
+motor:row.motor,
+source:row.source,
+original:{
+key:row.motor,
+play:copy(row.play)
+},
+firstNumber:null,
+options:{
+g1:state.g1,
+galeSkip:state.galeSkip,
+secondHouse:state.secondHouse
+}
+};
 
-      state.previousMotor=row.motor;
-    }
+state.previousMotor=row.motor;
+}
 
-    if(row.result==="2ª CASA") {
+if(row.result==="2ª CASA"){
 
-      state.frozen={
-        key:row.motor,
-        play:copy(row.play)
-      };
+state.frozen={
+key:row.motor,
+play:copy(row.play)
+};
 
-      state.phase="SECOND_SKIP";
-    }
+state.phase="SECOND_SKIP";
+}
 
-    else if(row.result==="CASA PULADA") {
+else if(row.result==="CASA PULADA"){
 
-      state.phase="SECOND_ENTRY";
-    }
+state.phase="SECOND_ENTRY";
+}
 
-    else if(row.result==="GALE") {
+else if(row.result==="GALE"){
 
-      if(cycle) {
+if(cycle){
 
-        cycle.firstNumber=row.number;
+cycle.firstNumber=row.number;
 
-        state.frozen=cycle.options.g1
-          ?tuneG1(
-              cycle.original,
-              row.number
-            )
-          :copy(cycle.original);
-      }
+state.frozen=cycle.options.g1
+?tuneG1(
+cycle.original,
+row.number
+)
+:copy(cycle.original);
+}
 
-      state.phase=cycle?.options.galeSkip
-        ?"GALE_SKIP"
-        :"GALE";
-    }
+state.phase=cycle?.options.galeSkip
+?"GALE_SKIP"
+:"GALE";
+}
 
-    else if(row.result==="GALE PULADO") {
+else if(row.result==="GALE PULADO"){
 
-      state.phase="GALE";
-    }
+state.phase="GALE";
+}
 
-    else if(
-      row.result==="GREEN" ||
-      row.result==="GREEN G1" ||
-      row.result==="LOSS"
-    ) {
+else if(
+row.result==="GREEN"||
+row.result==="GREEN G1"||
+row.result==="LOSS"
+){
 
-      state.phase="ENTRY";
-      state.frozen=null;
-      cycle=null;
-    }
-  }
+state.phase="ENTRY";
+state.frozen=null;
+cycle=null;
+}
+}
 
-  state.cycle=cycle;
+state.cycle=cycle;
 
-  invalidateCandidates();
-  invalidateTrainer();
+/*
+ Reinicia a contagem do bloco de
+ três giros após desfazer uma jogada.
+*/
+state.trainerStart=Math.min(
+state.trainerStart||0,
+state.history.length
+);
 
-  save();
-  render();
+state.trainerPending=false;
+
+invalidateCandidates();
+invalidateTrainer();
+
+save();
+render();
 }
 
 /* ==========================================================
-   MÉTRICAS PERMANENTES
+   MÉTRICAS
    ========================================================== */
 
-function metrics(rows) {
+function metrics(rows){
 
-  const closed=rows.filter(
-    r=>[
-      "GREEN",
-      "GREEN G1",
-      "LOSS"
-    ].includes(r.result)
-  );
+const closed=rows.filter(
+r=>[
+"GREEN",
+"GREEN G1",
+"LOSS"
+].includes(r.result)
+);
 
-  const green=closed.filter(
-    r=>r.result==="GREEN"
-  ).length;
+const green=closed.filter(
+r=>r.result==="GREEN"
+).length;
 
-  const greenG1=closed.filter(
-    r=>r.result==="GREEN G1"
-  ).length;
+const greenG1=closed.filter(
+r=>r.result==="GREEN G1"
+).length;
 
-  const loss=closed.filter(
-    r=>r.result==="LOSS"
-  ).length;
+const loss=closed.filter(
+r=>r.result==="LOSS"
+).length;
 
-  const gale=rows.filter(
-    r=>r.result==="GALE"
-  ).length;
+const gale=rows.filter(
+r=>r.result==="GALE"
+).length;
 
-  return {
-    total:closed.length,
-    green,
-    greenG1,
-    loss,
-    gale,
-    success:green+greenG1
-  };
+return {
+total:closed.length,
+green,
+greenG1,
+loss,
+gale,
+success:green+greenG1
+};
 }
 
-function metricsHTML(rows) {
+function metricsHTML(rows){
 
-  const m=metrics(rows);
+const m=metrics(rows);
 
-  return `
-  <div class="metrics">
+return `
+<div class="metrics">
 
-    <div class="metric">
-      <small>CICLOS FECHADOS</small>
-      <b>${m.total}</b>
-    </div>
+<div class="metric">
+<small>CICLOS FECHADOS</small>
+<b>${m.total}</b>
+</div>
 
-    <div class="metric">
-      <small>GREEN DIRETO</small>
-      <b class="good">${m.green}</b>
-    </div>
+<div class="metric">
+<small>GREEN DIRETO</small>
+<b class="good">${m.green}</b>
+</div>
 
-    <div class="metric">
-      <small>GREEN G1</small>
-      <b class="good">${m.greenG1}</b>
-    </div>
+<div class="metric">
+<small>GREEN G1</small>
+<b class="good">${m.greenG1}</b>
+</div>
 
-    <div class="metric">
-      <small>GALE ACIONADO</small>
-      <b>${m.gale}</b>
-    </div>
+<div class="metric">
+<small>GALE ACIONADO</small>
+<b>${m.gale}</b>
+</div>
 
-    <div class="metric">
-      <small>LOSS</small>
-      <b class="bad">${m.loss}</b>
-    </div>
+<div class="metric">
+<small>LOSS</small>
+<b class="bad">${m.loss}</b>
+</div>
 
-    <div class="metric">
-      <small>GREEN TOTAL</small>
-      <b>${pct(m.success,m.total)}</b>
-    </div>
+<div class="metric">
+<small>GREEN TOTAL</small>
+<b>${pct(m.success,m.total)}</b>
+</div>
 
-  </div>`;
+</div>`;
 }
 
 /* ==========================================================
-   CENTROS ORDENADOS POR SETOR
-
-   A ordem visual NÃO altera a geometria.
+   CENTROS POR SETOR
    ========================================================== */
 
-function sortedBlocks(play) {
+function sortedBlocks(play){
 
-  if(!play) return [];
+if(!play)return [];
 
-  return [...play.blocks].sort((a,b)=>{
+return [...play.blocks].sort((a,b)=>{
 
-    const sa=SECTOR_ORDER.indexOf(
-      sector(a.center)
-    );
+const sa=SECTOR_ORDER.indexOf(
+sector(a.center)
+);
 
-    const sb=SECTOR_ORDER.indexOf(
-      sector(b.center)
-    );
+const sb=SECTOR_ORDER.indexOf(
+sector(b.center)
+);
 
-    if(sa!==sb) return sa-sb;
+if(sa!==sb)return sa-sb;
 
-    return idx(a.center)-idx(b.center);
-  });
+return idx(a.center)-idx(b.center);
+});
 }
 
-function centersHTML(play) {
+function centersHTML(play){
 
-  if(!play) return "";
+if(!play)return "";
 
-  return sortedBlocks(play).map(b=>`
-    <div class="center ${b.radius===1?"short":""}">
-      ${b.center}
-      <small>
-        ${sector(b.center)}
-        • ${b.radius}V
-      </small>
-    </div>
-  `).join("");
+return sortedBlocks(play).map(b=>`
+<div class="center ${b.radius===1?"short":""}">
+${b.center}
+<small>
+${sector(b.center)}
+• ${b.radius}V
+</small>
+</div>
+`).join("");
 }
 
 /* ==========================================================
    RANKING / AUDITORIA
    ========================================================== */
 
-function virtualRankingHTML() {
+function virtualRankingHTML(){
 
-  const rows=[];
+const rows=[];
 
-  for(const family of FAMILIES) {
+for(const family of FAMILIES){
 
-    for(const radius of RADII) {
+for(const radius of RADII){
 
-      const key=family+"_"+radius;
+const key=family+"_"+radius;
 
-      rows.push({
-        key,
-        ...motorStats(key,200)
-      });
-    }
-  }
-
-  rows.sort(
-    (a,b)=>
-      (b.rate??-1)-(a.rate??-1)
-  );
-
-  return rows.map((m,i)=>`
-    <div class="listrow">
-      <b>${i+1}º ${esc(m.key)}</b>
-      <div class="muted">
-        ${m.total} giros
-        • ${m.hits} cobertos
-        • ${m.misses} descobertos
-        • ${pct(m.hits,m.total)}
-      </div>
-    </div>
-  `).join("");
+rows.push({
+key,
+...motorStats(key,200)
+});
+}
 }
 
-function opportunities() {
+rows.sort(
+(a,b)=>
+(b.rate??-1)-(a.rate??-1)
+);
 
-  const rows=[];
-
-  for(const row of state.ledger) {
-
-    if(
-      !row.play ||
-      row.covered ||
-      !row.played
-    ) continue;
-
-    const alternatives=row.virtual.filter(
-      m=>m.numbers.includes(row.number)
-    );
-
-    rows.push({
-      turn:row.turn,
-      number:row.number,
-      motor:row.motor,
-      result:row.result,
-      alternatives:alternatives.map(
-        x=>x.key
-      )
-    });
-  }
-
-  return rows;
+return rows.map((m,i)=>`
+<div class="listrow">
+<b>${i+1}º ${esc(m.key)}</b>
+<div class="muted">
+${m.total} giros
+• ${m.hits} cobertos
+• ${m.misses} descobertos
+• ${pct(m.hits,m.total)}
+</div>
+</div>
+`).join("");
 }
 
-function opportunitiesHTML() {
+function opportunities(){
 
-  return opportunities()
-    .slice(-20)
-    .reverse()
-    .map(x=>`
-      <div class="listrow">
-        <b>GIRO ${x.turn}</b>
-        • ${x.number}
-        • ${esc(x.result)}
-        <div class="muted">
-          Motor: ${esc(x.motor)}
-          <br>
-          Alternativas:
-          ${esc(
-            x.alternatives.join(", ") ||
-            "NENHUMA"
-          )}
-        </div>
-      </div>
-    `).join("");
+const rows=[];
+
+for(const row of state.ledger){
+
+if(
+!row.play||
+row.covered||
+!row.played
+)continue;
+
+const alternatives=row.virtual.filter(
+m=>m.numbers.includes(row.number)
+);
+
+rows.push({
+turn:row.turn,
+number:row.number,
+motor:row.motor,
+result:row.result,
+alternatives:alternatives.map(
+x=>x.key
+)
+});
 }
 
-function regionStats() {
-
-  const result={};
-
-  for(const name of SECTOR_ORDER) {
-    result[name]={
-      total:0,
-      longest:0
-    };
-  }
-
-  let last=null;
-  let streak=0;
-
-  for(const n of state.history) {
-
-    const name=sector(n);
-
-    result[name].total++;
-
-    streak=name===last
-      ?streak+1
-      :1;
-
-    last=name;
-
-    result[name].longest=Math.max(
-      result[name].longest,
-      streak
-    );
-  }
-
-  return result;
+return rows;
 }
 
-function coveragePlanHTML() {
+function opportunitiesHTML(){
 
-  const regions=regionStats();
-  const misses=opportunities();
+return opportunities()
+.slice(-20)
+.reverse()
+.map(x=>`
+<div class="listrow">
+<b>GIRO ${x.turn}</b>
+• ${x.number}
+• ${esc(x.result)}
+<div class="muted">
+Motor: ${esc(x.motor)}
+<br>
+Alternativas:
+${esc(
+x.alternatives.join(", ")||
+"NENHUMA"
+)}
+</div>
+</div>
+`).join("");
+}
 
-  const alternative=misses.filter(
-    x=>x.alternatives.length
-  ).length;
+function regionStats(){
 
-  return `
-    <div class="box">
-      <b>PLANO DE COBERTURA</b>
+const result={};
 
-      <p>
-        Giros descobertos:
-        ${misses.length}
-      </p>
+for(const name of SECTOR_ORDER){
+result[name]={
+total:0,
+longest:0
+};
+}
 
-      <p>
-        Outro motor cobria:
-        ${alternative}
-      </p>
+let last=null;
+let streak=0;
 
-      <p>
-        Nenhum motor cobria:
-        ${misses.length-alternative}
-      </p>
-    </div>
+for(const n of state.history){
 
-    ${SECTOR_ORDER.map(name=>`
-      <div class="listrow">
-        <b>${name}</b>
-        • ${regions[name].total} ocorrências
-        • sequência máxima:
-        ${regions[name].longest}
-      </div>
-    `).join("")}
-  `;
+const name=sector(n);
+
+result[name].total++;
+
+streak=name===last
+?streak+1
+:1;
+
+last=name;
+
+result[name].longest=Math.max(
+result[name].longest,
+streak
+);
+}
+
+return result;
+}
+
+function coveragePlanHTML(){
+
+const regions=regionStats();
+const misses=opportunities();
+
+const alternative=misses.filter(
+x=>x.alternatives.length
+).length;
+
+return `
+<div class="box">
+
+<b>PLANO DE COBERTURA</b>
+
+<p>
+Giros descobertos:
+${misses.length}
+</p>
+
+<p>
+Outro motor cobria:
+${alternative}
+</p>
+
+<p>
+Nenhum motor cobria:
+${misses.length-alternative}
+</p>
+
+</div>
+
+${SECTOR_ORDER.map(name=>`
+<div class="listrow">
+<b>${name}</b>
+• ${regions[name].total} ocorrências
+• sequência máxima:
+${regions[name].longest}
+</div>
+`).join("")}
+`;
 }
 
 /* ==========================================================
-   INTERFACE
+   INTERFACE ORIGINAL + BORDAS DOS RESULTADOS
    ========================================================== */
 
 const css=`
+
 *{box-sizing:border-box}
 
 body{
@@ -1971,10 +2207,43 @@ gap:5px;
 
 .chip{
 padding:8px;
-border:1px solid #718397;
+border:2px solid #718397;
 border-radius:7px;
 min-width:47px;
 text-align:center;
+}
+
+/*
+ NOVO:
+ BORDA VERDE PARA GREEN.
+*/
+
+.chip.result-green{
+border:3px solid #24f49a;
+box-shadow:
+0 0 5px #24f49a88;
+}
+
+/*
+ NOVO:
+ BORDA AMARELA PARA GALE.
+*/
+
+.chip.result-gale{
+border:3px solid #ffda35;
+box-shadow:
+0 0 5px #ffda3588;
+}
+
+/*
+ NOVO:
+ BORDA VERMELHA/ROSA PARA LOSS.
+*/
+
+.chip.result-loss{
+border:3px solid #ff386c;
+box-shadow:
+0 0 6px #ff386c99;
 }
 
 .chip b{
@@ -2082,18 +2351,34 @@ font-size:11px;
 line-height:1.6;
 }
 
+.trainerCycle{
+background:#102c26;
+border:1px solid #30bf91;
+padding:12px;
+border-radius:9px;
+margin:10px 0;
+}
+
+.trainerCycle b{
+color:#7fffd2;
+}
+
 @media(max-width:600px){
+
 .center{
 font-size:18px;
 padding:12px 1px;
 }
+
 .center small{
 font-size:8px;
 }
+
 .btn{
 font-size:10px;
 padding:9px;
 }
+
 }
 `;
 
@@ -2231,1022 +2516,1138 @@ LINHA DO TEMPO — GREEN / GALE / LOSS
 `;
 
 /* ==========================================================
-   BOTÕES DE ESTRATÉGIAS
+   BOTÕES
    ========================================================== */
 
-function makeButton(label,onClick,parent,extra="") {
+function makeButton(
+label,
+onClick,
+parent,
+extra=""
+){
 
-  const b=document.createElement("button");
+const b=document.createElement("button");
 
-  b.className="btn "+extra;
-  b.textContent=label;
-  b.onclick=onClick;
+b.className="btn "+extra;
+b.textContent=label;
+b.onclick=onClick;
 
-  parent.appendChild(b);
+parent.appendChild(b);
 
-  return b;
+return b;
 }
 
 function changeStrategy(
-  rule,
-  adaptive=null,
-  created=null
-) {
+rule,
+adaptive=null,
+created=null
+){
 
-  state.manual=null;
-  state.strategy=rule;
-  state.activeAdaptive=adaptive;
-  state.activeCreated=created;
+state.manual=null;
+state.strategy=rule;
+state.activeAdaptive=adaptive;
+state.activeCreated=created;
 
-  save();
-  render();
+/*
+ Ao ativar o treinador, começa
+ uma nova janela de três giros.
+*/
+
+if(rule==="TRAINER"){
+
+state.trainerChoice=null;
+state.trainerStart=state.history.length;
+state.trainerPending=false;
+
+updateTrainerChoice();
 }
 
-function buildStrategyButtons() {
+save();
+render();
+}
 
-  const root=$("strategies");
+function buildStrategyButtons(){
 
-  root.innerHTML="";
+const root=$("strategies");
+root.innerHTML="";
 
-  const trainer=document.createElement("div");
-  trainer.className="strategyGroup";
+const trainer=document.createElement("div");
+trainer.className="strategyGroup";
 
-  trainer.innerHTML=`
-  <div class="strategyLabel">
-  TREINADOR AUTOMÁTICO
-  </div>
-  `;
+trainer.innerHTML=`
+<div class="strategyLabel">
+TREINADOR AUTOMÁTICO
+</div>
+`;
 
-  const trainerRow=document.createElement("div");
-  trainerRow.className="row";
+const trainerRow=document.createElement("div");
+trainerRow.className="row";
 
-  const trainerButton=makeButton(
-    "TREINADOR ESTRATÉGICO",
-    ()=>changeStrategy("TRAINER"),
-    trainerRow,
-    "trainer"
-  );
+const trainerButton=makeButton(
+"TREINADOR ESTRATÉGICO",
+()=>changeStrategy("TRAINER"),
+trainerRow,
+"trainer"
+);
 
-  trainerButton.dataset.trainer="1";
+trainerButton.dataset.trainer="1";
 
-  trainer.appendChild(trainerRow);
-  root.appendChild(trainer);
+trainer.appendChild(trainerRow);
+root.appendChild(trainer);
 
-  const originals=document.createElement("div");
-  originals.className="strategyGroup";
+const originals=document.createElement("div");
+originals.className="strategyGroup";
 
-  originals.innerHTML=`
-  <div class="strategyLabel">
-  ESTRATÉGIAS ORIGINAIS
-  </div>
-  `;
+originals.innerHTML=`
+<div class="strategyLabel">
+ESTRATÉGIAS ORIGINAIS
+</div>
+`;
 
-  const originalRow=document.createElement("div");
-  originalRow.className="row";
+const originalRow=document.createElement("div");
+originalRow.className="row";
 
-  for(const [key,name] of ORIGINALS) {
+for(const [key,name] of ORIGINALS){
 
-    const b=makeButton(
-      name,
-      ()=>changeStrategy(key),
-      originalRow
-    );
+const b=makeButton(
+name,
+()=>changeStrategy(key),
+originalRow
+);
 
-    b.dataset.strategy=key;
-  }
+b.dataset.strategy=key;
+}
 
-  for(let rank=1;rank<=4;rank++) {
+for(let rank=1;rank<=4;rank++){
 
-    const b=makeButton(
-      "AUTO "+rank+"º",
-      ()=>{
-        state.rank=rank;
-        changeStrategy("FIXED");
-      },
-      originalRow
-    );
+const b=makeButton(
+"AUTO "+rank+"º",
+()=>{
+state.rank=rank;
+changeStrategy("FIXED");
+},
+originalRow
+);
 
-    b.dataset.rank=rank;
-  }
+b.dataset.rank=rank;
+}
 
-  originals.appendChild(originalRow);
-  root.appendChild(originals);
+originals.appendChild(originalRow);
+root.appendChild(originals);
 
-  const adaptives=document.createElement("div");
-  adaptives.className="strategyGroup";
+const adaptives=document.createElement("div");
+adaptives.className="strategyGroup";
 
-  adaptives.innerHTML=`
-  <div class="strategyLabel">
-  12 ESTRATÉGIAS ADAPTATIVAS
-  </div>
-  `;
+adaptives.innerHTML=`
+<div class="strategyLabel">
+12 ESTRATÉGIAS ADAPTATIVAS
+</div>
+`;
 
-  const adaptiveRow=document.createElement("div");
-  adaptiveRow.className="row";
+const adaptiveRow=document.createElement("div");
+adaptiveRow.className="row";
 
-  for(const config of ADAPTATIVES) {
+for(const config of ADAPTATIVES){
 
-    const b=makeButton(
-      config.name,
-      ()=>changeStrategy(
-        "ADAPTIVE",
-        config.id
-      ),
-      adaptiveRow
-    );
+const b=makeButton(
+config.name,
+()=>changeStrategy(
+"ADAPTIVE",
+config.id
+),
+adaptiveRow
+);
 
-    b.dataset.adaptive=config.id;
-  }
+b.dataset.adaptive=config.id;
+}
 
-  adaptives.appendChild(adaptiveRow);
-  root.appendChild(adaptives);
+adaptives.appendChild(adaptiveRow);
+root.appendChild(adaptives);
 
-  if(state.createdStrategies.length) {
+if(state.createdStrategies.length){
 
-    const created=document.createElement("div");
-    created.className="strategyGroup";
+const created=document.createElement("div");
+created.className="strategyGroup";
 
-    created.innerHTML=`
-    <div class="strategyLabel">
-    ESTRATÉGIAS CRIADAS
-    </div>
-    `;
+created.innerHTML=`
+<div class="strategyLabel">
+ESTRATÉGIAS CRIADAS
+</div>
+`;
 
-    const createdRow=document.createElement("div");
-    createdRow.className="row";
+const createdRow=document.createElement("div");
+createdRow.className="row";
 
-    for(const config of state.createdStrategies) {
+for(const config of state.createdStrategies){
 
-      const b=makeButton(
-        config.name,
-        ()=>changeStrategy(
-          "CREATED",
-          null,
-          config.id
-        ),
-        createdRow
-      );
+const b=makeButton(
+config.name,
+()=>changeStrategy(
+"CREATED",
+null,
+config.id
+),
+createdRow
+);
 
-      b.dataset.createdStrategy=config.id;
-    }
+b.dataset.createdStrategy=config.id;
+}
 
-    created.appendChild(createdRow);
-    root.appendChild(created);
-  }
+created.appendChild(createdRow);
+root.appendChild(created);
+}
 }
 
 buildStrategyButtons();
 
 /* ==========================================================
-   OPÇÕES
+   OPÇÕES ORIGINAIS
    ========================================================== */
 
 for(const [field,name] of [
-  ["g1","G1 AJUSTE FINO"],
-  ["galeSkip","GALE 2ª RODADA"],
-  ["secondHouse","2ª CASA"]
-]) {
+["g1","G1 AJUSTE FINO"],
+["galeSkip","GALE 2ª RODADA"],
+["secondHouse","2ª CASA"]
+]){
 
-  const b=makeButton(
-    name,
-    ()=>{
-      state[field]=!state[field];
-      save();
-      render();
-    },
-    $("options")
-  );
+const b=makeButton(
+name,
+()=>{
+state[field]=!state[field];
+save();
+render();
+},
+$("options")
+);
 
-  b.dataset.option=field;
+b.dataset.option=field;
 }
 
 /* ==========================================================
    TECLADO
    ========================================================== */
 
-for(let n=0;n<=36;n++) {
+for(let n=0;n<=36;n++){
 
-  const b=document.createElement("button");
+const b=document.createElement("button");
 
-  b.className="key"+(n===0?" zero":"");
-  b.textContent=n;
+b.className="key"+(n===0?" zero":"");
+b.textContent=n;
 
-  b.style.background=
-    n===0
-      ?"#087b50"
-      :RED.has(n)
-        ?"#ac293f"
-        :"#12151b";
+b.style.background=
+n===0
+?"#087b50"
+:RED.has(n)
+?"#ac293f"
+:"#12151b";
 
-  b.onclick=()=>{
+b.onclick=()=>{
 
-    if(importing) return;
+if(importing)return;
 
-    recordSpin(n);
-    render();
-  };
+recordSpin(n);
+render();
+};
 
-  $("keys").appendChild(b);
+$("keys").appendChild(b);
 }
 
 /* ==========================================================
-   IMPORTAÇÃO EM LOTES
-
-   Processa pequenos grupos e devolve
-   controle ao navegador entre lotes.
+   IMPORTAÇÃO
    ========================================================== */
 
 let importing=false;
 let importToken=0;
 
-async function importNumbers(numbers) {
+async function importNumbers(numbers){
 
-  if(importing) return;
+if(importing)return;
 
-  importing=true;
-  const token=++importToken;
+importing=true;
 
-  state.history=[];
-  state.sources=[];
-  state.ledger=[];
-  state.phase="ENTRY";
-  state.frozen=null;
-  state.cycle=null;
-  state.previousMotor=null;
+const token=++importToken;
 
-  invalidateCandidates();
-  invalidateTrainer();
+state.history=[];
+state.sources=[];
+state.ledger=[];
+state.phase="ENTRY";
+state.frozen=null;
+state.cycle=null;
+state.previousMotor=null;
 
-  render();
+/*
+ Reinicia o treinador para a
+ nova sequência importada.
+*/
 
-  for(let i=0;i<numbers.length;i++) {
+state.trainerChoice=null;
+state.trainerStart=0;
+state.trainerPending=false;
+state.trainerChanges=0;
 
-    if(token!==importToken) break;
+invalidateCandidates();
+invalidateTrainer();
 
-    recordSpin(
-      numbers[i],
-      "HISTÓRICO"
-    );
+render();
 
-    if(i%4===3) {
+for(let i=0;i<numbers.length;i++){
 
-      $("status").textContent=
-        "IMPORTANDO "+
-        (i+1)+
-        "/"+
-        numbers.length;
+if(token!==importToken)break;
 
-      await new Promise(
-        resolve=>setTimeout(resolve,0)
-      );
-    }
-  }
+recordSpin(
+numbers[i],
+"HISTÓRICO"
+);
 
-  importing=false;
+if(i%4===3){
 
-  save();
-  render();
+$("status").textContent=
+"IMPORTANDO "+
+(i+1)+
+"/"+
+numbers.length;
+
+await new Promise(
+resolve=>setTimeout(resolve,0)
+);
+}
+}
+
+importing=false;
+
+save();
+render();
 }
 
 $("import").onclick=()=>{
 
-  if(importing) return;
+if(importing)return;
 
-  const numbers=(
-    $("paste").value.match(/\d+/g)||[]
-  )
-  .map(Number)
-  .filter(n=>n>=0&&n<=36)
-  .slice(-MAX);
+const numbers=(
+$("paste").value.match(/\d+/g)||[]
+)
+.map(Number)
+.filter(n=>n>=0&&n<=36)
+.slice(-MAX);
 
-  if(!numbers.length) {
-    alert("Cole números de 0 a 36.");
-    return;
-  }
+if(!numbers.length){
 
-  if(!confirm(
-    "Importar e substituir o histórico atual?"
-  )) return;
+alert("Cole números de 0 a 36.");
+return;
+}
 
-  $("paste").value="";
+if(!confirm(
+"Importar e substituir o histórico atual?"
+))return;
 
-  importNumbers(numbers);
+$("paste").value="";
+
+importNumbers(numbers);
 };
 
 $("restoreOld").onclick=()=>{
 
-  if(importing) return;
+if(importing)return;
 
-  try {
+try{
 
-    const old=JSON.parse(
-      localStorage.getItem(OLD_KEY)||"null"
-    );
+const old=JSON.parse(
+localStorage.getItem(OLD_KEY)||"null"
+);
 
-    if(!old?.history?.length) {
+if(!old?.history?.length){
 
-      alert(
-        "Nenhum histórico anterior encontrado."
-      );
+alert(
+"Nenhum histórico anterior encontrado."
+);
 
-      return;
-    }
+return;
+}
 
-    if(!confirm(
-      "Recuperar os números da versão anterior? "+
-      "Os resultados serão reprocessados "+
-      "porque a versão antiga não possuía "+
-      "registro definitivo."
-    )) return;
+if(!confirm(
+"Recuperar os números da versão anterior? "+
+"Os resultados serão reprocessados."
+))return;
 
-    importNumbers(
-      old.history.slice(-MAX)
-    );
+importNumbers(
+old.history.slice(-MAX)
+);
 
-  } catch(e) {
+}catch(e){
 
-    alert(
-      "Não foi possível recuperar o histórico."
-    );
-  }
+alert(
+"Não foi possível recuperar o histórico."
+);
+}
 };
 
 $("undo").onclick=()=>{
-  if(importing) return;
-  undoLast();
+
+if(importing)return;
+
+undoLast();
 };
 
 $("clear").onclick=()=>{
 
-  if(importing) return;
+if(importing)return;
 
-  if(!confirm(
-    "Apagar histórico e resultados?"
-  )) return;
+if(!confirm(
+"Apagar histórico e resultados?"
+))return;
 
-  state=fresh();
+state=fresh();
 
-  invalidateCandidates();
-  invalidateTrainer();
+invalidateCandidates();
+invalidateTrainer();
 
-  buildStrategyButtons();
+buildStrategyButtons();
 
-  save();
-  render();
+save();
+render();
 };
 
 /* ==========================================================
-   PAINÉIS RECOLHÍVEIS
+   PAINÉIS
    ========================================================== */
 
-function applyOpenState() {
+function applyOpenState(){
 
-  for(const [name,open] of Object.entries(
-    state.open
-  )) {
+for(const [name,open] of Object.entries(
+state.open
+)){
 
-    const element=$(name);
+const element=$(name);
 
-    const button=document.querySelector(
-      '[data-panel="'+name+'"]'
-    );
+const button=document.querySelector(
+'[data-panel="'+name+'"]'
+);
 
-    if(element) {
-      element.classList.toggle(
-        "hide",
-        !open
-      );
-    }
+if(element){
 
-    if(button) {
+element.classList.toggle(
+"hide",
+!open
+);
+}
 
-      const span=button.querySelector("span");
+if(button){
 
-      if(span) {
-        span.textContent=open?"−":"+";
-      }
-    }
-  }
+const span=button.querySelector("span");
+
+if(span){
+span.textContent=open?"−":"+";
+}
+}
+}
 }
 
 document.addEventListener("click",e=>{
 
-  const b=e.target.closest("[data-panel]");
+const b=e.target.closest("[data-panel]");
 
-  if(!b) return;
+if(!b)return;
 
-  const name=b.dataset.panel;
+const name=b.dataset.panel;
 
-  state.open[name]=!state.open[name];
+state.open[name]=!state.open[name];
 
-  save();
-  render();
+save();
+render();
 });
 
 /* ==========================================================
-   TREINADOR
+   MINI PAINÉIS
    ========================================================== */
 
-function miniPanel(id,title,content) {
+function miniPanel(id,title,content){
 
-  const open=!!state.open[id];
+const open=!!state.open[id];
 
-  return `
-    <button class="miniHead"
-      data-panel="${id}">
-      ${esc(title)}
-      <span>${open?"−":"+"}</span>
-    </button>
+return `
+<button class="miniHead"
+data-panel="${id}">
+${esc(title)}
+<span>${open?"−":"+"}</span>
+</button>
 
-    <div id="${id}"
-      class="${open?"":"hide"}">
-      ${open?content:""}
-    </div>
-  `;
+<div id="${id}"
+class="${open?"":"hide"}">
+${open?content:""}
+</div>
+`;
 }
 
-function trainerHTML() {
+/* ==========================================================
+   TREINADOR — VISUALIZAÇÃO
+   ========================================================== */
 
-  const analysis=trainerAnalysis();
-  const rec=analysis.recommendation;
+function trainerHTML(){
 
-  const m=metrics(state.ledger);
-  const missed=opportunities();
+const analysis=trainerAnalysis();
+const rec=analysis.recommendation;
 
-  return `
-    <div class="virtualHero">
+const m=metrics(state.ledger);
+const missed=opportunities();
 
-      <div class="title">
-        TREINADOR ESTRATÉGICO VIRTUAL
-      </div>
+const status=trainerStatus();
 
-      <div class="metrics">
+const activeConfig=ADAPTATIVES.find(
+x=>x.id===status.adaptive
+);
 
-        <div class="metric">
-          <small>GIROS</small>
-          <b>${state.history.length}</b>
-        </div>
+return `
+<div class="virtualHero">
 
-        <div class="metric">
-          <small>MOTORES</small>
-          <b>12</b>
-        </div>
+<div class="title">
+TREINADOR ESTRATÉGICO VIRTUAL
+</div>
 
-        <div class="metric">
-          <small>GREEN</small>
-          <b class="good">${m.success}</b>
-        </div>
+<div class="metrics">
 
-        <div class="metric">
-          <small>GALE</small>
-          <b>${m.gale}</b>
-        </div>
+<div class="metric">
+<small>GIROS</small>
+<b>${state.history.length}</b>
+</div>
 
-        <div class="metric">
-          <small>LOSS</small>
-          <b class="bad">${m.loss}</b>
-        </div>
+<div class="metric">
+<small>MOTORES</small>
+<b>12</b>
+</div>
 
-        <div class="metric">
-          <small>DESCOBERTOS</small>
-          <b>${missed.length}</b>
-        </div>
+<div class="metric">
+<small>GREEN</small>
+<b class="good">${m.success}</b>
+</div>
 
-      </div>
+<div class="metric">
+<small>GALE</small>
+<b>${m.gale}</b>
+</div>
 
-    </div>
+<div class="metric">
+<small>LOSS</small>
+<b class="bad">${m.loss}</b>
+</div>
 
-    <div class="virtualRecommendation">
+<div class="metric">
+<small>DESCOBERTOS</small>
+<b>${missed.length}</b>
+</div>
 
-      <div class="title">
-        RECOMENDAÇÃO ATUAL
-      </div>
+</div>
 
-      <b>
-        ${esc(rec?.name||"AGUARDANDO")}
-      </b>
+</div>
 
-      <p class="muted">
-        Cobertura virtual de referência:
-        ${pct(rec?.hits||0,rec?.total||0)}
-        em ${rec?.total||0} registros.
-      </p>
+<div class="trainerCycle">
 
-      <p class="muted">
-        Janela:
-        ${rec?.config.window||"—"}
-        • Margem:
-        ${rec
-          ?fmt(rec.config.margin*100)+"%"
-          :"—"}
-      </p>
+<div class="title">
+CICLO DE 3 GIROS
+</div>
 
-      <button class="virtualButton"
-        id="activateTrainer">
-        ATIVAR TREINADOR ESTRATÉGICO
-      </button>
+<p>
+ADAPTATIVA SELECIONADA:
+<b>
+${esc(
+activeConfig?.name||"AGUARDANDO"
+)}
+</b>
+</p>
 
-      ${rec?`
-        <button class="virtualButton"
-          id="activateRecommended">
-          ATIVAR ${esc(rec.name)}
-        </button>
-      `:""}
+<p>
+GIROS NESTA ADAPTATIVA:
+<b>${status.elapsed}</b>
+</p>
 
-    </div>
+<p>
+PRÓXIMA REAVALIAÇÃO:
+<b>
+${status.pending
+?"APÓS O GALE"
+:status.remaining+
+" GIRO(S)"
+}
+</b>
+</p>
 
-    ${miniPanel(
-      "virtualRanking",
-      "RANKING VIRTUAL DOS 12 MOTORES",
-      virtualRankingHTML()
-    )}
+<p>
+TROCAS REALIZADAS:
+<b>${status.changes}</b>
+</p>
 
-    ${miniPanel(
-      "opportunities",
-      "ÚLTIMAS 20 OPORTUNIDADES",
-      opportunitiesHTML()
-    )}
+</div>
 
-    ${miniPanel(
-      "coveragePlan",
-      "PLANO DE COBERTURA",
-      coveragePlanHTML()
-    )}
+<div class="virtualRecommendation">
 
-    <div class="warning">
-      A recomendação usa comparação histórica
-      exploratória. Não garante cobertura ou
-      acerto nos próximos giros.
-    </div>
-  `;
+<div class="title">
+MELHOR LINHA NOS ÚLTIMOS 3 GIROS
+</div>
+
+<b>
+${esc(rec?.name||"AGUARDANDO")}
+</b>
+
+<p class="muted">
+Cobertura virtual recente:
+${pct(rec?.hits||0,rec?.total||0)}
+em ${rec?.total||0} registros.
+</p>
+
+<p class="muted">
+Janela de decisão: 3 giros.
+Reavaliação após cada bloco de 3.
+</p>
+
+<button class="virtualButton"
+id="activateTrainer">
+ATIVAR TREINADOR ESTRATÉGICO
+</button>
+
+${rec?`
+<button class="virtualButton"
+id="activateRecommended">
+ATIVAR ${esc(rec.name)}
+</button>
+`:""}
+
+</div>
+
+${miniPanel(
+"virtualRanking",
+"RANKING VIRTUAL DOS 12 MOTORES",
+state.open.virtualRanking
+?virtualRankingHTML()
+:""
+)}
+
+${miniPanel(
+"opportunities",
+"ÚLTIMAS 20 OPORTUNIDADES",
+state.open.opportunities
+?opportunitiesHTML()
+:""
+)}
+
+${miniPanel(
+"coveragePlan",
+"PLANO DE COBERTURA",
+state.open.coveragePlan
+?coveragePlanHTML()
+:""
+)}
+
+<div class="warning">
+O treinador compara resultados históricos
+de três giros. A roleta continua sendo
+aleatória; a troca de adaptativa não
+garante melhora nos resultados.
+</div>
+`;
 }
 
 /* ==========================================================
    LABORATÓRIO
    ========================================================== */
 
-function labHTML() {
+function labHTML(){
 
-  const analysis=trainerAnalysis();
+const analysis=trainerAnalysis();
 
-  const comparisons=`
-    <div class="tablewrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ESTRATÉGIA</th>
-            <th>COBERTOS</th>
-            <th>REGISTROS</th>
-            <th>COBERTURA</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${analysis.rows.map(r=>`
-            <tr>
-              <td>${esc(r.name)}</td>
-              <td>${r.hits}</td>
-              <td>${r.total}</td>
-              <td>${pct(r.hits,r.total)}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
+const comparisons=state.open.comparisons
+?`
+<div class="tablewrap">
 
-  return `
-    <div class="box">
-      <b>COMPARAÇÃO DAS ADAPTATIVAS</b>
-      <p class="muted">
-        Indicador virtual exploratório.
-        Não é um backtest completo de cada
-        regra adaptativa.
-      </p>
-    </div>
+<table>
 
-    ${miniPanel(
-      "comparisons",
-      "COMPARAÇÃO DAS 12 ADAPTATIVAS",
-      comparisons
-    )}
+<thead>
+<tr>
+<th>ESTRATÉGIA</th>
+<th>COBERTOS</th>
+<th>REGISTROS</th>
+<th>COBERTURA</th>
+</tr>
+</thead>
 
-    ${miniPanel(
-      "created",
-      "ESTRATÉGIAS PERSONALIZADAS",
-      state.createdStrategies.map(c=>`
-        <div class="listrow">
-          ${esc(c.name)}
-        </div>
-      `).join("")||
-      '<div class="box">Nenhuma criada.</div>'
-    )}
+<tbody>
 
-    <button class="virtualButton"
-      id="createAdaptive">
-      CRIAR E ATIVAR CÓPIA DA RECOMENDADA
-    </button>
-  `;
+${analysis.rows.map(r=>`
+<tr>
+<td>${esc(r.name)}</td>
+<td>${r.hits}</td>
+<td>${r.total}</td>
+<td>${pct(r.hits,r.total)}</td>
+</tr>
+`).join("")}
+
+</tbody>
+
+</table>
+
+</div>
+`:"";
+
+return `
+<div class="box">
+
+<b>COMPARAÇÃO DAS ADAPTATIVAS</b>
+
+<p class="muted">
+Janela recente de três giros.
+Indicador virtual exploratório.
+</p>
+
+</div>
+
+${miniPanel(
+"comparisons",
+"COMPARAÇÃO DAS 12 ADAPTATIVAS",
+comparisons
+)}
+
+${miniPanel(
+"created",
+"ESTRATÉGIAS PERSONALIZADAS",
+state.open.created
+?state.createdStrategies.map(c=>`
+<div class="listrow">
+${esc(c.name)}
+</div>
+`).join("")||
+'<div class="box">Nenhuma criada.</div>'
+:""
+)}
+
+<button class="virtualButton"
+id="createAdaptive">
+CRIAR E ATIVAR CÓPIA DA RECOMENDADA
+</button>
+`;
 }
 
 /* ==========================================================
    LINHA DO TEMPO DEFINITIVA
    ========================================================== */
 
-function timelineHTML() {
+function timelineHTML(){
 
-  return state.ledger
-    .slice(-80)
-    .reverse()
-    .map(r=>`
+return state.ledger
+.slice(-80)
+.reverse()
+.map(r=>`
 
-      <div class="listrow">
+<div class="listrow">
 
-        <b>GIRO ${r.turn}</b>
+<b>GIRO ${r.turn}</b>
 
-        • <b>${r.number}</b>
+• <b>${r.number}</b>
 
-        • <span class="${
-          r.result.startsWith("GREEN")
-            ?"good"
-            :r.result==="LOSS"
-              ?"bad"
-              :""
-        }">
-          ${esc(r.result)}
-        </span>
+• <span class="${
+r.result.startsWith("GREEN")
+?"good"
+:r.result==="LOSS"
+?"bad"
+:""
+}">
+${esc(r.result)}
+</span>
 
-        <div class="muted">
+<div class="muted">
 
-          Estratégia:
-          ${esc(r.strategy)}
+Estratégia:
+${esc(r.strategy)}
 
-          • Motor:
-          ${esc(r.motor)}
+• Motor:
+${esc(r.motor)}
 
-          • Fase:
-          ${esc(r.phase)}
+• Fase:
+${esc(r.phase)}
 
-          • Região:
-          ${sector(r.number)}
+• Região:
+${sector(r.number)}
 
-          ${r.g1?`
-            • G1 AJUSTADO
-          `:""}
+${r.g1?`
+• G1 AJUSTADO
+`:""}
 
-          ${r.g1Failed?`
-            • AJUSTE G1 NÃO APLICADO
-          `:""}
+${r.g1Failed?`
+• AJUSTE G1 NÃO APLICADO
+`:""}
 
-        </div>
+</div>
 
-        ${r.play?`
-          <div class="muted">
-            Centros:
-            ${sortedBlocks(r.play)
-              .map(b=>b.center)
-              .join(" • ")}
-          </div>
-        `:""}
+${r.play?`
+<div class="muted">
+Centros:
+${sortedBlocks(r.play)
+.map(b=>b.center)
+.join(" • ")}
+</div>
+`:""}
 
-      </div>
+</div>
 
-    `).join("");
+`).join("");
+}
+
+/* ==========================================================
+   NOVO: CLASSIFICAÇÃO VISUAL DOS RESULTADOS
+
+   GREEN / GREEN G1 => VERDE
+   GALE / GALE PULADO => AMARELO
+   LOSS => VERMELHO ROSA
+   ========================================================== */
+
+function resultBorderClass(result){
+
+if(result==="LOSS"){
+return "result-loss";
+}
+
+if(result.startsWith("GREEN")){
+return "result-green";
+}
+
+if(
+result==="GALE"||
+result==="GALE PULADO"
+){
+return "result-gale";
+}
+
+return "";
 }
 
 /* ==========================================================
    RENDERIZAÇÃO
-
-   Apenas calcula a próxima jogada.
-   Não refaz os registros antigos.
    ========================================================== */
 
 let renderScheduled=false;
 
-function render() {
+function render(){
 
-  if(renderScheduled) return;
+if(renderScheduled)return;
 
-  renderScheduled=true;
+renderScheduled=true;
 
-  requestAnimationFrame(()=>{
+requestAnimationFrame(()=>{
 
-    renderScheduled=false;
+renderScheduled=false;
 
-    try {
-      performRender();
-    } catch(error) {
+try{
+performRender();
+}catch(error){
 
-      console.error(error);
+console.error(error);
 
-      $("status").textContent=
-        "ERRO: "+error.message;
-    }
-  });
+$("status").textContent=
+"ERRO: "+error.message;
+}
+});
 }
 
-function performRender() {
-
-  const cs=getCandidates();
-
-  const active=activeStrategy();
-
-  /*
-   Em Gale, mostra a jogada congelada.
-   Nunca mostra uma nova seleção como se
-   fosse a jogada do Gale.
-  */
-
-  const selected=state.frozen ||
-    snapMotor(selectMotor(cs));
-
-  const play=selected?.play||null;
-
-  $("status").textContent=
-    state.history.length+
-    "/200 números • "+
-    cs.length+
-    "/12 motores • "+
-    state.phase;
-
-  /* Botões */
-
-  for(const b of document.querySelectorAll(
-    "[data-strategy]"
-  )) {
-
-    b.classList.toggle(
-      "active",
-      !state.manual &&
-      state.strategy===b.dataset.strategy
-    );
-  }
-
-  for(const b of document.querySelectorAll(
-    "[data-adaptive]"
-  )) {
-
-    b.classList.toggle(
-      "active",
-      !state.manual &&
-      state.strategy==="ADAPTIVE" &&
-      state.activeAdaptive===
-        b.dataset.adaptive
-    );
-  }
-
-  for(const b of document.querySelectorAll(
-    "[data-created-strategy]"
-  )) {
-
-    b.classList.toggle(
-      "active",
-      !state.manual &&
-      state.strategy==="CREATED" &&
-      state.activeCreated===
-        b.dataset.createdStrategy
-    );
-  }
-
-  for(const b of document.querySelectorAll(
-    "[data-trainer]"
-  )) {
-
-    b.classList.toggle(
-      "active",
-      !state.manual &&
-      state.strategy==="TRAINER"
-    );
-  }
-
-  for(const b of document.querySelectorAll(
-    "[data-rank]"
-  )) {
-
-    b.classList.toggle(
-      "active",
-      !state.manual &&
-      state.strategy==="FIXED" &&
-      state.rank===Number(b.dataset.rank)
-    );
-  }
-
-  for(const b of document.querySelectorAll(
-    "[data-option]"
-  )) {
-
-    b.classList.toggle(
-      "active",
-      !!state[b.dataset.option]
-    );
-  }
+function performRender(){
+
+const cs=getCandidates();
+const active=activeStrategy();
+
+const selected=state.frozen||
+snapMotor(selectMotor(cs));
+
+const play=selected?.play||null;
+
+$("status").textContent=
+state.history.length+
+"/200 números • "+
+cs.length+
+"/12 motores • "+
+state.phase;
+
+/* BOTÕES ORIGINAIS */
+
+for(const b of document.querySelectorAll(
+"[data-strategy]"
+)){
+
+b.classList.toggle(
+"active",
+!state.manual&&
+state.strategy===b.dataset.strategy
+);
+}
+
+for(const b of document.querySelectorAll(
+"[data-adaptive]"
+)){
+
+b.classList.toggle(
+"active",
+!state.manual&&
+state.strategy==="ADAPTIVE"&&
+state.activeAdaptive===
+b.dataset.adaptive
+);
+}
+
+for(const b of document.querySelectorAll(
+"[data-created-strategy]"
+)){
+
+b.classList.toggle(
+"active",
+!state.manual&&
+state.strategy==="CREATED"&&
+state.activeCreated===
+b.dataset.createdStrategy
+);
+}
+
+for(const b of document.querySelectorAll(
+"[data-trainer]"
+)){
+
+b.classList.toggle(
+"active",
+!state.manual&&
+state.strategy==="TRAINER"
+);
+}
+
+for(const b of document.querySelectorAll(
+"[data-rank]"
+)){
+
+b.classList.toggle(
+"active",
+!state.manual&&
+state.strategy==="FIXED"&&
+state.rank===Number(b.dataset.rank)
+);
+}
+
+for(const b of document.querySelectorAll(
+"[data-option]"
+)){
+
+b.classList.toggle(
+"active",
+!!state[b.dataset.option]
+);
+}
 
-  /* Jogada */
+/* JOGADA */
 
-  const frozenPhase=state.phase!=="ENTRY";
+const frozenPhase=state.phase!=="ENTRY";
 
-  $("selected").textContent=
-    (frozenPhase
-      ?state.cycle?.strategy||active.name
-      :active.name
-    )+
-    " • MOTOR "+
-    (selected?.key||"AGUARDANDO")+
-    " • "+
-    state.phase;
+$("selected").textContent=
+(frozenPhase
+?state.cycle?.strategy||active.name
+:active.name
+)+
+" • MOTOR "+
+(selected?.key||"AGUARDANDO")+
+" • "+
+state.phase;
 
-  $("centers").innerHTML=centersHTML(play);
+$("centers").innerHTML=centersHTML(play);
 
-  $("coverage").textContent=play
-    ?"28 COBERTOS • 9 DESCOBERTOS"+
-      (selected?.g1
-        ?" • G1 AJUSTADO"
-        :"")
-    :"Importe pelo menos 8 números.";
+$("coverage").textContent=play
+?"28 COBERTOS • 9 DESCOBERTOS"+
+(selected?.g1
+?" • G1 AJUSTADO"
+:"")
+:"Importe pelo menos 8 números.";
 
-  /* Últimos 14 — definitivos */
+/* ==========================================================
+   ÚLTIMOS 14 RESULTADOS — BORDAS CORRIGIDAS
+   ========================================================== */
 
-  $("last").innerHTML=state.ledger
-    .slice(-14)
-    .reverse()
-    .map(r=>`
+$("last").innerHTML=state.ledger
+.slice(-14)
+.reverse()
+.map(r=>`
 
-      <div class="chip" style="
-        background:${
-          r.number===0
-            ?"#087b50"
-            :RED.has(r.number)
-              ?"#a72740"
-              :"#14181f"
-        }">
+<div class="chip ${resultBorderClass(r.result)}"
+style="
+background:${
+r.number===0
+?"#087b50"
+:RED.has(r.number)
+?"#a72740"
+:"#14181f"
+}">
 
-        <b>${r.number}</b>
+<b>${r.number}</b>
 
-        <small>
-          ${esc(r.result)}
-        </small>
+<small>
+${esc(r.result)}
+</small>
 
-      </div>
+</div>
 
-    `).join("");
+`).join("");
 
-  /* Resultado geral */
+/* RESULTADO GERAL */
 
-  if(state.open.general) {
+if(state.open.general){
 
-    const historical=state.ledger.filter(
-      r=>r.source==="HISTÓRICO"
-    );
+const historical=state.ledger.filter(
+r=>r.source==="HISTÓRICO"
+);
 
-    const live=state.ledger.filter(
-      r=>r.source==="TEMPO REAL"
-    );
+const live=state.ledger.filter(
+r=>r.source==="TEMPO REAL"
+);
 
-    $("general").innerHTML=`
+$("general").innerHTML=`
 
-      <div class="title">HISTÓRICO</div>
-      ${metricsHTML(historical)}
+<div class="title">HISTÓRICO</div>
+${metricsHTML(historical)}
 
-      <div class="title">TEMPO REAL</div>
-      ${metricsHTML(live)}
+<div class="title">TEMPO REAL</div>
+${metricsHTML(live)}
 
-      <div class="title">TOTAL ACUMULADO</div>
-      ${metricsHTML(state.ledger)}
+<div class="title">TOTAL ACUMULADO</div>
+${metricsHTML(state.ledger)}
 
-    `;
-  }
+`;
+}
 
-  /* Treinador */
+/* TREINADOR */
 
-  if(state.open.trainer) {
+if(state.open.trainer){
 
-    $("trainer").innerHTML=trainerHTML();
+$("trainer").innerHTML=trainerHTML();
 
-    const activate=$("activateTrainer");
+const activate=$("activateTrainer");
 
-    if(activate) {
+if(activate){
 
-      activate.onclick=()=>{
-        changeStrategy("TRAINER");
-      };
-    }
+activate.onclick=()=>{
+changeStrategy("TRAINER");
+};
+}
 
-    const recommended=$(
-      "activateRecommended"
-    );
+const recommended=$(
+"activateRecommended"
+);
 
-    if(recommended) {
+if(recommended){
 
-      recommended.onclick=()=>{
+recommended.onclick=()=>{
 
-        const rec=trainerAnalysis()
-          .recommendation;
+const rec=trainerAnalysis()
+.recommendation;
 
-        if(!rec) return;
+if(!rec)return;
 
-        changeStrategy(
-          "ADAPTIVE",
-          rec.id
-        );
-      };
-    }
-  }
+changeStrategy(
+"ADAPTIVE",
+rec.id
+);
+};
+}
+}
 
-  /* Laboratório */
+/* LABORATÓRIO */
 
-  if(state.open.lab) {
+if(state.open.lab){
 
-    $("lab").innerHTML=labHTML();
+$("lab").innerHTML=labHTML();
 
-    const create=$("createAdaptive");
+const create=$("createAdaptive");
 
-    if(create) {
+if(create){
 
-      create.onclick=()=>{
+create.onclick=()=>{
 
-        const rec=trainerAnalysis()
-          .recommendation;
+const rec=trainerAnalysis()
+.recommendation;
 
-        if(!rec) return;
+if(!rec)return;
 
-        const created={
-          id:"VIRTUAL_"+Date.now(),
-          name:"ESTRATÉGIA VIRTUAL "+
-            (state.createdStrategies.length+1),
-          config:copy(rec.config)
-        };
+const created={
+id:"VIRTUAL_"+Date.now(),
+name:"ESTRATÉGIA VIRTUAL "+
+(state.createdStrategies.length+1),
+config:copy(rec.config)
+};
 
-        state.createdStrategies.push(
-          created
-        );
+state.createdStrategies.push(
+created
+);
 
-        state.strategy="CREATED";
-        state.activeCreated=created.id;
-        state.manual=null;
+state.strategy="CREATED";
+state.activeCreated=created.id;
+state.manual=null;
 
-        buildStrategyButtons();
+buildStrategyButtons();
 
-        save();
-        render();
-      };
-    }
-  }
+save();
+render();
+};
+}
+}
 
-  /* 12 motores */
+/* 12 MOTORES */
 
-  if(state.open.motors) {
+if(state.open.motors){
 
-    $("motors").innerHTML=`
+$("motors").innerHTML=`
 
-      <div class="row" id="motorButtons">
-        ${FAMILIES.flatMap(f=>
-          RADII.map(r=>`
-            <button class="btn"
-              data-manual="${f}_${r}">
-              ${f}_${r}
-            </button>
-          `)
-        ).join("")}
-      </div>
+<div class="row" id="motorButtons">
 
-      ${cs.map(c=>`
-        <div class="listrow">
+${FAMILIES.flatMap(f=>
+RADII.map(r=>`
+<button class="btn"
+data-manual="${f}_${r}">
+${f}_${r}
+</button>
+`)
+).join("")}
 
-          <b>${c.rank}º</b>
-          • ${esc(c.key)}
-          • SCORE ${fmt(c.score)}
+</div>
 
-          <div class="muted">
-            ${sortedBlocks(c.play)
-              .map(b=>b.center)
-              .join(" • ")}
-          </div>
+${cs.map(c=>`
 
-        </div>
-      `).join("")}
+<div class="listrow">
 
-    `;
+<b>${c.rank}º</b>
+• ${esc(c.key)}
+• SCORE ${fmt(c.score)}
 
-    for(const b of document.querySelectorAll(
-      "[data-manual]"
-    )) {
+<div class="muted">
+${sortedBlocks(c.play)
+.map(b=>b.center)
+.join(" • ")}
+</div>
 
-      b.onclick=()=>{
+</div>
 
-        state.manual=b.dataset.manual;
+`).join("")}
+`;
 
-        save();
-        render();
-      };
-    }
-  }
+for(const b of document.querySelectorAll(
+"[data-manual]"
+)){
 
-  /* Linha do tempo */
+b.onclick=()=>{
 
-  if(state.open.timeline) {
-    $("timeline").innerHTML=timelineHTML();
-  }
+state.manual=b.dataset.manual;
 
-  applyOpenState();
+save();
+render();
+};
+}
+}
+
+/* LINHA DO TEMPO */
+
+if(state.open.timeline){
+
+$("timeline").innerHTML=timelineHTML();
+}
+
+applyOpenState();
 }
 
 /* ==========================================================
