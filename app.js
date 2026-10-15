@@ -2,43 +2,34 @@
 (() => {
 "use strict";
 
-/* ============================================================
-   ANÁLISE BETA V6.0
-   ============================================================
-   BASE: V5.9 / V5.10
+/*
+ ANÁLISE BETA V6.1
+ Atualização da V6.0
 
-   CORREÇÕES:
-   - Histórico importado sem limite de 200 números
-   - Histórico não desaparece ao trocar estratégia
-   - Resultados antigos permanecem congelados
-   - Treinador pode trocar a cada giro
-   - Troca obrigatória até o 3º giro operacional
-   - Motor também é reavaliado
-   - Gale não muda de jogada durante o ciclo
-   - Saltos físicos entre regiões
-   - Ausência de regiões
-   - Espelho / antiespelho conforme definição solicitada
-   - Bordas verde / amarela / rosa
-   - 12 motores preservados
-   - 12 adaptativas preservadas
-   - Geometria 5 blocos de 5 + 1 bloco de 3
-   - Centros TIERS / ÓRFÃOS / VOISINS / ZERO
+ AJUSTES:
+ - 12 motores com leitura de direção
+ - Crescente e decrescente numérico
+ - Direção física horária e anti-horária
+ - Saltos curtos, médios e grandes
+ - Aceleração e desaceleração dos saltos
+ - Espelho e antiespelho: perto / longe
+ - Ausência das quatro regiões
+ - Sinais aplicados ANTES da geração dos centros
+ - Treinador reavaliado a cada giro
+ - Troca de adaptativa obrigatória até 3 giros
+ - Gale congelado até o encerramento
+ - Histórico numérico completo e persistente
+ - Histórico de resultados independente da estratégia
+ - 28 números: 5 blocos de 5 + 1 bloco de 3
+*/
 
-   OBSERVAÇÃO:
-   Os sinais são indicadores históricos exploratórios.
-   Não demonstram previsibilidade de uma roleta justa.
-   ============================================================ */
-
-const VERSION="6.0";
-const KEY="ANALISE_BETA_V60";
-const PREVIOUS_KEYS=[
+const VERSION="6.1";
+const KEY="ANALISE_BETA_V61";
+const OLD_KEYS=[
+"ANALISE_BETA_V60",
 "ANALISE_BETA_V59",
 "ANALISE_BETA_V55_COMPLETO"
 ];
-
-const ANALYSIS_WINDOW=200;
-const MAX_LEDGER=1200;
-const TRAINER_MAX=3;
 
 const W=[
 32,15,19,4,21,2,25,17,34,6,
@@ -73,82 +64,8 @@ const SECTOR_ORDER=[
 ];
 
 const MIRROR_BASE=[
-11,12,13,
-21,22,23,
-31,32,33
+11,12,13,21,22,23,31,32,33
 ];
-
-const $=id=>document.getElementById(id);
-
-const mod=n=>(n%37+37)%37;
-const idx=n=>W.indexOf(n);
-const copy=x=>JSON.parse(JSON.stringify(x));
-
-const fmt=n=>Number.isFinite(n)
-?n.toFixed(1).replace(".",",")
-:"—";
-
-const pct=(a,b)=>b
-?fmt(a/b*100)+"%"
-:"—";
-
-const esc=x=>String(x??"").replace(
-/[&<>"']/g,
-c=>({
-"&":"&amp;",
-"<":"&lt;",
-">":"&gt;",
-'"':"&quot;",
-"'":"&#39;"
-}[c])
-);
-
-function neighbors(n,r=1){
-const p=idx(n);
-return Array.from(
-{length:r*2+1},
-(_,i)=>W[mod(p+i-r)]
-);
-}
-
-function distance(a,b){
-const d=Math.abs(idx(a)-idx(b));
-return Math.min(d,37-d);
-}
-
-function sector(n){
-return SECTOR_ORDER.find(
-s=>SECTORS[s].includes(n)
-)||"ZERO";
-}
-
-/* ============================================================
-   ESPELHO / ANTIESPELHO
-
-   ESPELHO:
-   11,12,13 / 21,22,23 / 31,32,33
-   E UM VIZINHO FÍSICO DE CADA LADO.
-
-   TODOS OS DEMAIS = ANTIESPELHO.
-   ============================================================ */
-
-const MIRROR=new Set();
-
-for(const n of MIRROR_BASE){
-for(const v of neighbors(n,1)){
-MIRROR.add(v);
-}
-}
-
-function mirrorType(n){
-return MIRROR.has(n)
-?"ESPELHO"
-:"ANTIESPELHO";
-}
-
-/* ============================================================
-   12 ADAPTATIVAS ORIGINAIS
-   ============================================================ */
 
 const ADAPTATIVES=[
 ["A01",10,.05,6,12,0,0,0,false,3],
@@ -187,45 +104,90 @@ const ORIGINALS=[
 ["UNION","UNIÃO"]
 ];
 
-/* ============================================================
-   ESTADO
-   ============================================================ */
+const $=id=>document.getElementById(id);
+const mod=n=>(n%37+37)%37;
+const idx=n=>W.indexOf(n);
+const clone=x=>x==null?x:JSON.parse(JSON.stringify(x));
+const mean=a=>a.length?a.reduce((s,n)=>s+n,0)/a.length:0;
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const fmt=n=>Number.isFinite(n)?n.toFixed(2).replace(".",","):"—";
+const percent=(a,b)=>b?fmt(a/b*100)+"%":"—";
+
+function escapeHTML(v){
+return String(v??"").replace(/[&<>"']/g,c=>({
+"&":"&amp;","<":"&lt;",">":"&gt;",
+'"':"&quot;","'":"&#39;"
+}[c]));
+}
+
+function neighbors(n,r=1){
+const p=idx(n);
+return Array.from({length:2*r+1},(_,i)=>W[mod(p+i-r)]);
+}
+
+function physicalDistance(a,b){
+const d=Math.abs(idx(a)-idx(b));
+return Math.min(d,37-d);
+}
+
+function signedDistance(a,b){
+const forward=mod(idx(b)-idx(a));
+const backward=mod(idx(a)-idx(b));
+return forward<=backward?forward:-backward;
+}
+
+function sector(n){
+return SECTOR_ORDER.find(s=>SECTORS[s].includes(n))||"ZERO";
+}
+
+const MIRROR=new Set();
+
+for(const n of MIRROR_BASE){
+for(const v of neighbors(n,1)){
+MIRROR.add(v);
+}
+}
+
+function mirrorType(n){
+return MIRROR.has(n)?"ESPELHO":"ANTIESPELHO";
+}
+
+function jumpType(d){
+return d<=4?"CURTO":d<=9?"MÉDIO":"GRANDE";
+}
 
 function fresh(){
 return {
 history:[],
 sources:[],
 ledger:[],
-
 strategy:"FIXED",
 rank:3,
 manual:null,
-
 activeAdaptive:"A05",
 activeCreated:null,
 createdStrategies:[],
-
 g1:true,
 galeSkip:false,
 secondHouse:false,
-
 phase:"ENTRY",
 frozen:null,
 cycle:null,
 previousMotor:null,
-
 trainerChoice:null,
 trainerMotor:null,
 trainerStart:0,
 trainerChanges:0,
 trainerMotorChanges:0,
 trainerPending:false,
-
+trainerOperationalTurns:0,
 open:{
 general:true,
 trainer:true,
 lab:false,
 motors:false,
+jumps:false,
+mirrors:false,
 timeline:true,
 virtualRanking:false,
 opportunities:false,
@@ -236,217 +198,507 @@ created:false
 };
 }
 
-let state=fresh();
-
-function readStorage(key){
+function read(key){
 try{
-return JSON.parse(
-localStorage.getItem(key)||"null"
-);
+return JSON.parse(localStorage.getItem(key)||"null");
 }catch(e){
 return null;
 }
 }
 
-const saved=readStorage(KEY);
+let state=fresh();
+let loadedKey=null;
 
-if(saved){
+for(const key of [KEY,...OLD_KEYS]){
+const data=read(key);
+if(data&&Array.isArray(data.history)){
 state={
 ...fresh(),
-...saved,
-open:{
-...fresh().open,
-...(saved.open||{})
-}
+...data,
+open:{...fresh().open,...(data.open||{})}
 };
+loadedKey=key;
+break;
 }
+}
+
+state.history=state.history.filter(n=>Number.isInteger(n)&&n>=0&&n<=36);
+state.sources=Array.isArray(state.sources)?state.sources:[];
+state.ledger=Array.isArray(state.ledger)?state.ledger:[];
+
+if(!Number.isInteger(state.trainerOperationalTurns)){
+state.trainerOperationalTurns=0;
+}
+
+let persistenceWarning=false;
 
 function save(){
 try{
-localStorage.setItem(
-KEY,
-JSON.stringify(state)
-);
+localStorage.setItem(KEY,JSON.stringify(state));
+persistenceWarning=false;
+return true;
 }catch(e){
-console.warn(
-"Não foi possível salvar todos os dados.",
-e
-);
+persistenceWarning=true;
+console.warn("Falha ao salvar histórico completo:",e);
+return false;
 }
 }
 
-/* ============================================================
-   HISTÓRICO COMPLETO
-
-   Não há corte dos números importados.
-   Os motores analisam apenas a janela recente.
-   ============================================================ */
-
-function analysisHistory(){
-return state.history.slice(
--ANALYSIS_WINDOW
-);
+/*
+ A migração não apaga a chave antiga.
+ O histórico antigo permanece recuperável.
+*/
+if(loadedKey&&loadedKey!==KEY){
+save();
 }
 
-function historySignature(){
-const h=analysisHistory();
+/* =====================================================
+   ANÁLISE SEQUENCIAL
+   ===================================================== */
 
-return (
-state.history.length+
-":"+
-h.join(",")
-);
-}
+function sequentialAnalysis(history){
 
-/* ============================================================
-   LEITURA DE SALTOS
-   ============================================================ */
+const h=history.slice(-80);
+const transitions=[];
 
-function jumpClass(d){
-if(d<=4)return "CURTO";
-if(d<=9)return "MÉDIO";
-return "GRANDE";
-}
+for(let i=1;i<h.length;i++){
 
-function jumpAnalysis(history=state.history){
+const from=h[i-1];
+const to=h[i];
 
-const recent=history.slice(-60);
+const numericDelta=to-from;
+const physicalDelta=signedDistance(from,to);
+const physical=Math.abs(physicalDelta);
 
-const jumps=[];
-
-for(let i=1;i<recent.length;i++){
-
-const from=recent[i-1];
-const to=recent[i];
-const d=distance(from,to);
-
-jumps.push({
+transitions.push({
 from,
 to,
-distance:d,
-type:jumpClass(d),
-fromSector:sector(from),
-toSector:sector(to),
-fromMirror:mirrorType(from),
-toMirror:mirrorType(to)
+numericDelta,
+physicalDelta,
+physical,
+numericDirection:
+numericDelta>0?"CRESCENTE":
+numericDelta<0?"DECRESCENTE":"IGUAL",
+physicalDirection:
+physicalDelta>0?"HORÁRIO":
+physicalDelta<0?"ANTI-HORÁRIO":"PARADO",
+jump:jumpType(physical),
+mirrorFrom:mirrorType(from),
+mirrorTo:mirrorType(to),
+sectorFrom:sector(from),
+sectorTo:sector(to)
 });
 }
 
-const last=jumps.slice(-12);
-const last3=jumps.slice(-3);
-const previous3=jumps.slice(-6,-3);
+const last=transitions.slice(-12);
+const last6=transitions.slice(-6);
+const last3=transitions.slice(-3);
+const prev3=transitions.slice(-6,-3);
 
-const avg=arr=>arr.length
-?arr.reduce(
-(s,x)=>s+x.distance,0
-)/arr.length
-:0;
+const numericSteps=transitions.slice(-8)
+.map(x=>Math.sign(x.numericDelta));
 
-const recentAverage=avg(last3);
-const previousAverage=avg(previous3);
+const physicalSteps=transitions.slice(-8)
+.map(x=>Math.sign(x.physicalDelta));
 
-const large=last.filter(
-x=>x.type==="GRANDE"
-).length;
+function streak(steps){
+if(!steps.length)return {direction:0,length:0};
+const direction=steps.at(-1);
+if(direction===0)return {direction:0,length:0};
+let length=0;
+for(let i=steps.length-1;i>=0;i--){
+if(steps[i]!==direction)break;
+length++;
+}
+return {direction,length};
+}
 
-const regionAbsence={};
+const numericStreak=streak(numericSteps);
+const physicalStreak=streak(physicalSteps);
+
+const averageLast3=mean(last3.map(x=>x.physical));
+const averagePrev3=mean(prev3.map(x=>x.physical));
+
+const acceleration=averageLast3-averagePrev3;
+
+const regions={};
 
 for(const s of SECTOR_ORDER){
 
-const p=history.length-1-
-history.lastIndexOf(
-history.slice().reverse().find(
-n=>sector(n)===s
-)
-);
-
-/*
- Calcula ausência diretamente
- para evitar ambiguidades.
-*/
-
-let absent=0;
+let absence=0;
 
 for(let i=history.length-1;i>=0;i--){
-
 if(sector(history[i])===s)break;
-absent++;
+absence++;
 }
 
-regionAbsence[s]=absent;
-}
-
-const mirrorLast=history.slice(-12);
-
-const mirrorCount=mirrorLast.filter(
-n=>MIRROR.has(n)
-).length;
-
-const mirrorAbsent=(()=>{
-let count=0;
-
-for(let i=history.length-1;i>=0;i--){
-
-if(MIRROR.has(history[i]))break;
-count++;
-}
-
-return count;
-})();
-
-const antiAbsent=(()=>{
-let count=0;
-
-for(let i=history.length-1;i>=0;i--){
-
-if(!MIRROR.has(history[i]))break;
-count++;
-}
-
-return count;
-})();
-
-let signal="ESTÁVEL";
-
-if(
-last3.length>=2&&
-recentAverage>=10
-){
-signal="SALTOS GRANDES RECENTES";
-}
-
-if(
-last3.length>=2&&
-recentAverage>previousAverage+3
-){
-signal="AUMENTO DOS SALTOS";
-}
-
-if(
-last3.length>=2&&
-recentAverage<previousAverage-3
-){
-signal="REDUÇÃO DOS SALTOS";
-}
-
-return {
-jumps,
-last,
-last3,
-large,
-recentAverage,
-previousAverage,
-signal,
-regionAbsence,
-mirrorCount,
-mirrorAbsent,
-antiAbsent
+regions[s]={
+absence,
+recent:history.slice(-12).filter(n=>sector(n)===s).length
 };
 }
 
-/* ============================================================
-   PESOS DOS 12 MOTORES — BASE ORIGINAL
-   ============================================================ */
+const mirrorRecent=history.slice(-12)
+.filter(n=>MIRROR.has(n)).length;
+
+const mirrorTransitions=last.filter(
+x=>x.mirrorFrom!==x.mirrorTo
+).length;
+
+const mirrorToMirror=last.filter(
+x=>x.mirrorFrom==="ESPELHO"&&
+x.mirrorTo==="ESPELHO"
+).length;
+
+const antiToAnti=last.filter(
+x=>x.mirrorFrom==="ANTIESPELHO"&&
+x.mirrorTo==="ANTIESPELHO"
+).length;
+
+const mirrorDistances=last.filter(
+x=>x.mirrorFrom==="ESPELHO"||
+x.mirrorTo==="ESPELHO"
+).map(x=>x.physical);
+
+const recentLarge=last.filter(x=>x.jump==="GRANDE").length;
+const recentShort=last.filter(x=>x.jump==="CURTO").length;
+
+const physicalDirections={
+clockwise:last6.filter(x=>x.physicalDelta>0).length,
+counterclockwise:last6.filter(x=>x.physicalDelta<0).length
+};
+
+const numericDirections={
+up:last6.filter(x=>x.numericDelta>0).length,
+down:last6.filter(x=>x.numericDelta<0).length
+};
+
+let signal="MISTO";
+
+if(acceleration>=3)signal="SALTOS AUMENTANDO";
+else if(acceleration<=-3)signal="SALTOS DIMINUINDO";
+else if(recentLarge>=5)signal="PREDOMÍNIO DE SALTOS GRANDES";
+else if(recentShort>=6)signal="PREDOMÍNIO DE SALTOS CURTOS";
+
+return {
+transitions,
+last,
+last3,
+last6,
+numericStreak,
+physicalStreak,
+averageLast3,
+averagePrev3,
+acceleration,
+regions,
+mirrorRecent,
+mirrorTransitions,
+mirrorToMirror,
+antiToAnti,
+mirrorDistances,
+recentLarge,
+recentShort,
+physicalDirections,
+numericDirections,
+signal
+};
+}
+
+/* =====================================================
+   CAMADA DE SINAIS APLICADA AOS 12 MOTORES
+
+   Usa informação anterior ao giro.
+   Não usa o resultado futuro.
+   ===================================================== */
+
+function sequenceWeights(history,family,radius){
+
+const weights=Array(37).fill(0);
+
+if(history.length<3)return weights;
+
+const analysis=sequentialAnalysis(history);
+const last=history.at(-1);
+
+const familyStrength=
+family==="NORMAL"?.72:
+family==="DINAMICO"?1.00:
+family==="RX_NORMAL"?.88:1.12;
+
+const radiusStrength=radius/5;
+
+const add=(n,value)=>{
+weights[idx(n)]+=value*familyStrength*radiusStrength;
+};
+
+/*
+ 1. ORDEM NUMÉRICA CRESCENTE / DECRESCENTE
+*/
+
+const recentNumeric=analysis.last6.map(x=>x.numericDelta);
+
+const up=recentNumeric.filter(x=>x>0).length;
+const down=recentNumeric.filter(x=>x<0).length;
+
+const numericBias=(up-down)/Math.max(1,up+down);
+
+const numericStepSize=clamp(
+Math.round(mean(recentNumeric.map(Math.abs))),
+1,12
+);
+
+for(const n of W){
+
+const delta=n-last;
+
+if(numericBias>0&&delta>0){
+add(n,.10*Math.abs(numericBias));
+}
+
+if(numericBias<0&&delta<0){
+add(n,.10*Math.abs(numericBias));
+}
+
+/*
+ Mantém o sinal moderado:
+ não presume continuação obrigatória.
+*/
+
+if(
+analysis.numericStreak.length>=2&&
+Math.sign(delta)===analysis.numericStreak.direction
+){
+add(n,.07);
+}
+
+const target=clamp(
+last+
+Math.sign(numericBias)*numericStepSize,
+0,36
+);
+
+if(Math.abs(n-target)<=2){
+add(n,.05);
+}
+}
+
+/*
+ 2. DIREÇÃO FÍSICA NA RODA
+*/
+
+const cw=analysis.physicalDirections.clockwise;
+const ccw=analysis.physicalDirections.counterclockwise;
+
+const physicalBias=(cw-ccw)/Math.max(1,cw+ccw);
+
+const distances=analysis.last6.map(x=>x.physical);
+
+const expectedDistance=clamp(
+Math.round(mean(distances)),
+1,18
+);
+
+for(const n of W){
+
+const delta=signedDistance(last,n);
+const distance=Math.abs(delta);
+
+if(
+Math.sign(delta)===Math.sign(physicalBias)&&
+physicalBias!==0
+){
+add(n,.12*Math.abs(physicalBias));
+}
+
+if(
+analysis.physicalStreak.length>=2&&
+Math.sign(delta)===analysis.physicalStreak.direction
+){
+add(n,.07);
+}
+
+if(Math.abs(distance-expectedDistance)<=2){
+add(n,.09);
+}
+}
+
+/*
+ 3. SALTOS CRESCENTES / DECRESCENTES
+*/
+
+const lastDistance=analysis.last.at(-1)?.physical||0;
+
+const targetDistance=clamp(
+Math.round(
+lastDistance+
+analysis.acceleration*.5
+),
+1,18
+);
+
+for(const n of W){
+
+const d=physicalDistance(last,n);
+
+if(Math.abs(d-targetDistance)<=2){
+add(n,.09);
+}
+
+if(
+analysis.acceleration>=3&&
+d>=10
+){
+add(n,.07);
+}
+
+if(
+analysis.acceleration<=-3&&
+d<=5
+){
+add(n,.07);
+}
+}
+
+/*
+ 4. ESPELHO / ANTIESPELHO
+   Analisa transições e distância.
+*/
+
+const lastMirror=mirrorType(last);
+
+const mirrorTransitionRate=
+analysis.mirrorTransitions/
+Math.max(1,analysis.last.length);
+
+const mirrorDistance=
+mean(analysis.mirrorDistances);
+
+for(const n of W){
+
+const candidateMirror=mirrorType(n);
+const changes=candidateMirror!==lastMirror;
+const d=physicalDistance(last,n);
+
+if(changes){
+add(n,.045*mirrorTransitionRate);
+}else{
+add(n,.045*(1-mirrorTransitionRate));
+}
+
+if(
+mirrorDistance>0&&
+Math.abs(d-mirrorDistance)<=2
+){
+add(n,.055);
+}
+
+if(
+analysis.mirrorToMirror>
+analysis.antiToAnti&&
+candidateMirror==="ESPELHO"
+){
+add(n,.035);
+}
+
+if(
+analysis.antiToAnti>
+analysis.mirrorToMirror&&
+candidateMirror==="ANTIESPELHO"
+){
+add(n,.035);
+}
+}
+
+/*
+ 5. REGIÕES
+
+ Ausência não é interpretada como
+ obrigação de retorno.
+ O peso favorece distribuição quando
+ os saltos recentes estão dispersos.
+*/
+
+const dispersion=
+analysis.averageLast3>=9||
+analysis.recentLarge>=5;
+
+if(dispersion){
+
+for(const n of W){
+
+const s=sector(n);
+const represented=analysis.regions[s].recent;
+
+add(n,.045/(1+represented*.2));
+}
+}
+
+/*
+ 6. ASSINATURA DOS ÚLTIMOS SALTOS
+
+ Procura sequências semelhantes
+ dentro do histórico observado.
+*/
+
+const signatures=analysis.transitions.slice(-3);
+
+if(signatures.length===3){
+
+const current=signatures.map(x=>({
+numeric:Math.sign(x.numericDelta),
+physical:Math.sign(x.physicalDelta),
+jump:x.jump,
+mirrorChange:x.mirrorFrom!==x.mirrorTo
+}));
+
+const matches=[];
+
+for(let i=3;i<history.length-1;i++){
+
+let score=0;
+
+for(let j=0;j<3;j++){
+
+const a=history[i-3+j];
+const b=history[i-2+j];
+
+const nd=Math.sign(b-a);
+const pd=Math.sign(signedDistance(a,b));
+const jt=jumpType(physicalDistance(a,b));
+const mc=mirrorType(a)!==mirrorType(b);
+
+const target=current[j];
+
+if(nd===target.numeric)score+=.20;
+if(pd===target.physical)score+=.25;
+if(jt===target.jump)score+=.35;
+if(mc===target.mirrorChange)score+=.20;
+}
+
+matches.push({
+score:score/3,
+next:history[i]
+});
+}
+
+matches.sort((a,b)=>b.score-a.score);
+
+for(const match of matches.slice(0,12)){
+
+if(match.score<.65)continue;
+
+for(const n of neighbors(match.next,1)){
+add(n,.045*match.score);
+}
+}
+}
+
+return weights;
+}
+
+/* =====================================================
+   MOTORES BASE
+   ===================================================== */
 
 function motorWeights(history,family,radius){
 
@@ -474,11 +726,7 @@ weights[j]+=decay*(7-d)/7;
 
 if(family.includes("DINAMICO")){
 
-for(
-let k=0;
-k<Math.min(radius+2,history.length);
-k++
-){
+for(let k=0;k<Math.min(radius+2,history.length);k++){
 
 const n=history[history.length-1-k];
 const p=idx(n);
@@ -499,21 +747,14 @@ weights[j]+=(4-d)/(k+2)*1.7;
 
 if(family.startsWith("RX")){
 
-const length=Math.min(
-radius,
-history.length-2
-);
+const length=Math.min(radius,history.length-2);
 
 if(length>=2){
 
 const current=history.slice(-length);
 const matches=[];
 
-for(
-let i=0;
-i+length<history.length-1;
-i++
-){
+for(let i=0;i+length<history.length-1;i++){
 
 let score=0;
 
@@ -521,10 +762,7 @@ for(let j=0;j<length;j++){
 
 score+=Math.max(
 0,
-6-distance(
-current[j],
-history[i+j]
-)
+6-physicalDistance(current[j],history[i+j])
 )/6;
 }
 
@@ -536,17 +774,11 @@ next:history[i+length]
 
 matches.sort((a,b)=>b.score-a.score);
 
-const selected=matches.slice(
-0,
-Math.max(
-3,
-Math.ceil(matches.length*.2)
-)
-);
+for(const match of matches.slice(0,Math.max(
+3,Math.ceil(matches.length*.2)
+))){
 
-for(const m of selected){
-
-const p=idx(m.next);
+const p=idx(match.next);
 
 for(let j=0;j<37;j++){
 
@@ -556,19 +788,31 @@ Math.abs(p-j),
 );
 
 if(d<=3){
-weights[j]+=(4-d)*m.score*.45;
+weights[j]+=(4-d)*match.score*.45;
 }
 }
 }
 }
+}
+
+/*
+ NOVO AJUSTE:
+ sinais aplicados a todos os motores
+ antes da geração da geometria.
+*/
+
+const sequence=sequenceWeights(history,family,radius);
+
+for(let i=0;i<37;i++){
+weights[i]+=sequence[i];
 }
 
 return weights;
 }
 
-/* ============================================================
-   GEOMETRIA ORIGINAL
-   ============================================================ */
+/* =====================================================
+   GEOMETRIA: 5x5 + 1x3
+   ===================================================== */
 
 const BLOCKS5=[];
 const BLOCKS3=[];
@@ -595,11 +839,7 @@ numbers,
 mask
 };
 
-if(radius===1){
-BLOCKS3.push(block);
-}else{
-BLOCKS5.push(block);
-}
+(radius===1?BLOCKS3:BLOCKS5).push(block);
 }
 }
 
@@ -607,37 +847,25 @@ function geometry(weights,mandatory=[]){
 
 const required=new Set(mandatory);
 
-const scoreBlock=b=>{
-let score=0;
-
-for(const n of b.numbers){
-score+=weights[idx(n)]||0;
-}
-
-return score;
-};
+const scoreBlock=b=>
+b.numbers.reduce(
+(s,n)=>s+(weights[idx(n)]||0),0
+);
 
 const fives=BLOCKS5.map(b=>({
-...b,
-value:scoreBlock(b)
+...b,value:scoreBlock(b)
 })).sort((a,b)=>b.value-a.value);
 
 const threes=BLOCKS3.map(b=>({
-...b,
-value:scoreBlock(b)
+...b,value:scoreBlock(b)
 })).sort((a,b)=>b.value-a.value);
 
 let best=null;
 
 for(const small of threes){
 
-if(required.size){
-
-const missing=[...required].filter(
-n=>!small.numbers.includes(n)
-);
-
-if(missing.length)continue;
+if([...required].some(n=>!small.numbers.includes(n))){
+continue;
 }
 
 let beam=[{
@@ -654,9 +882,7 @@ for(const item of beam){
 
 for(const b of fives){
 
-if((item.mask&b.mask)!==0n){
-continue;
-}
+if((item.mask&b.mask)!==0n)continue;
 
 next.push({
 blocks:[...item.blocks,b],
@@ -673,33 +899,30 @@ break;
 
 next.sort((a,b)=>b.score-a.score);
 
-const unique=new Set();
-const trimmed=[];
+const seen=new Set();
+
+beam=[];
 
 for(const item of next){
 
-const key=item.mask.toString();
+const signature=item.mask.toString();
 
-if(unique.has(key))continue;
+if(seen.has(signature))continue;
 
-unique.add(key);
-trimmed.push(item);
+seen.add(signature);
+beam.push(item);
 
-if(trimmed.length>=10)break;
+if(beam.length>=10)break;
 }
-
-beam=trimmed;
 }
 
 for(const item of beam){
 
 if(item.blocks.length!==6)continue;
 
-if(best&&item.score<=best.score){
-continue;
-}
-
+if(!best||item.score>best.score){
 best=item;
+}
 }
 }
 
@@ -711,30 +934,23 @@ radius:b.radius,
 numbers:[...b.numbers]
 }));
 
-const numbers=blocks.flatMap(
-b=>b.numbers
-);
+const numbers=blocks.flatMap(b=>b.numbers);
 
-if(new Set(numbers).size!==28){
-return null;
-}
+if(new Set(numbers).size!==28)return null;
 
 return {
 score:best.score,
 blocks,
 numbers,
-centers5:blocks
-.filter(b=>b.radius===2)
+centers5:blocks.filter(b=>b.radius===2)
 .map(b=>b.center),
-center3:blocks.find(
-b=>b.radius===1
-).center
+center3:blocks.find(b=>b.radius===1).center
 };
 }
 
-/* ============================================================
+/* =====================================================
    12 MOTORES
-   ============================================================ */
+   ===================================================== */
 
 function candidates(history){
 
@@ -751,12 +967,7 @@ family.startsWith("RX")&&
 history.length<radius*2+4
 )continue;
 
-const weights=motorWeights(
-history,
-family,
-radius
-);
-
+const weights=motorWeights(history,family,radius);
 const play=geometry(weights);
 
 if(!play)continue;
@@ -780,60 +991,48 @@ c.rank=i+1;
 return result;
 }
 
-let candidateCache={
-signature:null,
-value:[]
-};
+let candidateCache={signature:null,value:[]};
 
 function getCandidates(){
 
-const signature=historySignature();
+const h=state.history.slice(-200);
+
+const signature=
+state.history.length+":"+h.join(",");
 
 if(candidateCache.signature===signature){
 return candidateCache.value;
 }
 
-const value=candidates(
-analysisHistory()
-);
+const value=candidates(h);
 
-candidateCache={
-signature,
-value
-};
+candidateCache={signature,value};
 
 return value;
 }
 
-function invalidateCandidates(){
+function invalidate(){
 candidateCache.signature=null;
+trainerCache.signature=null;
 }
 
-/* ============================================================
-   ESTATÍSTICAS VIRTUAIS
-   ============================================================ */
+/* =====================================================
+   HISTÓRICO VIRTUAL
+   ===================================================== */
 
-function motorStats(
-key,
-window=20,
-ledger=state.ledger
-){
+function motorStats(key,window=20){
 
-const rows=ledger.filter(
-r=>r.virtual?.some(
-x=>x.key===key
-)
+const rows=state.ledger.filter(
+r=>r.virtual?.some(x=>x.key===key)
 ).slice(-window);
 
 let hits=0;
 
 for(const row of rows){
 
-const m=row.virtual.find(
-x=>x.key===key
-);
+const motor=row.virtual.find(x=>x.key===key);
 
-if(m.numbers.includes(row.number)){
+if(motor?.numbers.includes(row.number)){
 hits++;
 }
 }
@@ -842,9 +1041,7 @@ return {
 total:rows.length,
 hits,
 misses:rows.length-hits,
-rate:rows.length
-?hits/rows.length
-:null
+rate:rows.length?hits/rows.length:null
 };
 }
 
@@ -860,9 +1057,9 @@ center3:c.play.center3
 }));
 }
 
-/* ============================================================
-   ADAPTATIVAS ORIGINAIS
-   ============================================================ */
+/* =====================================================
+   ADAPTATIVAS
+   ===================================================== */
 
 function adaptiveChoose(cs,config,previous){
 
@@ -874,23 +1071,16 @@ c=>c.rank<=config.maxRank
 
 const ranked=eligible.map(c=>{
 
-const stats=motorStats(
-c.key,
-config.window
-);
+const stats=motorStats(c.key,config.window);
 
 let score=stats.total>=config.minSamples
-?stats.rate
-:.5;
+?stats.rate:.5;
 
 if(config.recentWeight){
 
 const recent=motorStats(
 c.key,
-Math.max(
-5,
-Math.floor(config.window/2)
-)
+Math.max(5,Math.floor(config.window/2))
 );
 
 if(recent.rate!==null){
@@ -904,9 +1094,7 @@ recent.rate*config.recentWeight;
 if(config.lossPenalty){
 
 const recent=motorStats(c.key,5);
-
-score-=recent.misses*
-config.lossPenalty;
+score-=recent.misses*config.lossPenalty;
 }
 
 if(config.consensus){
@@ -928,9 +1116,7 @@ return {c,score,stats};
 });
 
 ranked.sort(
-(a,b)=>
-b.score-a.score||
-a.c.rank-b.c.rank
+(a,b)=>b.score-a.score||a.c.rank-b.c.rank
 );
 
 const best=ranked[0];
@@ -938,15 +1124,10 @@ const best=ranked[0];
 if(!best)return cs[0];
 if(!previous)return best.c;
 
-const old=ranked.find(
-x=>x.c.key===previous
-);
+const old=ranked.find(x=>x.c.key===previous);
 
 if(!old)return best.c;
-
-if(old.c.key===best.c.key){
-return old.c;
-}
+if(old.c.key===best.c.key)return old.c;
 
 if(config.switchAfterLoss){
 
@@ -958,12 +1139,11 @@ if(recent.length===config.persistence){
 
 const failures=recent.every(r=>{
 
-const m=r.virtual.find(
+const motor=r.virtual.find(
 x=>x.key===previous
 );
 
-return m&&
-!m.numbers.includes(r.number);
+return motor&&!motor.numbers.includes(r.number);
 });
 
 if(failures)return best.c;
@@ -981,223 +1161,119 @@ return best.c;
 return old.c;
 }
 
-/* ============================================================
-   CONSENSO / UNIÃO
-   ============================================================ */
-
 function collective(cs,rule){
 
 const votes=Array(37).fill(0);
 
 const selected=rule==="UNION"
-?cs.slice(0,3)
-:cs;
+?cs.slice(0,3):cs;
 
 for(const c of selected){
 
 for(const n of c.play.numbers){
 
 votes[idx(n)]+=
-rule==="UNION"
-?1
-:1/(1+c.rank*.1);
+rule==="UNION"?1:1/(1+c.rank*.1);
 }
 }
 
 const play=geometry(votes);
 
-if(!play)return cs[0];
-
-return {
+return play?{
 key:rule,
 family:rule,
 radius:0,
 rank:0,
 score:play.score,
 play
-};
+}:cs[0];
 }
 
-/* ============================================================
-   AVALIAÇÃO DE SALTOS NA COBERTURA
-
-   Avalia distribuição e correspondência
-   com sinais históricos recentes.
-   ============================================================ */
-
-function signalScore(play,analysis){
-
-if(!play)return 0;
-
-const covered=new Set(
-play.numbers
-);
-
-let score=0;
-
-const regionCoverage={};
-
-for(const s of SECTOR_ORDER){
-
-const count=play.numbers.filter(
-n=>sector(n)===s
-).length;
-
-regionCoverage[s]=count;
-
-const absence=analysis.regionAbsence[s]||0;
-
-/*
- Ausência é um indicador descritivo.
- Peso pequeno, sem presumir que o
- setor está prestes a sair.
-*/
-
-score+=Math.min(absence,12)*
-count*.00015;
-}
-
-/*
- Cobertura distribuída quando os
- saltos recentes são grandes.
-*/
-
-if(analysis.recentAverage>=9){
-
-const represented=SECTOR_ORDER.filter(
-s=>regionCoverage[s]>0
-).length;
-
-score+=represented*.012;
-}
-
-/*
- Avalia os destinos dos últimos
- saltos grandes observados.
-*/
-
-const large=analysis.last.filter(
-j=>j.type==="GRANDE"
-);
-
-for(const j of large){
-
-const around=neighbors(j.to,1);
-
-const hits=around.filter(
-n=>covered.has(n)
-).length;
-
-score+=hits*.0015;
-}
-
-/*
- Espelho / antiespelho:
- acompanha a distribuição recente.
-*/
-
-const mirrorCovered=play.numbers.filter(
-n=>MIRROR.has(n)
-).length;
-
-const antiCovered=28-mirrorCovered;
-
-const mirrorRatio=
-analysis.mirrorCount/12;
-
-const observedMirror=
-Math.min(1,mirrorRatio);
-
-const coverageMirror=
-mirrorCovered/28;
-
-score+=(
-1-Math.abs(
-coverageMirror-observedMirror
-)
-)*.018;
-
-/*
- Ausência prolongada é exibida,
- mas não recebe grande peso.
-*/
-
-if(analysis.mirrorAbsent>=6){
-score+=mirrorCovered*.0002;
-}
-
-if(analysis.antiAbsent>=6){
-score+=antiCovered*.0002;
-}
-
-return score;
-}
-
-/* ============================================================
-   TREINADOR — AVALIAÇÃO DINÂMICA
-   ============================================================ */
+/* =====================================================
+   TREINADOR DINÂMICO
+   ===================================================== */
 
 let trainerCache={
 signature:null,
 rows:[],
-ranking:[],
 recommendation:null
 };
-
-function invalidateTrainer(){
-trainerCache.signature=null;
-}
 
 function trainerAnalysis(cs=getCandidates()){
 
 const signature=
-historySignature()+"|"+
-state.ledger.length+"|"+
-state.ledger.at(-1)?.id;
+state.history.length+":"+
+state.history.slice(-30).join(",")+":"+
+state.ledger.length;
 
 if(trainerCache.signature===signature){
 return trainerCache;
 }
 
 const rows=[];
-const ranking=[];
 
-const jump=jumpAnalysis();
-
-for(const family of FAMILIES){
-
-for(const radius of RADII){
-
-const key=family+"_"+radius;
-
-ranking.push({
-key,
-...motorStats(key,30)
-});
-}
-}
-
-ranking.sort(
-(a,b)=>
-(b.rate??-1)-(a.rate??-1)
-);
+const sequence=sequentialAnalysis(state.history);
 
 for(const config of ADAPTATIVES){
 
-const last3=state.ledger
-.filter(r=>r.virtual?.length)
-.slice(-3);
+const eligible=cs.filter(
+c=>c.rank<=config.maxRank
+);
+
+const ranked=eligible.map(c=>{
+
+const stats=motorStats(c.key,config.window);
+const recent=motorStats(c.key,3);
+
+let score=
+(recent.rate??.5)*.52+
+(stats.rate??.5)*.38;
+
+/*
+ Avalia se a cobertura acompanha
+ sinais recentes de direção e saltos.
+*/
+
+const signal=sequenceWeights(
+state.history,
+c.family,
+c.radius
+);
+
+const signalTotal=signal.reduce((a,b)=>a+b,0);
+
+const coveredSignal=c.play.numbers.reduce(
+(s,n)=>s+signal[idx(n)],0
+);
+
+const signalCoverage=signalTotal
+?coveredSignal/signalTotal
+:28/37;
+
+score+=signalCoverage*.10;
+
+score-=config.lossPenalty*recent.misses;
+
+return {motor:c,score};
+}).sort(
+(a,b)=>b.score-a.score||
+a.motor.rank-b.motor.rank
+);
+
+const best=ranked[0];
+
+const recentRows=state.ledger.filter(
+r=>r.virtual?.length
+).slice(-3);
 
 let hits=0;
 let total=0;
 
-for(const row of last3){
+for(const row of recentRows){
 
-const eligible=row.virtual
-.filter(m=>m.rank<=config.maxRank)
-.sort((a,b)=>a.rank-b.rank);
-
-const m=eligible[0];
+const m=row.virtual.filter(
+x=>x.rank<=config.maxRank
+).sort((a,b)=>a.rank-b.rank)[0];
 
 if(!m)continue;
 
@@ -1208,265 +1284,108 @@ hits++;
 }
 }
 
-const recentRate=total
-?hits/total
-:.5;
-
-const longer=state.ledger
-.filter(r=>r.virtual?.length)
-.slice(-config.window);
-
-let longHits=0;
-let longTotal=0;
-
-for(const row of longer){
-
-const m=row.virtual
-.filter(x=>x.rank<=config.maxRank)
-.sort((a,b)=>a.rank-b.rank)[0];
-
-if(!m)continue;
-
-longTotal++;
-
-if(m.numbers.includes(row.number)){
-longHits++;
-}
-}
-
-const longRate=longTotal
-?longHits/longTotal
-:.5;
-
-const eligible=cs.filter(
-c=>c.rank<=config.maxRank
-);
-
-const evaluated=eligible.map(c=>{
-
-const stats=motorStats(
-c.key,
-config.window
-);
-
-const recent=motorStats(
-c.key,3
-);
-
-let motorScore=
-(recent.rate??.5)*.55+
-(stats.rate??.5)*.35+
-signalScore(c.play,jump)*.10;
-
-motorScore-=config.lossPenalty*
-recent.misses;
-
-motorScore+=config.consensus*.015;
-
-return {
-motor:c,
-motorScore
-};
-}).sort(
-(a,b)=>b.motorScore-a.motorScore||
-a.motor.rank-b.motor.rank
-);
-
-const best=evaluated[0];
-
-let score=
-recentRate*.60+
-longRate*.25+
-(best?.motorScore??0)*.15;
-
-score+=config.recentWeight*
-recentRate*.02;
+const recentRate=total?hits/total:.5;
 
 rows.push({
 id:config.id,
 name:config.name,
 config,
+motor:best?.motor||null,
 hits,
 total,
-rate:total?hits/total:null,
-score,
-motor:best?.motor||null,
-motorScore:best?.motorScore??0
+score:(best?.score??.5)*.65+
+recentRate*.35
 });
 }
 
 rows.sort(
-(a,b)=>
-b.score-a.score||
+(a,b)=>b.score-a.score||
 a.id.localeCompare(b.id)
 );
 
 trainerCache={
 signature,
 rows,
-ranking,
 recommendation:rows[0]||null
 };
 
 return trainerCache;
 }
 
-/* ============================================================
-   TREINADOR — TROCA EM 1, 2 OU 3 GIROS
-
-   NÃO TROCA DURANTE GALE.
-
-   AO COMPLETAR 3 GIROS OPERACIONAIS,
-   A ADAPTATIVA PRECISA SER DIFERENTE.
-
-   O MOTOR TAMBÉM É REAVALIADO.
-   ============================================================ */
-
 function updateTrainerChoice(cs=getCandidates()){
 
-if(state.strategy!=="TRAINER"||
-state.manual){
+if(state.strategy!=="TRAINER"||state.manual){
 return;
 }
 
 if(state.phase!=="ENTRY"){
-
-if(
-state.history.length-
-state.trainerStart>=TRAINER_MAX
-){
-state.trainerPending=true;
-}
-
 return;
 }
 
 if(!cs.length)return;
 
-const analysis=trainerAnalysis(cs);
+const ranking=trainerAnalysis(cs).rows;
 
-if(!analysis.rows.length)return;
+if(!ranking.length)return;
 
 const previous=state.trainerChoice;
+const elapsed=state.trainerOperationalTurns||0;
 
-const elapsed=Math.max(
-0,
-state.history.length-
-(state.trainerStart||0)
-);
+const current=ranking.find(x=>x.id===previous);
+const best=ranking[0];
 
-const current=analysis.rows.find(
-r=>r.id===previous
-);
-
-const best=analysis.rows[0];
-
-let shouldSwitch=!previous;
+let change=!previous;
 
 if(previous){
 
-if(
-elapsed>=TRAINER_MAX||
-state.trainerPending
-){
-shouldSwitch=true;
+if(elapsed>=3||state.trainerPending){
+change=true;
 }
-
-/*
- Troca antecipada se houver diferença
- relevante na avaliação.
-*/
 
 else if(
 elapsed>=1&&
 best.id!==previous&&
 best.score>(current?.score??-1)+.035
 ){
-shouldSwitch=true;
+change=true;
 }
 }
 
-if(!shouldSwitch)return;
+if(!change)return;
 
-/*
- Na troca obrigatória, exclui a
- adaptativa anterior.
-*/
+const alternatives=previous
+?ranking.filter(x=>x.id!==previous)
+:ranking;
 
-let alternatives=analysis.rows;
+const selected=alternatives[0]||best;
 
-if(previous){
+if(!selected)return;
 
-alternatives=analysis.rows.filter(
-r=>r.id!==previous
-);
-}
-
-const chosen=alternatives[0]||best;
-
-if(!chosen)return;
-
-if(previous&&chosen.id!==previous){
+if(previous&&selected.id!==previous){
 state.trainerChanges++;
 }
 
-state.trainerChoice=chosen.id;
+const previousMotor=state.trainerMotor;
+
+state.trainerChoice=selected.id;
+state.trainerMotor=selected.motor?.key||null;
 state.trainerStart=state.history.length;
+state.trainerOperationalTurns=0;
 state.trainerPending=false;
 
-/*
- O motor é reavaliado independentemente.
-*/
-
-const motor=chosen.motor?.key||null;
-
 if(
+previousMotor&&
 state.trainerMotor&&
-motor&&
-motor!==state.trainerMotor
+previousMotor!==state.trainerMotor
 ){
 state.trainerMotorChanges++;
 }
-
-state.trainerMotor=motor;
-
-save();
 }
-
-function trainerStatus(){
-
-const elapsed=Math.max(
-0,
-state.history.length-
-(state.trainerStart||0)
-);
-
-return {
-adaptive:state.trainerChoice,
-motor:state.trainerMotor,
-elapsed,
-remaining:Math.max(
-0,
-TRAINER_MAX-elapsed
-),
-pending:state.trainerPending,
-changes:state.trainerChanges,
-motorChanges:state.trainerMotorChanges
-};
-}
-
-/* ============================================================
-   ESTRATÉGIA ATIVA
-   ============================================================ */
 
 function activeStrategy(){
 
 if(state.manual){
-
-return {
-rule:"MANUAL",
-name:state.manual
-};
+return {rule:"MANUAL",name:state.manual};
 }
 
 if(state.strategy==="TRAINER"){
@@ -1504,7 +1423,6 @@ x=>x.id===state.activeCreated
 );
 
 if(created){
-
 return {
 rule:"ADAPTIVE",
 config:created.config,
@@ -1521,10 +1439,6 @@ x=>x[0]===state.strategy
 };
 }
 
-/* ============================================================
-   SELEÇÃO DE MOTOR
-   ============================================================ */
-
 function selectMotor(cs){
 
 if(!cs.length)return null;
@@ -1532,61 +1446,36 @@ if(!cs.length)return null;
 const active=activeStrategy();
 
 const fixed=cs[
-Math.min(
-Math.max(state.rank-1,0),
-cs.length-1
-)
+clamp(state.rank-1,0,cs.length-1)
 ];
 
 const previous=state.previousMotor;
 
 if(active.rule==="MANUAL"){
-
-return cs.find(
-x=>x.key===state.manual
-)||fixed;
+return cs.find(x=>x.key===state.manual)||fixed;
 }
 
 if(active.rule==="TRAINER"){
 
-const analysis=trainerAnalysis(cs);
-
-const selected=analysis.rows.find(
-r=>r.id===state.trainerChoice
+const row=trainerAnalysis(cs).rows.find(
+x=>x.id===state.trainerChoice
 );
 
-const proposed=selected?.motor;
-
-if(proposed){
-
-state.trainerMotor=proposed.key;
-return proposed;
-}
-
-return fixed;
+return row?.motor||fixed;
 }
 
 if(active.rule==="FIXED")return fixed;
 if(active.rule==="GEO")return cs[0];
 
 if(active.rule==="ADAPTIVE"){
-
-return adaptiveChoose(
-cs,
-active.config,
-previous
-);
+return adaptiveChoose(cs,active.config,previous);
 }
 
 if(active.rule==="STABLE"){
 
-const old=cs.find(
-x=>x.key===previous
-);
+const old=cs.find(x=>x.key===previous);
 
-return old&&old.rank<=5
-?old
-:fixed;
+return old&&old.rank<=5?old:fixed;
 }
 
 if(active.rule==="BEST"){
@@ -1596,29 +1485,22 @@ return [...cs].sort((a,b)=>{
 const A=motorStats(a.key);
 const B=motorStats(b.key);
 
-const ar=A.total>=8?A.rate:-1;
-const br=B.total>=8?B.rate:-1;
-
-return br-ar||a.rank-b.rank;
+return (
+(B.total>=8?B.rate:-1)-
+(A.total>=8?A.rate:-1)
+)||a.rank-b.rank;
 })[0];
 }
 
 if(active.rule==="SWITCH"){
 
-const old=cs.find(
-x=>x.key===previous
-)||fixed;
-
+const old=cs.find(x=>x.key===previous)||fixed;
 const oldStats=motorStats(old.key);
 
 const alternatives=cs.map(c=>({
-c,
-stats:motorStats(c.key)
-}))
-.filter(x=>x.stats.total>=12)
-.sort(
-(a,b)=>b.stats.rate-a.stats.rate
-);
+c,stats:motorStats(c.key)
+})).filter(x=>x.stats.total>=12)
+.sort((a,b)=>b.stats.rate-a.stats.rate);
 
 if(
 alternatives.length&&
@@ -1642,16 +1524,15 @@ return collective(cs,active.rule);
 return fixed;
 }
 
-/* ============================================================
-   G1 AJUSTE FINO ORIGINAL
-   ============================================================ */
+/* =====================================================
+   G1 AJUSTE FINO
+   ===================================================== */
 
 function tuneG1(original,lastNumber){
 
 if(!original)return null;
 
 const mandatory=neighbors(lastNumber,1);
-
 const weights=Array(37).fill(.01);
 
 for(const n of original.play.numbers){
@@ -1662,29 +1543,13 @@ for(const n of mandatory){
 weights[idx(n)]+=100000;
 }
 
-const play=geometry(
-weights,
-mandatory
-);
+const play=geometry(weights,mandatory);
 
-if(!play){
-
-return {
-...copy(original),
-g1:false,
-g1Failed:true,
-trigger:lastNumber
-};
-}
-
-const covered=mandatory.every(
+if(!play||!mandatory.every(
 n=>play.numbers.includes(n)
-);
-
-if(!covered){
-
+)){
 return {
-...copy(original),
+...clone(original),
 g1:false,
 g1Failed:true,
 trigger:lastNumber
@@ -1692,7 +1557,7 @@ trigger:lastNumber
 }
 
 return {
-...copy(original),
+...clone(original),
 play,
 g1:true,
 g1Failed:false,
@@ -1710,35 +1575,21 @@ family:m.family,
 radius:m.radius,
 rank:m.rank,
 score:m.score,
-play:copy(m.play)
+play:clone(m.play)
 };
 }
 
-/* ============================================================
-   REGISTRO DEFINITIVO
+/* =====================================================
+   RESULTADOS CONGELADOS
+   ===================================================== */
 
-   Cada resultado conserva:
-   - Número
-   - Estratégia
-   - Motor
-   - Jogada
-   - Resultado
-   - Fase
-   - Configuração do ciclo
-
-   Trocar estratégia NÃO altera registros.
-   ============================================================ */
-
-function recordSpin(
-number,
-source="TEMPO REAL"
-){
+function recordSpin(number,source="TEMPO REAL"){
 
 const cs=getCandidates();
 const virtual=virtualSnapshot(cs);
-
 const active=activeStrategy();
-const phaseBefore=state.phase;
+
+const before=state.phase;
 
 let motor=null;
 let result="AGUARDANDO";
@@ -1746,15 +1597,11 @@ let played=false;
 let covered=false;
 let strategyName=active.name;
 
-let cycleSnapshot=state.cycle
-?copy(state.cycle)
-:null;
+let cycleSnapshot=clone(state.cycle);
 
 if(state.phase==="ENTRY"){
 
-motor=snapMotor(
-selectMotor(cs)
-);
+motor=snapMotor(selectMotor(cs));
 
 if(motor){
 
@@ -1764,8 +1611,7 @@ state.cycle={
 start:state.history.length+1,
 strategy:active.name,
 motor:motor.key,
-source,
-original:copy(motor),
+original:clone(motor),
 firstNumber:null,
 options:{
 g1:state.g1,
@@ -1774,26 +1620,22 @@ secondHouse:state.secondHouse
 }
 };
 
-cycleSnapshot=copy(state.cycle);
+cycleSnapshot=clone(state.cycle);
 
 if(state.secondHouse){
 
-state.frozen=copy(motor);
+state.frozen=clone(motor);
 state.phase="SECOND_SKIP";
 result="2ª CASA";
 
 }else{
 
 played=true;
-
-covered=motor.play.numbers.includes(
-number
-);
+covered=motor.play.numbers.includes(number);
 
 if(covered){
 
 result="GREEN";
-
 state.phase="ENTRY";
 state.frozen=null;
 state.cycle=null;
@@ -1806,14 +1648,12 @@ state.cycle.firstNumber=number;
 
 state.frozen=state.g1
 ?tuneG1(motor,number)
-:copy(motor);
+:clone(motor);
 
 state.phase=state.galeSkip
-?"GALE_SKIP"
-:"GALE";
+?"GALE_SKIP":"GALE";
 }
 }
-
 }else{
 result="SEM MOTOR";
 }
@@ -1821,29 +1661,23 @@ result="SEM MOTOR";
 
 else if(state.phase==="SECOND_SKIP"){
 
-motor=copy(state.frozen);
+motor=clone(state.frozen);
 strategyName=state.cycle?.strategy||active.name;
-
 result="CASA PULADA";
 state.phase="SECOND_ENTRY";
 }
 
 else if(state.phase==="SECOND_ENTRY"){
 
-motor=copy(state.frozen);
+motor=clone(state.frozen);
 strategyName=state.cycle?.strategy||active.name;
 
 played=!!motor;
-
-covered=!!(
-motor&&
-motor.play.numbers.includes(number)
-);
+covered=!!motor?.play.numbers.includes(number);
 
 if(covered){
 
 result="GREEN";
-
 state.phase="ENTRY";
 state.frozen=null;
 state.cycle=null;
@@ -1858,38 +1692,30 @@ state.cycle.firstNumber=number;
 
 state.frozen=state.cycle?.options.g1
 ?tuneG1(motor,number)
-:copy(motor);
+:clone(motor);
 
 state.phase=state.cycle?.options.galeSkip
-?"GALE_SKIP"
-:"GALE";
+?"GALE_SKIP":"GALE";
 }
 }
 
 else if(state.phase==="GALE_SKIP"){
 
-motor=copy(state.frozen);
+motor=clone(state.frozen);
 strategyName=state.cycle?.strategy||active.name;
-
 result="GALE PULADO";
 state.phase="GALE";
 }
 
 else if(state.phase==="GALE"){
 
-motor=copy(state.frozen);
+motor=clone(state.frozen);
 strategyName=state.cycle?.strategy||active.name;
 
 played=!!motor;
+covered=!!motor?.play.numbers.includes(number);
 
-covered=!!(
-motor&&
-motor.play.numbers.includes(number)
-);
-
-result=covered
-?"GREEN G1"
-:"LOSS";
+result=covered?"GREEN G1":"LOSS";
 
 state.phase="ENTRY";
 state.frozen=null;
@@ -1903,14 +1729,14 @@ number,
 source,
 strategy:strategyName,
 motor:motor?.key||"—",
-phase:phaseBefore,
+phase:before,
 result,
 played,
 covered,
 g1:!!motor?.g1,
 g1Failed:!!motor?.g1Failed,
 trigger:motor?.trigger??null,
-play:motor?copy(motor.play):null,
+play:motor?clone(motor.play):null,
 cycle:cycleSnapshot,
 virtual,
 timestamp:Date.now()
@@ -1921,28 +1747,15 @@ state.sources.push(source);
 state.ledger.push(row);
 
 /*
- Histórico completo preservado.
-
- Apenas os registros detalhados mais
- antigos podem ser compactados para
- evitar excesso de armazenamento.
+ O histórico NÃO é cortado.
 */
 
-if(state.ledger.length>MAX_LEDGER){
-
-const old=state.ledger.shift();
-
-if(old){
-old.virtual=[];
-}
-}
-
-invalidateCandidates();
-invalidateTrainer();
+invalidate();
 
 /*
- Reavalia após o giro.
- Se houver Gale, aguarda fechamento.
+ Conta giros efetivos da adaptativa.
+ A troca é aplicada somente quando
+ o ciclo estiver encerrado.
 */
 
 if(
@@ -1950,12 +1763,15 @@ state.strategy==="TRAINER"&&
 !state.manual
 ){
 
+state.trainerOperationalTurns=
+(state.trainerOperationalTurns||0)+1;
+
 if(state.phase==="ENTRY"){
+
 updateTrainerChoice();
-}else if(
-state.history.length-
-state.trainerStart>=TRAINER_MAX
-){
+
+}else if(state.trainerOperationalTurns>=3){
+
 state.trainerPending=true;
 }
 }
@@ -1965,12 +1781,9 @@ save();
 return row;
 }
 
-/* ============================================================
-   APAGAR ÚLTIMO
-
-   Restaura o ciclo pelo snapshot.
-   Não reinterpreta resultados anteriores.
-   ============================================================ */
+/* =====================================================
+   DESFAZER ÚLTIMO
+   ===================================================== */
 
 function undoLast(){
 
@@ -1981,10 +1794,7 @@ state.sources.pop();
 
 const removed=state.ledger.at(-1);
 
-if(
-removed&&
-removed.turn===state.history.length+1
-){
+if(removed?.turn===state.history.length+1){
 state.ledger.pop();
 }
 
@@ -1996,49 +1806,40 @@ state.cycle=null;
 
 if(last){
 
-const result=last.result;
-
-if(result==="2ª CASA"){
+if(last.result==="2ª CASA"){
 
 state.phase="SECOND_SKIP";
-state.cycle=copy(last.cycle);
-state.frozen=copy(
-last.cycle?.original||null
-);
+state.cycle=clone(last.cycle);
+state.frozen=clone(last.cycle?.original);
 }
 
-else if(result==="CASA PULADA"){
+else if(last.result==="CASA PULADA"){
 
 state.phase="SECOND_ENTRY";
-state.cycle=copy(last.cycle);
-state.frozen=copy(
-last.cycle?.original||null
-);
+state.cycle=clone(last.cycle);
+state.frozen=clone(last.cycle?.original);
 }
 
-else if(result==="GALE"){
+else if(last.result==="GALE"){
 
-state.cycle=copy(last.cycle);
+state.cycle=clone(last.cycle);
 
 if(state.cycle){
 
 state.cycle.firstNumber=last.number;
 
-const original=state.cycle.original;
-
 state.frozen=state.cycle.options.g1
-?tuneG1(original,last.number)
-:copy(original);
+?tuneG1(state.cycle.original,last.number)
+:clone(state.cycle.original);
 
 state.phase=state.cycle.options.galeSkip
-?"GALE_SKIP"
-:"GALE";
+?"GALE_SKIP":"GALE";
 }
 }
 
-else if(result==="GALE PULADO"){
+else if(last.result==="GALE PULADO"){
 
-state.cycle=copy(last.cycle);
+state.cycle=clone(last.cycle);
 
 if(state.cycle){
 
@@ -2047,7 +1848,7 @@ state.frozen=state.cycle.options.g1
 state.cycle.original,
 state.cycle.firstNumber
 )
-:copy(state.cycle.original);
+:clone(state.cycle.original);
 
 state.phase="GALE";
 }
@@ -2056,35 +1857,27 @@ state.phase="GALE";
 
 state.previousMotor=
 last?.motor&&last.motor!=="—"
-?last.motor
-:null;
+?last.motor:null;
 
-state.trainerStart=Math.min(
-state.trainerStart,
-state.history.length
+state.trainerOperationalTurns=clamp(
+(state.trainerOperationalTurns||0)-1,0,3
 );
 
 state.trainerPending=false;
 
-invalidateCandidates();
-invalidateTrainer();
-
+invalidate();
 save();
 render();
 }
 
-/* ============================================================
-   MÉTRICAS
-   ============================================================ */
+/* =====================================================
+   INDICADORES
+   ===================================================== */
 
 function metrics(rows){
 
 const closed=rows.filter(
-r=>[
-"GREEN",
-"GREEN G1",
-"LOSS"
-].includes(r.result)
+r=>["GREEN","GREEN G1","LOSS"].includes(r.result)
 );
 
 const green=closed.filter(
@@ -2136,7 +1929,7 @@ return `
 </div>
 
 <div class="metric">
-<small>GALE ACIONADO</small>
+<small>GALE</small>
 <b>${m.gale}</b>
 </div>
 
@@ -2147,15 +1940,11 @@ return `
 
 <div class="metric">
 <small>GREEN TOTAL</small>
-<b>${pct(m.success,m.total)}</b>
+<b>${percent(m.success,m.total)}</b>
 </div>
 
 </div>`;
 }
-
-/* ============================================================
-   CENTROS ORDENADOS
-   ============================================================ */
 
 function sortedBlocks(play){
 
@@ -2163,17 +1952,10 @@ if(!play)return [];
 
 return [...play.blocks].sort((a,b)=>{
 
-const sa=SECTOR_ORDER.indexOf(
-sector(a.center)
-);
+const sa=SECTOR_ORDER.indexOf(sector(a.center));
+const sb=SECTOR_ORDER.indexOf(sector(b.center));
 
-const sb=SECTOR_ORDER.indexOf(
-sector(b.center)
-);
-
-if(sa!==sb)return sa-sb;
-
-return idx(a.center)-idx(b.center);
+return sa-sb||idx(a.center)-idx(b.center);
 });
 }
 
@@ -2184,17 +1966,22 @@ if(!play)return "";
 return sortedBlocks(play).map(b=>`
 <div class="center ${b.radius===1?"short":""}">
 ${b.center}
-<small>
-${sector(b.center)}
-• ${b.radius}V
-</small>
+<small>${sector(b.center)} • ${b.radius}V</small>
 </div>
 `).join("");
 }
 
-/* ============================================================
-   RANKING
-   ============================================================ */
+function resultBorder(result){
+
+if(result==="LOSS")return "result-loss";
+if(result.startsWith("GREEN"))return "result-green";
+
+if(result==="GALE"||result==="GALE PULADO"){
+return "result-gale";
+}
+
+return "";
+}
 
 function virtualRankingHTML(){
 
@@ -2206,26 +1993,22 @@ for(const radius of RADII){
 
 const key=family+"_"+radius;
 
-rows.push({
-key,
-...motorStats(key,200)
-});
+rows.push({key,...motorStats(key,200)});
 }
 }
 
 rows.sort(
-(a,b)=>
-(b.rate??-1)-(a.rate??-1)
+(a,b)=>(b.rate??-1)-(a.rate??-1)
 );
 
 return rows.map((m,i)=>`
 <div class="listrow">
-<b>${i+1}º ${esc(m.key)}</b>
+<b>${i+1}º ${escapeHTML(m.key)}</b>
 <div class="muted">
-${m.total} giros
-• ${m.hits} cobertos
-• ${m.misses} descobertos
-• ${pct(m.hits,m.total)}
+${m.total} GIROS •
+${m.hits} COBERTOS •
+${m.misses} DESCOBERTOS •
+${percent(m.hits,m.total)}
 </div>
 </div>
 `).join("");
@@ -2237,25 +2020,19 @@ const rows=[];
 
 for(const row of state.ledger){
 
-if(
-!row.play||
-row.covered||
-!row.played
-)continue;
+if(!row.play||row.covered||!row.played){
+continue;
+}
 
 const alternatives=(row.virtual||[])
-.filter(
-m=>m.numbers.includes(row.number)
-);
+.filter(m=>m.numbers.includes(row.number));
 
 rows.push({
 turn:row.turn,
 number:row.number,
 motor:row.motor,
 result:row.result,
-alternatives:alternatives.map(
-x=>x.key
-)
+alternatives:alternatives.map(x=>x.key)
 });
 }
 
@@ -2264,137 +2041,120 @@ return rows;
 
 function opportunitiesHTML(){
 
-return opportunities()
-.slice(-20)
-.reverse()
-.map(x=>`
+return opportunities().slice(-20).reverse().map(x=>`
 <div class="listrow">
 <b>GIRO ${x.turn}</b>
 • ${x.number}
-• ${esc(x.result)}
+• ${escapeHTML(x.result)}
 <div class="muted">
-Motor: ${esc(x.motor)}
+MOTOR: ${escapeHTML(x.motor)}
 <br>
-Alternativas:
-${esc(
-x.alternatives.join(", ")||
-"NENHUMA"
-)}
+ALTERNATIVAS:
+${escapeHTML(x.alternatives.join(", ")||"NENHUMA")}
 </div>
 </div>
 `).join("");
 }
 
-function regionStats(){
-
-const result={};
-
-for(const name of SECTOR_ORDER){
-result[name]={
-total:0,
-longest:0
-};
-}
-
-let last=null;
-let streak=0;
-
-for(const n of state.history){
-
-const name=sector(n);
-
-result[name].total++;
-
-streak=name===last
-?streak+1
-:1;
-
-last=name;
-
-result[name].longest=Math.max(
-result[name].longest,
-streak
-);
-}
-
-return result;
-}
-
 function coveragePlanHTML(){
 
-const regions=regionStats();
-const misses=opportunities();
+const missed=opportunities();
 
-const alternative=misses.filter(
+const alternative=missed.filter(
 x=>x.alternatives.length
 ).length;
+
+const a=sequentialAnalysis(state.history);
 
 return `
 <div class="box">
 
 <b>PLANO DE COBERTURA</b>
 
-<p>
-Giros descobertos:
-${misses.length}
-</p>
-
-<p>
-Outro motor cobria:
-${alternative}
-</p>
-
-<p>
-Nenhum motor cobria:
-${misses.length-alternative}
-</p>
+<p>GIROS DESCOBERTOS: ${missed.length}</p>
+<p>OUTRO MOTOR COBRIA: ${alternative}</p>
+<p>NENHUM MOTOR COBRIA: ${missed.length-alternative}</p>
 
 </div>
 
-${SECTOR_ORDER.map(name=>`
+${SECTOR_ORDER.map(s=>`
 <div class="listrow">
-<b>${name}</b>
-• ${regions[name].total} ocorrências
-• sequência máxima:
-${regions[name].longest}
+<b>${s}</b>
+• ${a.regions[s].recent} NOS ÚLTIMOS 12
+• ${a.regions[s].absence} GIROS DE AUSÊNCIA
 </div>
 `).join("")}
 `;
 }
 
-/* ============================================================
-   PAINEL DE SALTOS
-   ============================================================ */
+/* =====================================================
+   PAINEL NOVO: DIREÇÃO E SALTOS
+   ===================================================== */
 
-function jumpsHTML(){
+function sequenceHTML(){
 
-const a=jumpAnalysis();
+const a=sequentialAnalysis(state.history);
 
-const latest=a.last.slice(-8).reverse();
+const numeric=
+a.numericStreak.direction>0?"CRESCENTE":
+a.numericStreak.direction<0?"DECRESCENTE":"MISTA";
+
+const physical=
+a.physicalStreak.direction>0?"HORÁRIA":
+a.physicalStreak.direction<0?"ANTI-HORÁRIA":"MISTA";
 
 return `
 <div class="box">
 
-<b>LEITURA DOS SALTOS FÍSICOS</b>
+<b>LEITURA DOS 12 MOTORES</b>
 
 <p>
-SINAL:
-<strong>${esc(a.signal)}</strong>
+SEQUÊNCIA NUMÉRICA:
+<strong>${numeric}</strong>
+• ${a.numericStreak.length} PASSOS
+</p>
+
+<p>
+DIREÇÃO FÍSICA:
+<strong>${physical}</strong>
+• ${a.physicalStreak.length} PASSOS
+</p>
+
+<p>
+NUMÉRICO ÚLTIMOS 6:
+${a.numericDirections.up} CRESCENTES /
+${a.numericDirections.down} DECRESCENTES
+</p>
+
+<p>
+FÍSICO ÚLTIMOS 6:
+${a.physicalDirections.clockwise} HORÁRIOS /
+${a.physicalDirections.counterclockwise} ANTI-HORÁRIOS
+</p>
+
+<p>
+SINAL DOS SALTOS:
+<strong>${escapeHTML(a.signal)}</strong>
 </p>
 
 <p>
 MÉDIA ÚLTIMOS 3:
-${fmt(a.recentAverage)} CASAS
+${fmt(a.averageLast3)} CASAS
 </p>
 
 <p>
 MÉDIA 3 ANTERIORES:
-${fmt(a.previousAverage)} CASAS
+${fmt(a.averagePrev3)} CASAS
 </p>
 
 <p>
-SALTOS GRANDES NOS ÚLTIMOS 12:
-${a.large}
+VARIAÇÃO:
+${fmt(a.acceleration)} CASAS
+</p>
+
+<p>
+SALTOS GRANDES ÚLTIMOS 12:
+${a.recentLarge}
 </p>
 
 </div>
@@ -2406,43 +2166,56 @@ REGIÕES SEM APARECER
 ${SECTOR_ORDER.map(s=>`
 <div class="listrow">
 <b>${s}</b>
-• ${a.regionAbsence[s]} GIROS
+• ${a.regions[s].absence} GIROS
+• ${a.regions[s].recent} OCORRÊNCIAS RECENTES
 </div>
 `).join("")}
 
 <div class="title">
-ÚLTIMOS SALTOS
+ÚLTIMAS TRANSIÇÕES
 </div>
 
-${latest.map(j=>`
+${a.last.slice(-12).reverse().map(x=>`
 <div class="listrow">
-<b>${j.from} → ${j.to}</b>
-• ${j.distance} CASAS
-• ${j.type}
+
+<b>${x.from} → ${x.to}</b>
+• ${x.physical} CASAS
+• ${x.jump}
+
 <div class="muted">
-${j.fromSector} → ${j.toSector}
+
+NUMÉRICO:
+${x.numericDirection}
+(${x.numericDelta>0?"+":""}${x.numericDelta})
+
 <br>
-${j.fromMirror} → ${j.toMirror}
+
+FÍSICO:
+${x.physicalDirection}
+(${x.physicalDelta>0?"+":""}${x.physicalDelta})
+
+<br>
+
+${x.sectorFrom} → ${x.sectorTo}
+
+<br>
+
+${x.mirrorFrom} → ${x.mirrorTo}
+
 </div>
+
 </div>
 `).join("")}
-
-<div class="warning">
-Ausência de uma região e repetição de saltos
-não aumentam sua probabilidade matemática
-no próximo giro de uma roleta justa.
-</div>
 `;
 }
 
-/* ============================================================
+/* =====================================================
    ESPELHO / ANTIESPELHO
-   ============================================================ */
+   ===================================================== */
 
 function mirrorHTML(){
 
-const a=jumpAnalysis();
-
+const a=sequentialAnalysis(state.history);
 const recent=state.history.slice(-20);
 
 const mirrorHits=recent.filter(
@@ -2450,6 +2223,14 @@ n=>MIRROR.has(n)
 ).length;
 
 const antiHits=recent.length-mirrorHits;
+
+const last=state.history.at(-1);
+
+const mirrorNear=last==null?[]:
+W.filter(n=>MIRROR.has(n)&&physicalDistance(last,n)<=4);
+
+const mirrorFar=last==null?[]:
+W.filter(n=>MIRROR.has(n)&&physicalDistance(last,n)>=10);
 
 return `
 <div class="box">
@@ -2460,451 +2241,444 @@ return `
 ESPELHO:
 11, 12, 13 • 21, 22, 23 •
 31, 32, 33
-E SEUS VIZINHOS FÍSICOS.
+E SEUS VIZINHOS FÍSICOS
 </p>
 
 <p>
 ESPELHO NOS ÚLTIMOS 20:
-<b>${mirrorHits}</b>
+${mirrorHits}
 </p>
 
 <p>
 ANTIESPELHO NOS ÚLTIMOS 20:
-<b>${antiHits}</b>
+${antiHits}
 </p>
 
 <p>
-ESPELHO SEM APARECER:
-<b>${a.mirrorAbsent} GIROS</b>
+TRANSIÇÕES ESPELHO / ANTIESPELHO:
+${a.mirrorTransitions} NOS ÚLTIMOS 12
 </p>
 
 <p>
-ANTIESPELHO SEM APARECER:
-<b>${a.antiAbsent} GIROS</b>
+DISTÂNCIA MÉDIA ENVOLVENDO ESPELHO:
+${fmt(mean(a.mirrorDistances))} CASAS
 </p>
 
 </div>
 
 <div class="title">
-NÚMEROS DO ESPELHO
+ESPELHOS PRÓXIMOS DO ÚLTIMO NÚMERO
 </div>
 
 <div class="numberCloud">
+${mirrorNear.map(n=>`<span>${n}</span>`).join("")||"—"}
+</div>
 
+<div class="title">
+ESPELHOS DISTANTES DO ÚLTIMO NÚMERO
+</div>
+
+<div class="numberCloud">
+${mirrorFar.map(n=>`<span>${n}</span>`).join("")||"—"}
+</div>
+
+<div class="title">
+TODOS OS ESPELHOS
+</div>
+
+<div class="numberCloud">
 ${W.filter(n=>MIRROR.has(n))
-.map(n=>`
-<span>${n}</span>
-`).join("")}
-
+.map(n=>`<span>${n}</span>`).join("")}
 </div>
 
 <div class="title">
-NÚMEROS DO ANTIESPELHO
+ANTIESPELHOS
 </div>
 
 <div class="numberCloud">
-
 ${W.filter(n=>!MIRROR.has(n))
-.map(n=>`
-<span>${n}</span>
-`).join("")}
-
+.map(n=>`<span>${n}</span>`).join("")}
 </div>
 `;
 }
 
-/* ============================================================
+/* =====================================================
+   TREINADOR
+   ===================================================== */
+
+function miniPanel(id,title,content){
+
+const open=!!state.open[id];
+
+return `
+<button class="miniHead" data-panel="${id}">
+${escapeHTML(title)}
+<span>${open?"−":"+"}</span>
+</button>
+<div id="${id}" class="${open?"":"hide"}">
+${open?content:""}
+</div>
+`;
+}
+
+function trainerHTML(){
+
+const analysis=trainerAnalysis();
+const rec=analysis.recommendation;
+
+const config=ADAPTATIVES.find(
+x=>x.id===state.trainerChoice
+);
+
+const elapsed=state.trainerOperationalTurns||0;
+
+return `
+<div class="trainerCycle">
+
+<div class="title">
+TREINADOR ESTRATÉGICO
+</div>
+
+<p>
+ADAPTATIVA:
+<b>${escapeHTML(config?.name||"AGUARDANDO")}</b>
+</p>
+
+<p>
+MOTOR:
+<b>${escapeHTML(state.trainerMotor||"AGUARDANDO")}</b>
+</p>
+
+<p>
+GIROS DESDE A ÚLTIMA TROCA:
+<b>${elapsed}</b>
+</p>
+
+<p>
+TROCA:
+<b>${state.trainerPending
+?"AGUARDANDO FECHAR GALE"
+:"DINÂMICA: 1, 2 OU 3 GIROS"
+}</b>
+</p>
+
+<p>
+TROCAS DE ADAPTATIVA:
+<b>${state.trainerChanges}</b>
+</p>
+
+<p>
+TROCAS DE MOTOR:
+<b>${state.trainerMotorChanges}</b>
+</p>
+
+</div>
+
+<div class="virtualRecommendation">
+
+<div class="title">
+MELHOR AVALIAÇÃO ATUAL
+</div>
+
+<b>${escapeHTML(rec?.name||"AGUARDANDO")}</b>
+
+<p class="muted">
+MOTOR:
+${escapeHTML(rec?.motor?.key||"—")}
+</p>
+
+<p class="muted">
+COBERTURA VIRTUAL:
+${percent(rec?.hits||0,rec?.total||0)}
+</p>
+
+<button class="virtualButton"
+id="activateTrainer">
+ATIVAR TREINADOR ESTRATÉGICO
+</button>
+
+${rec?`
+<button class="virtualButton"
+id="activateRecommended">
+ATIVAR ${escapeHTML(rec.name)}
+</button>
+`:""}
+
+</div>
+
+${miniPanel(
+"virtualRanking",
+"RANKING VIRTUAL DOS 12 MOTORES",
+virtualRankingHTML()
+)}
+
+${miniPanel(
+"opportunities",
+"ÚLTIMAS OPORTUNIDADES",
+opportunitiesHTML()
+)}
+
+${miniPanel(
+"coveragePlan",
+"PLANO DE COBERTURA",
+coveragePlanHTML()
+)}
+`;
+}
+
+function labHTML(){
+
+const analysis=trainerAnalysis();
+
+return `
+<div class="box">
+
+<b>LABORATÓRIO DAS 12 ADAPTATIVAS</b>
+
+<p class="muted">
+ANÁLISE DE:
+DIREÇÃO NUMÉRICA,
+DIREÇÃO FÍSICA,
+SALTOS,
+ESPELHO / ANTIESPELHO,
+REGIÕES E COBERTURA VIRTUAL.
+</p>
+
+</div>
+
+${miniPanel(
+"comparisons",
+"COMPARAÇÃO DAS 12 ADAPTATIVAS",
+`
+<div class="tablewrap">
+<table>
+<thead>
+<tr>
+<th>ESTRATÉGIA</th>
+<th>MOTOR</th>
+<th>COBERTOS</th>
+<th>REGISTROS</th>
+<th>COBERTURA</th>
+</tr>
+</thead>
+<tbody>
+${analysis.rows.map(r=>`
+<tr>
+<td>${escapeHTML(r.name)}</td>
+<td>${escapeHTML(r.motor?.key||"—")}</td>
+<td>${r.hits}</td>
+<td>${r.total}</td>
+<td>${percent(r.hits,r.total)}</td>
+</tr>
+`).join("")}
+</tbody>
+</table>
+</div>
+`
+)}
+
+${miniPanel(
+"created",
+"ESTRATÉGIAS PERSONALIZADAS",
+state.createdStrategies.map(c=>`
+<div class="listrow">${escapeHTML(c.name)}</div>
+`).join("")||'<div class="box">NENHUMA CRIADA.</div>'
+)}
+
+<button class="virtualButton" id="createAdaptive">
+CRIAR CÓPIA DA RECOMENDADA
+</button>
+`;
+}
+
+function timelineHTML(){
+
+return state.ledger.slice(-80).reverse().map(r=>`
+<div class="listrow">
+
+<b>GIRO ${r.turn}</b>
+• <b>${r.number}</b>
+• <span class="${
+r.result.startsWith("GREEN")?"good":
+r.result==="LOSS"?"bad":""
+}">
+${escapeHTML(r.result)}
+</span>
+
+<div class="muted">
+ESTRATÉGIA: ${escapeHTML(r.strategy)}
+• MOTOR: ${escapeHTML(r.motor)}
+• FASE: ${escapeHTML(r.phase)}
+• REGIÃO: ${sector(r.number)}
+• ${mirrorType(r.number)}
+</div>
+
+${r.play?`
+<div class="muted">
+CENTROS:
+${sortedBlocks(r.play).map(b=>b.center).join(" • ")}
+</div>
+`:""}
+
+</div>
+`).join("");
+}
+
+/* =====================================================
    INTERFACE
-   ============================================================ */
+   ===================================================== */
 
 const css=`
-
 *{box-sizing:border-box}
-
 body{
-margin:0;
-background:#10151e;
-color:#f3f7fb;
-font-family:Arial,sans-serif;
+margin:0;background:#10151e;color:#f3f7fb;
+font-family:Arial,sans-serif
 }
-
-.app{
-max-width:1100px;
-margin:auto;
-padding:12px;
-}
-
-h1{
-text-align:center;
-font-size:23px;
-margin:16px 0 5px;
-}
-
-.sub{
-text-align:center;
-font-size:11px;
-color:#9cb3c9;
-margin-bottom:18px;
-}
-
+.app{max-width:1100px;margin:auto;padding:12px}
+h1{text-align:center;font-size:23px;margin:16px 0 5px}
+.sub{text-align:center;font-size:11px;color:#9cb3c9;margin-bottom:18px}
 .panel{
-background:#1c2634;
-border:1px solid #40546c;
-border-radius:11px;
-padding:12px;
-margin:10px 0;
+background:#1c2634;border:1px solid #40546c;
+border-radius:11px;padding:12px;margin:10px 0
 }
-
-.title{
-color:#32d9f4;
-font-size:12px;
-font-weight:bold;
-margin:12px 0;
-}
-
-.row{
-display:flex;
-flex-wrap:wrap;
-gap:6px;
-margin:8px 0;
-}
-
+.title{color:#32d9f4;font-size:12px;font-weight:bold;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .btn{
-background:#304056;
-border:1px solid #69819d;
-border-radius:7px;
-padding:10px;
-color:white;
-font-weight:bold;
-font-size:11px;
-cursor:pointer;
+background:#304056;border:1px solid #69819d;
+border-radius:7px;padding:10px;color:white;
+font-weight:bold;font-size:11px;cursor:pointer
 }
-
-.btn.active{
-background:#087f9d;
-border-color:#32d9f4;
-}
-
+.btn.active{background:#087f9d;border-color:#32d9f4}
 .btn.trainer{
-background:#0a6653;
-border:2px solid #2c9f81;
+background:#0a6653;border:2px solid #2c9f81
 }
-
 .btn.trainer.active{
-background:#075f4e;
-border:2px solid #69ffd0;
-animation:trainerGlow 1.4s ease-in-out infinite;
+background:#075f4e;border:2px solid #69ffd0;
+animation:trainerGlow 1.4s ease-in-out infinite
 }
-
 @keyframes trainerGlow{
-0%,100%{
-box-shadow:
-0 0 5px #19d5a0,
-0 0 10px #19d5a055;
+0%,100%{box-shadow:0 0 5px #19d5a0,0 0 10px #19d5a055}
+50%{box-shadow:0 0 12px #69ffd0,0 0 24px #17f0ad}
 }
-50%{
-box-shadow:
-0 0 12px #69ffd0,
-0 0 24px #17f0ad,
-0 0 36px #17f0ad77;
-}
-}
-
 textarea{
-width:100%;
-height:85px;
-padding:10px;
-border-radius:8px;
-background:#0c1623;
-border:1px solid #62758b;
-color:white;
+width:100%;height:85px;padding:10px;border-radius:8px;
+background:#0c1623;border:1px solid #62758b;color:white
 }
-
 .centers{
-display:grid;
-grid-template-columns:repeat(6,1fr);
-gap:5px;
+display:grid;grid-template-columns:repeat(6,1fr);gap:5px
 }
-
 .center{
-padding:13px 2px;
-border:2px solid #20d7f4;
-background:#096a92;
-border-radius:9px;
-text-align:center;
-font-size:22px;
-font-weight:bold;
+padding:13px 2px;border:2px solid #20d7f4;
+background:#096a92;border-radius:9px;text-align:center;
+font-size:22px;font-weight:bold
 }
-
 .center.short{
-background:#caa127;
-border-color:#ffe282;
-color:#111;
+background:#caa127;border-color:#ffe282;color:#111
 }
-
-.center small{
-display:block;
-font-size:9px;
-margin-top:5px;
-}
-
+.center small{display:block;font-size:9px;margin-top:5px}
 .keys{
-display:grid;
-grid-template-columns:repeat(6,1fr);
-gap:5px;
+display:grid;grid-template-columns:repeat(6,1fr);gap:5px
 }
-
 .key{
-height:43px;
-border:1px solid #697b8f;
-border-radius:7px;
-color:white;
-font-size:15px;
-font-weight:bold;
-cursor:pointer;
+height:43px;border:1px solid #697b8f;border-radius:7px;
+color:white;font-size:15px;font-weight:bold;cursor:pointer
 }
-
-.key.zero{
-grid-column:span 6;
-}
-
+.key.zero{grid-column:span 6}
 .metrics{
-display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:6px;
+display:grid;grid-template-columns:repeat(3,1fr);gap:6px
 }
-
 .metric{
-background:#29384b;
-padding:12px 5px;
-border-radius:8px;
-text-align:center;
+background:#29384b;padding:12px 5px;
+border-radius:8px;text-align:center
 }
-
-.metric small{
-display:block;
-font-size:9px;
-color:#b9cad9;
-}
-
-.metric b{
-display:block;
-font-size:23px;
-margin-top:6px;
-}
-
+.metric small{display:block;font-size:9px;color:#b9cad9}
+.metric b{display:block;font-size:23px;margin-top:6px}
 .good{color:#4ee2a2}
 .bad{color:#ff778c}
-
-.muted{
-font-size:11px;
-color:#afc0d1;
-line-height:1.7;
-}
-
+.muted{font-size:11px;color:#afc0d1;line-height:1.7}
 .box{
-background:#111d2a;
-border:1px solid #425a75;
-padding:12px;
-border-radius:9px;
-margin:9px 0;
-font-size:12px;
-line-height:1.7;
+background:#111d2a;border:1px solid #425a75;
+padding:12px;border-radius:9px;margin:9px 0;
+font-size:12px;line-height:1.7
 }
-
 .head{
-display:flex;
-justify-content:space-between;
-width:100%;
-background:#2c3d51;
-color:white;
-border:1px solid #5e7895;
-border-radius:8px;
-padding:12px;
-font-weight:bold;
-cursor:pointer;
+display:flex;justify-content:space-between;width:100%;
+background:#2c3d51;color:white;border:1px solid #5e7895;
+border-radius:8px;padding:12px;font-weight:bold;cursor:pointer
 }
-
 .hide{display:none}
-
-.history{
-display:flex;
-flex-wrap:wrap;
-gap:5px;
-}
-
+.history{display:flex;flex-wrap:wrap;gap:5px}
 .chip{
-padding:8px;
-border:2px solid #718397;
-border-radius:7px;
-min-width:47px;
-text-align:center;
+padding:8px;border:2px solid #718397;border-radius:7px;
+min-width:47px;text-align:center
 }
-
 .chip.result-green{
-border:3px solid #24f49a;
-box-shadow:0 0 6px #24f49a88;
+border:3px solid #24f49a;box-shadow:0 0 6px #24f49a88
 }
-
 .chip.result-gale{
-border:3px solid #ffda35;
-box-shadow:0 0 6px #ffda3588;
+border:3px solid #ffda35;box-shadow:0 0 6px #ffda3588
 }
-
 .chip.result-loss{
-border:3px solid #ff386c;
-box-shadow:0 0 7px #ff386c99;
+border:3px solid #ff386c;box-shadow:0 0 7px #ff386c99
 }
-
-.chip b{
-display:block;
-font-size:18px;
-}
-
-.chip small{
-font-size:9px;
-}
-
+.chip b{display:block;font-size:18px}
+.chip small{font-size:9px}
 .listrow{
 border-bottom:1px solid #35475b;
-padding:9px 3px;
-font-size:11px;
-line-height:1.7;
+padding:9px 3px;font-size:11px;line-height:1.7
 }
-
 .tablewrap{overflow:auto}
-
 table{
-width:100%;
-border-collapse:collapse;
-min-width:600px;
-font-size:11px;
+width:100%;border-collapse:collapse;
+min-width:600px;font-size:11px
 }
-
 td,th{
-padding:9px;
-border-bottom:1px solid #40516a;
-text-align:left;
+padding:9px;border-bottom:1px solid #40516a;text-align:left
 }
-
 th{color:#50d9ee}
-
-.virtualHero{
-background:#102b3a;
-border:1px solid #1cacc8;
-border-radius:10px;
-padding:14px;
-margin:12px 0;
-}
-
 .virtualRecommendation{
-background:#102f27;
-border:1px solid #35a981;
-border-radius:10px;
-padding:14px;
-margin:10px 0;
+background:#102f27;border:1px solid #35a981;
+border-radius:10px;padding:14px;margin:10px 0
 }
-
 .virtualButton{
-width:100%;
-background:#0b8466;
-border:1px solid #52e6b5;
-color:white;
-border-radius:9px;
-padding:14px;
-font-size:13px;
-font-weight:bold;
-cursor:pointer;
-margin:8px 0;
+width:100%;background:#0b8466;border:1px solid #52e6b5;
+color:white;border-radius:9px;padding:14px;
+font-size:13px;font-weight:bold;cursor:pointer;margin:8px 0
 }
-
 .miniHead{
-display:flex;
-justify-content:space-between;
-width:100%;
-margin:10px 0 0;
-padding:11px;
-background:#24364b;
-border:1px solid #4c6985;
-border-radius:8px;
-color:#d6eafa;
-font-size:11px;
-font-weight:bold;
-cursor:pointer;
+display:flex;justify-content:space-between;width:100%;
+margin:10px 0 0;padding:11px;background:#24364b;
+border:1px solid #4c6985;border-radius:8px;color:#d6eafa;
+font-size:11px;font-weight:bold;cursor:pointer
 }
-
 .strategyGroup{
-margin-top:12px;
-padding-top:8px;
-border-top:1px solid #34485e;
+margin-top:12px;padding-top:8px;border-top:1px solid #34485e
 }
-
 .strategyLabel{
-font-size:10px;
-color:#7fe1f3;
-font-weight:bold;
-margin:8px 0;
+font-size:10px;color:#7fe1f3;font-weight:bold;margin:8px 0
 }
-
-.status{
-padding:8px;
-font-size:11px;
-color:#81dceb;
-}
-
-.warning{
-border-left:3px solid #d9a63c;
-padding:9px;
-background:#2b281f;
-color:#e8d5a6;
-font-size:11px;
-line-height:1.6;
-}
-
+.status{padding:8px;font-size:11px;color:#81dceb}
 .trainerCycle{
-background:#102c26;
-border:1px solid #30bf91;
-padding:12px;
-border-radius:9px;
-margin:10px 0;
+background:#102c26;border:1px solid #30bf91;
+padding:12px;border-radius:9px;margin:10px 0
 }
-
-.trainerCycle b{
-color:#7fffd2;
-}
-
+.trainerCycle b{color:#7fffd2}
 .numberCloud{
-display:flex;
-flex-wrap:wrap;
-gap:5px;
-margin:10px 0;
+display:flex;flex-wrap:wrap;gap:5px;margin:10px 0
 }
-
 .numberCloud span{
-padding:8px;
-background:#273b50;
-border:1px solid #60829f;
-border-radius:6px;
-font-size:12px;
-font-weight:bold;
+padding:8px;background:#273b50;border:1px solid #60829f;
+border-radius:6px;font-size:12px;font-weight:bold
 }
-
+.warning{
+border-left:3px solid #d9a63c;padding:9px;
+background:#2b281f;color:#e8d5a6;
+font-size:11px;line-height:1.6
+}
 @media(max-width:600px){
-
-.center{
-font-size:18px;
-padding:12px 1px;
-}
-
-.center small{
-font-size:8px;
-}
-
-.btn{
-font-size:10px;
-padding:9px;
-}
-
+.center{font-size:18px;padding:12px 1px}
+.center small{font-size:8px}
+.btn{font-size:10px;padding:9px}
 }
 `;
 
@@ -2916,8 +2690,8 @@ document.body.innerHTML=`
 <h1>ANÁLISE BETA V${VERSION}</h1>
 
 <div class="sub">
-12 MOTORES • 28 COBERTOS •
-TREINADOR ESTRATÉGICO
+12 MOTORES • 12 ADAPTATIVAS •
+28 NÚMEROS • DIREÇÃO E SALTOS
 </div>
 
 <section class="panel">
@@ -2925,26 +2699,13 @@ TREINADOR ESTRATÉGICO
 <div class="title">IMPORTAR HISTÓRICO</div>
 
 <textarea id="paste"
-placeholder="Cole números de 0 a 36, do mais antigo ao mais recente"></textarea>
+placeholder="Cole os números do mais antigo ao mais recente"></textarea>
 
 <div class="row">
-
-<button class="btn" id="import">
-IMPORTAR E ANALISAR
-</button>
-
-<button class="btn" id="restoreOld">
-RECUPERAR HISTÓRICO ANTERIOR
-</button>
-
-<button class="btn" id="undo">
-APAGAR ÚLTIMO
-</button>
-
-<button class="btn" id="clear">
-ZERAR
-</button>
-
+<button class="btn" id="import">IMPORTAR E ANALISAR</button>
+<button class="btn" id="restoreOld">RECUPERAR HISTÓRICO ANTERIOR</button>
+<button class="btn" id="undo">APAGAR ÚLTIMO</button>
+<button class="btn" id="clear">ZERAR</button>
 </div>
 
 <div class="status" id="status"></div>
@@ -2956,7 +2717,6 @@ ZERAR
 <div class="title">ESTRATÉGIA ATIVA</div>
 
 <div id="strategies"></div>
-
 <div class="row" id="options"></div>
 
 <div class="muted" id="selected"></div>
@@ -2968,131 +2728,59 @@ ZERAR
 </section>
 
 <section class="panel">
-
 <div class="title">TECLADO 0–36</div>
-
 <div class="keys" id="keys"></div>
-
 </section>
 
 <section class="panel">
-
 <div class="title">ÚLTIMOS 14 RESULTADOS</div>
-
 <div class="history" id="last"></div>
-
 </section>
 
+${[
+["general","RESULTADO GERAL"],
+["trainer","TREINADOR ESTRATÉGICO"],
+["lab","LABORATÓRIO DE ESTRATÉGIAS"],
+["motors","12 MOTORES E RANKING"],
+["jumps","SALTOS • CRESCENTE / DECRESCENTE"],
+["mirrors","ESPELHO / ANTIESPELHO"],
+["timeline","LINHA DO TEMPO — GREEN / GALE / LOSS"]
+].map(([id,title])=>`
 <section class="panel">
-
-<button class="head" data-panel="general">
-RESULTADO GERAL
-<span>−</span>
+<button class="head" data-panel="${id}">
+${title}<span>−</span>
 </button>
-
-<div id="general"></div>
-
+<div id="${id}"></div>
 </section>
+`).join("")}
 
-<section class="panel">
-
-<button class="head" data-panel="trainer">
-TREINADOR ESTRATÉGICO
-<span>−</span>
-</button>
-
-<div id="trainer"></div>
-
-</section>
-
-<section class="panel">
-
-<button class="head" data-panel="lab">
-LABORATÓRIO DE ESTRATÉGIAS
-<span>+</span>
-</button>
-
-<div id="lab"></div>
-
-</section>
-
-<section class="panel">
-
-<button class="head" data-panel="motors">
-12 MOTORES E RANKING
-<span>+</span>
-</button>
-
-<div id="motors"></div>
-
-</section>
-
-<section class="panel">
-
-<button class="head" data-panel="jumps">
-SALTOS FÍSICOS E REGIÕES
-<span>+</span>
-</button>
-
-<div id="jumps"></div>
-
-</section>
-
-<section class="panel">
-
-<button class="head" data-panel="mirrors">
-ESPELHO / ANTIESPELHO
-<span>+</span>
-</button>
-
-<div id="mirrors"></div>
-
-</section>
-
-<section class="panel">
-
-<button class="head" data-panel="timeline">
-LINHA DO TEMPO — GREEN / GALE / LOSS
-<span>−</span>
-</button>
-
-<div id="timeline"></div>
-
-</section>
+<div class="warning">
+Os sinais são leituras estatísticas do histórico.
+Em uma roleta justa, cada giro é independente
+e esses padrões não garantem previsão do próximo resultado.
+</div>
 
 </main>
 `;
 
-state.open.jumps??=false;
-state.open.mirrors??=false;
+/* =====================================================
+   CONTROLES
+   ===================================================== */
 
-/* ============================================================
-   BOTÕES
-   ============================================================ */
-
-function makeButton(
-label,
-onClick,
-parent,
-extra=""
-){
+function makeButton(label,fn,parent,extra=""){
 
 const b=document.createElement("button");
 
 b.className="btn "+extra;
 b.textContent=label;
-b.onclick=onClick;
+b.onclick=fn;
 
 parent.appendChild(b);
 
 return b;
 }
 
-function changeStrategy(
-rule,
-adaptive=null,
-created=null
-){
+function changeStrategy(rule,adaptive=null,created=null){
 
 state.manual=null;
 state.strategy=rule;
@@ -3104,6 +2792,7 @@ if(rule==="TRAINER"){
 state.trainerChoice=null;
 state.trainerMotor=null;
 state.trainerStart=state.history.length;
+state.trainerOperationalTurns=0;
 state.trainerPending=false;
 
 if(state.phase==="ENTRY"){
@@ -3120,52 +2809,50 @@ function buildStrategyButtons(){
 const root=$("strategies");
 root.innerHTML="";
 
-const trainer=document.createElement("div");
-trainer.className="strategyGroup";
+const groups=[
+["TREINADOR AUTOMÁTICO",[
+["TREINADOR ESTRATÉGICO",()=>changeStrategy("TRAINER"),"trainer"]
+]],
+["ESTRATÉGIAS ORIGINAIS",
+ORIGINALS.map(([key,name])=>[
+name,()=>changeStrategy(key),key
+])],
+["12 ESTRATÉGIAS ADAPTATIVAS",
+ADAPTATIVES.map(c=>[
+c.name,()=>changeStrategy("ADAPTIVE",c.id),c.id
+])]
+];
 
-trainer.innerHTML=`
-<div class="strategyLabel">
-TREINADOR AUTOMÁTICO
-</div>
+for(const [label,buttons] of groups){
+
+const group=document.createElement("div");
+group.className="strategyGroup";
+
+group.innerHTML=`
+<div class="strategyLabel">${label}</div>
 `;
 
-const trainerRow=document.createElement("div");
-trainerRow.className="row";
+const row=document.createElement("div");
+row.className="row";
 
-const trainerButton=makeButton(
-"TREINADOR ESTRATÉGICO",
-()=>changeStrategy("TRAINER"),
-trainerRow,
-"trainer"
-);
-
-trainerButton.dataset.trainer="1";
-
-trainer.appendChild(trainerRow);
-root.appendChild(trainer);
-
-const originals=document.createElement("div");
-originals.className="strategyGroup";
-
-originals.innerHTML=`
-<div class="strategyLabel">
-ESTRATÉGIAS ORIGINAIS
-</div>
-`;
-
-const originalRow=document.createElement("div");
-originalRow.className="row";
-
-for(const [key,name] of ORIGINALS){
+for(const [name,fn,key] of buttons){
 
 const b=makeButton(
 name,
-()=>changeStrategy(key),
-originalRow
+fn,
+row,
+key==="trainer"?"trainer":""
 );
 
-b.dataset.strategy=key;
+b.dataset.choice=key;
 }
+
+group.appendChild(row);
+root.appendChild(group);
+}
+
+const ranks=document.createElement("div");
+ranks.className="row";
 
 for(let rank=1;rank<=4;rank++){
 
@@ -3175,83 +2862,43 @@ const b=makeButton(
 state.rank=rank;
 changeStrategy("FIXED");
 },
-originalRow
+ranks
 );
 
 b.dataset.rank=rank;
 }
 
-originals.appendChild(originalRow);
-root.appendChild(originals);
-
-const adaptives=document.createElement("div");
-adaptives.className="strategyGroup";
-
-adaptives.innerHTML=`
-<div class="strategyLabel">
-12 ESTRATÉGIAS ADAPTATIVAS
-</div>
-`;
-
-const adaptiveRow=document.createElement("div");
-adaptiveRow.className="row";
-
-for(const config of ADAPTATIVES){
-
-const b=makeButton(
-config.name,
-()=>changeStrategy(
-"ADAPTIVE",
-config.id
-),
-adaptiveRow
-);
-
-b.dataset.adaptive=config.id;
-}
-
-adaptives.appendChild(adaptiveRow);
-root.appendChild(adaptives);
+root.appendChild(ranks);
 
 if(state.createdStrategies.length){
 
-const created=document.createElement("div");
-created.className="strategyGroup";
+const group=document.createElement("div");
+group.className="strategyGroup";
 
-created.innerHTML=`
-<div class="strategyLabel">
-ESTRATÉGIAS CRIADAS
-</div>
+group.innerHTML=`
+<div class="strategyLabel">ESTRATÉGIAS CRIADAS</div>
 `;
 
-const createdRow=document.createElement("div");
-createdRow.className="row";
+const row=document.createElement("div");
+row.className="row";
 
-for(const config of state.createdStrategies){
+for(const c of state.createdStrategies){
 
 const b=makeButton(
-config.name,
-()=>changeStrategy(
-"CREATED",
-null,
-config.id
-),
-createdRow
+c.name,
+()=>changeStrategy("CREATED",null,c.id),
+row
 );
 
-b.dataset.createdStrategy=config.id;
+b.dataset.createdChoice=c.id;
 }
 
-created.appendChild(createdRow);
-root.appendChild(created);
+group.appendChild(row);
+root.appendChild(group);
 }
 }
 
 buildStrategyButtons();
-
-/* ============================================================
-   OPÇÕES
-   ============================================================ */
 
 for(const [field,name] of [
 ["g1","G1 AJUSTE FINO"],
@@ -3272,10 +2919,6 @@ $("options")
 b.dataset.option=field;
 }
 
-/* ============================================================
-   TECLADO
-   ============================================================ */
-
 let importing=false;
 
 for(let n=0;n<=36;n++){
@@ -3286,11 +2929,8 @@ b.className="key"+(n===0?" zero":"");
 b.textContent=n;
 
 b.style.background=
-n===0
-?"#087b50"
-:RED.has(n)
-?"#ac293f"
-:"#12151b";
+n===0?"#087b50":
+RED.has(n)?"#ac293f":"#12151b";
 
 b.onclick=()=>{
 
@@ -3303,19 +2943,9 @@ render();
 $("keys").appendChild(b);
 }
 
-/* ============================================================
-   IMPORTAÇÃO COMPLETA
-
-   IMPORTA TODOS OS NÚMEROS.
-   NÃO CORTA EM 200.
-
-   Para históricos grandes, registra
-   os números antigos como histórico
-   bruto e processa a janela final
-   com os motores.
-
-   O histórico bruto permanece fixo.
-   ============================================================ */
+/* =====================================================
+   IMPORTAÇÃO
+   ===================================================== */
 
 async function importNumbers(numbers){
 
@@ -3323,71 +2953,54 @@ if(importing)return;
 
 importing=true;
 
-state.history=[];
-state.sources=[];
-state.ledger=[];
+const selectedStrategy=state.strategy;
+const selectedAdaptive=state.activeAdaptive;
+const options={
+g1:state.g1,
+galeSkip:state.galeSkip,
+secondHouse:state.secondHouse
+};
 
-state.phase="ENTRY";
-state.frozen=null;
-state.cycle=null;
-state.previousMotor=null;
+state=fresh();
 
-state.trainerChoice=null;
-state.trainerMotor=null;
-state.trainerStart=0;
-state.trainerPending=false;
-state.trainerChanges=0;
-state.trainerMotorChanges=0;
+state.strategy=selectedStrategy;
+state.activeAdaptive=selectedAdaptive;
 
-invalidateCandidates();
-invalidateTrainer();
+Object.assign(state,options);
 
-const total=numbers.length;
-
-const detailedStart=Math.max(
-0,
-total-ANALYSIS_WINDOW
-);
+invalidate();
 
 /*
- Preserva todos os números antigos.
+ Todos os números ficam preservados.
+
+ Para grandes importações, a parte
+ antiga entra como histórico bruto.
+ Os últimos 200 são processados com
+ resultados detalhados.
 */
 
-state.history=numbers.slice(
-0,
-detailedStart
-);
+const detailedStart=Math.max(0,numbers.length-200);
 
-state.sources=Array(
-detailedStart
-).fill("HISTÓRICO");
+state.history=numbers.slice(0,detailedStart);
 
-for(let i=detailedStart;i<total;i++){
+state.sources=Array(detailedStart).fill("HISTÓRICO");
 
-recordSpin(
-numbers[i],
-"HISTÓRICO"
-);
+for(let i=detailedStart;i<numbers.length;i++){
+
+recordSpin(numbers[i],"HISTÓRICO");
 
 if((i-detailedStart)%4===3){
 
 $("status").textContent=
-"ANALISANDO "+
-(i+1)+
-"/"+
-total;
+"ANALISANDO "+(i+1)+"/"+numbers.length;
 
-await new Promise(
-resolve=>setTimeout(resolve,0)
-);
+await new Promise(resolve=>setTimeout(resolve,0));
 }
 }
 
 importing=false;
 
-invalidateCandidates();
-invalidateTrainer();
-
+invalidate();
 save();
 render();
 }
@@ -3398,19 +3011,18 @@ if(importing)return;
 
 const numbers=(
 $("paste").value.match(/\d+/g)||[]
-)
-.map(Number)
-.filter(n=>n>=0&&n<=36);
+).map(Number).filter(
+n=>Number.isInteger(n)&&n>=0&&n<=36
+);
 
 if(!numbers.length){
-
-alert("Cole números de 0 a 36.");
+alert("COLE NÚMEROS DE 0 A 36.");
 return;
 }
 
 if(!confirm(
-"Importar "+numbers.length+
-" números e substituir o histórico atual?"
+"IMPORTAR "+numbers.length+
+" NÚMEROS E SUBSTITUIR O HISTÓRICO ATUAL?"
 ))return;
 
 $("paste").value="";
@@ -3424,25 +3036,23 @@ if(importing)return;
 
 let old=null;
 
-for(const key of PREVIOUS_KEYS){
+for(const key of OLD_KEYS){
 
-old=readStorage(key);
+const data=read(key);
 
-if(old?.history?.length)break;
+if(data?.history?.length){
+old=data;
+break;
+}
 }
 
-if(!old?.history?.length){
-
-alert(
-"Nenhum histórico anterior encontrado."
-);
-
+if(!old){
+alert("NENHUM HISTÓRICO ANTERIOR ENCONTRADO.");
 return;
 }
 
 if(!confirm(
-"Recuperar "+old.history.length+
-" números da versão anterior?"
+"RECUPERAR "+old.history.length+" NÚMEROS?"
 ))return;
 
 importNumbers(old.history);
@@ -3459,448 +3069,61 @@ $("clear").onclick=()=>{
 
 if(importing)return;
 
-if(!confirm(
-"Apagar histórico e resultados?"
-))return;
+if(!confirm("APAGAR TODO O HISTÓRICO?")){
+return;
+}
 
 state=fresh();
 
-state.open.jumps=false;
-state.open.mirrors=false;
-
-invalidateCandidates();
-invalidateTrainer();
-
+invalidate();
 buildStrategyButtons();
-
 save();
 render();
 };
 
-/* ============================================================
-   PAINÉIS RECOLHÍVEIS
-   ============================================================ */
+/* =====================================================
+   PAINÉIS
+   ===================================================== */
+
+document.addEventListener("click",event=>{
+
+const button=event.target.closest("[data-panel]");
+
+if(!button)return;
+
+const id=button.dataset.panel;
+
+state.open[id]=!state.open[id];
+
+save();
+render();
+});
 
 function applyOpenState(){
 
-for(const [name,open] of Object.entries(
-state.open
-)){
+for(const [id,open] of Object.entries(state.open)){
 
-const element=$(name);
-
-const button=document.querySelector(
-'[data-panel="'+name+'"]'
-);
+const element=$(id);
 
 if(element){
-
-element.classList.toggle(
-"hide",
-!open
-);
+element.classList.toggle("hide",!open);
 }
 
-if(button){
+const button=document.querySelector(
+'[data-panel="'+id+'"]'
+);
 
-const span=button.querySelector("span");
+const span=button?.querySelector("span");
 
 if(span){
 span.textContent=open?"−":"+";
 }
 }
 }
-}
 
-document.addEventListener("click",e=>{
-
-const b=e.target.closest("[data-panel]");
-
-if(!b)return;
-
-const name=b.dataset.panel;
-
-state.open[name]=!state.open[name];
-
-save();
-render();
-});
-
-function miniPanel(id,title,content){
-
-const open=!!state.open[id];
-
-return `
-<button class="miniHead"
-data-panel="${id}">
-${esc(title)}
-<span>${open?"−":"+"}</span>
-</button>
-
-<div id="${id}"
-class="${open?"":"hide"}">
-${open?content:""}
-</div>
-`;
-}
-
-/* ============================================================
-   TREINADOR — INTERFACE
-   ============================================================ */
-
-function trainerHTML(){
-
-const analysis=trainerAnalysis();
-const rec=analysis.recommendation;
-
-const m=metrics(state.ledger);
-const missed=opportunities();
-
-const status=trainerStatus();
-
-const activeConfig=ADAPTATIVES.find(
-x=>x.id===status.adaptive
-);
-
-return `
-<div class="virtualHero">
-
-<div class="title">
-TREINADOR ESTRATÉGICO VIRTUAL
-</div>
-
-<div class="metrics">
-
-<div class="metric">
-<small>GIROS NO HISTÓRICO</small>
-<b>${state.history.length}</b>
-</div>
-
-<div class="metric">
-<small>MOTORES</small>
-<b>12</b>
-</div>
-
-<div class="metric">
-<small>GREEN</small>
-<b class="good">${m.success}</b>
-</div>
-
-<div class="metric">
-<small>GALE</small>
-<b>${m.gale}</b>
-</div>
-
-<div class="metric">
-<small>LOSS</small>
-<b class="bad">${m.loss}</b>
-</div>
-
-<div class="metric">
-<small>DESCOBERTOS</small>
-<b>${missed.length}</b>
-</div>
-
-</div>
-
-</div>
-
-<div class="trainerCycle">
-
-<div class="title">
-TREINADOR DINÂMICO
-</div>
-
-<p>
-ADAPTATIVA:
-<b>
-${esc(
-activeConfig?.name||"AGUARDANDO"
-)}
-</b>
-</p>
-
-<p>
-MOTOR:
-<b>
-${esc(status.motor||"AGUARDANDO")}
-</b>
-</p>
-
-<p>
-GIROS NA ADAPTATIVA:
-<b>${status.elapsed}</b>
-</p>
-
-<p>
-TROCA:
-<b>
-${status.pending
-?"APÓS FECHAR O GALE"
-:"PODE OCORRER A CADA GIRO"
-}
-</b>
-</p>
-
-<p>
-LIMITE PARA TROCA:
-<b>
-${status.remaining} GIRO(S)
-</b>
-</p>
-
-<p>
-TROCAS DE ADAPTATIVA:
-<b>${status.changes}</b>
-</p>
-
-<p>
-TROCAS DE MOTOR:
-<b>${status.motorChanges}</b>
-</p>
-
-</div>
-
-<div class="virtualRecommendation">
-
-<div class="title">
-MELHOR AVALIAÇÃO ATUAL
-</div>
-
-<b>
-${esc(rec?.name||"AGUARDANDO")}
-</b>
-
-<p class="muted">
-Motor avaliado:
-${esc(rec?.motor?.key||"—")}
-</p>
-
-<p class="muted">
-Cobertura virtual recente:
-${pct(rec?.hits||0,rec?.total||0)}
-em ${rec?.total||0} registros.
-</p>
-
-<button class="virtualButton"
-id="activateTrainer">
-ATIVAR TREINADOR ESTRATÉGICO
-</button>
-
-${rec?`
-<button class="virtualButton"
-id="activateRecommended">
-ATIVAR ${esc(rec.name)}
-</button>
-`:""}
-
-</div>
-
-${miniPanel(
-"virtualRanking",
-"RANKING VIRTUAL DOS 12 MOTORES",
-state.open.virtualRanking
-?virtualRankingHTML()
-:""
-)}
-
-${miniPanel(
-"opportunities",
-"ÚLTIMAS 20 OPORTUNIDADES",
-state.open.opportunities
-?opportunitiesHTML()
-:""
-)}
-
-${miniPanel(
-"coveragePlan",
-"PLANO DE COBERTURA",
-state.open.coveragePlan
-?coveragePlanHTML()
-:""
-)}
-
-<div class="warning">
-As pontuações são indicadores históricos
-exploratórios. Não garantem acerto futuro.
-</div>
-`;
-}
-
-/* ============================================================
-   LABORATÓRIO
-   ============================================================ */
-
-function labHTML(){
-
-const analysis=trainerAnalysis();
-
-const comparisons=state.open.comparisons
-?`
-<div class="tablewrap">
-
-<table>
-
-<thead>
-<tr>
-<th>ESTRATÉGIA</th>
-<th>COBERTOS</th>
-<th>REGISTROS</th>
-<th>COBERTURA</th>
-</tr>
-</thead>
-
-<tbody>
-
-${analysis.rows.map(r=>`
-<tr>
-<td>${esc(r.name)}</td>
-<td>${r.hits}</td>
-<td>${r.total}</td>
-<td>${pct(r.hits,r.total)}</td>
-</tr>
-`).join("")}
-
-</tbody>
-
-</table>
-
-</div>
-`:"";
-
-return `
-<div class="box">
-
-<b>COMPARAÇÃO DAS ADAPTATIVAS</b>
-
-<p class="muted">
-Comparação exploratória com
-saltos físicos, regiões e
-espelho / antiespelho.
-</p>
-
-</div>
-
-${miniPanel(
-"comparisons",
-"COMPARAÇÃO DAS 12 ADAPTATIVAS",
-comparisons
-)}
-
-${miniPanel(
-"created",
-"ESTRATÉGIAS PERSONALIZADAS",
-state.open.created
-?state.createdStrategies.map(c=>`
-<div class="listrow">
-${esc(c.name)}
-</div>
-`).join("")||
-'<div class="box">Nenhuma criada.</div>'
-:""
-)}
-
-<button class="virtualButton"
-id="createAdaptive">
-CRIAR E ATIVAR CÓPIA DA RECOMENDADA
-</button>
-`;
-}
-
-/* ============================================================
-   LINHA DO TEMPO DEFINITIVA
-   ============================================================ */
-
-function timelineHTML(){
-
-return state.ledger
-.slice(-80)
-.reverse()
-.map(r=>`
-
-<div class="listrow">
-
-<b>GIRO ${r.turn}</b>
-
-• <b>${r.number}</b>
-
-• <span class="${
-r.result.startsWith("GREEN")
-?"good"
-:r.result==="LOSS"
-?"bad"
-:""
-}">
-${esc(r.result)}
-</span>
-
-<div class="muted">
-
-Estratégia:
-${esc(r.strategy)}
-
-• Motor:
-${esc(r.motor)}
-
-• Fase:
-${esc(r.phase)}
-
-• Região:
-${sector(r.number)}
-
-• ${mirrorType(r.number)}
-
-${r.g1?`
-• G1 AJUSTADO
-`:""}
-
-${r.g1Failed?`
-• AJUSTE G1 NÃO APLICADO
-`:""}
-
-</div>
-
-${r.play?`
-<div class="muted">
-Centros:
-${sortedBlocks(r.play)
-.map(b=>b.center)
-.join(" • ")}
-</div>
-`:""}
-
-</div>
-
-`).join("");
-}
-
-/* ============================================================
-   BORDAS
-   ============================================================ */
-
-function resultBorderClass(result){
-
-if(result==="LOSS"){
-return "result-loss";
-}
-
-if(result.startsWith("GREEN")){
-return "result-green";
-}
-
-if(
-result==="GALE"||
-result==="GALE PULADO"
-){
-return "result-gale";
-}
-
-return "";
-}
-
-/* ============================================================
-   RENDERIZAÇÃO
-   ============================================================ */
+/* =====================================================
+   RENDER
+   ===================================================== */
 
 let renderScheduled=false;
 
@@ -3941,55 +3164,38 @@ state.history.length+
 " NÚMEROS PRESERVADOS • "+
 cs.length+
 "/12 MOTORES • "+
-state.phase;
-
-/* BOTÕES */
-
-for(const b of document.querySelectorAll(
-"[data-strategy]"
-)){
-
-b.classList.toggle(
-"active",
-!state.manual&&
-state.strategy===b.dataset.strategy
-);
-}
+state.phase+
+(persistenceWarning
+?" • ATENÇÃO: ARMAZENAMENTO NÃO SALVO"
+:"");
 
 for(const b of document.querySelectorAll(
-"[data-adaptive]"
+"[data-choice]"
 )){
 
-b.classList.toggle(
-"active",
-!state.manual&&
-state.strategy==="ADAPTIVE"&&
-state.activeAdaptive===
-b.dataset.adaptive
-);
-}
+const choice=b.dataset.choice;
 
-for(const b of document.querySelectorAll(
-"[data-created-strategy]"
-)){
-
-b.classList.toggle(
-"active",
-!state.manual&&
-state.strategy==="CREATED"&&
-state.activeCreated===
-b.dataset.createdStrategy
-);
-}
-
-for(const b of document.querySelectorAll(
-"[data-trainer]"
-)){
-
-b.classList.toggle(
-"active",
-!state.manual&&
+const activeChoice=
 state.strategy==="TRAINER"
+?choice==="trainer":
+state.strategy==="ADAPTIVE"
+?choice===state.activeAdaptive:
+choice===state.strategy;
+
+b.classList.toggle(
+"active",
+!state.manual&&activeChoice
+);
+}
+
+for(const b of document.querySelectorAll(
+"[data-created-choice]"
+)){
+
+b.classList.toggle(
+"active",
+state.strategy==="CREATED"&&
+state.activeCreated===b.dataset.createdChoice
 );
 }
 
@@ -3999,7 +3205,6 @@ for(const b of document.querySelectorAll(
 
 b.classList.toggle(
 "active",
-!state.manual&&
 state.strategy==="FIXED"&&
 state.rank===Number(b.dataset.rank)
 );
@@ -4015,69 +3220,42 @@ b.classList.toggle(
 );
 }
 
-/* JOGADA */
-
-const frozenPhase=state.phase!=="ENTRY";
-
 $("selected").textContent=
-(frozenPhase
+(state.phase!=="ENTRY"
 ?state.cycle?.strategy||active.name
-:active.name
-)+
+:active.name)+
 " • MOTOR "+
 (selected?.key||"AGUARDANDO")+
-" • "+
-state.phase;
+" • "+state.phase;
 
 $("centers").innerHTML=centersHTML(play);
 
 $("coverage").textContent=play
 ?"28 COBERTOS • 9 DESCOBERTOS"+
-(selected?.g1
-?" • G1 AJUSTADO"
-:"")
-:"Importe pelo menos 8 números.";
+(selected?.g1?" • G1 AJUSTADO":"")
+:"IMPORTE PELO MENOS 8 NÚMEROS.";
 
-/* ÚLTIMOS 14 */
+const last=state.history.slice(-14);
 
-const lastNumbers=state.history.slice(-14);
+$("last").innerHTML=last.map((n,i)=>{
 
-$("last").innerHTML=lastNumbers
-.map((number,i)=>{
+const turn=state.history.length-last.length+i+1;
 
-const turn=
-state.history.length-lastNumbers.length+i+1;
-
-const row=state.ledger.find(
-r=>r.turn===turn
-);
+const row=state.ledger.find(r=>r.turn===turn);
 
 const result=row?.result||"HISTÓRICO";
 
 return `
-<div class="chip ${resultBorderClass(result)}"
-style="
-background:${
-number===0
-?"#087b50"
-:RED.has(number)
-?"#a72740"
-:"#14181f"
+<div class="chip ${resultBorder(result)}"
+style="background:${
+n===0?"#087b50":
+RED.has(n)?"#a72740":"#14181f"
 }">
-
-<b>${number}</b>
-
-<small>
-${esc(result)}
-</small>
-
+<b>${n}</b>
+<small>${escapeHTML(result)}</small>
 </div>
 `;
-})
-.reverse()
-.join("");
-
-/* RESULTADO GERAL */
+}).reverse().join("");
 
 if(state.open.general){
 
@@ -4090,7 +3268,6 @@ r=>r.source==="TEMPO REAL"
 );
 
 $("general").innerHTML=`
-
 <div class="title">HISTÓRICO</div>
 ${metricsHTML(historical)}
 
@@ -4104,11 +3281,8 @@ ${metricsHTML(state.ledger)}
 TOTAL DE NÚMEROS ARMAZENADOS:
 <b>${state.history.length}</b>
 </div>
-
 `;
 }
-
-/* TREINADOR */
 
 if(state.open.trainer){
 
@@ -4117,34 +3291,23 @@ $("trainer").innerHTML=trainerHTML();
 const activate=$("activateTrainer");
 
 if(activate){
-
-activate.onclick=()=>{
-changeStrategy("TRAINER");
-};
+activate.onclick=()=>changeStrategy("TRAINER");
 }
 
-const recommended=$(
-"activateRecommended"
-);
+const recommended=$("activateRecommended");
 
 if(recommended){
 
 recommended.onclick=()=>{
 
-const rec=trainerAnalysis()
-.recommendation;
+const rec=trainerAnalysis().recommendation;
 
-if(!rec)return;
-
-changeStrategy(
-"ADAPTIVE",
-rec.id
-);
+if(rec){
+changeStrategy("ADAPTIVE",rec.id);
+}
 };
 }
 }
-
-/* LABORATÓRIO */
 
 if(state.open.lab){
 
@@ -4156,8 +3319,7 @@ if(create){
 
 create.onclick=()=>{
 
-const rec=trainerAnalysis()
-.recommendation;
+const rec=trainerAnalysis().recommendation;
 
 if(!rec)return;
 
@@ -4165,37 +3327,31 @@ const created={
 id:"VIRTUAL_"+Date.now(),
 name:"ESTRATÉGIA VIRTUAL "+
 (state.createdStrategies.length+1),
-config:copy(rec.config)
+config:clone(rec.config)
 };
 
-state.createdStrategies.push(
-created
-);
+state.createdStrategies.push(created);
 
 state.strategy="CREATED";
 state.activeCreated=created.id;
 state.manual=null;
 
 buildStrategyButtons();
-
 save();
 render();
 };
 }
 }
 
-/* 12 MOTORES */
-
 if(state.open.motors){
 
 $("motors").innerHTML=`
 
-<div class="row" id="motorButtons">
+<div class="row">
 
 ${FAMILIES.flatMap(f=>
 RADII.map(r=>`
-<button class="btn"
-data-manual="${f}_${r}">
+<button class="btn" data-manual="${f}_${r}">
 ${f}_${r}
 </button>
 `)
@@ -4204,21 +3360,19 @@ ${f}_${r}
 </div>
 
 ${cs.map(c=>`
-
 <div class="listrow">
 
 <b>${c.rank}º</b>
-• ${esc(c.key)}
+• ${escapeHTML(c.key)}
 • SCORE ${fmt(c.score)}
 
 <div class="muted">
+CENTROS:
 ${sortedBlocks(c.play)
-.map(b=>b.center)
-.join(" • ")}
+.map(b=>b.center).join(" • ")}
 </div>
 
 </div>
-
 `).join("")}
 `;
 
@@ -4236,19 +3390,13 @@ render();
 }
 }
 
-/* SALTOS */
-
 if(state.open.jumps){
-$("jumps").innerHTML=jumpsHTML();
+$("jumps").innerHTML=sequenceHTML();
 }
-
-/* ESPELHO */
 
 if(state.open.mirrors){
 $("mirrors").innerHTML=mirrorHTML();
 }
-
-/* LINHA DO TEMPO */
 
 if(state.open.timeline){
 $("timeline").innerHTML=timelineHTML();
@@ -4256,10 +3404,6 @@ $("timeline").innerHTML=timelineHTML();
 
 applyOpenState();
 }
-
-/* ============================================================
-   INICIALIZAÇÃO
-   ============================================================ */
 
 render();
 
