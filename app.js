@@ -2,40 +2,43 @@
 (() => {
 "use strict";
 
-/* ==========================================================
-   ANÁLISE BETA V5.10
-   BASE ORIGINAL V5.9
+/* ============================================================
+   ANÁLISE BETA V6.0
+   ============================================================
+   BASE: V5.9 / V5.10
 
-   ALTERAÇÕES AUTORIZADAS:
-   1. ÚLTIMOS RESULTADOS:
-      GREEN = BORDA VERDE
-      GALE = BORDA AMARELA
-      LOSS = BORDA VERMELHA / ROSA
+   CORREÇÕES:
+   - Histórico importado sem limite de 200 números
+   - Histórico não desaparece ao trocar estratégia
+   - Resultados antigos permanecem congelados
+   - Treinador pode trocar a cada giro
+   - Troca obrigatória até o 3º giro operacional
+   - Motor também é reavaliado
+   - Gale não muda de jogada durante o ciclo
+   - Saltos físicos entre regiões
+   - Ausência de regiões
+   - Espelho / antiespelho conforme definição solicitada
+   - Bordas verde / amarela / rosa
+   - 12 motores preservados
+   - 12 adaptativas preservadas
+   - Geometria 5 blocos de 5 + 1 bloco de 3
+   - Centros TIERS / ÓRFÃOS / VOISINS / ZERO
 
-   2. TREINADOR:
-      REAVALIA AS 12 ADAPTATIVAS A CADA 3 GIROS
-      PROCURA A MELHOR LINHA NA JANELA RECENTE
-      MUDA DE ADAPTATIVA A CADA BLOCO DE 3
-      NÃO TROCA DURANTE UM CICLO DE GALE
+   OBSERVAÇÃO:
+   Os sinais são indicadores históricos exploratórios.
+   Não demonstram previsibilidade de uma roleta justa.
+   ============================================================ */
 
-   PRESERVADOS:
-   - 12 motores
-   - Geometria 5x5 + 1x3
-   - 28 números
-   - Gale normal
-   - G1 Ajuste Fino
-   - Linha do tempo definitiva
-   - Histórico
-   - Ranking
-   - Laboratório
-   - Painéis recolhíveis
-   - Ordem TIERS / ÓRFÃOS / VOISINS / ZERO
-   ========================================================== */
+const VERSION="6.0";
+const KEY="ANALISE_BETA_V60";
+const PREVIOUS_KEYS=[
+"ANALISE_BETA_V59",
+"ANALISE_BETA_V55_COMPLETO"
+];
 
-const VERSION="5.10";
-const KEY="ANALISE_BETA_V59";
-const OLD_KEY="ANALISE_BETA_V55_COMPLETO";
-const MAX=200;
+const ANALYSIS_WINDOW=200;
+const MAX_LEDGER=1200;
+const TRAINER_MAX=3;
 
 const W=[
 32,15,19,4,21,2,25,17,34,6,
@@ -69,7 +72,14 @@ const SECTOR_ORDER=[
 "TIERS","ORFAOS","VOISINS","ZERO"
 ];
 
+const MIRROR_BASE=[
+11,12,13,
+21,22,23,
+31,32,33
+];
+
 const $=id=>document.getElementById(id);
+
 const mod=n=>(n%37+37)%37;
 const idx=n=>W.indexOf(n);
 const copy=x=>JSON.parse(JSON.stringify(x));
@@ -93,11 +103,6 @@ c=>({
 }[c])
 );
 
-function distance(a,b){
-const d=Math.abs(idx(a)-idx(b));
-return Math.min(d,37-d);
-}
-
 function neighbors(n,r=1){
 const p=idx(n);
 return Array.from(
@@ -106,15 +111,44 @@ return Array.from(
 );
 }
 
+function distance(a,b){
+const d=Math.abs(idx(a)-idx(b));
+return Math.min(d,37-d);
+}
+
 function sector(n){
 return SECTOR_ORDER.find(
-k=>SECTORS[k].includes(n)
+s=>SECTORS[s].includes(n)
 )||"ZERO";
 }
 
-/* ==========================================================
-   ESTRATÉGIAS ORIGINAIS
-   ========================================================== */
+/* ============================================================
+   ESPELHO / ANTIESPELHO
+
+   ESPELHO:
+   11,12,13 / 21,22,23 / 31,32,33
+   E UM VIZINHO FÍSICO DE CADA LADO.
+
+   TODOS OS DEMAIS = ANTIESPELHO.
+   ============================================================ */
+
+const MIRROR=new Set();
+
+for(const n of MIRROR_BASE){
+for(const v of neighbors(n,1)){
+MIRROR.add(v);
+}
+}
+
+function mirrorType(n){
+return MIRROR.has(n)
+?"ESPELHO"
+:"ANTIESPELHO";
+}
+
+/* ============================================================
+   12 ADAPTATIVAS ORIGINAIS
+   ============================================================ */
 
 const ADAPTATIVES=[
 ["A01",10,.05,6,12,0,0,0,false,3],
@@ -153,37 +187,39 @@ const ORIGINALS=[
 ["UNION","UNIÃO"]
 ];
 
-/* ==========================================================
+/* ============================================================
    ESTADO
-   ========================================================== */
+   ============================================================ */
 
 function fresh(){
 return {
 history:[],
 sources:[],
 ledger:[],
+
 strategy:"FIXED",
 rank:3,
 manual:null,
+
 activeAdaptive:"A05",
 activeCreated:null,
 createdStrategies:[],
+
 g1:true,
 galeSkip:false,
 secondHouse:false,
+
 phase:"ENTRY",
 frozen:null,
 cycle:null,
 previousMotor:null,
 
-/*
- TREINADOR V5.10:
- guarda escolha e momento da última troca.
-*/
 trainerChoice:null,
+trainerMotor:null,
 trainerStart:0,
-trainerPending:false,
 trainerChanges:0,
+trainerMotorChanges:0,
+trainerPending:false,
 
 open:{
 general:true,
@@ -202,10 +238,17 @@ created:false
 
 let state=fresh();
 
+function readStorage(key){
 try{
-const saved=JSON.parse(
-localStorage.getItem(KEY)||"null"
+return JSON.parse(
+localStorage.getItem(key)||"null"
 );
+}catch(e){
+return null;
+}
+}
+
+const saved=readStorage(KEY);
 
 if(saved){
 state={
@@ -217,7 +260,6 @@ open:{
 }
 };
 }
-}catch(e){}
 
 function save(){
 try{
@@ -225,12 +267,186 @@ localStorage.setItem(
 KEY,
 JSON.stringify(state)
 );
-}catch(e){}
+}catch(e){
+console.warn(
+"Não foi possível salvar todos os dados.",
+e
+);
+}
 }
 
-/* ==========================================================
-   MOTOR DE PESOS ORIGINAL
-   ========================================================== */
+/* ============================================================
+   HISTÓRICO COMPLETO
+
+   Não há corte dos números importados.
+   Os motores analisam apenas a janela recente.
+   ============================================================ */
+
+function analysisHistory(){
+return state.history.slice(
+-ANALYSIS_WINDOW
+);
+}
+
+function historySignature(){
+const h=analysisHistory();
+
+return (
+state.history.length+
+":"+
+h.join(",")
+);
+}
+
+/* ============================================================
+   LEITURA DE SALTOS
+   ============================================================ */
+
+function jumpClass(d){
+if(d<=4)return "CURTO";
+if(d<=9)return "MÉDIO";
+return "GRANDE";
+}
+
+function jumpAnalysis(history=state.history){
+
+const recent=history.slice(-60);
+
+const jumps=[];
+
+for(let i=1;i<recent.length;i++){
+
+const from=recent[i-1];
+const to=recent[i];
+const d=distance(from,to);
+
+jumps.push({
+from,
+to,
+distance:d,
+type:jumpClass(d),
+fromSector:sector(from),
+toSector:sector(to),
+fromMirror:mirrorType(from),
+toMirror:mirrorType(to)
+});
+}
+
+const last=jumps.slice(-12);
+const last3=jumps.slice(-3);
+const previous3=jumps.slice(-6,-3);
+
+const avg=arr=>arr.length
+?arr.reduce(
+(s,x)=>s+x.distance,0
+)/arr.length
+:0;
+
+const recentAverage=avg(last3);
+const previousAverage=avg(previous3);
+
+const large=last.filter(
+x=>x.type==="GRANDE"
+).length;
+
+const regionAbsence={};
+
+for(const s of SECTOR_ORDER){
+
+const p=history.length-1-
+history.lastIndexOf(
+history.slice().reverse().find(
+n=>sector(n)===s
+)
+);
+
+/*
+ Calcula ausência diretamente
+ para evitar ambiguidades.
+*/
+
+let absent=0;
+
+for(let i=history.length-1;i>=0;i--){
+
+if(sector(history[i])===s)break;
+absent++;
+}
+
+regionAbsence[s]=absent;
+}
+
+const mirrorLast=history.slice(-12);
+
+const mirrorCount=mirrorLast.filter(
+n=>MIRROR.has(n)
+).length;
+
+const mirrorAbsent=(()=>{
+let count=0;
+
+for(let i=history.length-1;i>=0;i--){
+
+if(MIRROR.has(history[i]))break;
+count++;
+}
+
+return count;
+})();
+
+const antiAbsent=(()=>{
+let count=0;
+
+for(let i=history.length-1;i>=0;i--){
+
+if(!MIRROR.has(history[i]))break;
+count++;
+}
+
+return count;
+})();
+
+let signal="ESTÁVEL";
+
+if(
+last3.length>=2&&
+recentAverage>=10
+){
+signal="SALTOS GRANDES RECENTES";
+}
+
+if(
+last3.length>=2&&
+recentAverage>previousAverage+3
+){
+signal="AUMENTO DOS SALTOS";
+}
+
+if(
+last3.length>=2&&
+recentAverage<previousAverage-3
+){
+signal="REDUÇÃO DOS SALTOS";
+}
+
+return {
+jumps,
+last,
+last3,
+large,
+recentAverage,
+previousAverage,
+signal,
+regionAbsence,
+mirrorCount,
+mirrorAbsent,
+antiAbsent
+};
+}
+
+/* ============================================================
+   PESOS DOS 12 MOTORES — BASE ORIGINAL
+   ============================================================ */
 
 function motorWeights(history,family,radius){
 
@@ -350,9 +566,9 @@ weights[j]+=(4-d)*m.score*.45;
 return weights;
 }
 
-/* ==========================================================
+/* ============================================================
    GEOMETRIA ORIGINAL
-   ========================================================== */
+   ============================================================ */
 
 const BLOCKS5=[];
 const BLOCKS3=[];
@@ -516,9 +732,9 @@ b=>b.radius===1
 };
 }
 
-/* ==========================================================
+/* ============================================================
    12 MOTORES
-   ========================================================== */
+   ============================================================ */
 
 function candidates(history){
 
@@ -564,10 +780,6 @@ c.rank=i+1;
 return result;
 }
 
-/* ==========================================================
-   CACHE
-   ========================================================== */
-
 let candidateCache={
 signature:null,
 value:[]
@@ -575,13 +787,15 @@ value:[]
 
 function getCandidates(){
 
-const signature=state.history.join(",");
+const signature=historySignature();
 
 if(candidateCache.signature===signature){
 return candidateCache.value;
 }
 
-const value=candidates(state.history);
+const value=candidates(
+analysisHistory()
+);
 
 candidateCache={
 signature,
@@ -595,9 +809,9 @@ function invalidateCandidates(){
 candidateCache.signature=null;
 }
 
-/* ==========================================================
+/* ============================================================
    ESTATÍSTICAS VIRTUAIS
-   ========================================================== */
+   ============================================================ */
 
 function motorStats(
 key,
@@ -646,9 +860,9 @@ center3:c.play.center3
 }));
 }
 
-/* ==========================================================
+/* ============================================================
    ADAPTATIVAS ORIGINAIS
-   ========================================================== */
+   ============================================================ */
 
 function adaptiveChoose(cs,config,previous){
 
@@ -767,9 +981,9 @@ return best.c;
 return old.c;
 }
 
-/* ==========================================================
-   CONSENSO E UNIÃO
-   ========================================================== */
+/* ============================================================
+   CONSENSO / UNIÃO
+   ============================================================ */
 
 function collective(cs,rule){
 
@@ -792,6 +1006,8 @@ rule==="UNION"
 
 const play=geometry(votes);
 
+if(!play)return cs[0];
+
 return {
 key:rule,
 family:rule,
@@ -802,39 +1018,142 @@ play
 };
 }
 
-/* ==========================================================
-   TREINADOR V5.10
+/* ============================================================
+   AVALIAÇÃO DE SALTOS NA COBERTURA
 
-   REAVALIAÇÃO A CADA 3 GIROS.
+   Avalia distribuição e correspondência
+   com sinais históricos recentes.
+   ============================================================ */
 
-   COMPARAÇÃO:
-   - ÚLTIMOS 3 GIROS
-   - DESEMPENHO RECENTE
-   - PARÂMETROS DA ADAPTATIVA
+function signalScore(play,analysis){
 
-   REGRA:
-   - TROCAR DE ADAPTATIVA AO COMPLETAR 3 GIROS
-   - NÃO REPETIR A ADAPTATIVA ANTERIOR
-   - NÃO TROCAR DENTRO DE UM GALE
-   - SELECIONAR ENTRE AS ALTERNATIVAS
-     COM MELHOR PONTUAÇÃO DISPONÍVEL
-   ========================================================== */
+if(!play)return 0;
+
+const covered=new Set(
+play.numbers
+);
+
+let score=0;
+
+const regionCoverage={};
+
+for(const s of SECTOR_ORDER){
+
+const count=play.numbers.filter(
+n=>sector(n)===s
+).length;
+
+regionCoverage[s]=count;
+
+const absence=analysis.regionAbsence[s]||0;
+
+/*
+ Ausência é um indicador descritivo.
+ Peso pequeno, sem presumir que o
+ setor está prestes a sair.
+*/
+
+score+=Math.min(absence,12)*
+count*.00015;
+}
+
+/*
+ Cobertura distribuída quando os
+ saltos recentes são grandes.
+*/
+
+if(analysis.recentAverage>=9){
+
+const represented=SECTOR_ORDER.filter(
+s=>regionCoverage[s]>0
+).length;
+
+score+=represented*.012;
+}
+
+/*
+ Avalia os destinos dos últimos
+ saltos grandes observados.
+*/
+
+const large=analysis.last.filter(
+j=>j.type==="GRANDE"
+);
+
+for(const j of large){
+
+const around=neighbors(j.to,1);
+
+const hits=around.filter(
+n=>covered.has(n)
+).length;
+
+score+=hits*.0015;
+}
+
+/*
+ Espelho / antiespelho:
+ acompanha a distribuição recente.
+*/
+
+const mirrorCovered=play.numbers.filter(
+n=>MIRROR.has(n)
+).length;
+
+const antiCovered=28-mirrorCovered;
+
+const mirrorRatio=
+analysis.mirrorCount/12;
+
+const observedMirror=
+Math.min(1,mirrorRatio);
+
+const coverageMirror=
+mirrorCovered/28;
+
+score+=(
+1-Math.abs(
+coverageMirror-observedMirror
+)
+)*.018;
+
+/*
+ Ausência prolongada é exibida,
+ mas não recebe grande peso.
+*/
+
+if(analysis.mirrorAbsent>=6){
+score+=mirrorCovered*.0002;
+}
+
+if(analysis.antiAbsent>=6){
+score+=antiCovered*.0002;
+}
+
+return score;
+}
+
+/* ============================================================
+   TREINADOR — AVALIAÇÃO DINÂMICA
+   ============================================================ */
 
 let trainerCache={
 signature:null,
-recommendation:null,
 rows:[],
-ranking:[]
+ranking:[],
+recommendation:null
 };
 
-function trainerAnalysis(){
+function invalidateTrainer(){
+trainerCache.signature=null;
+}
 
-const signature=[
-state.history.join(","),
-state.g1,
-state.galeSkip,
-state.secondHouse
-].join("|");
+function trainerAnalysis(cs=getCandidates()){
+
+const signature=
+historySignature()+"|"+
+state.ledger.length+"|"+
+state.ledger.at(-1)?.id;
 
 if(trainerCache.signature===signature){
 return trainerCache;
@@ -843,16 +1162,17 @@ return trainerCache;
 const rows=[];
 const ranking=[];
 
+const jump=jumpAnalysis();
+
 for(const family of FAMILIES){
 
 for(const radius of RADII){
 
 const key=family+"_"+radius;
-const stats=motorStats(key,30);
 
 ranking.push({
 key,
-...stats
+...motorStats(key,30)
 });
 }
 }
@@ -862,21 +1182,14 @@ ranking.sort(
 (b.rate??-1)-(a.rate??-1)
 );
 
-/*
- A análise do treinador agora prioriza
- a janela de três giros.
-*/
+for(const config of ADAPTATIVES){
 
 const last3=state.ledger
 .filter(r=>r.virtual?.length)
 .slice(-3);
 
-for(const config of ADAPTATIVES){
-
 let hits=0;
 let total=0;
-let misses=0;
-let rankSum=0;
 
 for(const row of last3){
 
@@ -884,23 +1197,20 @@ const eligible=row.virtual
 .filter(m=>m.rank<=config.maxRank)
 .sort((a,b)=>a.rank-b.rank);
 
-const motor=eligible[0];
+const m=eligible[0];
 
-if(!motor)continue;
+if(!m)continue;
 
 total++;
-rankSum+=motor.rank;
 
-if(motor.numbers.includes(row.number)){
+if(m.numbers.includes(row.number)){
 hits++;
-}else{
-misses++;
 }
 }
 
 const recentRate=total
 ?hits/total
-:0;
+:.5;
 
 const longer=state.ledger
 .filter(r=>r.virtual?.length)
@@ -911,58 +1221,66 @@ let longTotal=0;
 
 for(const row of longer){
 
-const eligible=row.virtual
-.filter(m=>m.rank<=config.maxRank)
-.sort((a,b)=>a.rank-b.rank);
+const m=row.virtual
+.filter(x=>x.rank<=config.maxRank)
+.sort((a,b)=>a.rank-b.rank)[0];
 
-const motor=eligible[0];
-
-if(!motor)continue;
+if(!m)continue;
 
 longTotal++;
 
-if(motor.numbers.includes(row.number)){
+if(m.numbers.includes(row.number)){
 longHits++;
 }
 }
 
 const longRate=longTotal
 ?longHits/longTotal
-:0;
+:.5;
 
-/*
- Prioridade de 70% para os últimos
- três giros e 30% para a janela maior.
-*/
+const eligible=cs.filter(
+c=>c.rank<=config.maxRank
+);
+
+const evaluated=eligible.map(c=>{
+
+const stats=motorStats(
+c.key,
+config.window
+);
+
+const recent=motorStats(
+c.key,3
+);
+
+let motorScore=
+(recent.rate??.5)*.55+
+(stats.rate??.5)*.35+
+signalScore(c.play,jump)*.10;
+
+motorScore-=config.lossPenalty*
+recent.misses;
+
+motorScore+=config.consensus*.015;
+
+return {
+motor:c,
+motorScore
+};
+}).sort(
+(a,b)=>b.motorScore-a.motorScore||
+a.motor.rank-b.motor.rank
+);
+
+const best=evaluated[0];
 
 let score=
-recentRate*.70+
-longRate*.30;
+recentRate*.60+
+longRate*.25+
+(best?.motorScore??0)*.15;
 
-/*
- Pequena diferenciação das regras
- configuradas das adaptativas.
-*/
-
-score-=misses*config.lossPenalty;
-
-if(config.recentWeight){
-score+=recentRate*
-config.recentWeight*.05;
-}
-
-if(config.consensus){
-score+=config.consensus*.05;
-}
-
-if(config.switchAfterLoss&&misses>=2){
-score-=.015;
-}
-
-if(total){
-score+=
-(13-rankSum/total)*.0005;
-}
+score+=config.recentWeight*
+recentRate*.02;
 
 rows.push({
 id:config.id,
@@ -970,65 +1288,52 @@ name:config.name,
 config,
 hits,
 total,
-misses,
-longHits,
-longTotal,
-rate:recentRate,
-score
+rate:total?hits/total:null,
+score,
+motor:best?.motor||null,
+motorScore:best?.motorScore??0
 });
 }
 
 rows.sort(
 (a,b)=>
 b.score-a.score||
-b.rate-a.rate||
 a.id.localeCompare(b.id)
 );
 
-const recommendation=rows[0]||null;
-
 trainerCache={
 signature,
-recommendation,
 rows,
-ranking
+ranking,
+recommendation:rows[0]||null
 };
 
 return trainerCache;
 }
 
-function invalidateTrainer(){
-trainerCache.signature=null;
-}
+/* ============================================================
+   TREINADOR — TROCA EM 1, 2 OU 3 GIROS
 
-/* ==========================================================
-   CONTROLE DE TROCA A CADA 3 GIROS
+   NÃO TROCA DURANTE GALE.
 
-   O treinador escolhe uma adaptativa
-   diferente da anterior.
+   AO COMPLETAR 3 GIROS OPERACIONAIS,
+   A ADAPTATIVA PRECISA SER DIFERENTE.
 
-   A escolha só é efetivada quando
-   state.phase === "ENTRY".
-   ========================================================== */
+   O MOTOR TAMBÉM É REAVALIADO.
+   ============================================================ */
 
-function updateTrainerChoice(){
+function updateTrainerChoice(cs=getCandidates()){
 
-if(state.strategy!=="TRAINER"){
+if(state.strategy!=="TRAINER"||
+state.manual){
 return;
 }
 
-if(state.manual){
-return;
-}
-
-/*
- Durante Gale, não muda.
-*/
 if(state.phase!=="ENTRY"){
 
 if(
-state.trainerChoice &&
-state.history.length-state.trainerStart>=3
+state.history.length-
+state.trainerStart>=TRAINER_MAX
 ){
 state.trainerPending=true;
 }
@@ -1036,59 +1341,94 @@ state.trainerPending=true;
 return;
 }
 
-const analysis=trainerAnalysis();
+if(!cs.length)return;
+
+const analysis=trainerAnalysis(cs);
 
 if(!analysis.rows.length)return;
 
-const current=state.trainerChoice;
+const previous=state.trainerChoice;
 
-const elapsed=
+const elapsed=Math.max(
+0,
 state.history.length-
-(state.trainerStart||0);
+(state.trainerStart||0)
+);
 
-const needsFirst=!current;
+const current=analysis.rows.find(
+r=>r.id===previous
+);
 
-const needsChange=
-!needsFirst&&
-(
-elapsed>=3||
+const best=analysis.rows[0];
+
+let shouldSwitch=!previous;
+
+if(previous){
+
+if(
+elapsed>=TRAINER_MAX||
 state.trainerPending
-);
-
-if(!needsFirst&&!needsChange){
-return;
+){
+shouldSwitch=true;
 }
 
 /*
- Exclui a adaptativa anterior.
- Assim, ao completar três giros,
- a troca realmente acontece.
+ Troca antecipada se houver diferença
+ relevante na avaliação.
 */
 
-let alternatives=analysis.rows.filter(
-r=>r.id!==current
-);
-
-if(!alternatives.length){
-alternatives=analysis.rows;
+else if(
+elapsed>=1&&
+best.id!==previous&&
+best.score>(current?.score??-1)+.035
+){
+shouldSwitch=true;
+}
 }
 
+if(!shouldSwitch)return;
+
 /*
- Melhor linha disponível na análise
- recente de três giros.
+ Na troca obrigatória, exclui a
+ adaptativa anterior.
 */
 
-const selected=alternatives[0];
+let alternatives=analysis.rows;
 
-if(!selected)return;
+if(previous){
 
-if(current&&current!==selected.id){
+alternatives=analysis.rows.filter(
+r=>r.id!==previous
+);
+}
+
+const chosen=alternatives[0]||best;
+
+if(!chosen)return;
+
+if(previous&&chosen.id!==previous){
 state.trainerChanges++;
 }
 
-state.trainerChoice=selected.id;
+state.trainerChoice=chosen.id;
 state.trainerStart=state.history.length;
 state.trainerPending=false;
+
+/*
+ O motor é reavaliado independentemente.
+*/
+
+const motor=chosen.motor?.key||null;
+
+if(
+state.trainerMotor&&
+motor&&
+motor!==state.trainerMotor
+){
+state.trainerMotorChanges++;
+}
+
+state.trainerMotor=motor;
 
 save();
 }
@@ -1103,16 +1443,21 @@ state.history.length-
 
 return {
 adaptive:state.trainerChoice,
+motor:state.trainerMotor,
 elapsed,
-remaining:Math.max(0,3-elapsed),
-pending:!!state.trainerPending,
-changes:state.trainerChanges||0
+remaining:Math.max(
+0,
+TRAINER_MAX-elapsed
+),
+pending:state.trainerPending,
+changes:state.trainerChanges,
+motorChanges:state.trainerMotorChanges
 };
 }
 
-/* ==========================================================
+/* ============================================================
    ESTRATÉGIA ATIVA
-   ========================================================== */
+   ============================================================ */
 
 function activeStrategy(){
 
@@ -1133,7 +1478,7 @@ x=>x.id===state.trainerChoice
 )||ADAPTATIVES[4];
 
 return {
-rule:"ADAPTIVE",
+rule:"TRAINER",
 config,
 name:"TREINADOR → "+config.name
 };
@@ -1176,9 +1521,9 @@ x=>x[0]===state.strategy
 };
 }
 
-/* ==========================================================
-   ESCOLHA DOS MOTORES — ORIGINAL
-   ========================================================== */
+/* ============================================================
+   SELEÇÃO DE MOTOR
+   ============================================================ */
 
 function selectMotor(cs){
 
@@ -1200,6 +1545,25 @@ if(active.rule==="MANUAL"){
 return cs.find(
 x=>x.key===state.manual
 )||fixed;
+}
+
+if(active.rule==="TRAINER"){
+
+const analysis=trainerAnalysis(cs);
+
+const selected=analysis.rows.find(
+r=>r.id===state.trainerChoice
+);
+
+const proposed=selected?.motor;
+
+if(proposed){
+
+state.trainerMotor=proposed.key;
+return proposed;
+}
+
+return fixed;
 }
 
 if(active.rule==="FIXED")return fixed;
@@ -1278,9 +1642,9 @@ return collective(cs,active.rule);
 return fixed;
 }
 
-/* ==========================================================
-   G1 AJUSTE FINO — ORIGINAL
-   ========================================================== */
+/* ============================================================
+   G1 AJUSTE FINO ORIGINAL
+   ============================================================ */
 
 function tuneG1(original,lastNumber){
 
@@ -1350,9 +1714,20 @@ play:copy(m.play)
 };
 }
 
-/* ==========================================================
+/* ============================================================
    REGISTRO DEFINITIVO
-   ========================================================== */
+
+   Cada resultado conserva:
+   - Número
+   - Estratégia
+   - Motor
+   - Jogada
+   - Resultado
+   - Fase
+   - Configuração do ciclo
+
+   Trocar estratégia NÃO altera registros.
+   ============================================================ */
 
 function recordSpin(
 number,
@@ -1370,6 +1745,10 @@ let result="AGUARDANDO";
 let played=false;
 let covered=false;
 let strategyName=active.name;
+
+let cycleSnapshot=state.cycle
+?copy(state.cycle)
+:null;
 
 if(state.phase==="ENTRY"){
 
@@ -1394,6 +1773,8 @@ galeSkip:state.galeSkip,
 secondHouse:state.secondHouse
 }
 };
+
+cycleSnapshot=copy(state.cycle);
 
 if(state.secondHouse){
 
@@ -1434,7 +1815,6 @@ state.phase=state.galeSkip
 }
 
 }else{
-
 result="SEM MOTOR";
 }
 }
@@ -1517,7 +1897,7 @@ state.cycle=null;
 }
 
 const row={
-id:Date.now()+"_"+state.ledger.length,
+id:Date.now()+"_"+state.history.length,
 turn:state.history.length+1,
 number,
 source,
@@ -1531,6 +1911,7 @@ g1:!!motor?.g1,
 g1Failed:!!motor?.g1Failed,
 trigger:motor?.trigger??null,
 play:motor?copy(motor.play):null,
+cycle:cycleSnapshot,
 virtual,
 timestamp:Date.now()
 };
@@ -1539,28 +1920,29 @@ state.history.push(number);
 state.sources.push(source);
 state.ledger.push(row);
 
-if(state.history.length>MAX){
-
-state.history.shift();
-state.sources.shift();
-state.ledger.shift();
-
 /*
- Ajusta o contador do treinador
- ao deslocar o histórico.
+ Histórico completo preservado.
+
+ Apenas os registros detalhados mais
+ antigos podem ser compactados para
+ evitar excesso de armazenamento.
 */
-state.trainerStart=Math.max(
-0,
-(state.trainerStart||0)-1
-);
+
+if(state.ledger.length>MAX_LEDGER){
+
+const old=state.ledger.shift();
+
+if(old){
+old.virtual=[];
+}
 }
 
 invalidateCandidates();
 invalidateTrainer();
 
 /*
- A troca do treinador é preparada
- após o giro, nunca durante Gale.
+ Reavalia após o giro.
+ Se houver Gale, aguarda fechamento.
 */
 
 if(
@@ -1572,7 +1954,7 @@ if(state.phase==="ENTRY"){
 updateTrainerChoice();
 }else if(
 state.history.length-
-(state.trainerStart||0)>=3
+state.trainerStart>=TRAINER_MAX
 ){
 state.trainerPending=true;
 }
@@ -1583,9 +1965,12 @@ save();
 return row;
 }
 
-/* ==========================================================
-   APAGAR ÚLTIMO — ORIGINAL
-   ========================================================== */
+/* ============================================================
+   APAGAR ÚLTIMO
+
+   Restaura o ciclo pelo snapshot.
+   Não reinterpreta resultados anteriores.
+   ============================================================ */
 
 function undoLast(){
 
@@ -1593,98 +1978,89 @@ if(!state.history.length)return;
 
 state.history.pop();
 state.sources.pop();
+
+const removed=state.ledger.at(-1);
+
+if(
+removed&&
+removed.turn===state.history.length+1
+){
 state.ledger.pop();
+}
+
+const last=state.ledger.at(-1);
 
 state.phase="ENTRY";
 state.frozen=null;
 state.cycle=null;
-state.previousMotor=null;
 
-let cycle=null;
+if(last){
 
-for(const row of state.ledger){
+const result=last.result;
 
-if(row.phase==="ENTRY"&&row.play){
-
-cycle={
-start:row.turn,
-strategy:row.strategy,
-motor:row.motor,
-source:row.source,
-original:{
-key:row.motor,
-play:copy(row.play)
-},
-firstNumber:null,
-options:{
-g1:state.g1,
-galeSkip:state.galeSkip,
-secondHouse:state.secondHouse
-}
-};
-
-state.previousMotor=row.motor;
-}
-
-if(row.result==="2ª CASA"){
-
-state.frozen={
-key:row.motor,
-play:copy(row.play)
-};
+if(result==="2ª CASA"){
 
 state.phase="SECOND_SKIP";
+state.cycle=copy(last.cycle);
+state.frozen=copy(
+last.cycle?.original||null
+);
 }
 
-else if(row.result==="CASA PULADA"){
+else if(result==="CASA PULADA"){
 
 state.phase="SECOND_ENTRY";
+state.cycle=copy(last.cycle);
+state.frozen=copy(
+last.cycle?.original||null
+);
 }
 
-else if(row.result==="GALE"){
+else if(result==="GALE"){
 
-if(cycle){
+state.cycle=copy(last.cycle);
 
-cycle.firstNumber=row.number;
+if(state.cycle){
 
-state.frozen=cycle.options.g1
-?tuneG1(
-cycle.original,
-row.number
-)
-:copy(cycle.original);
-}
+state.cycle.firstNumber=last.number;
 
-state.phase=cycle?.options.galeSkip
+const original=state.cycle.original;
+
+state.frozen=state.cycle.options.g1
+?tuneG1(original,last.number)
+:copy(original);
+
+state.phase=state.cycle.options.galeSkip
 ?"GALE_SKIP"
 :"GALE";
 }
+}
 
-else if(row.result==="GALE PULADO"){
+else if(result==="GALE PULADO"){
+
+state.cycle=copy(last.cycle);
+
+if(state.cycle){
+
+state.frozen=state.cycle.options.g1
+?tuneG1(
+state.cycle.original,
+state.cycle.firstNumber
+)
+:copy(state.cycle.original);
 
 state.phase="GALE";
 }
-
-else if(
-row.result==="GREEN"||
-row.result==="GREEN G1"||
-row.result==="LOSS"
-){
-
-state.phase="ENTRY";
-state.frozen=null;
-cycle=null;
 }
 }
 
-state.cycle=cycle;
+state.previousMotor=
+last?.motor&&last.motor!=="—"
+?last.motor
+:null;
 
-/*
- Reinicia a contagem do bloco de
- três giros após desfazer uma jogada.
-*/
 state.trainerStart=Math.min(
-state.trainerStart||0,
+state.trainerStart,
 state.history.length
 );
 
@@ -1697,9 +2073,9 @@ save();
 render();
 }
 
-/* ==========================================================
+/* ============================================================
    MÉTRICAS
-   ========================================================== */
+   ============================================================ */
 
 function metrics(rows){
 
@@ -1777,9 +2153,9 @@ return `
 </div>`;
 }
 
-/* ==========================================================
-   CENTROS POR SETOR
-   ========================================================== */
+/* ============================================================
+   CENTROS ORDENADOS
+   ============================================================ */
 
 function sortedBlocks(play){
 
@@ -1816,9 +2192,9 @@ ${sector(b.center)}
 `).join("");
 }
 
-/* ==========================================================
-   RANKING / AUDITORIA
-   ========================================================== */
+/* ============================================================
+   RANKING
+   ============================================================ */
 
 function virtualRankingHTML(){
 
@@ -1867,7 +2243,8 @@ row.covered||
 !row.played
 )continue;
 
-const alternatives=row.virtual.filter(
+const alternatives=(row.virtual||[])
+.filter(
 m=>m.numbers.includes(row.number)
 );
 
@@ -1985,9 +2362,160 @@ ${regions[name].longest}
 `;
 }
 
-/* ==========================================================
-   INTERFACE ORIGINAL + BORDAS DOS RESULTADOS
-   ========================================================== */
+/* ============================================================
+   PAINEL DE SALTOS
+   ============================================================ */
+
+function jumpsHTML(){
+
+const a=jumpAnalysis();
+
+const latest=a.last.slice(-8).reverse();
+
+return `
+<div class="box">
+
+<b>LEITURA DOS SALTOS FÍSICOS</b>
+
+<p>
+SINAL:
+<strong>${esc(a.signal)}</strong>
+</p>
+
+<p>
+MÉDIA ÚLTIMOS 3:
+${fmt(a.recentAverage)} CASAS
+</p>
+
+<p>
+MÉDIA 3 ANTERIORES:
+${fmt(a.previousAverage)} CASAS
+</p>
+
+<p>
+SALTOS GRANDES NOS ÚLTIMOS 12:
+${a.large}
+</p>
+
+</div>
+
+<div class="title">
+REGIÕES SEM APARECER
+</div>
+
+${SECTOR_ORDER.map(s=>`
+<div class="listrow">
+<b>${s}</b>
+• ${a.regionAbsence[s]} GIROS
+</div>
+`).join("")}
+
+<div class="title">
+ÚLTIMOS SALTOS
+</div>
+
+${latest.map(j=>`
+<div class="listrow">
+<b>${j.from} → ${j.to}</b>
+• ${j.distance} CASAS
+• ${j.type}
+<div class="muted">
+${j.fromSector} → ${j.toSector}
+<br>
+${j.fromMirror} → ${j.toMirror}
+</div>
+</div>
+`).join("")}
+
+<div class="warning">
+Ausência de uma região e repetição de saltos
+não aumentam sua probabilidade matemática
+no próximo giro de uma roleta justa.
+</div>
+`;
+}
+
+/* ============================================================
+   ESPELHO / ANTIESPELHO
+   ============================================================ */
+
+function mirrorHTML(){
+
+const a=jumpAnalysis();
+
+const recent=state.history.slice(-20);
+
+const mirrorHits=recent.filter(
+n=>MIRROR.has(n)
+).length;
+
+const antiHits=recent.length-mirrorHits;
+
+return `
+<div class="box">
+
+<b>ESPELHO / ANTIESPELHO</b>
+
+<p>
+ESPELHO:
+11, 12, 13 • 21, 22, 23 •
+31, 32, 33
+E SEUS VIZINHOS FÍSICOS.
+</p>
+
+<p>
+ESPELHO NOS ÚLTIMOS 20:
+<b>${mirrorHits}</b>
+</p>
+
+<p>
+ANTIESPELHO NOS ÚLTIMOS 20:
+<b>${antiHits}</b>
+</p>
+
+<p>
+ESPELHO SEM APARECER:
+<b>${a.mirrorAbsent} GIROS</b>
+</p>
+
+<p>
+ANTIESPELHO SEM APARECER:
+<b>${a.antiAbsent} GIROS</b>
+</p>
+
+</div>
+
+<div class="title">
+NÚMEROS DO ESPELHO
+</div>
+
+<div class="numberCloud">
+
+${W.filter(n=>MIRROR.has(n))
+.map(n=>`
+<span>${n}</span>
+`).join("")}
+
+</div>
+
+<div class="title">
+NÚMEROS DO ANTIESPELHO
+</div>
+
+<div class="numberCloud">
+
+${W.filter(n=>!MIRROR.has(n))
+.map(n=>`
+<span>${n}</span>
+`).join("")}
+
+</div>
+`;
+}
+
+/* ============================================================
+   INTERFACE
+   ============================================================ */
 
 const css=`
 
@@ -2213,37 +2741,19 @@ min-width:47px;
 text-align:center;
 }
 
-/*
- NOVO:
- BORDA VERDE PARA GREEN.
-*/
-
 .chip.result-green{
 border:3px solid #24f49a;
-box-shadow:
-0 0 5px #24f49a88;
+box-shadow:0 0 6px #24f49a88;
 }
-
-/*
- NOVO:
- BORDA AMARELA PARA GALE.
-*/
 
 .chip.result-gale{
 border:3px solid #ffda35;
-box-shadow:
-0 0 5px #ffda3588;
+box-shadow:0 0 6px #ffda3588;
 }
-
-/*
- NOVO:
- BORDA VERMELHA/ROSA PARA LOSS.
-*/
 
 .chip.result-loss{
 border:3px solid #ff386c;
-box-shadow:
-0 0 6px #ff386c99;
+box-shadow:0 0 7px #ff386c99;
 }
 
 .chip b{
@@ -2361,6 +2871,22 @@ margin:10px 0;
 
 .trainerCycle b{
 color:#7fffd2;
+}
+
+.numberCloud{
+display:flex;
+flex-wrap:wrap;
+gap:5px;
+margin:10px 0;
+}
+
+.numberCloud span{
+padding:8px;
+background:#273b50;
+border:1px solid #60829f;
+border-radius:6px;
+font-size:12px;
+font-weight:bold;
 }
 
 @media(max-width:600px){
@@ -2503,6 +3029,28 @@ LABORATÓRIO DE ESTRATÉGIAS
 
 <section class="panel">
 
+<button class="head" data-panel="jumps">
+SALTOS FÍSICOS E REGIÕES
+<span>+</span>
+</button>
+
+<div id="jumps"></div>
+
+</section>
+
+<section class="panel">
+
+<button class="head" data-panel="mirrors">
+ESPELHO / ANTIESPELHO
+<span>+</span>
+</button>
+
+<div id="mirrors"></div>
+
+</section>
+
+<section class="panel">
+
 <button class="head" data-panel="timeline">
 LINHA DO TEMPO — GREEN / GALE / LOSS
 <span>−</span>
@@ -2515,9 +3063,12 @@ LINHA DO TEMPO — GREEN / GALE / LOSS
 </main>
 `;
 
-/* ==========================================================
+state.open.jumps??=false;
+state.open.mirrors??=false;
+
+/* ============================================================
    BOTÕES
-   ========================================================== */
+   ============================================================ */
 
 function makeButton(
 label,
@@ -2548,18 +3099,16 @@ state.strategy=rule;
 state.activeAdaptive=adaptive;
 state.activeCreated=created;
 
-/*
- Ao ativar o treinador, começa
- uma nova janela de três giros.
-*/
-
 if(rule==="TRAINER"){
 
 state.trainerChoice=null;
+state.trainerMotor=null;
 state.trainerStart=state.history.length;
 state.trainerPending=false;
 
+if(state.phase==="ENTRY"){
 updateTrainerChoice();
+}
 }
 
 save();
@@ -2700,9 +3249,9 @@ root.appendChild(created);
 
 buildStrategyButtons();
 
-/* ==========================================================
-   OPÇÕES ORIGINAIS
-   ========================================================== */
+/* ============================================================
+   OPÇÕES
+   ============================================================ */
 
 for(const [field,name] of [
 ["g1","G1 AJUSTE FINO"],
@@ -2723,9 +3272,11 @@ $("options")
 b.dataset.option=field;
 }
 
-/* ==========================================================
+/* ============================================================
    TECLADO
-   ========================================================== */
+   ============================================================ */
+
+let importing=false;
 
 for(let n=0;n<=36;n++){
 
@@ -2752,12 +3303,19 @@ render();
 $("keys").appendChild(b);
 }
 
-/* ==========================================================
-   IMPORTAÇÃO
-   ========================================================== */
+/* ============================================================
+   IMPORTAÇÃO COMPLETA
 
-let importing=false;
-let importToken=0;
+   IMPORTA TODOS OS NÚMEROS.
+   NÃO CORTA EM 200.
+
+   Para históricos grandes, registra
+   os números antigos como histórico
+   bruto e processa a janela final
+   com os motores.
+
+   O histórico bruto permanece fixo.
+   ============================================================ */
 
 async function importNumbers(numbers){
 
@@ -2765,47 +3323,59 @@ if(importing)return;
 
 importing=true;
 
-const token=++importToken;
-
 state.history=[];
 state.sources=[];
 state.ledger=[];
+
 state.phase="ENTRY";
 state.frozen=null;
 state.cycle=null;
 state.previousMotor=null;
 
-/*
- Reinicia o treinador para a
- nova sequência importada.
-*/
-
 state.trainerChoice=null;
+state.trainerMotor=null;
 state.trainerStart=0;
 state.trainerPending=false;
 state.trainerChanges=0;
+state.trainerMotorChanges=0;
 
 invalidateCandidates();
 invalidateTrainer();
 
-render();
+const total=numbers.length;
 
-for(let i=0;i<numbers.length;i++){
+const detailedStart=Math.max(
+0,
+total-ANALYSIS_WINDOW
+);
 
-if(token!==importToken)break;
+/*
+ Preserva todos os números antigos.
+*/
+
+state.history=numbers.slice(
+0,
+detailedStart
+);
+
+state.sources=Array(
+detailedStart
+).fill("HISTÓRICO");
+
+for(let i=detailedStart;i<total;i++){
 
 recordSpin(
 numbers[i],
 "HISTÓRICO"
 );
 
-if(i%4===3){
+if((i-detailedStart)%4===3){
 
 $("status").textContent=
-"IMPORTANDO "+
+"ANALISANDO "+
 (i+1)+
 "/"+
-numbers.length;
+total;
 
 await new Promise(
 resolve=>setTimeout(resolve,0)
@@ -2814,6 +3384,9 @@ resolve=>setTimeout(resolve,0)
 }
 
 importing=false;
+
+invalidateCandidates();
+invalidateTrainer();
 
 save();
 render();
@@ -2827,8 +3400,7 @@ const numbers=(
 $("paste").value.match(/\d+/g)||[]
 )
 .map(Number)
-.filter(n=>n>=0&&n<=36)
-.slice(-MAX);
+.filter(n=>n>=0&&n<=36);
 
 if(!numbers.length){
 
@@ -2837,7 +3409,8 @@ return;
 }
 
 if(!confirm(
-"Importar e substituir o histórico atual?"
+"Importar "+numbers.length+
+" números e substituir o histórico atual?"
 ))return;
 
 $("paste").value="";
@@ -2849,11 +3422,14 @@ $("restoreOld").onclick=()=>{
 
 if(importing)return;
 
-try{
+let old=null;
 
-const old=JSON.parse(
-localStorage.getItem(OLD_KEY)||"null"
-);
+for(const key of PREVIOUS_KEYS){
+
+old=readStorage(key);
+
+if(old?.history?.length)break;
+}
 
 if(!old?.history?.length){
 
@@ -2865,20 +3441,11 @@ return;
 }
 
 if(!confirm(
-"Recuperar os números da versão anterior? "+
-"Os resultados serão reprocessados."
+"Recuperar "+old.history.length+
+" números da versão anterior?"
 ))return;
 
-importNumbers(
-old.history.slice(-MAX)
-);
-
-}catch(e){
-
-alert(
-"Não foi possível recuperar o histórico."
-);
-}
+importNumbers(old.history);
 };
 
 $("undo").onclick=()=>{
@@ -2898,6 +3465,9 @@ if(!confirm(
 
 state=fresh();
 
+state.open.jumps=false;
+state.open.mirrors=false;
+
 invalidateCandidates();
 invalidateTrainer();
 
@@ -2907,9 +3477,9 @@ save();
 render();
 };
 
-/* ==========================================================
-   PAINÉIS
-   ========================================================== */
+/* ============================================================
+   PAINÉIS RECOLHÍVEIS
+   ============================================================ */
 
 function applyOpenState(){
 
@@ -2956,10 +3526,6 @@ save();
 render();
 });
 
-/* ==========================================================
-   MINI PAINÉIS
-   ========================================================== */
-
 function miniPanel(id,title,content){
 
 const open=!!state.open[id];
@@ -2978,9 +3544,9 @@ ${open?content:""}
 `;
 }
 
-/* ==========================================================
-   TREINADOR — VISUALIZAÇÃO
-   ========================================================== */
+/* ============================================================
+   TREINADOR — INTERFACE
+   ============================================================ */
 
 function trainerHTML(){
 
@@ -3006,7 +3572,7 @@ TREINADOR ESTRATÉGICO VIRTUAL
 <div class="metrics">
 
 <div class="metric">
-<small>GIROS</small>
+<small>GIROS NO HISTÓRICO</small>
 <b>${state.history.length}</b>
 </div>
 
@@ -3042,11 +3608,11 @@ TREINADOR ESTRATÉGICO VIRTUAL
 <div class="trainerCycle">
 
 <div class="title">
-CICLO DE 3 GIROS
+TREINADOR DINÂMICO
 </div>
 
 <p>
-ADAPTATIVA SELECIONADA:
+ADAPTATIVA:
 <b>
 ${esc(
 activeConfig?.name||"AGUARDANDO"
@@ -3055,24 +3621,42 @@ activeConfig?.name||"AGUARDANDO"
 </p>
 
 <p>
-GIROS NESTA ADAPTATIVA:
+MOTOR:
+<b>
+${esc(status.motor||"AGUARDANDO")}
+</b>
+</p>
+
+<p>
+GIROS NA ADAPTATIVA:
 <b>${status.elapsed}</b>
 </p>
 
 <p>
-PRÓXIMA REAVALIAÇÃO:
+TROCA:
 <b>
 ${status.pending
-?"APÓS O GALE"
-:status.remaining+
-" GIRO(S)"
+?"APÓS FECHAR O GALE"
+:"PODE OCORRER A CADA GIRO"
 }
 </b>
 </p>
 
 <p>
-TROCAS REALIZADAS:
+LIMITE PARA TROCA:
+<b>
+${status.remaining} GIRO(S)
+</b>
+</p>
+
+<p>
+TROCAS DE ADAPTATIVA:
 <b>${status.changes}</b>
+</p>
+
+<p>
+TROCAS DE MOTOR:
+<b>${status.motorChanges}</b>
 </p>
 
 </div>
@@ -3080,7 +3664,7 @@ TROCAS REALIZADAS:
 <div class="virtualRecommendation">
 
 <div class="title">
-MELHOR LINHA NOS ÚLTIMOS 3 GIROS
+MELHOR AVALIAÇÃO ATUAL
 </div>
 
 <b>
@@ -3088,14 +3672,14 @@ ${esc(rec?.name||"AGUARDANDO")}
 </b>
 
 <p class="muted">
-Cobertura virtual recente:
-${pct(rec?.hits||0,rec?.total||0)}
-em ${rec?.total||0} registros.
+Motor avaliado:
+${esc(rec?.motor?.key||"—")}
 </p>
 
 <p class="muted">
-Janela de decisão: 3 giros.
-Reavaliação após cada bloco de 3.
+Cobertura virtual recente:
+${pct(rec?.hits||0,rec?.total||0)}
+em ${rec?.total||0} registros.
 </p>
 
 <button class="virtualButton"
@@ -3137,17 +3721,15 @@ state.open.coveragePlan
 )}
 
 <div class="warning">
-O treinador compara resultados históricos
-de três giros. A roleta continua sendo
-aleatória; a troca de adaptativa não
-garante melhora nos resultados.
+As pontuações são indicadores históricos
+exploratórios. Não garantem acerto futuro.
 </div>
 `;
 }
 
-/* ==========================================================
+/* ============================================================
    LABORATÓRIO
-   ========================================================== */
+   ============================================================ */
 
 function labHTML(){
 
@@ -3192,8 +3774,9 @@ return `
 <b>COMPARAÇÃO DAS ADAPTATIVAS</b>
 
 <p class="muted">
-Janela recente de três giros.
-Indicador virtual exploratório.
+Comparação exploratória com
+saltos físicos, regiões e
+espelho / antiespelho.
 </p>
 
 </div>
@@ -3224,9 +3807,9 @@ CRIAR E ATIVAR CÓPIA DA RECOMENDADA
 `;
 }
 
-/* ==========================================================
+/* ============================================================
    LINHA DO TEMPO DEFINITIVA
-   ========================================================== */
+   ============================================================ */
 
 function timelineHTML(){
 
@@ -3265,6 +3848,8 @@ ${esc(r.phase)}
 • Região:
 ${sector(r.number)}
 
+• ${mirrorType(r.number)}
+
 ${r.g1?`
 • G1 AJUSTADO
 `:""}
@@ -3289,13 +3874,9 @@ ${sortedBlocks(r.play)
 `).join("");
 }
 
-/* ==========================================================
-   NOVO: CLASSIFICAÇÃO VISUAL DOS RESULTADOS
-
-   GREEN / GREEN G1 => VERDE
-   GALE / GALE PULADO => AMARELO
-   LOSS => VERMELHO ROSA
-   ========================================================== */
+/* ============================================================
+   BORDAS
+   ============================================================ */
 
 function resultBorderClass(result){
 
@@ -3317,9 +3898,9 @@ return "result-gale";
 return "";
 }
 
-/* ==========================================================
+/* ============================================================
    RENDERIZAÇÃO
-   ========================================================== */
+   ============================================================ */
 
 let renderScheduled=false;
 
@@ -3357,12 +3938,12 @@ const play=selected?.play||null;
 
 $("status").textContent=
 state.history.length+
-"/200 números • "+
+" NÚMEROS PRESERVADOS • "+
 cs.length+
-"/12 motores • "+
+"/12 MOTORES • "+
 state.phase;
 
-/* BOTÕES ORIGINAIS */
+/* BOTÕES */
 
 for(const b of document.querySelectorAll(
 "[data-strategy]"
@@ -3457,34 +4038,44 @@ $("coverage").textContent=play
 :"")
 :"Importe pelo menos 8 números.";
 
-/* ==========================================================
-   ÚLTIMOS 14 RESULTADOS — BORDAS CORRIGIDAS
-   ========================================================== */
+/* ÚLTIMOS 14 */
 
-$("last").innerHTML=state.ledger
-.slice(-14)
-.reverse()
-.map(r=>`
+const lastNumbers=state.history.slice(-14);
 
-<div class="chip ${resultBorderClass(r.result)}"
+$("last").innerHTML=lastNumbers
+.map((number,i)=>{
+
+const turn=
+state.history.length-lastNumbers.length+i+1;
+
+const row=state.ledger.find(
+r=>r.turn===turn
+);
+
+const result=row?.result||"HISTÓRICO";
+
+return `
+<div class="chip ${resultBorderClass(result)}"
 style="
 background:${
-r.number===0
+number===0
 ?"#087b50"
-:RED.has(r.number)
+:RED.has(number)
 ?"#a72740"
 :"#14181f"
 }">
 
-<b>${r.number}</b>
+<b>${number}</b>
 
 <small>
-${esc(r.result)}
+${esc(result)}
 </small>
 
 </div>
-
-`).join("");
+`;
+})
+.reverse()
+.join("");
 
 /* RESULTADO GERAL */
 
@@ -3508,6 +4099,11 @@ ${metricsHTML(live)}
 
 <div class="title">TOTAL ACUMULADO</div>
 ${metricsHTML(state.ledger)}
+
+<div class="box">
+TOTAL DE NÚMEROS ARMAZENADOS:
+<b>${state.history.length}</b>
+</div>
 
 `;
 }
@@ -3640,19 +4236,30 @@ render();
 }
 }
 
+/* SALTOS */
+
+if(state.open.jumps){
+$("jumps").innerHTML=jumpsHTML();
+}
+
+/* ESPELHO */
+
+if(state.open.mirrors){
+$("mirrors").innerHTML=mirrorHTML();
+}
+
 /* LINHA DO TEMPO */
 
 if(state.open.timeline){
-
 $("timeline").innerHTML=timelineHTML();
 }
 
 applyOpenState();
 }
 
-/* ==========================================================
+/* ============================================================
    INICIALIZAÇÃO
-   ========================================================== */
+   ============================================================ */
 
 render();
 
