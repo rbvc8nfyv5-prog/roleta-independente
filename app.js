@@ -1,37 +1,36 @@
-
 (() => {
 "use strict";
 
 /*
 ========================================================
- ANÁLISE BETA V6.3.5
- BASE: V6.3.4
+ ANÁLISE BETA V6.3.6
+ BASE: V6.3.5
 
- TREINADOR G1:
- - CONGELADA
- - AJUSTE FINO
- - RECONSTRUÇÃO INDEPENDENTE
- - ANÁLISE EXCLUSIVA DOS GALES
- - RANKING DE RECUPERAÇÃO POR ESTRATÉGIA
- - ANÁLISE DOS NÚMEROS DESCOBERTOS
+ ATUALIZAÇÕES:
  - CONTINUIDADE / DESLOCAMENTO / RUPTURA
- - SIMULAÇÃO CRONOLÓGICA SEM RESULTADO FUTURO
- - DEFESA REAL CONGELADA ATÉ A RESOLUÇÃO
- - ARMAZENAMENTO COMPACTO
- - HISTÓRICO RECUPERÁVEL
-
- A RECONSTRUÇÃO NÃO COPIA NENHUM DOS 12 MOTORES.
-
- OBSERVAÇÃO:
- PADRÕES HISTÓRICOS NÃO GARANTEM RESULTADOS FUTUROS.
+ - QUANTIDADE E PERCENTUAL POR COMPORTAMENTO
+ - ESTATÍSTICAS POR MOTOR
+ - ESTATÍSTICAS POR ESTRATÉGIA VIRTUAL
+ - ESTATÍSTICAS DO TREINADOR G1
+ - GALES NECESSÁRIOS / GREEN G1 / LOSS
+ - COMPARAÇÃO DAS TRÊS DEFESAS
+ - RECONSTRUÇÃO INDEPENDENTE
+ - DECISÃO VIRTUAL APLICADA NO GALE
+ - SOMENTE ESTRATÉGIAS EM GALE GERAM
+   SIMULAÇÕES DE DEFESA
+ - REGISTRO CRONOLÓGICO SEM RESULTADO FUTURO
+ - HISTÓRICO COMPLETO PRESERVADO
+ - IMPORTAÇÃO E REPROCESSAMENTO CRONOLÓGICO
+ - MIGRAÇÃO DA V6.3.5
 ========================================================
 */
 
-const VERSION = "6.3.5";
-const KEY = "ANALISE_BETA_V635";
+const VERSION = "6.3.6";
+const KEY = "ANALISE_BETA_V636";
 const BACKUP_KEY = KEY + "_BACKUP";
 
 const OLD_KEYS = [
+"ANALISE_BETA_V635",
 "ANALISE_BETA_V634",
 "ANALISE_BETA_V633",
 "ANALISE_BETA_V632",
@@ -86,7 +85,7 @@ const ORIGINALS = [
 
 const ADAPTATIVES = Array.from(
 {length:12},
-(_,i) => ({
+(_,i)=>({
 id:"A"+String(i+1).padStart(2,"0"),
 name:"ADAPTATIVA "+String(i+1).padStart(2,"0"),
 window:[10,10,10,20,20,20,30,30,20,30,20,30][i],
@@ -99,6 +98,12 @@ const G1_MODES = [
 "CONGELADO",
 "AJUSTE FINO",
 "RECONSTRUÇÃO"
+];
+
+const BEHAVIORS = [
+"CONTINUIDADE",
+"DESLOCAMENTO",
+"RUPTURA"
 ];
 
 const $ = id => document.getElementById(id);
@@ -138,8 +143,10 @@ return Math.min(d,37-d);
 }
 
 function direction(a,b) {
-const f=mod(idx(b)-idx(a));
-const r=mod(idx(a)-idx(b));
+const x=idx(a),y=idx(b);
+if(x<0||y<0)return 0;
+const f=mod(y-x);
+const r=mod(x-y);
 return f<=r?f:-r;
 }
 
@@ -200,6 +207,9 @@ g1VirtualTurns:0,
 g1Recovery:[],
 g1NumberStats:{},
 g1DecisionHistory:[],
+
+g1MotorHistory:[],
+g1BehaviorHistory:[],
 
 phase:"ENTRY",
 cycle:null,
@@ -280,7 +290,9 @@ for(const name of [
 "g1Virtual",
 "g1Pending",
 "g1Recovery",
-"g1DecisionHistory"
+"g1DecisionHistory",
+"g1MotorHistory",
+"g1BehaviorHistory"
 ]) {
 if(!Array.isArray(state[name]))state[name]=[];
 }
@@ -295,63 +307,31 @@ state.g1NumberStats={};
 
 state.virtualCycles={};
 
-if(loadedFrom!==KEY&&loadedFrom!==BACKUP_KEY) {
-state.g1Pending=[];
-state.g1Stats={};
-state.g1Virtual=[];
-state.g1VirtualTurns=0;
-state.g1Recovery=[];
-state.g1NumberStats={};
-state.g1DecisionHistory=[];
-}
-
 let storageWarning=false;
 let storageMessage="";
 
-function compactLedgerRow(r) {
-return {
-turn:r.turn,
-number:r.number,
-source:r.source,
-strategy:r.strategy,
-strategyId:r.strategyId,
-motor:r.motor,
-phase:r.phase,
-result:r.result,
-profit:r.profit,
-play:r.play?{
-blocks:r.play.blocks,
-numbers:r.play.numbers
-}:null,
-g1Decision:r.g1Decision?{
-mode:r.g1Decision.mode,
-key:r.g1Decision.key
-}:null
-};
-}
-
 function storageSnapshot(level=0) {
-const s={
+return {
 ...state,
 virtualCycles:{},
 ledger:state.ledger.slice(
-level===0?-500:level===1?-180:-50
-).map(compactLedgerRow),
+level===0?-1000:level===1?-300:-80
+),
 virtualRows:state.virtualRows.slice(
-level===0?-2400:level===1?-1000:-300
+level===0?-3500:level===1?-1200:-300
 ),
 g1Virtual:state.g1Virtual.slice(
-level===0?-1800:level===1?-600:-150
+level===0?-3500:level===1?-1200:-300
 ),
 g1Recovery:state.g1Recovery.slice(
-level===0?-1500:level===1?-500:-150
+level===0?-3500:level===1?-1200:-300
 ),
-g1DecisionHistory:state.g1DecisionHistory.slice(-150),
-trainerHistory:state.trainerHistory.slice(-150),
-g1History:state.g1History.slice(-300)
+g1DecisionHistory:state.g1DecisionHistory.slice(-500),
+g1MotorHistory:state.g1MotorHistory.slice(-3500),
+g1BehaviorHistory:state.g1BehaviorHistory.slice(-3500),
+trainerHistory:state.trainerHistory.slice(-300),
+g1History:state.g1History.slice(-1000)
 };
-
-return s;
 }
 
 function save() {
@@ -388,8 +368,6 @@ g1Trainer:state.g1Trainer
 storageWarning=true;
 return false;
 }
-
-if(loadedFrom&&loadedFrom!==KEY)save();
 
 /* ======================================================
  ANÁLISE SEQUENCIAL
@@ -479,7 +457,7 @@ x.mirrorTo==="ESPELHO"
 }
 
 /* ======================================================
- 12 MOTORES ORIGINAIS
+ 12 MOTORES
 ====================================================== */
 
 function weightsFor(history,family,radius) {
@@ -1141,7 +1119,7 @@ trigger
 }
 
 /* ======================================================
- HISTÓRICO EXCLUSIVO DE RECUPERAÇÃO
+ HISTÓRICO G1
 ====================================================== */
 
 function recoveryRows(strategyId=null,limit=300) {
@@ -1168,6 +1146,92 @@ rate:rows.length?hits/rows.length:null
 };
 }
 
+function actualG1Metrics(strategyId=null) {
+const rows=state.g1History.filter(
+r=>strategyId==null||
+r.strategyId===strategyId
+);
+
+const hits=rows.filter(
+r=>r.result==="GREEN G1"
+).length;
+
+return {
+total:rows.length,
+hits,
+loss:rows.length-hits,
+rate:rows.length?hits/rows.length:null
+};
+}
+
+/* ======================================================
+ NOVO V6.3.6:
+ CONTADORES DE COMPORTAMENTO
+====================================================== */
+
+function emptyBehaviorCounts() {
+return {
+CONTINUIDADE:0,
+DESLOCAMENTO:0,
+RUPTURA:0
+};
+}
+
+function behaviorMetrics(rows) {
+const counts=emptyBehaviorCounts();
+
+for(const row of rows) {
+if(BEHAVIORS.includes(row.behavior)) {
+counts[row.behavior]++;
+}
+}
+
+const total=BEHAVIORS.reduce(
+(s,b)=>s+counts[b],0
+);
+
+return {
+total,
+counts,
+percentages:Object.fromEntries(
+BEHAVIORS.map(b=>[
+b,total?counts[b]/total:0
+])
+)
+};
+}
+
+function behaviorHTML(rows) {
+const m=behaviorMetrics(rows);
+
+return `
+<div class="behaviorGrid">
+
+${BEHAVIORS.map(b=>`
+<div class="behaviorBox ${
+b==="RUPTURA"?"rupture":
+b==="DESLOCAMENTO"?"displacement":
+"continuity"
+}">
+
+<small>${b}</small>
+
+<strong>${m.counts[b]}</strong>
+
+<span>${pct(m.counts[b],m.total)}</span>
+
+</div>
+`).join("")}
+
+</div>
+
+<div class="muted">
+TOTAL DE DECISÕES CLASSIFICADAS:
+<b>${m.total}</b>
+</div>
+`;
+}
+
 function g1Ranking() {
 const defs=definitions();
 
@@ -1182,13 +1246,7 @@ def.id,mode,300
 );
 }
 
-const actual=state.g1History.filter(
-r=>r.strategyId===def.id
-);
-
-const actualHits=actual.filter(
-r=>r.result==="GREEN G1"
-).length;
+const actual=actualG1Metrics(def.id);
 
 const best=G1_MODES.map(mode=>({
 mode,
@@ -1199,15 +1257,20 @@ const sb=(b.hits+28/37*12)/(b.total+12);
 return sb-sa;
 })[0];
 
+const decisions=state.g1BehaviorHistory.filter(
+r=>r.strategyId===def.id
+);
+
 return {
 id:def.id,
 name:def.name,
 total:rows.length,
 modes,
 best,
-actualTotal:actual.length,
-actualHits,
-actualLoss:actual.length-actualHits
+actualTotal:actual.total,
+actualHits:actual.hits,
+actualLoss:actual.loss,
+behaviors:behaviorMetrics(decisions)
 };
 }).sort((a,b)=>{
 const aa=a.best;
@@ -1319,7 +1382,7 @@ strategyId
 }
 
 /* ======================================================
- LEITURA CONTINUIDADE / DESLOCAMENTO / RUPTURA
+ CONTINUIDADE / DESLOCAMENTO / RUPTURA
 ====================================================== */
 
 function behaviorReading(
@@ -1406,29 +1469,8 @@ losses:losses.length
 }
 
 /* ======================================================
- DEFESA 3: RECONSTRUÇÃO INDEPENDENTE
+ RECONSTRUÇÃO INDEPENDENTE
 ====================================================== */
-
-/*
-A RECONSTRUÇÃO NÃO UTILIZA:
- - PESOS DOS 12 MOTORES
- - RANKING DE MOTORES
- - JOGADA DA MELHOR ADAPTATIVA
- - GEOMETRIA DE OUTRA ESTRATÉGIA
-
-ELA CONSTRÓI PESOS PRÓPRIOS A PARTIR:
- - HISTÓRICO DE GALES
- - NÚMEROS DESCOBERTOS
- - LOSS NAS DEFESAS
- - FREQUÊNCIA FÍSICA
- - PADRÃO RECENTE
- - CONTINUIDADE / DESLOCAMENTO / RUPTURA
-
-A GEOMETRIA FINAL CONTINUA SENDO:
- 5 CENTROS COM 2 VIZINHOS
- 1 CENTRO COM 1 VIZINHO
- TOTAL 28, SEM SOBREPOSIÇÃO.
-*/
 
 function independentWeights(
 original,
@@ -1507,12 +1549,6 @@ value+=uncoveredNow?4.5:0;
 weights[p]+=value;
 }
 
-/*
-MAPA FÍSICO:
-OS RESULTADOS RECENTES INFLUENCIAM
-TAMBÉM SEUS VIZINHOS NA RODA.
-*/
-
 for(let k=0;k<recent.length;k++) {
 const number=recent[recent.length-1-k];
 const p=idx(number);
@@ -1537,13 +1573,6 @@ decay*strength*(4-d)/4;
 }
 }
 }
-
-/*
-HISTÓRICO DE LOSS:
-UMA DEFESA QUE DEIXOU UM NÚMERO
-DESCOBERTO E PERDEU NELE REGISTRA
-EVIDÊNCIA DE COBERTURA INSUFICIENTE.
-*/
 
 const rows=recoveryRows(
 strategyId,100
@@ -1594,12 +1623,6 @@ weights[idx(row.outcome)]+=
 .20*decay;
 }
 }
-
-/*
-O NÚMERO QUE ACABOU DE PROVOCAR O
-GALE PARTICIPA DA ANÁLISE, MAS NÃO
-É OBRIGATÓRIO NA RECONSTRUÇÃO.
-*/
 
 for(const n of neighbors(trigger,2)) {
 weights[idx(n)]+=
@@ -1791,7 +1814,7 @@ consistency
 }
 
 /* ======================================================
- COMPARAÇÃO REAL ENTRE DEFESAS
+ COMPARAÇÃO DAS DEFESAS
 ====================================================== */
 
 function chooseBestG1(
@@ -1874,14 +1897,6 @@ behaviorBonus=.022;
 }
 }
 
-/*
-PONTUAÇÃO:
- 55% HISTÓRICO G1 DA PRÓPRIA ESTRATÉGIA
- 25% ESTATÍSTICA VIRTUAL DA DEFESA
- 15% COBERTURA RECENTE
-  5% CONTROLE DE ALTERAÇÃO
-*/
-
 const score=
 recoveryScore*.55+
 evidence.score*.25+
@@ -1911,12 +1926,6 @@ x=>x.mode==="CONGELADO"
 );
 
 let chosen=ranked[0];
-
-/*
-COM POUCA EVIDÊNCIA, A DIFERENÇA
-ENTRE DEFESAS NÃO É TRATADA COMO
-UMA VANTAGEM COMPROVADA.
-*/
 
 if(
 frozen&&
@@ -1952,6 +1961,37 @@ recoveryTotal:x.recovery.total,
 uncovered:x.missing
 }))
 };
+}
+
+/* ======================================================
+ V6.3.6:
+ REGISTRO DE DECISÃO DE COMPORTAMENTO
+====================================================== */
+
+function recordBehaviorDecision({
+strategyId,
+motorKey,
+behavior,
+mode,
+trigger,
+virtual,
+turn
+}) {
+if(!BEHAVIORS.includes(behavior))return;
+
+const row={
+turn,
+strategyId,
+motorKey,
+behavior,
+mode,
+trigger,
+virtual:!!virtual
+};
+
+state.g1BehaviorHistory.push(row);
+
+state.g1MotorHistory.push(row);
 }
 
 /* ======================================================
@@ -1998,6 +2038,13 @@ const motor=state.g1
 ?tuneG1(original,trigger)
 :clone(original);
 
+const reading=behaviorReading(
+original,
+trigger,
+postHistory,
+strategyId
+);
+
 state.g1Decision={
 mode:state.g1?"AJUSTE FINO":"CONGELADO",
 key:motor?.key||original?.key||"—",
@@ -2006,8 +2053,19 @@ strategyId,
 trigger,
 turn:state.history.length+1,
 trainer:false,
+behavior:reading.behavior,
 uncovered:uncovered(motor?.play)
 };
+
+recordBehaviorDecision({
+strategyId,
+motorKey:original.key,
+behavior:reading.behavior,
+mode:state.g1Decision.mode,
+trigger,
+virtual:false,
+turn:state.history.length+1
+});
 
 return motor;
 }
@@ -2029,6 +2087,7 @@ rank:original.rank||0,
 strategyId,
 trigger,
 trainer:true,
+behavior:"CONTINUIDADE",
 uncovered:uncovered(original.play)
 };
 
@@ -2059,9 +2118,15 @@ score:decision.score,
 uncovered:decision.uncovered
 });
 
-if(state.g1DecisionHistory.length>250) {
-state.g1DecisionHistory.shift();
-}
+recordBehaviorDecision({
+strategyId,
+motorKey:original.key,
+behavior:decision.behavior,
+mode:decision.mode,
+trigger,
+virtual:false,
+turn:decision.turn
+});
 
 return clone(decision.motor);
 }
@@ -2105,6 +2170,7 @@ state.g1Stats[key]=stat;
 const row={
 turn:state.history.length+1,
 strategyId:pending.strategyId,
+motorKey:pending.motorKey,
 optionId:pending.optionId,
 mode:pending.mode,
 key:pending.key,
@@ -2120,19 +2186,6 @@ state.g1Recovery.push(row);
 }
 
 state.g1Pending=[];
-
-if(state.g1Virtual.length>2000) {
-state.g1Virtual.splice(
-0,state.g1Virtual.length-2000
-);
-}
-
-if(state.g1Recovery.length>2000) {
-state.g1Recovery.splice(
-0,state.g1Recovery.length-2000
-);
-}
-
 state.g1VirtualTurns++;
 }
 
@@ -2140,11 +2193,6 @@ function createG1Pending(
 number,
 virtualMisses
 ) {
-if(!virtualMisses.length) {
-state.g1Pending=[];
-return;
-}
-
 const afterHistory=[
 ...state.history.slice(-199),
 number
@@ -2160,9 +2208,17 @@ afterHistory,
 miss.strategyId
 );
 
+const reading=behaviorReading(
+miss.motor,
+number,
+afterHistory,
+miss.strategyId
+);
+
 for(const option of options) {
 pending.push({
 strategyId:miss.strategyId,
+motorKey:miss.motor.key,
 optionId:option.id,
 mode:option.mode,
 key:option.key,
@@ -2170,7 +2226,7 @@ trigger:number,
 createdTurn:state.history.length+1,
 numbers:[...option.motor.play.numbers],
 uncovered:uncovered(option.motor.play),
-behavior:option.behavior||"—"
+behavior:reading.behavior
 });
 }
 }
@@ -2179,7 +2235,7 @@ state.g1Pending=pending;
 }
 
 /* ======================================================
- SIMULAÇÃO VIRTUAL DAS ESTRATÉGIAS
+ SIMULAÇÃO VIRTUAL
 ====================================================== */
 
 function profit(result) {
@@ -2204,7 +2260,9 @@ if(!state.virtualCycles[id]) {
 state.virtualCycles[id]={
 phase:"ENTRY",
 frozen:null,
-previous:null
+previous:null,
+original:null,
+decision:null
 };
 }
 
@@ -2222,23 +2280,11 @@ let motor=null;
 let result="AGUARDANDO";
 let closed=false;
 
-/*
-A PREVISÃO DE ENTRADA É CALCULADA
-ANTES DE VERIFICAR O NÚMERO ATUAL.
-*/
-
+if(v.phase==="ENTRY") {
 const entry=snap(
 chooseMotor(def,cs,v.previous)
 );
 
-if(entry&&!entry.play.numbers.includes(number)) {
-misses.push({
-strategyId:def.id,
-motor:clone(entry)
-});
-}
-
-if(v.phase==="ENTRY") {
 motor=entry;
 
 if(!motor)continue;
@@ -2263,11 +2309,37 @@ afterHistory,
 def.id
 );
 
+v.original=clone(motor);
+v.decision=decision;
+
 v.frozen=decision?.motor||
 tuneG1(motor,number)||
 clone(motor);
 
 v.phase="GALE";
+
+misses.push({
+strategyId:def.id,
+motor:clone(motor)
+});
+
+const behavior=decision?.behavior||
+behaviorReading(
+motor,
+number,
+afterHistory,
+def.id
+).behavior;
+
+recordBehaviorDecision({
+strategyId:def.id,
+motorKey:motor.key,
+behavior,
+mode:decision?.mode||"CONGELADO",
+trigger:number,
+virtual:true,
+turn:state.history.length+1
+});
 }
 } else {
 motor=clone(v.frozen);
@@ -2276,8 +2348,11 @@ result=motor?.play.numbers.includes(number)
 ?"GREEN G1":"LOSS";
 
 closed=true;
+
 v.phase="ENTRY";
 v.frozen=null;
+v.original=null;
+v.decision=null;
 }
 
 state.virtualRows.push({
@@ -2289,12 +2364,6 @@ result,
 closed,
 profit:profit(result)
 });
-}
-
-if(state.virtualRows.length>3500) {
-state.virtualRows.splice(
-0,state.virtualRows.length-3500
-);
 }
 
 return misses;
@@ -2394,7 +2463,7 @@ score>=.60?"INTERMEDIÁRIA":
 }
 
 /* ======================================================
- TREINADOR GLOBAL DE ENTRADA
+ TREINADOR GLOBAL
 ====================================================== */
 
 let rankingCacheKey=null;
@@ -2525,10 +2594,6 @@ motor:chosen.motor?.key||null,
 reason,
 score:chosen.score
 });
-
-if(state.trainerHistory.length>300) {
-state.trainerHistory.shift();
-}
 }
 
 function activeMotor(cs) {
@@ -2571,10 +2636,6 @@ key:c.key,
 rank:c.rank,
 numbers:[...c.play.numbers]
 }));
-
-/*
-1. RESOLVE O G1 VIRTUAL ANTERIOR.
-*/
 
 settleG1Pending(number);
 
@@ -2694,6 +2755,7 @@ result=motor?.play.numbers.includes(number)
 state.g1History.push({
 turn:state.history.length+1,
 strategyId:state.cycle?.strategyId||"",
+motorKey:state.cycle?.original?.key||"",
 mode:state.g1Decision?.mode||"—",
 motor:state.g1Decision?.key||"—",
 behavior:state.g1Decision?.behavior||"—",
@@ -2703,38 +2765,20 @@ result,
 uncovered:state.g1Decision?.uncovered||[]
 });
 
-if(state.g1History.length>500) {
-state.g1History.shift();
-}
-
 state.phase="ENTRY";
 state.cycle=null;
 state.frozen=null;
 state.g1Decision=null;
 }
 
-/*
-2. SIMULA ESTRATÉGIAS COM OS DADOS
-   DISPONÍVEIS ANTES DO RESULTADO.
-*/
-
 const virtualMisses=processVirtual(
 number,cs
 );
-
-/*
-3. PREPARA AS DEFESAS VIRTUAIS PARA
-   SEREM AVALIADAS NO PRÓXIMO GIRO.
-*/
 
 createG1Pending(
 number,
 virtualMisses
 );
-
-/*
-4. REGISTRA O RESULTADO REAL.
-*/
 
 state.history.push(number);
 state.sources.push(source);
@@ -2755,10 +2799,6 @@ cycle:cycleBefore,
 g1Decision:decisionBefore,
 timestamp:Date.now()
 });
-
-if(state.ledger.length>1000) {
-state.ledger.shift();
-}
 
 invalidate();
 rankingCacheKey=null;
@@ -2818,32 +2858,14 @@ rankingCacheKey=null;
 
 const clean=validNumbers(numbers);
 
-/*
-REPROCESSAMENTO CRONOLÓGICO.
-O TREINADOR NÃO ENXERGA O PRÓXIMO
-RESULTADO ANTES DE REGISTRAR A DEFESA.
-*/
-
-const start=Math.max(
-0,clean.length-180
-);
-
-state.history=clean.slice(0,start);
-
-state.sources=(sources||[]).slice(0,start);
-
-while(state.sources.length<start) {
-state.sources.push("HISTÓRICO");
-}
-
-for(let i=start;i<clean.length;i++) {
+for(let i=0;i<clean.length;i++) {
 recordSpin(
 clean[i],
 sources?.[i]||"HISTÓRICO",
 false
 );
 
-if((i-start)%5===4) {
+if(i%5===4) {
 const status=$("status");
 
 if(status) {
@@ -2876,6 +2898,77 @@ await rebuild(
 state.history.slice(0,-1),
 state.sources.slice(0,-1)
 );
+}
+
+/* ======================================================
+ V6.3.6:
+ ESTATÍSTICAS DOS 12 MOTORES
+====================================================== */
+
+function motorG1Metrics(motorKey) {
+const rows=state.g1Recovery.filter(
+r=>r.motorKey===motorKey
+);
+
+const grouped=new Map();
+
+for(const r of rows) {
+const id=r.strategyId+"|"+r.turn+"|"+r.mode;
+
+if(!grouped.has(id))grouped.set(id,r);
+}
+
+const unique=[...grouped.values()];
+
+const modes={};
+
+for(const mode of G1_MODES) {
+const selected=unique.filter(
+r=>r.mode===mode
+);
+
+const hits=selected.filter(r=>r.hit).length;
+
+modes[mode]={
+total:selected.length,
+hits,
+loss:selected.length-hits
+};
+}
+
+const behaviors=behaviorMetrics(
+state.g1MotorHistory.filter(
+r=>r.motorKey===motorKey&&r.virtual
+)
+);
+
+const galeEvents=new Set(
+state.g1MotorHistory.filter(
+r=>r.motorKey===motorKey&&r.virtual
+).map(r=>r.strategyId+"|"+r.turn)
+);
+
+return {
+gales:galeEvents.size,
+modes,
+behaviors
+};
+}
+
+function motorActualMetrics(motorKey) {
+const rows=state.g1History.filter(
+r=>r.motorKey===motorKey
+);
+
+const hits=rows.filter(
+r=>r.result==="GREEN G1"
+).length;
+
+return {
+total:rows.length,
+hits,
+loss:rows.length-hits
+};
 }
 
 /* ======================================================
@@ -3278,6 +3371,80 @@ background:#63283b;
 border-color:#ff657c
 }
 
+.behaviorGrid{
+display:grid;
+grid-template-columns:repeat(3,minmax(0,1fr));
+gap:6px;
+margin:10px 0
+}
+
+.behaviorBox{
+border-radius:9px;
+padding:10px 4px;
+text-align:center;
+border:1px solid #52647b;
+background:#26364a
+}
+
+.behaviorBox small{
+display:block;
+font-size:9px;
+font-weight:bold;
+overflow-wrap:anywhere
+}
+
+.behaviorBox strong{
+display:block;
+font-size:26px;
+margin:7px 0
+}
+
+.behaviorBox span{
+font-size:12px;
+font-weight:bold
+}
+
+.continuity{
+border-color:#38c895;
+background:#123c35
+}
+
+.displacement{
+border-color:#e4bd4b;
+background:#453b20
+}
+
+.rupture{
+border-color:#ff6482;
+background:#482632
+}
+
+.galeSummary{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:6px;
+margin:10px 0
+}
+
+.galeItem{
+background:#27394d;
+border:1px solid #526a84;
+border-radius:8px;
+text-align:center;
+padding:10px 4px
+}
+
+.galeItem small{
+display:block;
+font-size:9px
+}
+
+.galeItem strong{
+display:block;
+font-size:25px;
+margin:6px 0
+}
+
 @media(max-width:600px){
 .center{
 min-height:80px;
@@ -3305,6 +3472,10 @@ min-width:32px;
 min-height:32px;
 font-size:15px
 }
+
+.behaviorBox small{
+font-size:8px
+}
 }
 
 @media(max-width:380px){
@@ -3323,6 +3494,8 @@ document.body.innerHTML=`
 <div class="sub">
 12 MOTORES • TREINADOR GLOBAL •
 TREINADOR G1 INDEPENDENTE • 28 NÚMEROS
+<br>
+CONTINUIDADE • DESLOCAMENTO • RUPTURA
 </div>
 
 <section class="panel">
@@ -3379,7 +3552,7 @@ ${[
 ["g1ranking","RANKING EXCLUSIVO DE GALE / LOSS"],
 ["g1numbers","DEFESAS G1 E NÚMEROS DESCOBERTOS"],
 ["lab","LABORATÓRIO"],
-["motors","12 MOTORES"],
+["motors","12 MOTORES + RUPTURA / QUANTIDADES"],
 ["jumps","SALTOS E DIREÇÃO"],
 ["mirrors","ESPELHO / ANTIESPELHO"],
 ["timeline","LINHA DO TEMPO"]
@@ -3416,10 +3589,10 @@ MULTIPLICADOR G1
 </section>
 
 <div class="warning">
-O treinador compara defesas registradas antes
-dos resultados. A reconstrução é independente
-dos 12 motores. Nenhuma análise histórica
-garante o próximo número.
+V6.3.6 — As três defesas são comparadas
+somente quando uma estratégia entra em GALE.
+Os resultados são registrados na rodada seguinte.
+A reconstrução é independente dos 12 motores.
 </div>
 
 </main>
@@ -3843,6 +4016,35 @@ ${fmt(m.net)}
 `;
 }
 
+function galeSummaryHTML(m) {
+return `
+<div class="galeSummary">
+
+<div class="galeItem">
+<small>GALES NECESSÁRIOS</small>
+<strong>${m.total}</strong>
+</div>
+
+<div class="galeItem">
+<small>GREEN G1</small>
+<strong class="good">${m.hits}</strong>
+</div>
+
+<div class="galeItem">
+<small>LOSS</small>
+<strong class="bad">${m.loss}</strong>
+</div>
+
+</div>
+
+<div class="muted">
+ACERTO: <b>${pct(m.hits,m.total)}</b>
+•
+ERRO: <b>${pct(m.loss,m.total)}</b>
+</div>
+`;
+}
+
 function trainerHTML() {
 const ranking=trainerRanking();
 
@@ -3852,12 +4054,17 @@ r=>r.id===state.trainerChoice
 
 const best=ranking.best;
 
-const totalVirtual=state.g1Virtual.length;
-const realGales=state.g1History.length;
+const real=actualG1Metrics();
 
-const realG1Hits=state.g1History.filter(
-x=>x.result==="GREEN G1"
-).length;
+const virtualDecisions=state.g1BehaviorHistory.filter(
+r=>r.virtual
+);
+
+const realDecisions=state.g1BehaviorHistory.filter(
+r=>!r.virtual
+);
+
+const totalVirtual=state.g1Virtual.length;
 
 return `
 <div class="box">
@@ -3904,7 +4111,7 @@ ${state.trainerPending
 
 <div class="box">
 
-<b>TREINADOR GLOBAL G1</b>
+<b>TREINADOR GLOBAL G1 — V6.3.6</b>
 
 <p>
 STATUS:
@@ -3924,24 +4131,27 @@ PREVISÕES AGUARDANDO:
 </p>
 
 <p>
-GIROS AVALIADOS:
+GIROS DE RECUPERAÇÃO AVALIADOS:
 <strong>${state.g1VirtualTurns}</strong>
 </p>
 
-<p>
-GALES REAIS:
-<strong>${realGales}</strong>
-</p>
+<div class="title">
+GALES REAIS / GREEN G1 / LOSS
+</div>
 
-<p>
-GREEN G1 REAL:
-<strong>${realG1Hits}</strong>
-</p>
+${galeSummaryHTML(real)}
 
-<p>
-APROVEITAMENTO REAL:
-<strong>${pct(realG1Hits,realGales)}</strong>
-</p>
+<div class="title">
+COMPORTAMENTO DO TREINADOR G1 REAL
+</div>
+
+${behaviorHTML(realDecisions)}
+
+<div class="title">
+COMPORTAMENTO DOS TREINADORES VIRTUAIS
+</div>
+
+${behaviorHTML(virtualDecisions)}
 
 <p>
 DEFESA ATUAL:
@@ -3951,7 +4161,7 @@ state.g1Decision?.mode||"AGUARDANDO"
 </p>
 
 <p>
-COMPORTAMENTO:
+COMPORTAMENTO ATUAL:
 <strong>${esc(
 state.g1Decision?.behavior||"AGUARDANDO"
 )}</strong>
@@ -4030,6 +4240,41 @@ ${ranking.rows.map((r,i)=>`
 </table>
 </div>
 
+<div class="title">
+COMPORTAMENTO POR ESTRATÉGIA VIRTUAL
+</div>
+
+${ranking.rows.map(r=>{
+const rows=virtualDecisions.filter(
+x=>x.strategyId===r.id
+);
+
+const recovered=state.virtualRows.filter(
+x=>x.strategy===r.id&&
+["GREEN G1","LOSS"].includes(x.result)
+);
+
+const hits=recovered.filter(
+x=>x.result==="GREEN G1"
+).length;
+
+return `
+<div class="g1card">
+
+<h3>${esc(r.name)}</h3>
+
+${galeSummaryHTML({
+total:recovered.length,
+hits,
+loss:recovered.length-hits
+})}
+
+${behaviorHTML(rows)}
+
+</div>
+`;
+}).join("")}
+
 <div class="title">ÚLTIMAS TROCAS</div>
 
 ${state.trainerHistory.slice(-12).reverse().map(x=>`
@@ -4070,10 +4315,20 @@ CONGELADO • AJUSTE FINO • RECONSTRUÇÃO.
 </p>
 
 <p>
-A RECONSTRUÇÃO É INDEPENDENTE DOS MOTORES.
+CADA ESTRATÉGIA REGISTRA O GALE
+E AS TRÊS DEFESAS SÃO AVALIADAS
+NO RESULTADO SEGUINTE.
 </p>
 
 </div>
+
+<div class="title">
+COMPORTAMENTO GLOBAL DOS GALES VIRTUAIS
+</div>
+
+${behaviorHTML(
+state.g1BehaviorHistory.filter(r=>r.virtual)
+)}
 
 <div class="tablewrap">
 <table>
@@ -4082,11 +4337,12 @@ A RECONSTRUÇÃO É INDEPENDENTE DOS MOTORES.
 <tr>
 <th>#</th>
 <th>ESTRATÉGIA</th>
-<th>GALES VIRTUAIS</th>
+<th>GALES</th>
 <th>MELHOR DEFESA</th>
 <th>GREEN G1</th>
 <th>LOSS</th>
 <th>ACERTO</th>
+<th>RUPTURAS</th>
 </tr>
 </thead>
 
@@ -4101,6 +4357,7 @@ ${ranking.map((r,i)=>`
 <td class="good">${r.best.hits}</td>
 <td class="bad">${r.best.loss}</td>
 <td>${pct(r.best.hits,r.best.total)}</td>
+<td>${r.behaviors.counts.RUPTURA}</td>
 </tr>
 `).join("")}
 
@@ -4117,6 +4374,16 @@ ${ranking.map(r=>`
 
 <h3>${esc(r.name)}</h3>
 
+<div class="title">
+CONTINUIDADE / DESLOCAMENTO / RUPTURA
+</div>
+
+${behaviorHTML(
+state.g1BehaviorHistory.filter(
+x=>x.strategyId===r.id&&x.virtual
+)
+)}
+
 <div class="tablewrap">
 <table>
 
@@ -4127,6 +4394,7 @@ ${ranking.map(r=>`
 <th>GREEN G1</th>
 <th>LOSS</th>
 <th>ACERTO</th>
+<th>ERRO</th>
 </tr>
 </thead>
 
@@ -4142,6 +4410,7 @@ return `
 <td class="good">${m.hits}</td>
 <td class="bad">${m.loss}</td>
 <td>${pct(m.hits,m.total)}</td>
+<td>${pct(m.loss,m.total)}</td>
 </tr>
 `;
 }).join("")}
@@ -4150,12 +4419,15 @@ return `
 </table>
 </div>
 
-<div class="muted">
-REAL:
-${r.actualTotal} GALES •
-${r.actualHits} GREEN G1 •
-${r.actualLoss} LOSS
+<div class="title">
+GALES REAIS
 </div>
+
+${galeSummaryHTML({
+total:r.actualTotal,
+hits:r.actualHits,
+loss:r.actualLoss
+})}
 
 </div>
 `).join("")}
@@ -4247,10 +4519,16 @@ decision?.mode;
 
 const currentMissing=uncovered(original.play);
 
+const real=actualG1Metrics(strategyId);
+
+const behaviorRows=state.g1BehaviorHistory.filter(
+r=>r.strategyId===strategyId&&!r.virtual
+);
+
 return `
 <div class="box">
 
-<b>LEITURA DE RECUPERAÇÃO G1</b>
+<b>LEITURA DE RECUPERAÇÃO G1 — V6.3.6</b>
 
 <p>
 ESTRATÉGIA:
@@ -4292,13 +4570,25 @@ DEFESA SELECIONADA:
 </div>
 
 <div class="title">
+GALES NECESSÁRIOS / ACERTOS / ERROS
+</div>
+
+${galeSummaryHTML(real)}
+
+<div class="title">
+CONTINUIDADE / DESLOCAMENTO / RUPTURA
+</div>
+
+${behaviorHTML(behaviorRows)}
+
+<div class="title">
 9 DESCOBERTOS DA ENTRADA
 </div>
 
 ${numberCloud(currentMissing)}
 
 <div class="title">
-TRÊS DEFESAS INDEPENDENTEMENTE AVALIADAS
+TRÊS DEFESAS AVALIADAS
 </div>
 
 ${options.map(option=>{
@@ -4347,16 +4637,11 @@ x=>x.missedLoss>0
 ).map(x=>x.number)
 )}
 
-<div class="muted">
-SIMULAÇÕES:
-${evidenceScore.sample}
-•
-GREEN G1:
-${evidenceScore.hits}
-•
-LOSS:
-${evidenceScore.sample-evidenceScore.hits}
-</div>
+${galeSummaryHTML({
+total:evidenceScore.sample,
+hits:evidenceScore.hits,
+loss:evidenceScore.sample-evidenceScore.hits
+})}
 
 </div>
 `;
@@ -4608,11 +4893,145 @@ ${r.g1Decision?`
 <div class="muted">
 G1:
 ${esc(r.g1Decision.mode||"—")}
+•
+${esc(r.g1Decision.behavior||"—")}
 </div>
 `:""}
 
 </div>
 `).join("");
+}
+
+/* ======================================================
+ V6.3.6:
+ PAINEL COMPLETO DOS 12 MOTORES
+====================================================== */
+
+function motorsHTML(cs) {
+return `
+<div class="box">
+
+<b>12 MOTORES — TREINADOR G1 V6.3.6</b>
+
+<p>
+CADA MOTOR MOSTRA QUANTAS VEZES
+FOI NECESSÁRIO GALE, QUANTOS ACERTOS
+E ERROS OCORRERAM E QUANTAS DECISÕES
+FORAM CONTINUIDADE, DESLOCAMENTO
+OU RUPTURA.
+</p>
+
+</div>
+
+<div class="row">
+
+${cs.map(c=>`
+<button class="btn" data-manual="${c.key}">
+${esc(c.key)}
+</button>
+`).join("")}
+
+</div>
+
+${cs.map(c=>{
+const m=motorG1Metrics(c.key);
+const real=motorActualMetrics(c.key);
+
+return `
+<div class="g1card">
+
+<h3>
+${c.rank}º MOTOR ${esc(c.key)}
+</h3>
+
+<div class="muted">
+CENTROS:
+${sortedBlocks(c.play).map(
+b=>b.center
+).join(" • ")}
+</div>
+
+<div class="title">
+GALES VIRTUAIS NECESSÁRIOS
+</div>
+
+<div class="galeSummary">
+<div class="galeItem">
+<small>GALES</small>
+<strong>${m.gales}</strong>
+</div>
+<div class="galeItem">
+<small>GREEN G1 REAL</small>
+<strong class="good">${real.hits}</strong>
+</div>
+<div class="galeItem">
+<small>LOSS REAL</small>
+<strong class="bad">${real.loss}</strong>
+</div>
+</div>
+
+<div class="muted">
+GALES REAIS DESTE MOTOR:
+${real.total}
+•
+ACERTO:
+${pct(real.hits,real.total)}
+•
+ERRO:
+${pct(real.loss,real.total)}
+</div>
+
+<div class="title">
+CONTINUIDADE / DESLOCAMENTO / RUPTURA
+</div>
+
+${behaviorHTML(
+state.g1MotorHistory.filter(
+r=>r.motorKey===c.key&&r.virtual
+)
+)}
+
+<div class="title">
+DEFESAS VIRTUAIS DESTE MOTOR
+</div>
+
+<div class="tablewrap">
+<table>
+<thead>
+<tr>
+<th>DEFESA</th>
+<th>GALES</th>
+<th>GREEN G1</th>
+<th>LOSS</th>
+<th>ACERTO</th>
+<th>ERRO</th>
+</tr>
+</thead>
+<tbody>
+
+${G1_MODES.map(mode=>{
+const d=m.modes[mode];
+
+return `
+<tr>
+<td>${esc(mode)}</td>
+<td>${d.total}</td>
+<td class="good">${d.hits}</td>
+<td class="bad">${d.loss}</td>
+<td>${pct(d.hits,d.total)}</td>
+<td>${pct(d.loss,d.total)}</td>
+</tr>
+`;
+}).join("")}
+
+</tbody>
+</table>
+</div>
+
+</div>
+`;
+}).join("")}
+`;
 }
 
 /* ======================================================
@@ -4656,6 +5075,7 @@ snap(activeMotor(cs));
 const play=motor?.play||null;
 
 $("status").textContent=
+"V"+VERSION+" • "+
 state.history.length+
 " NÚMEROS • "+
 cs.length+
@@ -4663,6 +5083,10 @@ cs.length+
 state.phase+
 " • G1 VIRTUAL: "+
 state.g1Virtual.length+
+" • RUPTURAS: "+
+behaviorMetrics(
+state.g1BehaviorHistory.filter(r=>r.virtual)
+).counts.RUPTURA+
 (storageWarning
 ?" • FALHA AO SALVAR: "+storageMessage
 :"");
@@ -4785,6 +5209,20 @@ r=>r.source==="TEMPO REAL"
 
 ${metricsHTML(state.ledger)}
 
+<div class="title">
+GALES REAIS — TOTAL
+</div>
+
+${galeSummaryHTML(actualG1Metrics())}
+
+<div class="title">
+CONTINUIDADE / DESLOCAMENTO / RUPTURA
+</div>
+
+${behaviorHTML(
+state.g1BehaviorHistory.filter(r=>!r.virtual)
+)}
+
 <div class="box">
 NÚMEROS ARMAZENADOS:
 <b>${state.history.length}</b>
@@ -4823,6 +5261,14 @@ CONGELADA • AJUSTE FINO •
 RECONSTRUÇÃO INDEPENDENTE
 </div>
 
+<div class="title">
+COMPORTAMENTO VIRTUAL ACUMULADO
+</div>
+
+${behaviorHTML(
+state.g1BehaviorHistory.filter(r=>r.virtual)
+)}
+
 <button class="virtualButton" id="create">
 CRIAR CÓPIA DA MELHOR ADAPTATIVA
 </button>
@@ -4853,33 +5299,7 @@ render();
 }
 
 if(state.open.motors) {
-$("motors").innerHTML=`
-
-<div class="row">
-
-${cs.map(c=>`
-<button class="btn" data-manual="${c.key}">
-${esc(c.key)}
-</button>
-`).join("")}
-
-</div>
-
-${cs.map(c=>`
-<div class="listrow">
-
-<b>${c.rank}º ${esc(c.key)}</b>
-
-<div class="muted">
-CENTROS:
-${sortedBlocks(c.play).map(
-b=>b.center
-).join(" • ")}
-</div>
-
-</div>
-`).join("")}
-`;
+$("motors").innerHTML=motorsHTML(cs);
 
 for(const b of document.querySelectorAll(
 "[data-manual]"
@@ -4927,9 +5347,40 @@ span.textContent=open?"−":"+";
 }
 
 /* ======================================================
+ MIGRAÇÃO V6.3.5 -> V6.3.6
+
+ REPROCESSA O HISTÓRICO ORIGINAL PARA
+ RECONSTRUIR AS ESTATÍSTICAS VIRTUAIS,
+ INCLUINDO RUPTURA E CONTINUIDADE.
+
+ NÃO REUTILIZA RESULTADOS FUTUROS.
+====================================================== */
+
+async function initialize() {
+if(
+loadedFrom&&
+loadedFrom!==KEY&&
+loadedFrom!==BACKUP_KEY&&
+state.history.length
+) {
+const numbers=[...state.history];
+const sources=[...state.sources];
+
+await rebuild(numbers,sources);
+} else if(state.history.length) {
+const numbers=[...state.history];
+const sources=[...state.sources];
+
+await rebuild(numbers,sources);
+} else {
+render();
+}
+}
+
+/* ======================================================
  INICIALIZAÇÃO
 ====================================================== */
 
-render();
+initialize();
 
 })();
