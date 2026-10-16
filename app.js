@@ -3,15 +3,19 @@
 "use strict";
 
 /* ======================================================
- ANÁLISE BETA V6.3.2
- BASE V6.3.1 PRESERVADA
+ ANÁLISE BETA V6.3.3
+
+ BASE V6.3.2 PRESERVADA
+ ALTERAÇÃO V6.3.3:
+ NÚMEROS DA JOGADA MAIORES E CENTRALIZADOS
+ REGIÃO E VIZINHOS ABAIXO DO NÚMERO
 
  12 MOTORES
  7 ESTRATÉGIAS ORIGINAIS
  12 ADAPTATIVAS
  ESTRATÉGIAS PERSONALIZADAS
- TREINADOR GLOBAL DE ENTRADA
- TREINADOR GLOBAL G1 INDEPENDENTE
+ TREINADOR GLOBAL
+ TREINADOR GLOBAL G1
  G1 CONGELADO
  G1 AJUSTE FINO
  G1 RECONSTRUÇÃO
@@ -19,10 +23,11 @@
  28 NÚMEROS SEM SOBREPOSIÇÃO
 ====================================================== */
 
-const VERSION="6.3.2";
-const KEY="ANALISE_BETA_V632";
+const VERSION="6.3.3";
+const KEY="ANALISE_BETA_V633";
 
 const OLD_KEYS=[
+"ANALISE_BETA_V632",
 "ANALISE_BETA_V631",
 "ANALISE_BETA_V63",
 "ANALISE_BETA_V62",
@@ -1025,14 +1030,7 @@ trigger:n
 
 /* ======================================================
  TREINADOR GLOBAL G1
-
- Compara:
- - Congelado
- - Ajuste fino
- - Reconstrução por todos os motores
-
- Usa somente resultados já conhecidos
- no instante da decisão.
+ LÓGICA V6.3.2 PRESERVADA
 ====================================================== */
 
 function validG1Play(play){
@@ -1067,12 +1065,6 @@ rank:original.rank||0,
 motor:clone(fine)
 });
 }
-
-/*
- Reconstrução:
- cada motor produz uma nova cobertura
- após o resultado que acionou o Gale.
-*/
 
 for(const c of cs){
 
@@ -1183,14 +1175,6 @@ retained++;
 }
 }
 
-/*
- Critérios de desempate:
- - histórico da estratégia ativa
- - desempenho virtual recente
- - preservação da jogada original
- - ranking do motor
-*/
-
 const continuity=retained/28;
 
 const rankScore=option.rank>0
@@ -1287,14 +1271,6 @@ trainer:true
 return clone(decision.motor);
 }
 
-/*
- A avaliação virtual é registrada somente
- quando o resultado seguinte acontece.
-
- Assim, não usa o resultado futuro para
- escolher a defesa.
-*/
-
 function registerG1Virtual(
 original,
 trigger,
@@ -1335,7 +1311,7 @@ state.g1Virtual.length-3000
 }
 
 /* ======================================================
- AVALIAÇÃO VIRTUAL ORIGINAL
+ AVALIAÇÃO VIRTUAL
 ====================================================== */
 
 function profit(result){
@@ -1809,12 +1785,6 @@ result="GALE";
 
 state.cycle.firstNumber=number;
 
-/*
- Primeiro registra o resultado que acionou
- o Gale. A reconstrução deve considerar
- esse número na leitura da mesa.
-*/
-
 state.history.push(number);
 state.sources.push(source);
 invalidate();
@@ -1889,11 +1859,6 @@ motor=clone(state.frozen);
 
 result=motor?.play.numbers.includes(number)
 ?"GREEN G1":"LOSS";
-
-/*
- Avalia as três modalidades para
- a estratégia que estava ativa.
-*/
 
 if(state.cycle?.original){
 
@@ -2060,133 +2025,404 @@ state.sources.slice(0,-1)
 
 const css=`
 *{box-sizing:border-box}
+
 body{
-margin:0;background:#10151e;color:#f3f7fb;
+margin:0;
+background:#10151e;
+color:#f3f7fb;
 font-family:Arial,sans-serif
 }
-.app{max-width:1100px;margin:auto;padding:12px}
-h1{text-align:center;font-size:23px;margin:16px 0 5px}
-.sub{text-align:center;font-size:11px;color:#9cb3c9;margin-bottom:18px}
+
+.app{
+max-width:1100px;
+margin:auto;
+padding:12px
+}
+
+h1{
+text-align:center;
+font-size:23px;
+margin:16px 0 5px
+}
+
+.sub{
+text-align:center;
+font-size:11px;
+color:#9cb3c9;
+margin-bottom:18px
+}
+
 .panel{
-background:#1c2634;border:1px solid #40546c;
-border-radius:11px;padding:12px;margin:10px 0
+background:#1c2634;
+border:1px solid #40546c;
+border-radius:11px;
+padding:12px;
+margin:10px 0
 }
-.title{color:#32d9f4;font-size:12px;font-weight:bold;margin:12px 0}
-.row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+
+.title{
+color:#32d9f4;
+font-size:12px;
+font-weight:bold;
+margin:12px 0
+}
+
+.row{
+display:flex;
+flex-wrap:wrap;
+gap:6px;
+margin:8px 0
+}
+
 .btn{
-background:#304056;border:1px solid #69819d;
-border-radius:7px;padding:10px;color:white;
-font-weight:bold;font-size:11px;cursor:pointer
+background:#304056;
+border:1px solid #69819d;
+border-radius:7px;
+padding:10px;
+color:white;
+font-weight:bold;
+font-size:11px;
+cursor:pointer
 }
-.btn.active{background:#087f9d;border-color:#32d9f4}
-.btn.trainer{background:#0a6653;border:2px solid #2c9f81}
+
+.btn.active{
+background:#087f9d;
+border-color:#32d9f4
+}
+
+.btn.trainer{
+background:#0a6653;
+border:2px solid #2c9f81
+}
+
 .btn.trainer.active{
-background:#075f4e;border:2px solid #69ffd0;
+background:#075f4e;
+border:2px solid #69ffd0;
 box-shadow:0 0 12px #17f0ad
 }
+
 textarea{
-width:100%;height:85px;padding:10px;border-radius:8px;
-background:#0c1623;border:1px solid #62758b;color:white
+width:100%;
+height:85px;
+padding:10px;
+border-radius:8px;
+background:#0c1623;
+border:1px solid #62758b;
+color:white
 }
+
+/* ======================================================
+ V6.3.3 — VISUAL DOS NÚMEROS
+====================================================== */
+
 .centers{
-display:grid;grid-template-columns:repeat(6,1fr);gap:5px
+display:grid;
+grid-template-columns:repeat(6,minmax(0,1fr));
+gap:5px;
+margin:12px 0
 }
+
 .center{
-padding:13px 2px;border:2px solid #20d7f4;
-background:#096a92;border-radius:9px;text-align:center;
-font-size:22px;font-weight:bold
+min-width:0;
+min-height:88px;
+padding:9px 2px 7px;
+border:2px solid #20d7f4;
+background:#096a92;
+border-radius:9px;
+text-align:center;
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+gap:5px
 }
+
 .center.short{
-background:#caa127;border-color:#ffe282;color:#111
+background:#caa127;
+border-color:#ffe282;
+color:#111
 }
+
+.centerNumber{
+display:block;
+width:100%;
+font-size:clamp(28px,5vw,44px);
+font-weight:900;
+line-height:1;
+letter-spacing:-1px;
+color:#ffffff;
+text-align:center;
+font-variant-numeric:tabular-nums
+}
+
+.center.short .centerNumber{
+color:#111111
+}
+
+.centerInfo{
+display:block;
+width:100%;
+font-size:9px;
+line-height:1.25;
+font-weight:bold;
+color:#e4f6ff;
+text-align:center;
+white-space:normal;
+overflow-wrap:anywhere
+}
+
+.center.short .centerInfo{
+color:#111111
+}
+
+/* ======================================================
+ DEMAIS ESTILOS PRESERVADOS
+====================================================== */
+
 .keys{
-display:grid;grid-template-columns:repeat(6,1fr);gap:5px
+display:grid;
+grid-template-columns:repeat(6,1fr);
+gap:5px
 }
+
 .key{
-height:43px;border:1px solid #697b8f;border-radius:7px;
-color:white;font-size:15px;font-weight:bold;cursor:pointer
+height:43px;
+border:1px solid #697b8f;
+border-radius:7px;
+color:white;
+font-size:15px;
+font-weight:bold;
+cursor:pointer
 }
-.key.zero{grid-column:span 6}
+
+.key.zero{
+grid-column:span 6
+}
+
 .metrics{
-display:grid;grid-template-columns:repeat(3,1fr);gap:6px
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:6px
 }
+
 .metric{
-background:#29384b;padding:12px 5px;
-border-radius:8px;text-align:center
+background:#29384b;
+padding:12px 5px;
+border-radius:8px;
+text-align:center
 }
-.metric small{display:block;font-size:9px;color:#b9cad9}
-.metric b{display:block;font-size:23px;margin-top:6px}
+
+.metric small{
+display:block;
+font-size:9px;
+color:#b9cad9
+}
+
+.metric b{
+display:block;
+font-size:23px;
+margin-top:6px
+}
+
 .good{color:#4ee2a2}
 .bad{color:#ff778c}
-.muted{font-size:11px;color:#afc0d1;line-height:1.7}
+
+.muted{
+font-size:11px;
+color:#afc0d1;
+line-height:1.7
+}
+
 .box{
-background:#111d2a;border:1px solid #425a75;
-padding:12px;border-radius:9px;margin:9px 0;
-font-size:12px;line-height:1.7
+background:#111d2a;
+border:1px solid #425a75;
+padding:12px;
+border-radius:9px;
+margin:9px 0;
+font-size:12px;
+line-height:1.7
 }
+
 .head{
-display:flex;justify-content:space-between;width:100%;
-background:#2c3d51;color:white;border:1px solid #5e7895;
-border-radius:8px;padding:12px;font-weight:bold;cursor:pointer
+display:flex;
+justify-content:space-between;
+width:100%;
+background:#2c3d51;
+color:white;
+border:1px solid #5e7895;
+border-radius:8px;
+padding:12px;
+font-weight:bold;
+cursor:pointer
 }
+
 .hide{display:none}
-.history{display:flex;flex-wrap:wrap;gap:5px}
-.chip{
-padding:8px;border:2px solid #718397;border-radius:7px;
-min-width:47px;text-align:center
+
+.history{
+display:flex;
+flex-wrap:wrap;
+gap:5px
 }
-.chip.green{border:3px solid #24f49a}
-.chip.gale{border:3px solid #ffda35}
-.chip.loss{border:3px solid #ff386c}
-.chip b{display:block;font-size:18px}
-.chip small{font-size:9px}
+
+.chip{
+padding:8px;
+border:2px solid #718397;
+border-radius:7px;
+min-width:47px;
+text-align:center
+}
+
+.chip.green{
+border:3px solid #24f49a
+}
+
+.chip.gale{
+border:3px solid #ffda35
+}
+
+.chip.loss{
+border:3px solid #ff386c
+}
+
+.chip b{
+display:block;
+font-size:18px
+}
+
+.chip small{
+font-size:9px
+}
+
 .listrow{
 border-bottom:1px solid #35475b;
-padding:9px 3px;font-size:11px;line-height:1.7
+padding:9px 3px;
+font-size:11px;
+line-height:1.7
 }
+
 .tablewrap{overflow:auto}
+
 table{
-width:100%;border-collapse:collapse;
-min-width:620px;font-size:11px
+width:100%;
+border-collapse:collapse;
+min-width:620px;
+font-size:11px
 }
+
 td,th{
-padding:9px;border-bottom:1px solid #40516a;text-align:left
+padding:9px;
+border-bottom:1px solid #40516a;
+text-align:left
 }
+
 th{color:#50d9ee}
+
 .virtualButton{
-width:100%;background:#0b8466;border:1px solid #52e6b5;
-color:white;border-radius:9px;padding:14px;
-font-size:13px;font-weight:bold;cursor:pointer;margin:8px 0
+width:100%;
+background:#0b8466;
+border:1px solid #52e6b5;
+color:white;
+border-radius:9px;
+padding:14px;
+font-size:13px;
+font-weight:bold;
+cursor:pointer;
+margin:8px 0
 }
+
 .strategyGroup{
-margin-top:12px;padding-top:8px;border-top:1px solid #34485e
+margin-top:12px;
+padding-top:8px;
+border-top:1px solid #34485e
 }
+
 .strategyLabel{
-font-size:10px;color:#7fe1f3;font-weight:bold;margin:8px 0
+font-size:10px;
+color:#7fe1f3;
+font-weight:bold;
+margin:8px 0
 }
-.status{padding:8px;font-size:11px;color:#81dceb}
-.numberCloud{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}
+
+.status{
+padding:8px;
+font-size:11px;
+color:#81dceb
+}
+
+.numberCloud{
+display:flex;
+flex-wrap:wrap;
+gap:5px;
+margin:10px 0
+}
+
 .numberCloud span{
-padding:8px;background:#273b50;border:1px solid #60829f;
-border-radius:6px;font-size:12px;font-weight:bold
+padding:8px;
+background:#273b50;
+border:1px solid #60829f;
+border-radius:6px;
+font-size:12px;
+font-weight:bold
 }
+
 .warning{
-border-left:3px solid #d9a63c;padding:9px;
-background:#2b281f;color:#e8d5a6;
-font-size:11px;line-height:1.6
+border-left:3px solid #d9a63c;
+padding:9px;
+background:#2b281f;
+color:#e8d5a6;
+font-size:11px;
+line-height:1.6
 }
+
 .danger{
-border:2px solid #ff5679;background:#38212a
+border:2px solid #ff5679;
+background:#38212a
 }
+
 input[type=number]{
-background:#0c1623;color:white;
-border:1px solid #62758b;border-radius:7px;
-padding:9px;width:110px
+background:#0c1623;
+color:white;
+border:1px solid #62758b;
+border-radius:7px;
+padding:9px;
+width:110px
 }
+
 @media(max-width:600px){
-.center{font-size:18px;padding:12px 1px}
-.center small{font-size:8px}
-.btn{font-size:10px;padding:9px}
+
+.center{
+min-height:80px;
+padding:8px 1px 6px;
+gap:5px
+}
+
+.centerNumber{
+font-size:clamp(26px,7vw,37px);
+letter-spacing:-1px
+}
+
+.centerInfo{
+font-size:8px;
+line-height:1.15
+}
+
+.btn{
+font-size:10px;
+padding:9px
+}
+
+}
+
+@media(max-width:380px){
+
+.centerNumber{
+font-size:28px
+}
+
+.centerInfo{
+font-size:7px
+}
+
 }
 `;
 
@@ -2422,11 +2658,6 @@ root.appendChild(group);
 
 buildStrategies();
 
-/*
- Controles existentes + novo botão G1.
- Nenhum quadro adicional.
-*/
-
 for(const [field,label] of [
 ["g1","G1 AJUSTE FINO"],
 ["g1Trainer","TREINADOR GLOBAL G1"],
@@ -2614,17 +2845,37 @@ REGION_NAMES.indexOf(region(b.center))
 );
 }
 
+/* ======================================================
+ V6.3.3 — NÚMEROS GRANDES
+ REGIÃO E VIZINHOS EMBAIXO
+====================================================== */
+
 function centersHTML(play){
 
 if(!play)return "";
 
 return sortedBlocks(play).map(b=>`
 <div class="center ${b.radius===1?"short":""}">
+
+<strong class="centerNumber">
 ${b.center}
-<small>${region(b.center)} • ${b.radius}V</small>
+</strong>
+
+<small class="centerInfo">
+${region(b.center)}
+</small>
+
+<small class="centerInfo">
+${b.radius} ${b.radius===1?"VIZINHO":"VIZINHOS"}
+</small>
+
 </div>
 `).join("");
 }
+
+/* ======================================================
+ MÉTRICAS
+====================================================== */
 
 function metrics(rows){
 
@@ -3090,11 +3341,6 @@ b.classList.toggle(
 !!state[b.dataset.option]
 );
 }
-
-/*
- O MESMO QUADRO DE CENTROS MOSTRA
- A DEFESA G1 DURANTE O GALE.
-*/
 
 const g1Active=[
 "GALE",
