@@ -3,27 +3,27 @@
 "use strict";
 
 /* ======================================================
- ANÁLISE BETA V6.3.1
- CORREÇÃO DE TELA PRETA / DESEMPENHO
+ ANÁLISE BETA V6.3.2
+ BASE V6.3.1 PRESERVADA
 
- - 12 motores
- - 7 estratégias originais
- - 12 adaptativas
- - Estratégias personalizadas
- - Treinador global
- - Troca em 1, 2 ou no máximo 3 giros
- - Gale congelado
- - 28 números sem sobreposição
- - Saltos, direção e espelho
- - Histórico completo preservado
- - Importação sem salvar a cada número
- - Interface protegida contra erros
+ 12 MOTORES
+ 7 ESTRATÉGIAS ORIGINAIS
+ 12 ADAPTATIVAS
+ ESTRATÉGIAS PERSONALIZADAS
+ TREINADOR GLOBAL DE ENTRADA
+ TREINADOR GLOBAL G1 INDEPENDENTE
+ G1 CONGELADO
+ G1 AJUSTE FINO
+ G1 RECONSTRUÇÃO
+ HISTÓRICO E SIMULAÇÃO VIRTUAL
+ 28 NÚMEROS SEM SOBREPOSIÇÃO
 ====================================================== */
 
-const VERSION="6.3.1";
-const KEY="ANALISE_BETA_V631";
+const VERSION="6.3.2";
+const KEY="ANALISE_BETA_V632";
 
 const OLD_KEYS=[
+"ANALISE_BETA_V631",
 "ANALISE_BETA_V63",
 "ANALISE_BETA_V62",
 "ANALISE_BETA_V61",
@@ -84,6 +84,12 @@ margin:[.05,.10,.15,.05,.10,.15,.05,.10,.08,.12,.10,.08][i],
 maxRank:[12,12,12,12,12,12,12,12,12,6,4,8][i]
 })
 );
+
+const G1_MODES=[
+"CONGELADO",
+"AJUSTE FINO",
+"RECONSTRUÇÃO"
+];
 
 const $=id=>document.getElementById(id);
 const mod=n=>(n%37+37)%37;
@@ -165,6 +171,12 @@ g1:true,
 galeSkip:false,
 secondHouse:false,
 
+g1Trainer:false,
+g1Mode:"AUTO",
+g1Decision:null,
+g1History:[],
+g1Virtual:[],
+
 phase:"ENTRY",
 cycle:null,
 frozen:null,
@@ -238,12 +250,21 @@ state.virtualRows=Array.isArray(state.virtualRows)
 ?state.virtualRows:[];
 
 state.virtualCycles={};
+
 state.trainerHistory=Array.isArray(state.trainerHistory)
 ?state.trainerHistory:[];
 
 state.createdStrategies=Array.isArray(
 state.createdStrategies
 )?state.createdStrategies:[];
+
+state.g1History=Array.isArray(state.g1History)
+?state.g1History:[];
+
+state.g1Virtual=Array.isArray(state.g1Virtual)
+?state.g1Virtual:[];
+
+state.g1Trainer=!!state.g1Trainer;
 
 let storageWarning=false;
 
@@ -408,10 +429,6 @@ if(length>=2){
 const current=history.slice(-length);
 const matches=[];
 
-/*
- Limite de comparação para não travar.
-*/
-
 const start=Math.max(
 0,
 history.length-160-length
@@ -572,10 +589,7 @@ return weights;
 
 /* ======================================================
  GEOMETRIA RÁPIDA
-
- Mantém 5 blocos de 5 e 1 bloco de 3.
- Busca limitada com alternativas, evitando
- o cálculo pesado da versão anterior.
+ 5 BLOCOS DE 5 + 1 BLOCO DE 3
 ====================================================== */
 
 const FIVE=[];
@@ -621,11 +635,6 @@ mandatory.every(n=>b.numbers.includes(n))
 );
 
 let best=null;
-
-/*
- Beam pequeno: até 5 candidatos por etapa.
- O objetivo é estabilidade da interface.
-*/
 
 for(const small of allowed){
 
@@ -1015,12 +1024,318 @@ trigger:n
 }
 
 /* ======================================================
- AVALIAÇÃO VIRTUAL LEVE
+ TREINADOR GLOBAL G1
 
- Calcula uma jogada de cada estratégia
- por giro, usando os motores já calculados.
+ Compara:
+ - Congelado
+ - Ajuste fino
+ - Reconstrução por todos os motores
 
- Cada estratégia tem seu Gale independente.
+ Usa somente resultados já conhecidos
+ no instante da decisão.
+====================================================== */
+
+function validG1Play(play){
+return !!play&&
+Array.isArray(play.numbers)&&
+play.numbers.length===28&&
+new Set(play.numbers).size===28;
+}
+
+function g1Options(original,trigger,cs){
+
+const options=[];
+
+if(validG1Play(original?.play)){
+
+options.push({
+mode:"CONGELADO",
+key:original.key,
+rank:original.rank||0,
+motor:clone(original)
+});
+}
+
+const fine=tuneG1(original,trigger);
+
+if(validG1Play(fine?.play)){
+
+options.push({
+mode:"AJUSTE FINO",
+key:original.key,
+rank:original.rank||0,
+motor:clone(fine)
+});
+}
+
+/*
+ Reconstrução:
+ cada motor produz uma nova cobertura
+ após o resultado que acionou o Gale.
+*/
+
+for(const c of cs){
+
+if(!validG1Play(c.play))continue;
+
+options.push({
+mode:"RECONSTRUÇÃO",
+key:c.key,
+rank:c.rank,
+motor:snap(c)
+});
+}
+
+return options;
+}
+
+function g1Evidence(option,strategyId){
+
+const events=state.g1Virtual.filter(
+e=>e.mode===option.mode&&
+e.key===option.key
+);
+
+const same=events.filter(
+e=>e.strategyId===strategyId
+);
+
+const sample=same.length>=5?same:events;
+
+const last3=sample.slice(-3);
+const last12=sample.slice(-12);
+const last30=sample.slice(-30);
+
+const rate=rows=>rows.length
+?rows.filter(x=>x.hit).length/rows.length
+:null;
+
+const r3=rate(last3);
+const r12=rate(last12);
+const r30=rate(last30);
+
+let losses=0;
+
+for(let i=sample.length-1;i>=0;i--){
+
+if(sample[i].hit)break;
+losses++;
+}
+
+const baseline=28/37;
+
+const smooth=(r,n)=>r===null
+?baseline
+:(r*n+baseline*8)/(n+8);
+
+const a=smooth(r3,last3.length);
+const b=smooth(r12,last12.length);
+const c=smooth(r30,last30.length);
+
+const consistency=1-clamp(
+(Math.abs(a-b)+Math.abs(b-c))/2,
+0,1
+);
+
+const score=
+a*.25+
+b*.35+
+c*.25+
+consistency*.15-
+Math.min(losses,5)*.018;
+
+return {
+score,
+sample:sample.length,
+r3,r12,r30,
+losses
+};
+}
+
+function g1Decision(original,trigger,cs){
+
+const options=g1Options(original,trigger,cs);
+
+if(!options.length){
+return null;
+}
+
+const strategyId=
+state.cycle?.strategyId||
+activeDefinition().id;
+
+const ranked=options.map(option=>{
+
+const evidence=g1Evidence(
+option,
+strategyId
+);
+
+const originalCoverage=
+new Set(original.play.numbers);
+
+let retained=0;
+
+for(const n of option.motor.play.numbers){
+
+if(originalCoverage.has(n)){
+retained++;
+}
+}
+
+/*
+ Critérios de desempate:
+ - histórico da estratégia ativa
+ - desempenho virtual recente
+ - preservação da jogada original
+ - ranking do motor
+*/
+
+const continuity=retained/28;
+
+const rankScore=option.rank>0
+?1-(option.rank-1)/12
+:.5;
+
+const score=
+evidence.score*.78+
+continuity*.12+
+rankScore*.10;
+
+return {
+...option,
+evidence,
+score
+};
+});
+
+ranked.sort((a,b)=>
+b.score-a.score||
+a.rank-b.rank
+);
+
+const chosen=ranked[0];
+
+return {
+mode:chosen.mode,
+key:chosen.key,
+rank:chosen.rank,
+motor:clone(chosen.motor),
+score:chosen.score,
+strategyId,
+trigger,
+turn:state.history.length,
+alternatives:ranked.map(x=>({
+mode:x.mode,
+key:x.key,
+rank:x.rank,
+score:x.score,
+sample:x.evidence.sample
+}))
+};
+}
+
+function chooseG1(original,trigger){
+
+const cs=getCandidates();
+
+if(!state.g1Trainer){
+
+const motor=state.g1
+?tuneG1(original,trigger)
+:clone(original);
+
+state.g1Decision={
+mode:state.g1?"AJUSTE FINO":"CONGELADO",
+key:motor?.key||original?.key||"—",
+rank:motor?.rank||0,
+strategyId:state.cycle?.strategyId||"",
+trigger,
+turn:state.history.length,
+trainer:false
+};
+
+return motor;
+}
+
+const decision=g1Decision(
+original,
+trigger,
+cs
+);
+
+if(!decision){
+
+const fallback=state.g1
+?tuneG1(original,trigger)
+:clone(original);
+
+return fallback;
+}
+
+state.g1Decision={
+mode:decision.mode,
+key:decision.key,
+rank:decision.rank,
+score:decision.score,
+strategyId:decision.strategyId,
+trigger:decision.trigger,
+turn:decision.turn,
+trainer:true
+};
+
+return clone(decision.motor);
+}
+
+/*
+ A avaliação virtual é registrada somente
+ quando o resultado seguinte acontece.
+
+ Assim, não usa o resultado futuro para
+ escolher a defesa.
+*/
+
+function registerG1Virtual(
+original,
+trigger,
+strategyId,
+resultNumber,
+csBefore
+){
+
+const options=g1Options(
+original,
+trigger,
+csBefore
+);
+
+for(const option of options){
+
+state.g1Virtual.push({
+turn:state.history.length+1,
+strategyId,
+mode:option.mode,
+key:option.key,
+rank:option.rank,
+trigger,
+outcome:resultNumber,
+hit:option.motor.play.numbers.includes(
+resultNumber
+)
+});
+}
+
+if(state.g1Virtual.length>3000){
+
+state.g1Virtual.splice(
+0,
+state.g1Virtual.length-3000
+);
+}
+}
+
+/* ======================================================
+ AVALIAÇÃO VIRTUAL ORIGINAL
 ====================================================== */
 
 function profit(result){
@@ -1116,11 +1431,6 @@ closed,
 profit:profit(result)
 });
 }
-
-/*
- Mantém janela virtual recente.
- O histórico numérico não é cortado.
-*/
 
 if(state.virtualRows.length>9000){
 
@@ -1228,7 +1538,7 @@ score>=.60?"INTERMEDIÁRIA":
 }
 
 /* ======================================================
- TREINADOR GLOBAL
+ TREINADOR GLOBAL ORIGINAL
 ====================================================== */
 
 let rankingCacheKey=null;
@@ -1443,11 +1753,6 @@ rank:c.rank,
 numbers:[...c.play.numbers]
 }));
 
-/*
- A escolha da estratégia ocorre antes
- do resultado ser registrado.
-*/
-
 if(state.strategy==="TRAINER"&&
 state.phase==="ENTRY"){
 trainerUpdate(cs);
@@ -1459,8 +1764,8 @@ let motor=null;
 let result="AGUARDANDO";
 
 const before=state.phase;
-
 const cycleBefore=clone(state.cycle);
+const decisionBefore=clone(state.g1Decision);
 
 if(state.phase==="ENTRY"){
 
@@ -1483,6 +1788,8 @@ secondHouse:state.secondHouse
 }
 };
 
+state.g1Decision=null;
+
 if(state.secondHouse){
 
 state.frozen=clone(motor);
@@ -1502,9 +1809,24 @@ result="GALE";
 
 state.cycle.firstNumber=number;
 
-state.frozen=state.g1
-?tuneG1(motor,number)
-:clone(motor);
+/*
+ Primeiro registra o resultado que acionou
+ o Gale. A reconstrução deve considerar
+ esse número na leitura da mesa.
+*/
+
+state.history.push(number);
+state.sources.push(source);
+invalidate();
+
+state.frozen=chooseG1(
+motor,
+number
+);
+
+state.history.pop();
+state.sources.pop();
+invalidate();
 
 state.phase=state.galeSkip
 ?"GALE_SKIP":"GALE";
@@ -1536,9 +1858,18 @@ result="GALE";
 
 state.cycle.firstNumber=number;
 
-state.frozen=state.cycle.options.g1
-?tuneG1(motor,number)
-:clone(motor);
+state.history.push(number);
+state.sources.push(source);
+invalidate();
+
+state.frozen=chooseG1(
+motor,
+number
+);
+
+state.history.pop();
+state.sources.pop();
+invalidate();
 
 state.phase=state.cycle.options.galeSkip
 ?"GALE_SKIP":"GALE";
@@ -1559,14 +1890,41 @@ motor=clone(state.frozen);
 result=motor?.play.numbers.includes(number)
 ?"GREEN G1":"LOSS";
 
+/*
+ Avalia as três modalidades para
+ a estratégia que estava ativa.
+*/
+
+if(state.cycle?.original){
+
+registerG1Virtual(
+state.cycle.original,
+state.cycle.firstNumber,
+state.cycle.strategyId,
+number,
+cs
+);
+}
+
+state.g1History.push({
+turn:state.history.length+1,
+strategyId:state.cycle?.strategyId||"",
+mode:state.g1Decision?.mode||"—",
+motor:state.g1Decision?.key||"—",
+trigger:state.cycle?.firstNumber,
+outcome:number,
+result
+});
+
+if(state.g1History.length>500){
+state.g1History.shift();
+}
+
 state.phase="ENTRY";
 state.cycle=null;
 state.frozen=null;
+state.g1Decision=null;
 }
-
-/*
- Simulação virtual sem salvar em cada motor.
-*/
 
 processVirtual(number,cs);
 
@@ -1586,13 +1944,9 @@ profit:profit(result),
 play:motor?clone(motor.play):null,
 virtual,
 cycle:cycleBefore,
+g1Decision:decisionBefore,
 timestamp:Date.now()
 });
-
-/*
- Limita apenas registros detalhados.
- Não corta os números do histórico.
-*/
 
 if(state.ledger.length>2500){
 state.ledger.shift();
@@ -1640,6 +1994,8 @@ createdStrategies:clone(state.createdStrategies),
 g1:state.g1,
 galeSkip:state.galeSkip,
 secondHouse:state.secondHouse,
+g1Trainer:state.g1Trainer,
+g1Mode:state.g1Mode,
 stake:state.stake,
 galeMultiplier:state.galeMultiplier,
 open:clone(state.open)
@@ -1650,12 +2006,6 @@ Object.assign(state,options);
 
 invalidate();
 rankingCacheKey=null;
-
-/*
- Guarda todos os números.
- Reprocessa detalhadamente os últimos 120.
- Evita travar com 40 mil resultados.
-*/
 
 const start=Math.max(0,numbers.length-120);
 
@@ -1749,7 +2099,6 @@ font-size:22px;font-weight:bold
 .center.short{
 background:#caa127;border-color:#ffe282;color:#111
 }
-.center small{display:block;font-size:9px;margin-top:5px}
 .keys{
 display:grid;grid-template-columns:repeat(6,1fr);gap:5px
 }
@@ -1809,12 +2158,6 @@ width:100%;background:#0b8466;border:1px solid #52e6b5;
 color:white;border-radius:9px;padding:14px;
 font-size:13px;font-weight:bold;cursor:pointer;margin:8px 0
 }
-.miniHead{
-display:flex;justify-content:space-between;width:100%;
-margin:10px 0 0;padding:11px;background:#24364b;
-border:1px solid #4c6985;border-radius:8px;color:#d6eafa;
-font-size:11px;font-weight:bold;cursor:pointer
-}
 .strategyGroup{
 margin-top:12px;padding-top:8px;border-top:1px solid #34485e
 }
@@ -1855,7 +2198,7 @@ document.body.innerHTML=`
 
 <div class="sub">
 12 MOTORES • TREINADOR GLOBAL •
-ESTABILIDADE • 28 NÚMEROS
+TREINADOR G1 • ESTABILIDADE • 28 NÚMEROS
 </div>
 
 <section class="panel">
@@ -1888,24 +2231,6 @@ placeholder="Cole os números do mais antigo ao mais recente"></textarea>
 </section>
 
 <section class="panel">
-
-<div class="title">FICHAS</div>
-
-<div class="row">
-<label>
-VALOR DA FICHA
-<input id="stake" type="number" min=".01" step=".01">
-</label>
-
-<label>
-MULTIPLICADOR G1
-<input id="multiplier" type="number" min=".01" step=".01">
-</label>
-</div>
-
-</section>
-
-<section class="panel">
 <div class="title">TECLADO 0–36</div>
 <div class="keys" id="keys"></div>
 </section>
@@ -1931,6 +2256,22 @@ ${title}<span>−</span>
 <div id="${id}"></div>
 </section>
 `).join("")}
+
+<section class="panel">
+<div class="title">FICHAS</div>
+
+<div class="row">
+<label>
+VALOR DA FICHA
+<input id="stake" type="number" min=".01" step=".01">
+</label>
+
+<label>
+MULTIPLICADOR G1
+<input id="multiplier" type="number" min=".01" step=".01">
+</label>
+</div>
+</section>
 
 <div class="warning">
 Os indicadores avaliam resultados anteriores.
@@ -2081,8 +2422,14 @@ root.appendChild(group);
 
 buildStrategies();
 
+/*
+ Controles existentes + novo botão G1.
+ Nenhum quadro adicional.
+*/
+
 for(const [field,label] of [
 ["g1","G1 AJUSTE FINO"],
+["g1Trainer","TREINADOR GLOBAL G1"],
 ["galeSkip","GALE 2ª RODADA"],
 ["secondHouse","2ª CASA"]
 ]){
@@ -2094,7 +2441,8 @@ state[field]=!state[field];
 save();
 render();
 },
-$("options")
+$("options"),
+field==="g1Trainer"?"trainer":""
 );
 
 b.dataset.option=field;
@@ -2241,7 +2589,7 @@ render();
 });
 
 /* ======================================================
- RENDERIZAÇÃO SEGURA
+ RENDERIZAÇÃO
 ====================================================== */
 
 function showError(e){
@@ -2743,11 +3091,27 @@ b.classList.toggle(
 );
 }
 
+/*
+ O MESMO QUADRO DE CENTROS MOSTRA
+ A DEFESA G1 DURANTE O GALE.
+*/
+
+const g1Active=[
+"GALE",
+"GALE_SKIP"
+].includes(state.phase);
+
+const g1Label=g1Active&&state.g1Decision
+?" • G1 "+state.g1Decision.mode+
+" • "+state.g1Decision.key
+:"";
+
 $("selected").textContent=
 (state.cycle?.strategy||def.name)+
 " • MOTOR "+
 (motor?.key||"AGUARDANDO")+
-" • "+state.phase;
+" • "+state.phase+
+g1Label;
 
 $("centers").innerHTML=centersHTML(play);
 
