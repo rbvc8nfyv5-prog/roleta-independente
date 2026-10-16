@@ -4,78 +4,116 @@
 
 /*
 =========================================================
-              ANÁLISE BETA V6.3.8
+                 ANÁLISE BETA V6.3.9
 =========================================================
 
-BASE INTEGRAL: V6.3.7
+BASE: V6.3.8 ENVIADA PELO USUÁRIO
 
 MANTIDO:
-- JANELA AUTOMÁTICA 90 + 10
 - 12 MOTORES
 - 7 ESTRATÉGIAS ORIGINAIS
 - 12 ADAPTATIVAS
 - 4 POSIÇÕES AUTO
 - ESTRATÉGIAS PERSONALIZADAS
-- TREINADOR GLOBAL
+- TREINADOR GLOBAL ORIGINAL
 - TREINADOR GLOBAL G1
-- CONGELADA
-- AJUSTE FINO
-- RECONSTRUÇÃO INDEPENDENTE
-- CONTINUIDADE
-- DESLOCAMENTO
-- RUPTURA
+- G1 CONGELADA
+- G1 AJUSTE FINO
+- G1 RECONSTRUÇÃO INDEPENDENTE
+- CONTINUIDADE / DESLOCAMENTO / RUPTURA
 - SALTOS E DIREÇÃO
 - ESPELHO / ANTIESPELHO
 - LINHA DO TEMPO
 - LABORATÓRIO
-- HISTÓRICOS MANUAIS
+- HISTÓRICO MANUAL ARQUIVADO
 - APAGAR ÚLTIMO MANUAL
 - RECUPERAR HISTÓRICO
 - FICHAS E MULTIPLICADOR
 
-NOVO V6.3.8:
+V6.3.9:
 
-1. TREINADOR GLOBAL NÚMERO
-   - ANALISA CADA GATILHO DE 0 A 36.
-   - AVALIA COMBINAÇÕES DOS 6 CENTRAIS.
-   - COMPARA OS MOTORES E ESTRATÉGIAS
-     ESPECIFICAMENTE PARA O NÚMERO.
-   - USA APENAS RESULTADOS JÁ CONHECIDOS.
-   - REAVALIA APÓS CADA NOVO GIRO.
+1. TREINADOR GLOBAL NÚMEROS INDEPENDENTE
 
-2. TREINADOR GLOBAL G1 POR NÚMERO
-   - ANALISA O NÚMERO QUE CAUSOU O GALE.
-   - COMPARA AS 3 DEFESAS.
-   - ANALISA O RESULTADO DE CADA DEFESA
-     NAS OCORRÊNCIAS DO MESMO GATILHO.
-   - REAVALIA CONTINUIDADE,
-     DESLOCAMENTO E RUPTURA.
-   - PODE MANTER, AJUSTAR OU RECONSTRUIR.
+Cada número conhecido produz uma combinação própria,
+calculada a partir do histórico disponível até aquele
+momento.
 
-3. BOTÕES ATIVOS
-   - TREINADOR GLOBAL NÚMERO.
-   - TREINADOR GLOBAL G1.
-   - INDICAÇÃO VISUAL ACESA.
+As combinações são arquivadas na janela de análise.
 
-4. JANELA 90 + 10
-   - IMPORTA OS ÚLTIMOS 90.
-   - ACEITA 10 MANUAIS.
-   - RECALCULA COM OS ÚLTIMOS 90.
-   - REINICIA TODO O APRENDIZADO.
-   - PRESERVA APENAS OS REGISTROS
-     MANUAIS ARQUIVADOS.
+Exemplo:
+Quando o último número é 2, o treinador procura os
+resultados que vieram depois de ocorrências anteriores
+do número 2.
+
+Em seguida compara TODAS as combinações registradas
+na janela, inclusive as geradas pelos números
+22, 32, 15, 0 e outros.
+
+Escolhe a combinação que melhor cobre esse conjunto
+de resultados posteriores ao número 2.
+
+A combinação escolhida pode ter sido gerada por
+qualquer número, não obrigatoriamente pelo 2.
+
+Não utiliza GREEN, GREEN G1 ou LOSS para escolher
+a combinação.
+
+2. TREINADORES SEPARADOS
+
+TREINADOR GLOBAL:
+Continua selecionando estratégias pelo seu histórico
+virtual, sem interferência do treinador de números.
+
+TREINADOR GLOBAL NÚMEROS:
+Seleciona diretamente uma combinação histórica.
+
+Os dois trabalham virtualmente, mas somente um
+controla a jogada real de cada vez.
+
+3. G1 NORMAL
+
+CONGELADA
+AJUSTE FINO
+TREINADOR GLOBAL G1 / RECONSTRUÇÃO
+
+A combinação original permanece congelada durante
+o ciclo de GALE. A defesa é escolhida quando o
+GALE começa.
+
+4. JANELA 70 + 10
+
+Importação inicial: últimos 70 números.
+
+Depois de 10 números manuais:
+- Se o ciclo estiver fechado, recalcula.
+- Se estiver em GALE, GALE_SKIP, SECOND_SKIP
+  ou SECOND_ENTRY, espera.
+- Recalcula apenas após GREEN, GREEN G1 ou LOSS
+  encerrar o ciclo.
+- Usa os 70 números mais recentes.
+- Recria cronologicamente as combinações.
+- Reinicia o aprendizado da nova janela.
+- Preserva os registros manuais arquivados.
 
 IMPORTANTE:
-ESTATÍSTICAS HISTÓRICAS NÃO GARANTEM
-RESULTADOS FUTUROS EM ROLETA.
+A cobertura histórica não garante resultados futuros.
 =========================================================
 */
 
-const VERSION = "6.3.8";
-const KEY = "ANALISE_BETA_V638";
-const OLD_KEY = "ANALISE_BETA_V637";
+const VERSION = "6.3.9";
 
-const WINDOW = 90;
+const KEY = "ANALISE_BETA_V639";
+
+const OLD_KEYS = [
+"ANALISE_BETA_V638",
+"ANALISE_BETA_V637",
+"ANALISE_BETA_V636",
+"ANALISE_BETA_V635",
+"ANALISE_BETA_V634",
+"ANALISE_BETA_V633"
+];
+
+const WINDOW = 70;
 const MANUAL_LIMIT = 10;
 
 const W = [
@@ -121,9 +159,18 @@ const ADAPTATIVES = Array.from(
 (_,i)=>({
 id:"A"+String(i+1).padStart(2,"0"),
 name:"ADAPTATIVA "+String(i+1).padStart(2,"0"),
-window:[10,10,10,20,20,20,30,30,20,30,20,30][i],
-margin:[.05,.10,.15,.05,.10,.15,.05,.10,.08,.12,.10,.08][i],
-maxRank:[12,12,12,12,12,12,12,12,12,6,4,8][i]
+window:[
+10,10,10,20,20,20,
+30,30,20,30,20,30
+][i],
+margin:[
+.05,.10,.15,.05,.10,.15,
+.05,.10,.08,.12,.10,.08
+][i],
+maxRank:[
+12,12,12,12,12,12,
+12,12,12,6,4,8
+][i]
 })
 );
 
@@ -137,33 +184,6 @@ const BEHAVIORS = [
 "CONTINUIDADE",
 "DESLOCAMENTO",
 "RUPTURA"
-];
-
-const NUMBER_STYLES = [
-{
-id:"NUM_FREQUENCIA",
-name:"NÚMERO • FREQUÊNCIA",
-recency:45,
-spread:2
-},
-{
-id:"NUM_RECENTE",
-name:"NÚMERO • RECENTE",
-recency:18,
-spread:2
-},
-{
-id:"NUM_FISICO",
-name:"NÚMERO • FÍSICO",
-recency:30,
-spread:3
-},
-{
-id:"NUM_HIBRIDO",
-name:"NÚMERO • HÍBRIDO",
-recency:28,
-spread:2
-}
 ];
 
 const $ = id => document.getElementById(id);
@@ -276,9 +296,11 @@ function fresh() {
 return {
 history:[],
 sources:[],
+
 manualCount:0,
 manualLog:[],
 cyclesCompleted:0,
+recalcPending:false,
 
 strategy:"TRAINER",
 rank:3,
@@ -289,7 +311,6 @@ activeCreated:null,
 
 g1:true,
 g1Trainer:true,
-numberTrainer:true,
 
 galeSkip:false,
 secondHouse:false,
@@ -309,9 +330,10 @@ trainerPending:false,
 trainerHistory:[],
 
 numberChoice:null,
-numberHistory:[],
-numberRows:[],
 numberChanges:0,
+numberHistory:[],
+numberCombinations:[],
+numberComparisons:[],
 
 virtual:{},
 entryRows:[],
@@ -349,6 +371,7 @@ return null;
 let state=fresh();
 let busy=false;
 let saveError="";
+let legacyData=null;
 
 const saved=read(KEY);
 
@@ -365,9 +388,8 @@ open:{
 state.history=
 cleanNumbers(state.history).slice(-100);
 
-state.manualCount=clamp(
-Number(state.manualCount)||0,
-0,10
+state.manualCount=Math.max(
+0,Number(state.manualCount)||0
 );
 
 for(const name of [
@@ -376,7 +398,8 @@ for(const name of [
 "created",
 "trainerHistory",
 "numberHistory",
-"numberRows",
+"numberCombinations",
+"numberComparisons",
 "entryRows",
 "g1Rows",
 "g1Pending",
@@ -395,20 +418,49 @@ typeof state.virtual!=="object"
 ) {
 state.virtual={};
 }
+
+} else {
+for(const key of OLD_KEYS) {
+const data=read(key);
+
+if(data?.history?.length) {
+legacyData=data;
+break;
+}
+}
 }
 
 function save() {
 try {
 const data={
 ...state,
-numberRows:state.numberRows.slice(-5000),
-numberHistory:state.numberHistory.slice(-300),
-entryRows:state.entryRows.slice(-4000),
-g1Rows:state.g1Rows.slice(-5000),
-ledger:state.ledger.slice(-300),
-realG1:state.realG1.slice(-300),
-decisions:state.decisions.slice(-300),
-trainerHistory:state.trainerHistory.slice(-300)
+
+numberCombinations:
+state.numberCombinations.slice(-100),
+
+numberComparisons:
+state.numberComparisons.slice(-300),
+
+numberHistory:
+state.numberHistory.slice(-300),
+
+entryRows:
+state.entryRows.slice(-4000),
+
+g1Rows:
+state.g1Rows.slice(-5000),
+
+ledger:
+state.ledger.slice(-300),
+
+realG1:
+state.realG1.slice(-300),
+
+decisions:
+state.decisions.slice(-300),
+
+trainerHistory:
+state.trainerHistory.slice(-300)
 };
 
 localStorage.setItem(
@@ -436,7 +488,6 @@ activeCreated:state.activeCreated,
 
 g1:state.g1,
 g1Trainer:state.g1Trainer,
-numberTrainer:state.numberTrainer,
 
 galeSkip:state.galeSkip,
 secondHouse:state.secondHouse,
@@ -449,7 +500,7 @@ open:copy(state.open)
 }
 
 /* ======================================================
- GEOMETRIA DE 28 NÚMEROS
+ GEOMETRIA 28 NÚMEROS
 ====================================================== */
 
 const FIVE=W.map(n=>({
@@ -690,7 +741,7 @@ regions
 }
 
 /* ======================================================
- 12 MOTORES ORIGINAIS
+ 12 MOTORES
 ====================================================== */
 
 function weightsFor(h,family,radius) {
@@ -894,7 +945,7 @@ const play=geometry(
 weightsFor(h,family,radius)
 );
 
-if(!play)continue;
+if(!validPlay(play))continue;
 
 result.push({
 key:family+"_"+radius,
@@ -918,28 +969,222 @@ return result;
 }
 
 /* ======================================================
- NOVO: TREINADOR GLOBAL NÚMERO
+ TREINADOR GLOBAL NÚMEROS V6.3.9
 ====================================================== */
 
 /*
+REGRA PRINCIPAL:
+
+A CADA NÚMERO CONHECIDO, O SISTEMA GERA
+UMA COMBINAÇÃO HISTÓRICA.
+
+ESSA COMBINAÇÃO FICA ASSOCIADA AO NÚMERO
+QUE ACABOU DE SAIR.
+
 EXEMPLO:
 
-HISTÓRICO:
-2,17,8,2,30,11,2,5
+GIRO 1: 22 -> COMBINAÇÃO A
+GIRO 2: 32 -> COMBINAÇÃO B
+GIRO 3: 15 -> COMBINAÇÃO C
+GIRO 4:  0 -> COMBINAÇÃO D
+GIRO 5:  2 -> COMBINAÇÃO E
 
-TRANSIÇÕES DO NÚMERO 2:
+QUANDO O ÚLTIMO NÚMERO FOR 2:
+
+PROCURA:
+2 -> PRÓXIMO RESULTADO
+2 -> PRÓXIMO RESULTADO
+2 -> PRÓXIMO RESULTADO
+
+COMPARA ESSES RESULTADOS CONTRA:
+
+COMBINAÇÃO A
+COMBINAÇÃO B
+COMBINAÇÃO C
+COMBINAÇÃO D
+COMBINAÇÃO E
+E TODAS AS OUTRAS COMBINAÇÕES REGISTRADAS.
+
+A COMBINAÇÃO DE 0 PODE SER MELHOR
+QUE A COMBINAÇÃO DE 2.
+
+NÃO UTILIZA GREEN/LOSS.
+
+O RESULTADO POSTERIOR A UM GATILHO
+SÓ É CONSIDERADO DEPOIS DE CONHECIDO.
+
+PARA EVITAR OLHAR O FUTURO:
+UMA COMBINAÇÃO É COMPARADA SOMENTE
+COM TRANSIÇÕES CUJO RESULTADO JÁ ERA
+CONHECIDO QUANDO A COMBINAÇÃO FOI GERADA.
+
+O RANKING ATUAL NÃO UTILIZA RESULTADOS
+FUTUROS AO ÚLTIMO NÚMERO DA JANELA.
+*/
+
+/*
+GERAÇÃO DA COMBINAÇÃO DE CADA NÚMERO.
+
+UTILIZA O ESTADO DO HISTÓRICO ATÉ
+O NÚMERO QUE ACABOU DE SER CONHECIDO.
+
+A GEOMETRIA É INDEPENDENTE DA
+ESTRATÉGIA REAL SELECIONADA.
+*/
+
+function generateNumberCombination(h) {
+if(h.length<8)return null;
+
+const trigger=h.at(-1);
+
+const weights=Array(37).fill(.02);
+
+const recent=h.slice(-60);
+
+for(let k=0;k<recent.length;k++) {
+const number=
+recent[recent.length-1-k];
+
+const p=ix(number);
+
+const decay=Math.exp(-k/18);
+
+for(let j=0;j<37;j++) {
+const d=Math.min(
+Math.abs(p-j),
+37-Math.abs(p-j)
+);
+
+if(d<=5) {
+weights[j]+=
+decay*(6-d)/6;
+}
+}
+}
+
+/*
+A ÚLTIMA TRANSIÇÃO E A POSIÇÃO FÍSICA
+DO NÚMERO ATUAL INFLUENCIAM A
+COMBINAÇÃO GERADA.
+*/
+
+if(h.length>=2) {
+const previous=h.at(-2);
+
+const step=direction(
+previous,trigger
+);
+
+const expected=mod(
+ix(trigger)+step
+);
+
+for(let j=0;j<37;j++) {
+const d=Math.min(
+Math.abs(expected-j),
+37-Math.abs(expected-j)
+);
+
+if(d<=4) {
+weights[j]+=
+(5-d)*.14;
+}
+}
+}
+
+/*
+TRANSIÇÕES JÁ CONHECIDAS DO PRÓPRIO
+NÚMERO, SEM CONSULTAR O PRÓXIMO GIRO.
+*/
+
+for(let i=0;i<h.length-1;i++) {
+if(h[i]!==trigger)continue;
+
+const next=h[i+1];
+
+const p=ix(next);
+
+const age=h.length-1-i;
+
+const decay=Math.exp(-age/28);
+
+for(let j=0;j<37;j++) {
+const d=Math.min(
+Math.abs(p-j),
+37-Math.abs(p-j)
+);
+
+if(d<=3) {
+weights[j]+=
+decay*(4-d)/4*.9;
+}
+}
+}
+
+const play=geometry(weights);
+
+if(!validPlay(play))return null;
+
+return {
+key:"NUMERO_GERADO_"+trigger,
+name:"COMBINAÇÃO DO "+trigger,
+trigger,
+score:play.score,
+play
+};
+}
+
+/*
+REGISTRA UMA COMBINAÇÃO POR NÚMERO
+CONHECIDO A PARTIR DA OITAVA POSIÇÃO.
+
+NÃO REGISTRA O RESULTADO DE APOSTA.
+*/
+
+function registerNumberCombination(
+h,turn
+) {
+const generated=
+generateNumberCombination(h);
+
+if(!generated)return;
+
+const record={
+id:"NC_"+turn,
+turn,
+origin:generated.trigger,
+motor:generated.key,
+play:copy(generated.play),
+centers:
+generated.play.blocks.map(
+b=>b.center
+),
+covered:[
+...generated.play.numbers
+]
+};
+
+state.numberCombinations.push(
+record
+);
+
+if(
+state.numberCombinations.length>100
+) {
+state.numberCombinations=
+state.numberCombinations.slice(-100);
+}
+}
+
+/*
+TRANSIÇÕES REAIS DO NÚMERO GATILHO.
+
+EXEMPLO:
 2 -> 17
 2 -> 30
 2 -> 5
 
-O TREINADOR MONTA COMBINAÇÕES
-COM OS 6 CENTRAIS PARA O GATILHO 2.
-
-CADA COMBINAÇÃO É AVALIADA
-CRONOLOGICAMENTE.
-
-NUNCA UTILIZA O PRÓXIMO RESULTADO
-ANTES DE ELE SER INFORMADO.
+NÃO CONFUNDE COM GREEN/LOSS.
 */
 
 function numberTransitions(h,trigger) {
@@ -951,266 +1196,288 @@ if(h[i]!==trigger)continue;
 rows.push({
 next:h[i+1],
 age:h.length-1-i,
-turn:i+2
+turn:i+2,
+triggerTurn:i+1
 });
 }
 
 return rows;
 }
 
-function numberWeights(h,trigger,style) {
-const weights=Array(37).fill(.02);
+/*
+COMPARA UMA COMBINAÇÃO COM OS
+RESULTADOS HISTÓRICOS POSTERIORES
+AO NÚMERO GATILHO.
 
-const pairs=numberTransitions(
-h,trigger
-);
+TODAS AS COMBINAÇÕES DA JANELA
+SÃO CANDIDATAS.
 
-const recent=h.slice(-50);
+O CRITÉRIO É COBERTURA NUMÉRICA
+CONDICIONADA AO GATILHO.
 
-for(const pair of pairs) {
-const p=ix(pair.next);
+A TAXA DE COBERTURA É DESCRITIVA.
+NÃO É UMA PROBABILIDADE GARANTIDA.
+*/
 
-const decay=Math.exp(
--pair.age/style.recency
-);
-
-for(let j=0;j<37;j++) {
-const d=Math.min(
-Math.abs(p-j),
-37-Math.abs(p-j)
-);
-
-if(d<=style.spread) {
-weights[j]+=
-decay*
-(style.spread+1-d)/
-(style.spread+1)*5;
-}
-}
-}
-
-for(let k=0;k<recent.length;k++) {
-const p=ix(
-recent[recent.length-1-k]
-);
-
-const decay=Math.exp(
--k/(style.recency/2)
-);
-
-for(let j=0;j<37;j++) {
-const d=Math.min(
-Math.abs(p-j),
-37-Math.abs(p-j)
-);
-
-if(d<=2) {
-weights[j]+=
-decay*(3-d)/3*.45;
-}
-}
-}
-
-if(style.id==="NUM_FISICO") {
-for(const n of neighbors(trigger,3)) {
-weights[ix(n)]+=.30;
-}
-}
-
-if(style.id==="NUM_HIBRIDO") {
-const base=weightsFor(
-h,"RX_DINAMICO",5
-);
-
-for(let j=0;j<37;j++) {
-weights[j]+=
-base[j]*.35;
-}
-}
-
-return weights;
-}
-
-function numberCandidates(h,trigger) {
-if(h.length<8||trigger==null)return [];
-
-const result=[];
-
-for(const style of NUMBER_STYLES) {
-const play=geometry(
-numberWeights(h,trigger,style)
-);
-
-if(!validPlay(play))continue;
-
-result.push({
-key:style.id,
-name:style.name,
-rank:0,
-score:play.score,
-play,
-type:"NUMBER"
-});
-}
-
-return result;
-}
-
-function numberMotorRows(trigger,key,limit=100) {
-return state.numberRows.filter(
-r=>
-r.trigger===trigger&&
-r.motor===key
-).slice(-limit);
-}
-
-function numberMotorMetrics(
-trigger,key,limit=100
-) {
-const rows=numberMotorRows(
-trigger,key,limit
-);
-
-const hits=rows.filter(
-r=>r.hit
-).length;
-
-return {
-total:rows.length,
-hits,
-loss:rows.length-hits,
-rate:rows.length
-?hits/rows.length
-:null
-};
-}
-
-function numberScore(
+function compareNumberCombination(
+record,
 trigger,
-motor,
-limit=40
+h
 ) {
-const rows=numberMotorRows(
-trigger,motor.key,limit
+const transitions=
+numberTransitions(h,trigger);
+
+const covered=new Set(
+record.covered
 );
 
-const recent=rows.slice(-8);
+let matches=0;
+let weightedMatches=0;
+let totalWeight=0;
+
+const matchedNumbers=[];
+const missedNumbers=[];
+
+for(const t of transitions) {
+const hit=covered.has(t.next);
+
+const weight=
+Math.exp(-t.age/35);
+
+totalWeight+=weight;
+
+if(hit) {
+matches++;
+weightedMatches+=weight;
+matchedNumbers.push(t.next);
+} else {
+missedNumbers.push(t.next);
+}
+}
+
+const total=transitions.length;
 
 const base=28/37;
 
-const hits=rows.filter(
-r=>r.hit
-).length;
+/*
+SUAVIZAÇÃO:
+EVITA TRATAR UMA ÚNICA OCORRÊNCIA
+COMO CERTEZA ABSOLUTA.
 
-const hits8=recent.filter(
-r=>r.hit
-).length;
+A COMPARAÇÃO CONTINUA SENDO ENTRE
+AS COMBINAÇÕES HISTÓRICAS, NÃO
+ENTRE ESTRATÉGIAS OU RESULTADOS
+DE APOSTAS.
+*/
 
 const historical=
-(hits+base*10)/
-(rows.length+10);
+(matches+base*3)/
+(total+3);
 
-const short=
-(hits8+base*6)/
-(recent.length+6);
+const recent=
+(weightedMatches+base*2)/
+(totalWeight+2);
 
-return {
-total:rows.length,
-hits,
-loss:rows.length-hits,
-score:
-historical*.75+
-short*.25
-};
-}
-
-function rankNumberMotors(h,cs) {
-const trigger=h.at(-1);
-
-if(trigger==null)return [];
-
-const extra=numberCandidates(
-h,trigger
-);
-
-const candidates=[
-...cs,
-...extra
-];
-
-return candidates.map(m=>{
-const stats=numberScore(
-trigger,m
-);
+const score=
+historical*.65+
+recent*.35;
 
 return {
-...m,
-numberStats:stats,
-numberScore:stats.score
+...record,
+trigger,
+total,
+matches,
+misses:total-matches,
+weightedMatches,
+score,
+matchedNumbers,
+missedNumbers
 };
-}).sort((a,b)=>
-b.numberScore-a.numberScore||
-b.numberStats.total-
-a.numberStats.total||
-(a.rank||99)-(b.rank||99)
-);
-}
-
-function bestNumberMotor(h,cs) {
-return rankNumberMotors(
-h,cs
-)[0]||null;
 }
 
 /*
-TODOS OS MOTORES E TODAS AS
-COMBINAÇÕES POR NÚMERO SÃO
-TESTADOS NO GIRO SEGUINTE.
+RETORNA O RANKING DAS COMBINAÇÕES
+GERADAS PELOS NÚMEROS DO HISTÓRICO.
 
-AS ESTATÍSTICAS SÃO REGISTRADAS
-SOMENTE DEPOIS DE CONHECER
-O NÚMERO SORTEADO.
+EXEMPLO:
+GATILHO 2
+
+1º COMBINAÇÃO DO 0
+2º COMBINAÇÃO DO 22
+3º COMBINAÇÃO DO 2
+4º COMBINAÇÃO DO 15
+
+NÃO EXISTE OBRIGAÇÃO DE ESCOLHER
+A COMBINAÇÃO DO PRÓPRIO GATILHO.
 */
 
-function trainNumberMotors(
+function rankNumberCombinations(
+h,
+trigger=h.at(-1)
+) {
+if(trigger==null)return [];
+
+return state.numberCombinations
+.filter(r=>validPlay(r.play))
+.map(record=>
+compareNumberCombination(
+record,trigger,h
+)
+)
+.sort((a,b)=>
+b.score-a.score||
+b.matches-a.matches||
+b.turn-a.turn
+);
+}
+
+/*
+ESCOLHE A JOGADA PRÓPRIA DO
+TREINADOR GLOBAL NÚMEROS.
+*/
+
+function bestNumberCombination(
+h
+) {
+if(h.length<8)return null;
+
+const trigger=h.at(-1);
+
+const ranked=
+rankNumberCombinations(
+h,trigger
+);
+
+const best=ranked[0];
+
+if(!best)return null;
+
+return {
+key:"NUM_T"+best.turn+
+"_N"+best.origin,
+
+name:
+"COMBINAÇÃO DO "+best.origin,
+
+rank:0,
+score:best.score,
+
+sourceNumber:best.origin,
+sourceTurn:best.turn,
+trigger,
+
+matches:best.matches,
+tests:best.total,
+
+play:copy(best.play),
+
+type:"NUMBER"
+};
+}
+
+/*
+ATUALIZA A ESCOLHA DO TREINADOR
+DE NÚMEROS, SEM ALTERAR O
+TREINADOR GLOBAL ORIGINAL.
+*/
+
+function updateNumberChoice() {
+const h=state.history;
+
+if(h.length<8) {
+state.numberChoice=null;
+return null;
+}
+
+const selected=
+bestNumberCombination(h);
+
+if(!selected) {
+state.numberChoice=null;
+return null;
+}
+
+const old=state.numberChoice;
+
+if(
+old&&
+(
+old.sourceTurn!==selected.sourceTurn||
+old.trigger!==selected.trigger
+)
+) {
+state.numberChanges++;
+}
+
+state.numberChoice={
+trigger:selected.trigger,
+sourceNumber:selected.sourceNumber,
+sourceTurn:selected.sourceTurn,
+motor:selected.key,
+score:selected.score,
+matches:selected.matches,
+tests:selected.tests,
+play:copy(selected.play)
+};
+
+return selected;
+}
+
+/*
+REGISTRO VIRTUAL DA COMPARAÇÃO.
+
+O RESULTADO DO GIRO ATUAL É USADO
+APENAS PARA REGISTRAR A COBERTURA
+DE UMA JOGADA QUE JÁ ESTAVA
+FORMADA ANTES DELE.
+
+NÃO INFLUENCIA A SELEÇÃO ANTERIOR.
+*/
+
+function recordNumberComparison(
 before,
 n,
-cs,
 turn
 ) {
 const trigger=before.at(-1);
 
 if(trigger==null)return;
 
-const extra=numberCandidates(
-before,trigger
-);
+const selected=
+bestNumberCombination(before);
 
-for(const motor of [
-...cs,
-...extra
-]) {
-state.numberRows.push({
+if(!selected)return;
+
+state.numberComparisons.push({
 turn,
 trigger,
-motor:motor.key,
-name:motor.name||motor.key,
-number:n,
-hit:motor.play.numbers.includes(n),
-centers:motor.play.blocks.map(
+sourceNumber:
+selected.sourceNumber,
+
+sourceTurn:
+selected.sourceTurn,
+
+next:n,
+
+covered:
+selected.play.numbers.includes(n),
+
+centers:
+selected.play.blocks.map(
 b=>b.center
 )
 });
-}
 
-if(state.numberRows.length>5500) {
-state.numberRows=
-state.numberRows.slice(-5500);
+if(
+state.numberComparisons.length>300
+) {
+state.numberComparisons=
+state.numberComparisons.slice(-300);
 }
 }
 
 /* ======================================================
- ESTRATÉGIAS
+ ESTRATÉGIAS ORIGINAIS
 ====================================================== */
 
 function definitions() {
@@ -1391,7 +1658,9 @@ return null;
 }
 
 const weights=Array(37).fill(.01);
-const mandatory=neighbors(trigger,1);
+
+const mandatory=
+neighbors(trigger,1);
 
 for(const n of original.play.numbers) {
 weights[ix(n)]+=100;
@@ -1448,10 +1717,6 @@ map.set(key,r);
 
 return [...map.values()].slice(-limit);
 }
-
-/* ======================================================
- NOVO: G1 CONDICIONADO AO NÚMERO
-====================================================== */
 
 function numberG1Rows(
 strategy,
@@ -1510,12 +1775,9 @@ map.set(row.eventId,row);
 return [...map.values()].slice(-limit);
 }
 
-/*
-LEITURA POR NÚMERO:
-COMPARA OS GALES ASSOCIADOS
-AO MESMO GATILHO, ALÉM DO
-COMPORTAMENTO GLOBAL DA ESTRATÉGIA.
-*/
+/* ======================================================
+ CONTINUIDADE / DESLOCAMENTO / RUPTURA
+====================================================== */
 
 function behaviorReading(
 original,h,strategy,trigger=null
@@ -1605,15 +1867,6 @@ numberRecent.length-numberLoss
 /* ======================================================
  RECONSTRUÇÃO INDEPENDENTE
 ====================================================== */
-
-/*
-A RECONSTRUÇÃO NÃO UTILIZA
-OS PESOS NEM OS 28 NÚMEROS
-DO MOTOR ORIGINAL.
-
-A V6.3.8 ACRESCENTA TRANSIÇÕES
-DO NÚMERO GATILHO AO HISTÓRICO.
-*/
 
 function reconstructG1(
 original,
@@ -1800,10 +2053,6 @@ rate:rows.length
 };
 }
 
-/* ======================================================
- NOVO: RANKING G1 GLOBAL + NÚMERO
-====================================================== */
-
 function rankDefenses(
 options,
 strategy,
@@ -1876,11 +2125,6 @@ if(
 option.behavior==="RUPTURA"&&
 option.mode==="RECONSTRUÇÃO"
 )bonus=.020;
-
-/*
-QUANDO HÁ AMOSTRA ESPECÍFICA
-DO NÚMERO, SEU PESO AUMENTA.
-*/
 
 const numberWeight=trigger==null
 ?0
@@ -1987,13 +2231,20 @@ phase:"ENTRY",
 previous:null,
 defense:null,
 entry:null,
-trigger:null
+trigger:null,
+entryTrigger:null
 });
 }
 
-function trainerRanking(
-trigger=null
-) {
+/*
+O TREINADOR GLOBAL ORIGINAL NÃO
+UTILIZA O RANKING DO TREINADOR
+GLOBAL NÚMEROS.
+
+SÃO SISTEMAS INDEPENDENTES.
+*/
+
+function trainerRanking() {
 return definitions().map(def=>{
 const rows=state.entryRows.filter(
 r=>
@@ -2011,69 +2262,34 @@ const losses=recent.filter(
 r=>r.result==="LOSS"
 ).length;
 
-const globalScore=
+const score=
 (hits+8*(28/37))/
 (rows.length+8)-
 losses*.008;
-
-/*
-NOVO:
-ESTRATÉGIA AVALIADA TAMBÉM
-PELO NÚMERO QUE DISPAROU
-A ENTRADA.
-*/
-
-const specific=trigger==null
-?[]
-:state.entryRows.filter(
-r=>
-r.strategy===def.id&&
-r.closed&&
-r.trigger===trigger
-).slice(-30);
-
-const specificHits=specific.filter(
-r=>r.result!=="LOSS"
-).length;
-
-const specificScore=
-(specificHits+8*(28/37))/
-(specific.length+8);
-
-const numberWeight=
-state.numberTrainer&&
-trigger!=null
-?Math.min(
-.50,
-specific.length/
-(specific.length+8)
-)
-:0;
-
-const score=
-globalScore*(1-numberWeight)+
-specificScore*numberWeight;
 
 return {
 ...def,
 score,
 total:rows.length,
 hits,
-loss:rows.length-hits,
-numberTotal:specific.length,
-numberHits:specificHits,
-numberLoss:
-specific.length-specificHits
+loss:rows.length-hits
 };
 }).sort((a,b)=>
 b.score-a.score||
-b.numberTotal-a.numberTotal||
 a.id.localeCompare(b.id)
 );
 }
 
 function activeDefinition() {
 const defs=definitions();
+
+if(state.strategy==="NUMBER") {
+return {
+id:"NUMBER",
+name:"TREINADOR GLOBAL NÚMEROS",
+type:"NUMBER"
+};
+}
 
 if(state.strategy==="TRAINER") {
 return defs.find(
@@ -2102,17 +2318,11 @@ d.id==="ORIGINAL:"+state.strategy
 
 function updateTrainer() {
 if(
-state.strategy!=="TRAINER"||
 state.phase!=="ENTRY"||
 state.manual
 )return;
 
-const trigger=state.history.at(-1);
-
-const ranked=trainerRanking(
-state.numberTrainer
-?trigger:null
-);
+const ranked=trainerRanking();
 
 const current=ranked.find(
 r=>r.id===state.trainerChoice
@@ -2133,12 +2343,6 @@ best.score>current.score+.035
 
 if(!shouldChange)return;
 
-/*
-MANTÉM A REGRA DE TROCA DA
-V6.3.7, AGORA COM A NOTA
-CONDICIONADA AO NÚMERO.
-*/
-
 const selected=current
 ?ranked.find(
 r=>r.id!==current.id
@@ -2158,16 +2362,14 @@ state.trainerPending=false;
 
 state.trainerHistory.push({
 turn:state.history.length,
-trigger,
 from:current?.id||"INICIAL",
 to:selected.id,
-score:selected.score,
-numberTotal:selected.numberTotal
+score:selected.score
 });
 }
 
 /* ======================================================
- MOTOR ATIVO + TREINADOR NÚMERO
+ MOTOR ATIVO
 ====================================================== */
 
 function activeMotor(cs) {
@@ -2177,68 +2379,29 @@ m=>m.key===state.manual
 )||cs[0]||null;
 }
 
-const normal=chooseMotor(
+/*
+MODO NÚMEROS:
+NÃO CHAMA O TREINADOR GLOBAL.
+ESCOLHE DIRETAMENTE A COMBINAÇÃO
+HISTÓRICA MAIS BEM CLASSIFICADA.
+*/
+
+if(state.strategy==="NUMBER") {
+return bestNumberCombination(
+state.history
+);
+}
+
+/*
+DEMAIS MODOS:
+FUNCIONAMENTO ORIGINAL.
+*/
+
+return chooseMotor(
 activeDefinition(),
 cs,
 state.previous
 );
-
-if(
-!state.numberTrainer||
-state.strategy!=="TRAINER"||
-!normal||
-state.history.length<8
-) {
-return normal;
-}
-
-const ranked=rankNumberMotors(
-state.history,cs
-);
-
-const best=ranked[0];
-
-if(!best)return normal;
-
-const trigger=state.history.at(-1);
-
-const normalStats=numberScore(
-trigger,normal
-);
-
-const bestStats=numberScore(
-trigger,best
-);
-
-/*
-TROCA APENAS QUANDO EXISTE
-EVIDÊNCIA CONDICIONADA MÍNIMA.
-
-CASO CONTRÁRIO, PRESERVA A
-ESCOLHA DO TREINADOR GLOBAL.
-*/
-
-const shouldUseNumber=
-best.key!==normal.key&&
-bestStats.total>=3&&
-bestStats.score>
-normalStats.score+.035;
-
-const selected=shouldUseNumber
-?best
-:normal;
-
-state.numberChoice={
-trigger,
-motor:selected.key,
-name:selected.name||selected.key,
-changed:shouldUseNumber,
-normal:normal.key,
-score:bestStats.score,
-tests:bestStats.total
-};
-
-return selected;
 }
 
 function profit(result) {
@@ -2264,7 +2427,7 @@ return 0;
 }
 
 /* ======================================================
- PROCESSAMENTO CRONOLÓGICO
+ RESOLUÇÃO DE GALES VIRTUAIS
 ====================================================== */
 
 function settlePending(n) {
@@ -2291,6 +2454,10 @@ state.g1Rows.slice(-5000);
 }
 }
 
+/* ======================================================
+ PROCESSAMENTO CRONOLÓGICO
+====================================================== */
+
 function spin(
 n,
 source="HISTÓRICO"
@@ -2306,8 +2473,9 @@ throw new Error(
 }
 
 /*
-PREVISÕES FORMADAS COM O
-HISTÓRICO ANTERIOR AO GIRO.
+TODAS AS PREVISÕES PARA O GIRO
+ATUAL SÃO FORMADAS ANTES DE
+REGISTRAR O RESULTADO N.
 */
 
 const before=[...state.history];
@@ -2320,22 +2488,19 @@ const defs=definitions();
 
 const turn=before.length+1;
 
-/*
-O G1 PENDENTE É RESOLVIDO
-COM O NÚMERO ATUAL.
-*/
-
-settlePending(n);
-
-if(state.phase==="ENTRY") {
-updateTrainer();
-}
-
 const phaseBefore=state.phase;
 
 const cycleBefore=copy(
 state.cycle
 );
+
+/*
+GUARDA A COMBINAÇÃO DE NÚMEROS
+SELECIONADA ANTES DO RESULTADO.
+*/
+
+const numberBefore=
+bestNumberCombination(before);
 
 let result="AGUARDANDO";
 let played=null;
@@ -2344,6 +2509,18 @@ const after=[
 ...before,
 n
 ];
+
+/*
+O TREINADOR GLOBAL ORIGINAL
+NÃO É ALTERADO PELO MODO NÚMEROS.
+
+A TROCA DE ESTRATÉGIA SÓ OCORRE
+QUANDO NÃO EXISTE CICLO PENDENTE.
+*/
+
+if(state.phase==="ENTRY") {
+updateTrainer();
+}
 
 /* ======================================================
  ENTRADA REAL
@@ -2354,6 +2531,7 @@ const motor=activeMotor(cs);
 
 if(motor) {
 played=copy(motor);
+
 state.previous=motor.key;
 
 state.cycle={
@@ -2379,6 +2557,7 @@ state.cycle=null;
 
 else {
 result="GALE";
+
 state.cycle.trigger=n;
 
 const strategy=
@@ -2405,7 +2584,7 @@ motor,after,strategy,n
 state.cycle.decision=decision;
 
 state.defense=copy(
-decision.motor
+decision?.motor||motor
 );
 
 state.phase=state.galeSkip
@@ -2415,11 +2594,12 @@ state.phase=state.galeSkip
 state.decisions.push({
 turn,
 strategy,
-mode:decision.mode,
-behavior:decision.behavior,
+mode:decision?.mode||"CONGELADA",
+behavior:decision?.behavior||
+"CONTINUIDADE",
 trigger:n,
 numberTests:
-decision.numberTotal||0
+decision?.numberTotal||0
 });
 }
 }
@@ -2482,7 +2662,7 @@ played,after,strategy,n
 state.cycle.decision=decision;
 
 state.defense=copy(
-decision.motor
+decision?.motor||played
 );
 
 state.phase=state.galeSkip
@@ -2492,11 +2672,12 @@ state.phase=state.galeSkip
 state.decisions.push({
 turn,
 strategy,
-mode:decision.mode,
-behavior:decision.behavior,
+mode:decision?.mode||"CONGELADA",
+behavior:decision?.behavior||
+"CONTINUIDADE",
 trigger:n,
 numberTests:
-decision.numberTotal||0
+decision?.numberTotal||0
 });
 }
 }
@@ -2548,41 +2729,74 @@ state.defense=null;
 }
 
 /* ======================================================
+ RESOLVE GALES VIRTUAIS ANTERIORES
+====================================================== */
+
+settlePending(n);
+
+/* ======================================================
  TREINAMENTO VIRTUAL ORIGINAL
 ====================================================== */
 
 const pending=[];
 
-for(const def of defs) {
+/*
+O TREINADOR NÚMEROS POSSUI UM CICLO
+VIRTUAL PRÓPRIO PARA QUE SUAS
+DEFESAS G1 TAMBÉM POSSAM SER
+OBSERVADAS.
+
+ELE NÃO ENTRA NO RANKING DO
+TREINADOR GLOBAL ORIGINAL.
+*/
+
+const virtualDefs=[
+...defs,
+{
+id:"NUMBER",
+name:"TREINADOR GLOBAL NÚMEROS",
+type:"NUMBER"
+}
+];
+
+for(const def of virtualDefs) {
 const v=virtualCycle(def.id);
 
 let motor=null;
-
 let virtualResult="AGUARDANDO";
-
 let closed=false;
 
-/*
-ENTRADA VIRTUAL:
-O RESULTADO N AINDA NÃO
-FOI USADO NA ESCOLHA.
-*/
-
 if(v.phase==="ENTRY") {
-motor=chooseMotor(
+motor=def.type==="NUMBER"
+?numberBefore
+:chooseMotor(
 def,cs,v.previous
 );
 
 if(!motor)continue;
 
 motor=copy(motor);
+
 v.previous=motor.key;
+v.entryTrigger=triggerBefore;
 
 if(
 motor.play.numbers.includes(n)
 ) {
 virtualResult="GREEN";
 closed=true;
+
+state.entryRows.push({
+turn,
+strategy:def.id,
+trigger:v.entryTrigger,
+motor:motor.key,
+result:"GREEN",
+closed:true,
+profit:profit("GREEN")
+});
+
+v.entryTrigger=null;
 }
 
 else {
@@ -2639,50 +2853,43 @@ motor?.play.numbers.includes(n)
 
 closed=true;
 
-v.phase="ENTRY";
-v.defense=null;
-v.entry=null;
-v.trigger=null;
-}
-
-/*
-NOVO:
-REGISTRA QUAL NÚMERO
-ANTERIOR GEROU A ENTRADA.
-*/
-
 state.entryRows.push({
 turn,
 strategy:def.id,
-trigger:
-v.phase==="ENTRY"&&
-virtualResult!=="GREEN"
-?v.trigger
-:triggerBefore,
-
-motor:motor?.key||null,
+trigger:v.entryTrigger,
+motor:v.entry?.key||null,
 result:virtualResult,
-closed,
+closed:true,
 profit:profit(
 virtualResult
 )
 });
+
+v.phase="ENTRY";
+v.defense=null;
+v.entry=null;
+v.trigger=null;
+v.entryTrigger=null;
+}
 }
 
 state.g1Pending=pending;
 
 /* ======================================================
- APRENDIZADO POR NÚMERO
+ COMPARAÇÃO NUMÉRICA V6.3.9
 ====================================================== */
 
 /*
-TREINA TODAS AS COMBINAÇÕES
-DO NÚMERO ANTERIOR COM O
-RESULTADO QUE ACABOU DE SAIR.
+COMPARA A JOGADA QUE ESTAVA
+PRONTA ANTES DO GIRO ATUAL.
+
+NÃO USA O RESULTADO ATUAL
+PARA ALTERAR RETROATIVAMENTE
+A COMBINAÇÃO.
 */
 
-trainNumberMotors(
-before,n,cs,turn
+recordNumberComparison(
+before,n,turn
 );
 
 /* ======================================================
@@ -2717,11 +2924,39 @@ profit:profit(result),
 play:
 played?.play||null,
 
+numberCandidate:
+numberBefore?.sourceNumber??null,
+
+numberCandidateTurn:
+numberBefore?.sourceTurn??null,
+
 motorHits
 });
 
+/*
+O RESULTADO AGORA É CONHECIDO.
+SÓ NESTE PONTO ELE ENTRA NO
+HISTÓRICO.
+*/
+
 state.history.push(n);
 state.sources.push(source);
+
+/*
+GERA A NOVA COMBINAÇÃO ASSOCIADA
+AO NÚMERO QUE ACABOU DE SAIR.
+*/
+
+registerNumberCombination(
+state.history,turn
+);
+
+/*
+ATUALIZA O PAINEL DO TREINADOR
+NÚMEROS PARA O PRÓXIMO GIRO.
+*/
+
+updateNumberChoice();
 
 if(state.entryRows.length>4000) {
 state.entryRows=
@@ -2733,10 +2968,6 @@ state.ledger=
 state.ledger.slice(-300);
 }
 
-if(
-state.strategy==="TRAINER"&&
-!state.manual
-) {
 state.trainerTurns++;
 
 if(
@@ -2746,10 +2977,9 @@ state.trainerTurns>=3
 state.trainerPending=true;
 }
 }
-}
 
 /* ======================================================
- REPROCESSAMENTO COMPLETO 90 + 10
+ RECÁLCULO 70 + 10
 ====================================================== */
 
 function waitFrame() {
@@ -2786,11 +3016,27 @@ b.disabled=value;
 }
 }
 
-async function rebuild90(
+/*
+REPROCESSA CRONOLOGICAMENTE
+OS ÚLTIMOS 70 NÚMEROS.
+
+AS COMBINAÇÕES ANTIGAS SÃO
+DESCARTADAS.
+
+CADA NÚMERO DOS 70 GERA SUA
+COMBINAÇÃO NOVAMENTE, USANDO
+SOMENTE O HISTÓRICO DISPONÍVEL
+ATÉ ELE.
+*/
+
+async function rebuild70(
 numbers,
 {
 preserveManual=false,
-incrementCycle=false
+incrementCycle=false,
+customSettings=null,
+customManualLog=null,
+customCycles=null
 }={}
 ) {
 if(busy)return;
@@ -2801,20 +3047,27 @@ const clean=cleanNumbers(
 numbers
 ).slice(-WINDOW);
 
-const opts=settings();
+const opts=
+customSettings||settings();
 
-const manualLog=preserveManual
+const manualLog=
+customManualLog!=null
+?copy(customManualLog)
+:preserveManual
 ?copy(state.manualLog)
 :[];
 
-const cycles=preserveManual
+const cycles=
+customCycles!=null
+?customCycles
+:preserveManual
 ?state.cyclesCompleted+
 (incrementCycle?1:0)
 :0;
 
 setBusy(
 true,
-"RECALCULANDO TODOS OS MOTORES E TREINADORES"
+"RECALCULANDO JANELA DE 70 NÚMEROS"
 );
 
 await waitFrame();
@@ -2829,7 +3082,8 @@ sources:[],
 
 manualLog,
 manualCount:0,
-cyclesCompleted:cycles
+cyclesCompleted:cycles,
+recalcPending:false
 };
 
 for(let i=0;i<clean.length;i++) {
@@ -2843,15 +3097,19 @@ i%5===4||
 i===clean.length-1
 ) {
 const message=
-"RECALCULANDO ANÁLISES: "+
+"RECALCULANDO: "+
 (i+1)+"/"+clean.length+
 " NÚMEROS";
 
+if($("overlayMessage")) {
 $("overlayMessage").textContent=
 message;
+}
 
+if($("status")) {
 $("status").textContent=
 message;
+}
 
 await new Promise(resolve=>
 setTimeout(resolve,0)
@@ -2878,28 +3136,61 @@ render();
 }
 
 /*
-REINICIADOS NO RECÁLCULO:
+O RECÁLCULO NÃO PODE COMEÇAR
+ENQUANTO EXISTIR UM CICLO REAL
+ABERTO.
 
-- 12 MOTORES
-- TREINADOR GLOBAL
-- TREINADOR GLOBAL NÚMERO
-- TREINADOR GLOBAL G1
-- G1 POR NÚMERO
-- CONTINUIDADE
-- DESLOCAMENTO
-- RUPTURA
-- ENTRADAS VIRTUAIS
-- GALES VIRTUAIS
-- RANKINGS
-- ESTATÍSTICAS
-- DECISÕES
-- LINHA DO TEMPO DA JANELA
+ISSO INCLUI:
+- SECOND_SKIP
+- SECOND_ENTRY
+- GALE_SKIP
+- GALE
 
-PRESERVADOS:
-- CONFIGURAÇÕES
-- REGISTROS MANUAIS ARQUIVADOS
-- CONTAGEM DE RECÁLCULOS
+SOMENTE ENTRY É ESTADO LIVRE.
 */
+
+function canRecalculate() {
+return (
+state.phase==="ENTRY"&&
+state.cycle===null
+);
+}
+
+async function checkRecalculation() {
+if(busy)return;
+
+if(
+state.manualCount<MANUAL_LIMIT
+) {
+state.recalcPending=false;
+save();
+return;
+}
+
+if(!canRecalculate()) {
+state.recalcPending=true;
+save();
+render();
+return;
+}
+
+state.recalcPending=false;
+
+const latest70=
+state.history.slice(-WINDOW);
+
+await rebuild70(
+latest70,
+{
+preserveManual:true,
+incrementCycle:true
+}
+);
+}
+
+/* ======================================================
+ ADICIONAR MANUAL
+====================================================== */
 
 async function addManual(n) {
 if(busy)return;
@@ -2929,28 +3220,33 @@ strategy:row.strategy,
 motor:row.motor,
 phase:row.phase,
 
+numberCandidate:
+row.numberCandidate,
+
 timestamp:Date.now()
 });
 
 state.manualCount++;
 
-save();
-render();
-
 if(
 state.manualCount>=MANUAL_LIMIT
 ) {
-const last90=
-state.history.slice(-WINDOW);
+state.recalcPending=true;
+}
 
-await rebuild90(
-last90,
-{
-preserveManual:true,
-incrementCycle:true
-}
-);
-}
+save();
+render();
+
+/*
+SE O DÉCIMO NÚMERO ABRIR GALE,
+NÃO RECALCULA.
+
+SE O DÉCIMO PRIMEIRO RESOLVER
+O GALE, RECALCULA DEPOIS DE
+REGISTRAR ESSE RESULTADO.
+*/
+
+await checkRecalculation();
 
 } catch(e) {
 alert(
@@ -2969,8 +3265,7 @@ return (
 String(text).match(/\d+/g)||[]
 ).map(Number).filter(n=>
 Number.isInteger(n)&&
-n>=0&&
-n<=36
+n>=0&&n<=36
 );
 }
 
@@ -2998,7 +3293,7 @@ Math.min(WINDOW,clean.length)+
 
 $("paste").value="";
 
-await rebuild90(
+await rebuild70(
 clean,
 {
 preserveManual:false
@@ -3049,7 +3344,9 @@ state={
 ...opts,
 manualLog,
 manualCount,
-cyclesCompleted:cycles
+cyclesCompleted:cycles,
+recalcPending:
+manualCount>=MANUAL_LIMIT
 };
 
 for(let i=0;i<numbers.length;i++) {
@@ -3100,7 +3397,7 @@ render();
 }
 
 /* ======================================================
- COMPONENTES DA INTERFACE
+ INTERFACE - COMPONENTES
 ====================================================== */
 
 function button(
@@ -3315,11 +3612,17 @@ ${pct(x.hits,x.total)}
 }
 
 /* ======================================================
- RANKING G1 ORIGINAL
+ RANKING EXCLUSIVO G1
 ====================================================== */
 
 function g1RankingHTML() {
-const ranked=definitions().map(def=>{
+const ranked=[
+...definitions(),
+{
+id:"NUMBER",
+name:"TREINADOR GLOBAL NÚMEROS"
+}
+].map(def=>{
 const modes=G1_MODES.map(mode=>({
 mode,
 ...defenseMetrics(
@@ -3476,7 +3779,7 @@ ${pct(m.hits,m.total)}
 }
 
 /* ======================================================
- NOVO: PAINEL TREINADOR GLOBAL NÚMERO
+ PAINEL TREINADOR GLOBAL NÚMEROS
 ====================================================== */
 
 function numberTrainerHTML() {
@@ -3492,79 +3795,113 @@ AGUARDANDO HISTÓRICO.
 
 const trigger=h.at(-1);
 
-const cs=motors(h);
-
-const ranked=rankNumberMotors(
-h,cs
+const ranked=rankNumberCombinations(
+h,trigger
 );
 
 const pairs=numberTransitions(
 h,trigger
 );
 
-const selected=activeMotor(cs);
+const selected=ranked[0];
 
-const strategyRanking=trainerRanking(
-trigger
+const generated=
+state.numberCombinations;
+
+const uniqueOrigins=
+new Set(
+generated.map(x=>x.origin)
 );
+
+const comparisons=
+state.numberComparisons.slice(-20);
 
 return `
 <div class="box">
-<b>TREINADOR GLOBAL NÚMERO</b>
+<b>TREINADOR GLOBAL NÚMEROS V6.3.9</b>
 
 <p>
 STATUS:
 <strong class="${
-state.numberTrainer
+state.strategy==="NUMBER"
 ?"good":"bad"
 }">
-${state.numberTrainer
-?"ATIVADO"
-:"DESATIVADO"}
+${state.strategy==="NUMBER"
+?"CONTROLANDO A JOGADA"
+:"ANÁLISE VIRTUAL"}
 </strong>
 </p>
 
 <p>
-NÚMERO GATILHO:
+NÚMERO ATUAL:
 <strong>${trigger}</strong>
 </p>
 
 <p>
-OCORRÊNCIAS ANTERIORES
-DO NÚMERO COM RESULTADO
-SEGUINTE:
-${pairs.length}
+COMBINAÇÕES GERADAS NA JANELA:
+<strong>${generated.length}</strong>
 </p>
 
 <p>
-COMBINAÇÕES ANALISADAS:
-${ranked.length}
+NÚMEROS DE ORIGEM DIFERENTES:
+<strong>${uniqueOrigins.size}</strong>
 </p>
 
 <p>
-MOTOR ATUAL:
-${esc(
-selected?.key||"—"
-)}
+COMBINAÇÕES COMPARADAS PARA
+O NÚMERO ${trigger}:
+<strong>${ranked.length}</strong>
 </p>
 
 <p>
-MELHOR COMBINAÇÃO POR NÚMERO:
-${esc(
-ranked[0]?.name||
-ranked[0]?.key||
-"—"
-)}
+OCORRÊNCIAS ANTERIORES DO
+${trigger} COM RESULTADO SEGUINTE:
+<strong>${pairs.length}</strong>
 </p>
 
 <p>
-TROCAS CONDICIONADAS:
+MELHOR COMBINAÇÃO:
+<strong>
+${selected
+?"GERADA PELO NÚMERO "+selected.origin
+:"AGUARDANDO"}
+</strong>
+</p>
+
+<p>
+GIRO EM QUE FOI GERADA:
+<strong>
+${selected?.turn??"—"}
+</strong>
+</p>
+
+<p>
+COBERTURA DAS TRANSIÇÕES
+POSTERIORES AO ${trigger}:
+<strong>
+${selected
+?selected.matches+"/"+selected.total
+:"—"}
+</strong>
+</p>
+
+<p>
+ÍNDICE COMPARATIVO:
+<strong>
+${selected
+?pct(selected.score,1)
+:"—"}
+</strong>
+</p>
+
+<p>
+TROCAS DE COMBINAÇÃO:
 ${state.numberChanges}
 </p>
 </div>
 
 <div class="title">
-RANKING DOS 6 CENTRAIS
+RANKING DAS COMBINAÇÕES GERADAS
 PARA O NÚMERO ${trigger}
 </div>
 
@@ -3573,38 +3910,33 @@ PARA O NÚMERO ${trigger}
 <thead>
 <tr>
 <th>#</th>
-<th>COMBINAÇÃO</th>
-<th>TESTES</th>
-<th>GREEN</th>
-<th>ERROS</th>
-<th>ACERTO</th>
+<th>GERADA POR</th>
+<th>GIRO</th>
+<th>TRANSIÇÕES</th>
+<th>COBERTAS</th>
+<th>FORA</th>
 <th>ÍNDICE</th>
 </tr>
 </thead>
 <tbody>
 ${ranked.map((r,i)=>`
-<tr>
+<tr class="${
+i===0?"toprow":""
+}">
 <td>${i+1}</td>
 <td>
-${esc(r.name||r.key)}
+<strong>${r.origin}</strong>
 </td>
-<td>
-${r.numberStats.total}
-</td>
+<td>${r.turn}</td>
+<td>${r.total}</td>
 <td class="good">
-${r.numberStats.hits}
+${r.matches}
 </td>
 <td class="bad">
-${r.numberStats.loss}
+${r.misses}
 </td>
 <td>
-${pct(
-r.numberStats.hits,
-r.numberStats.total
-)}
-</td>
-<td>
-${pct(r.numberScore,1)}
+${pct(r.score,1)}
 </td>
 </tr>
 `).join("")}
@@ -3613,49 +3945,67 @@ ${pct(r.numberScore,1)}
 </div>
 
 <div class="title">
-6 CENTRAIS DA MELHOR COMBINAÇÃO
+JOGADA ESCOLHIDA:
+COMBINAÇÃO GERADA PELO
+NÚMERO ${selected?.origin??"—"}
 </div>
 
 <div class="centers">
 ${centersHTML(
-ranked[0]?.play
+selected?.play
 )}
 </div>
+
+<div class="title">
+28 NÚMEROS COBERTOS
+</div>
+
+${cloud(
+selected?.covered||[]
+)}
 
 <div class="title">
 9 DESCOBERTOS
 </div>
 
 ${cloud(
-missing(ranked[0]?.play)
+missing(selected?.play)
 )}
 
 <div class="title">
-RANKING DAS ESTRATÉGIAS
-PARA O NÚMERO ${trigger}
+RESULTADOS QUE VIERAM
+DEPOIS DO ${trigger}
+</div>
+
+${cloud(
+pairs.map(x=>x.next)
+)}
+
+<div class="title">
+COMBINAÇÕES GERADAS
+CRONOLOGICAMENTE
 </div>
 
 <div class="tablewrap">
 <table>
 <thead>
 <tr>
-<th>#</th>
-<th>ESTRATÉGIA</th>
-<th>TESTES</th>
-<th>ACERTOS</th>
-<th>LOSS</th>
-<th>ÍNDICE</th>
+<th>GIRO</th>
+<th>NÚMERO</th>
+<th>6 CENTROS GERADOS</th>
 </tr>
 </thead>
 <tbody>
-${strategyRanking.map((r,i)=>`
+${generated.slice()
+.reverse().map(r=>`
 <tr>
-<td>${i+1}</td>
-<td>${esc(r.name)}</td>
-<td>${r.numberTotal}</td>
-<td>${r.numberHits}</td>
-<td>${r.numberLoss}</td>
-<td>${pct(r.score,1)}</td>
+<td>${r.turn}</td>
+<td>
+<strong>${r.origin}</strong>
+</td>
+<td>
+${r.centers.join(" • ")}
+</td>
 </tr>
 `).join("")}
 </tbody>
@@ -3663,35 +4013,53 @@ ${strategyRanking.map((r,i)=>`
 </div>
 
 <div class="title">
-NÚMEROS QUE SAÍRAM
-DEPOIS DO ${trigger}
+ÚLTIMAS COMPARAÇÕES VIRTUAIS
 </div>
 
-${cloud(
-pairs.map(x=>x.next).slice(-25)
-)}
+${comparisons.slice()
+.reverse().map(r=>`
+<div class="listrow">
+GATILHO ${r.trigger}
+•
+COMBINAÇÃO DO ${r.sourceNumber}
+•
+GIRO ${r.sourceTurn}
+•
+RESULTADO ${r.next}
+•
+<strong class="${
+r.covered?"good":"bad"
+}">
+${r.covered
+?"COBERTO":"FORA"}
+</strong>
+</div>
+`).join("")}
 
 <div class="muted">
-A COMPARAÇÃO UTILIZA APENAS
-TESTES CRONOLÓGICOS ANTERIORES.
-QUANDO A AMOSTRA É PEQUENA,
-O ÍNDICE É SUAVIZADO.
+O TREINADOR COMPARA AS COMBINAÇÕES
+GERADAS PELOS NÚMEROS DO HISTÓRICO.
+
+NÃO UTILIZA O PLACAR DE GREEN,
+GREEN G1 OU LOSS PARA ESCOLHER.
+
+AS COMBINAÇÕES SÃO RECRIADAS
+QUANDO A JANELA DE 70 NÚMEROS
+É RECALCULADA.
+
+O ÍNDICE INDICA COBERTURA
+HISTÓRICA, NÃO PREVISIBILIDADE
+GARANTIDA DA ROLETA.
 </div>
 `;
 }
 
 /* ======================================================
- TREINADOR GLOBAL ORIGINAL + NÚMERO
+ PAINEL TREINADOR GLOBAL ORIGINAL
 ====================================================== */
 
 function trainerHTML() {
-const trigger=
-state.history.at(-1);
-
-const ranked=trainerRanking(
-state.numberTrainer
-?trigger:null
-);
+const ranked=trainerRanking();
 
 const active=ranked.find(
 r=>r.id===state.trainerChoice
@@ -3710,7 +4078,19 @@ uniqueGales(null,5000);
 
 return `
 <div class="box">
-<b>TREINADOR GLOBAL</b>
+<b>TREINADOR GLOBAL ORIGINAL</b>
+
+<p>
+STATUS:
+<strong class="${
+state.strategy==="TRAINER"
+?"good":"bad"
+}">
+${state.strategy==="TRAINER"
+?"CONTROLANDO A JOGADA"
+:"ANÁLISE VIRTUAL"}
+</strong>
+</p>
 
 <p>
 ESTRATÉGIAS:
@@ -3722,22 +4102,6 @@ ATIVA:
 ${esc(
 active?.name||"AGUARDANDO"
 )}
-</p>
-
-<p>
-NÚMERO ANALISADO:
-${trigger??"—"}
-</p>
-
-<p>
-TREINADOR POR NÚMERO:
-<strong class="${
-state.numberTrainer
-?"good":"bad"
-}">
-${state.numberTrainer
-?"ATIVADO":"DESATIVADO"}
-</strong>
 </p>
 
 <p>
@@ -3755,6 +4119,12 @@ ${state.trainerPending
 ?"TROCA PENDENTE — FECHAR GALE"
 :"AVALIAÇÃO A CADA GIRO"}
 </p>
+
+<p>
+ESTE TREINADOR NÃO UTILIZA
+AS COMBINAÇÕES DO TREINADOR
+GLOBAL NÚMEROS.
+</p>
 </div>
 
 <div class="box">
@@ -3769,13 +4139,6 @@ state.g1Trainer
 ${state.g1Trainer
 ?"ATIVADO":"DESATIVADO"}
 </strong>
-</p>
-
-<p>
-ANÁLISE POR NÚMERO:
-${state.g1Trainer
-?"ATIVA"
-:"DESLIGADA"}
 </p>
 
 <p>
@@ -3822,7 +4185,6 @@ RANKING DAS ESTRATÉGIAS
 <th>CICLOS</th>
 <th>ACERTOS</th>
 <th>LOSS</th>
-<th>TESTES Nº</th>
 <th>ÍNDICE</th>
 </tr>
 </thead>
@@ -3834,7 +4196,6 @@ ${ranked.map((r,i)=>`
 <td>${r.total}</td>
 <td>${r.hits}</td>
 <td>${r.loss}</td>
-<td>${r.numberTotal}</td>
 <td>${pct(r.score,1)}</td>
 </tr>
 `).join("")}
@@ -3853,8 +4214,6 @@ ${state.trainerHistory
 <div class="listrow">
 GIRO ${x.turn}
 •
-NÚMERO ${x.trigger??"—"}
-•
 ${esc(x.from)}
 →
 ${esc(x.to)}
@@ -3864,7 +4223,7 @@ ${esc(x.to)}
 }
 
 /* ======================================================
- G1 POR NÚMERO E DESCOBERTOS
+ G1 POR NÚMERO
 ====================================================== */
 
 function g1NumbersHTML() {
@@ -4342,12 +4701,24 @@ ${region(r.number)}
 •
 ${mirror(r.number)}
 </div>
+
+${r.numberCandidate!=null
+?`
+<div class="muted">
+TREINADOR NÚMEROS:
+COMBINAÇÃO DO ${r.numberCandidate}
+•
+GERADA NO GIRO
+${r.numberCandidateTurn}
+</div>
+`
+:""}
 </div>
 `).join("");
 }
 
 /* ======================================================
- CSS ORIGINAL + BOTÕES ACESOS
+ CSS
 ====================================================== */
 
 const css=`
@@ -4437,6 +4808,15 @@ box-shadow:
 inset 0 0 8px #27e99a33
 }
 
+.btn.number.active{
+background:#705200;
+border:2px solid #ffdf60;
+color:white;
+box-shadow:
+0 0 16px #ffce3677,
+inset 0 0 8px #ffce3633
+}
+
 .btn:disabled,
 .key:disabled{
 opacity:.35;
@@ -4472,6 +4852,15 @@ font-size:25px;
 color:#59e5ff
 }
 
+.progress.waiting{
+border:2px solid #ffd15c;
+background:#42351b
+}
+
+.progress.waiting strong{
+color:#ffd15c
+}
+
 .bar{
 height:12px;
 background:#34475a;
@@ -4484,6 +4873,10 @@ margin:10px 0
 height:100%;
 background:#31dca9;
 transition:width .2s
+}
+
+.barfill.waiting{
+background:#ffd15c
 }
 
 .centers{
@@ -4683,6 +5076,10 @@ th{
 color:#57def4
 }
 
+tr.toprow{
+background:#184a3d
+}
+
 .listrow{
 border-bottom:1px solid #35485d;
 padding:9px 2px;
@@ -4806,13 +5203,13 @@ RECALCULANDO ANÁLISES
 
 <p id="overlayMessage">
 PREPARANDO NOVA JANELA
-DE 90 NÚMEROS
+DE 70 NÚMEROS
 </p>
 
 <div class="muted">
 REINICIANDO OS 12 MOTORES,
 TREINADOR GLOBAL,
-TREINADOR GLOBAL NÚMERO,
+COMBINAÇÕES DO TREINADOR NÚMEROS,
 TREINADOR G1 E DEFESAS.
 </div>
 
@@ -4835,10 +5232,13 @@ ANÁLISE BETA V${VERSION}
 TREINADOR GLOBAL •
 G1 INDEPENDENTE
 <br>
-TREINADOR GLOBAL NÚMERO •
-G1 POR NÚMERO
+TREINADOR GLOBAL NÚMEROS
+COM JOGADA PRÓPRIA
 <br>
-JANELA AUTOMÁTICA 90 + 10
+JANELA AUTOMÁTICA 70 + 10
+<br>
+RECÁLCULO SOMENTE COM
+O CICLO DE GALE ENCERRADO
 </div>
 
 <section class="panel">
@@ -4872,7 +5272,7 @@ ZERAR TUDO
 
 <div class="status" id="status"></div>
 
-<div class="progress">
+<div class="progress" id="progressPanel">
 <div class="muted">
 LANÇAMENTOS MANUAIS DO CICLO
 </div>
@@ -4891,6 +5291,11 @@ id="barfill"
 <div
 class="muted"
 id="windowInfo"
+></div>
+
+<div
+class="muted"
+id="recalcStatus"
 ></div>
 </div>
 
@@ -4939,7 +5344,7 @@ ${[
 ["trainer","TREINADOR GLOBAL"],
 [
 "numbertrainer",
-"TREINADOR GLOBAL NÚMERO"
+"TREINADOR GLOBAL NÚMEROS"
 ],
 [
 "g1ranking",
@@ -5007,8 +5412,15 @@ step=".01"
 
 <div class="box">
 A CADA 10 LANÇAMENTOS MANUAIS,
-O SISTEMA RECOMEÇA O TREINAMENTO
-COM OS ÚLTIMOS 90 NÚMEROS.
+O SISTEMA RECALCULA COM OS
+70 NÚMEROS MAIS RECENTES.
+
+SE EXISTIR GALE OU OUTRA
+ETAPA PENDENTE, O RECÁLCULO
+ESPERA O ENCERRAMENTO DO CICLO.
+
+AS COMBINAÇÕES NUMÉRICAS
+SÃO GERADAS NOVAMENTE.
 
 OS REGISTROS MANUAIS ANTERIORES
 FICAM ARQUIVADOS, SEM INFLUENCIAR
@@ -5019,7 +5431,7 @@ A NOVA ANÁLISE.
 `;
 
 /* ======================================================
- BOTÕES
+ BOTÕES DE ESTRATÉGIAS
 ====================================================== */
 
 function changeStrategy(
@@ -5028,6 +5440,22 @@ adaptive=null,
 created=null
 ) {
 if(busy)return;
+
+/*
+NÃO PERMITE TROCAR A ESTRATÉGIA
+REAL DURANTE UM CICLO ABERTO.
+
+ISSO EVITA MISTURAR A JOGADA
+ORIGINAL COM OUTRA DEFESA.
+*/
+
+if(!canRecalculate()) {
+alert(
+"AGUARDE ENCERRAR O CICLO ATUAL "+
+"ANTES DE TROCAR A ESTRATÉGIA."
+);
+return;
+}
 
 state.strategy=strategy;
 
@@ -5038,11 +5466,13 @@ state.activeCreated=created;
 state.manual=null;
 
 if(strategy==="TRAINER") {
-state.trainerChoice=null;
-state.trainerTurns=0;
-state.trainerPending=false;
-
+if(!state.trainerChoice) {
 updateTrainer();
+}
+}
+
+if(strategy==="NUMBER") {
+updateNumberChoice();
 }
 
 save();
@@ -5055,13 +5485,20 @@ root.innerHTML="";
 
 const groups=[
 [
-"TREINADORES",
+"TREINADORES INDEPENDENTES",
 [
 {
 label:"TREINADOR GLOBAL",
 id:"TRAINER",
 action:()=>changeStrategy(
 "TRAINER"
+)
+},
+{
+label:"TREINADOR GLOBAL NÚMEROS",
+id:"NUMBER",
+action:()=>changeStrategy(
+"NUMBER"
 )
 }
 ]
@@ -5111,7 +5548,9 @@ item.label,
 item.action,
 row,
 item.id==="TRAINER"
-?"trainer":""
+?"trainer":
+item.id==="NUMBER"
+?"number":""
 );
 
 b.dataset.choice=item.id;
@@ -5178,15 +5617,11 @@ root.appendChild(group);
 }
 }
 
-/*
-BOTÕES ACESOS DOS TREINADORES
-*/
+/* ======================================================
+ BOTÕES G1
+====================================================== */
 
 const OPTIONS=[
-[
-"numberTrainer",
-"TREINADOR GLOBAL NÚMERO"
-],
 [
 "g1Trainer",
 "TREINADOR GLOBAL G1"
@@ -5211,21 +5646,30 @@ label,
 ()=>{
 if(busy)return;
 
+if(!canRecalculate()) {
+alert(
+"AGUARDE ENCERRAR O CICLO "+
+"ANTES DE ALTERAR O G1."
+);
+return;
+}
+
 state[field]=!state[field];
 
 save();
 render();
 },
 $("options"),
-[
-"numberTrainer",
-"g1Trainer"
-].includes(field)
+field==="g1Trainer"
 ?"trainer":""
 );
 
 b.dataset.option=field;
 }
+
+/* ======================================================
+ TECLADO
+====================================================== */
 
 for(let n=0;n<=36;n++) {
 const b=document.createElement(
@@ -5247,6 +5691,10 @@ b.onclick=()=>addManual(n);
 $("keys").appendChild(b);
 }
 
+/* ======================================================
+ AÇÕES
+====================================================== */
+
 $("import").onclick=()=>{
 importHistory(
 parseInput(
@@ -5259,11 +5707,8 @@ $("restore").onclick=async()=>{
 if(busy)return;
 
 const keys=[
-OLD_KEY,
-"ANALISE_BETA_V636",
-"ANALISE_BETA_V635",
-"ANALISE_BETA_V634",
-"ANALISE_BETA_V633"
+KEY,
+...OLD_KEYS
 ];
 
 let found=null;
@@ -5357,14 +5802,6 @@ const cs=motors(
 state.history
 );
 
-if(
-state.strategy==="TRAINER"&&
-!state.trainerChoice&&
-state.phase==="ENTRY"
-) {
-updateTrainer();
-}
-
 const def=activeDefinition();
 
 const motor=
@@ -5373,6 +5810,10 @@ activeMotor(cs);
 
 const play=
 motor?.play||null;
+
+const waiting=
+state.manualCount>=MANUAL_LIMIT&&
+!canRecalculate();
 
 $("status").textContent=
 state.history.length+
@@ -5390,19 +5831,40 @@ state.manualCount+
 MANUAL_LIMIT;
 
 $("barfill").style.width=
-(
+Math.min(
+100,
 100*state.manualCount/
 MANUAL_LIMIT
 )+"%";
 
+$("progressPanel").classList.toggle(
+"waiting",waiting
+);
+
+$("barfill").classList.toggle(
+"waiting",waiting
+);
+
 $("windowInfo").textContent=
-"JANELA BASE: 90 NÚMEROS • "+
+"JANELA BASE: 70 NÚMEROS • "+
 "MANUAIS RESTANTES: "+
-(
+Math.max(
+0,
 MANUAL_LIMIT-state.manualCount
 )+
 " • RECÁLCULOS CONCLUÍDOS: "+
 state.cyclesCompleted;
+
+$("recalcStatus").textContent=
+waiting
+?"RECÁLCULO PENDENTE — "+
+"AGUARDANDO ENCERRAR "+
+state.phase
+:state.manualCount>=MANUAL_LIMIT
+?"RECÁLCULO PRONTO"
+:"PRÓXIMO RECÁLCULO AO COMPLETAR "+
+MANUAL_LIMIT+
+" MANUAIS E FECHAR O CICLO";
 
 for(const b of document.querySelectorAll(
 "[data-choice]"
@@ -5412,6 +5874,8 @@ const choice=b.dataset.choice;
 const active=
 state.strategy==="TRAINER"
 ?choice==="TRAINER":
+state.strategy==="NUMBER"
+?choice==="NUMBER":
 state.strategy==="ADAPTIVE"
 ?choice===state.adaptive:
 choice===state.strategy;
@@ -5444,13 +5908,9 @@ b.classList.toggle(
 );
 
 b.classList.toggle(
-"on",active&&
-[
-"numberTrainer",
-"g1Trainer"
-].includes(
-b.dataset.option
-)
+"on",
+active&&
+b.dataset.option==="g1Trainer"
 );
 }
 
@@ -5465,11 +5925,12 @@ state.activeCreated===
 );
 }
 
-$("selected").textContent=
-(
+const strategyLabel=
 state.cycle?.strategy||
-def.name
-)+
+def.name;
+
+$("selected").textContent=
+strategyLabel+
 " • MOTOR "+
 (
 motor?.key||"AGUARDANDO"
@@ -5485,8 +5946,8 @@ state.cycle.decision.behavior
 :""
 )+
 (
-state.numberTrainer
-?" • TREINADOR NÚMERO ATIVO"
+state.strategy==="NUMBER"
+?" • JOGADA INDEPENDENTE POR NÚMERO"
 :""
 );
 
@@ -5631,9 +6092,6 @@ g1NumbersHTML();
 ====================================================== */
 
 if(state.open.motors) {
-const trigger=
-state.history.at(-1);
-
 $("motors").innerHTML=`
 <div class="row">
 ${cs.map(c=>`
@@ -5646,14 +6104,7 @@ ${esc(c.key)}
 `).join("")}
 </div>
 
-${cs.map(c=>{
-const m=trigger==null
-?{total:0,hits:0,loss:0}
-:numberMotorMetrics(
-trigger,c.key
-);
-
-return `
+${cs.map(c=>`
 <div class="listrow">
 <b>
 ${c.rank}º
@@ -5670,19 +6121,20 @@ ${sortedBlocks(c.play)
 </div>
 
 <div class="muted">
-NÚMERO ${trigger??"—"}
+HISTÓRICO VIRTUAL:
+${state.ledger.filter(
+r=>r.motorHits&&
+c.key in r.motorHits
+).length}
+TESTES
 •
-TESTES ${m.total}
-•
-GREEN ${m.hits}
-•
-ERROS ${m.loss}
-•
-ACERTO ${pct(m.hits,m.total)}
+ÍNDICE
+${pct(
+motorRate(c.key,70),1
+)}
 </div>
 </div>
-`;
-}).join("")}
+`).join("")}
 `;
 
 for(const b of document.querySelectorAll(
@@ -5696,6 +6148,13 @@ state.manual===b.dataset.manual
 b.onclick=()=>{
 if(busy)return;
 
+if(!canRecalculate()) {
+alert(
+"AGUARDE ENCERRAR O CICLO."
+);
+return;
+}
+
 state.manual=b.dataset.manual;
 
 save();
@@ -5705,7 +6164,7 @@ render();
 }
 
 /* ======================================================
- DEMAIS PAINÉIS ORIGINAIS
+ DEMAIS PAINÉIS
 ====================================================== */
 
 if(state.open.jumps) {
@@ -5740,9 +6199,24 @@ RECONSTRUÇÃO INDEPENDENTE
 </div>
 
 <div class="box">
-TREINADOR GLOBAL NÚMERO:
-ANÁLISE DOS 6 CENTRAIS
-POR GATILHO DE 0 A 36.
+TREINADOR GLOBAL:
+RANKING DAS ESTRATÉGIAS
+EXISTENTES.
+</div>
+
+<div class="box">
+TREINADOR GLOBAL NÚMEROS:
+COMBINAÇÕES GERADAS POR CADA
+NÚMERO CONHECIDO.
+
+COMPARAÇÃO DE TODAS AS
+COMBINAÇÕES COM OS RESULTADOS
+POSTERIORES AO GATILHO ATUAL.
+
+JOGADA PRÓPRIA DE 6 CENTROS.
+
+SEM USAR GREEN/LOSS
+COMO CRITÉRIO.
 </div>
 
 <div class="box">
@@ -5754,7 +6228,9 @@ DESLOCAMENTO E RUPTURA.
 
 <div class="box">
 REPROCESSAMENTO:
-90 NÚMEROS + 10 MANUAIS
+70 NÚMEROS + 10 MANUAIS.
+
+AGUARDA ENCERRAR GALE.
 </div>
 
 <button
@@ -5828,32 +6304,114 @@ state.multiplier;
 }
 
 /* ======================================================
+ MIGRAÇÃO DA V6.3.8
+====================================================== */
+
+/*
+SE NÃO EXISTIR V6.3.9 SALVA,
+PROCURA HISTÓRICO V6.3.8.
+
+REPROCESSA OS ÚLTIMOS 70 NÚMEROS
+NA NOVA VERSÃO.
+
+PRESERVA CONFIGURAÇÕES E
+ARQUIVO MANUAL DA VERSÃO ANTERIOR.
+
+O REGISTRO ORIGINAL DA V6.3.8
+NÃO É APAGADO.
+*/
+
+async function migrateLegacy() {
+if(!legacyData)return;
+
+const old=legacyData;
+legacyData=null;
+
+const opts={
+...settings(),
+
+strategy:
+old.strategy==="NUMBER"
+?"NUMBER"
+:old.strategy||"TRAINER",
+
+rank:old.rank||3,
+
+manual:old.manual||null,
+
+adaptive:
+old.adaptive||"A05",
+
+created:
+copy(old.created||[]),
+
+activeCreated:
+old.activeCreated||null,
+
+g1:
+old.g1!==false,
+
+g1Trainer:
+old.g1Trainer!==false,
+
+galeSkip:
+!!old.galeSkip,
+
+secondHouse:
+!!old.secondHouse,
+
+stake:
+Number(old.stake)||1,
+
+multiplier:
+Number(old.multiplier)||1,
+
+open:{
+...fresh().open,
+...(old.open||{})
+}
+};
+
+await rebuild70(
+cleanNumbers(old.history),
+{
+preserveManual:true,
+customSettings:opts,
+customManualLog:
+old.manualLog||[],
+customCycles:
+Number(old.cyclesCompleted)||0
+}
+);
+}
+
+/* ======================================================
  INICIALIZAÇÃO
 ====================================================== */
 
 render();
 
 /*
-SE A PÁGINA FOI FECHADA
-DURANTE A CONCLUSÃO DO
-DÉCIMO NÚMERO, RETOMA
-O RECÁLCULO AUTOMÁTICO.
+RETOMA RECÁLCULO PENDENTE
+SOMENTE SE O CICLO ESTIVER
+ENCERRADO.
+
+SE A PÁGINA REABRIR EM GALE,
+O SISTEMA CONTINUA AGUARDANDO
+O RESULTADO DO GALE.
 */
 
-if(
-state.manualCount>=MANUAL_LIMIT
-) {
-const numbers=
-state.history.slice(-WINDOW);
-
+if(legacyData) {
 setTimeout(()=>{
-rebuild90(
-numbers,
-{
-preserveManual:true,
-incrementCycle:true
-}
-);
+migrateLegacy();
+},0);
+
+} else if(
+state.manualCount>=MANUAL_LIMIT||
+state.recalcPending
+) {
+setTimeout(()=>{
+checkRecalculation();
 },0);
 }
 
