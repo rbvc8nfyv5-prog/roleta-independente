@@ -1,15 +1,18 @@
 (() => {
   "use strict";
   /*
-ANÁLISE BETA V6.5.0 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- Estratégia BASE selecionável, além de V1–V8 em cada grupo.
+- Ranking das oito variações: posição, acerto direto e melhor ao lado do nome.
+- Linhas do tempo de primeira entrada para todas as estratégias e variações.
 - Grupos de treinadores, originais e variações recolhíveis.
 - Somente Treinador Global e Treinador Global Números.
 - Oito variações por original e Treinador Números.
 - Cada variação conserva NORMAL, DINAMICO, RX_NORMAL e RX_DINAMICO, C4/C5/C6.
 - Cada conjunto tem 12 coberturas distintas de 28 e cobre a roda inteira, 37/37.
 - Janela importada de 8 a 70; entram 10 novos, saem 10 antigos.
-- Geração das combinações a cada bloco; registro e avaliação em cada resultado.
+- Análises e próxima jogada atualizadas a cada número; descarte de dez a cada dez.
 - Jogada e defesa comprometidas preservadas, inclusive na virada do bloco.
 - Melhor variação virtual no lugar do líquido; avaliação somente com resultados passados.
 - Processamento em segundo plano quando disponível; número recebido aparece imediatamente.
@@ -17,10 +20,12 @@ ANÁLISE BETA V6.5.0 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.5.0",
-    KEY = "ANALISE_BETA_V650",
+  const VERSION = "6.5.2",
+    KEY = "ANALISE_BETA_V652",
     WINDOW = 70;
   const OLD_KEYS = [
+    "ANALISE_BETA_V651",
+    "ANALISE_BETA_V650",
     "ANALISE_BETA_V649",
     "ANALISE_BETA_V648",
     "ANALISE_BETA_V645",
@@ -3011,19 +3016,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
   }
 
-  function updateVariantButtons() {
-    const owner = state.cycle?.original?.owner || activeVariationOwner();
-    const variation =
-      state.cycle?.original?.variation || state.variantSelections[owner] || 1;
-    for (const b of document.querySelectorAll("[data-variant-owner]")) {
-      b.classList.toggle(
-        "active",
-        b.dataset.variantOwner === owner &&
-          Number(b.dataset.variant) === variation,
-      );
-    }
-  }
-
   function breakdown(strategy = null, mode = "CONGELADA") {
     const out = {
       CONTINUIDADE: { total: 0, hits: 0 },
@@ -3038,7 +3030,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
     return out;
   }
-  /* ATUALIZAÇÃO EM BLOCOS DE DEZ. A entrada e o G1 comprometidos permanecem
+  /* ANÁLISES A CADA RESULTADO; RETIRADA DO HISTÓRICO EM BLOCOS DE DEZ. A entrada e o G1 comprometidos permanecem
    congelados. A avaliação de cada resultado usa somente a previsão anterior. */
   let blockRuntimeKey = null;
   let blockRuntimeData = null;
@@ -3064,6 +3056,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function fresh() {
     return {
+      forecastVersion: VERSION,
       history: [],
       historyTurns: [],
       sources: [],
@@ -3106,10 +3099,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       ledger: [],
       variantBooks: {},
       variantSelections: {},
+      strategyTimeline: {},
       autoRows: [],
       autoRank: 1,
       groupsOpen: { trainers: true, originals: false },
-      open: { general: true },
+      open: { general: true, timeline: true },
       block: {
         size: 0,
         pending: 0,
@@ -3161,12 +3155,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     for (const field of [
       "variantBooks",
       "variantSelections",
+      "strategyTimeline",
       "virtual",
       "groupsOpen",
     ]) {
       if (!r[field] || typeof r[field] !== "object") r[field] = {};
     }
-    r.open = { general: r.open?.general !== false };
+    r.open = {
+      general: r.open?.general !== false,
+      timeline: r.open?.timeline !== false,
+    };
     if (
       !r.block ||
       !Array.isArray(r.block.anchor) ||
@@ -3184,6 +3182,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
     r.block.size = clamp(r.block.size || r.history.length, 0, 70);
     r.block.pending = clamp(Number(r.block.pending) || 0, 0, 9);
+    if (r.forecastVersion !== VERSION) {
+      r.block.data = null;
+      r.forecastVersion = VERSION;
+    }
     r.undoStack = r.undoStack.slice(-70);
     if (
       !VARIANT_OWNERS.some((o) => o.id === r.strategy) &&
@@ -3292,7 +3294,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function prepareBlock() {
     if (state.history.length < 8) return null;
-    if (state.block.data) return currentBlock();
+    if (state.block.data && state.block.decisionTurn === state.totalTurns)
+      return currentBlock();
     state.block.anchor = [...state.history].slice(-70);
     state.block.decisionTurn = state.totalTurns;
     variantForecastCache.clear();
@@ -3336,12 +3339,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function selectedVariantForecast() {
     const owner = activeVariationOwner();
-    if (!owner) return null;
+    if (!owner || chosenVariation(owner) === 0) return null;
     return (
       currentBlock()?.variants.find(
-        (f) =>
-          f.owner === owner &&
-          f.variation === (state.variantSelections[owner] || 1),
+        (f) => f.owner === owner && f.variation === chosenVariation(owner),
       ) || null
     );
   }
@@ -3373,18 +3374,22 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function activeDefinition() {
     const owner = activeVariationOwner();
+    const defs = definitions();
     if (owner && !state.manual) {
-      const variation = state.variantSelections[owner] || 1;
+      const variation = chosenVariation(owner),
+        name = VARIANT_OWNERS.find((o) => o.id === owner).name;
+      if (variation === 0)
+        return owner === "NUMBER"
+          ? { id: "NUMBER", name, type: "NUMBER" }
+          : { ...defs.find((d) => d.id === "ORIGINAL:" + owner), name };
       return {
         id: variantBookId(owner, variation),
-        name:
-          VARIANT_OWNERS.find((o) => o.id === owner).name + " • V" + variation,
+        name: name + " • V" + variation,
         type: "VARIANT",
         owner,
         variation,
       };
     }
-    const defs = definitions();
     if (state.strategy === "TRAINER")
       return (
         trainerRanking().find((d) => d.id === state.trainerChoice) ||
@@ -3455,13 +3460,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return cs.find((m) => m.key === state.manual) || cs[0] || null;
     const direct = selectedVariantForecast();
     if (direct) return copy(direct.choice);
-    const def = activeDefinition();
-    if (def.type === "VARIANT")
-      return copy(
-        currentBlock()?.variants.find((f) => f.bankId === def.id)?.choice ||
-          null,
-      );
-    return chooseMotor(def, cs, state.previous);
+    return motorForDefinition(activeDefinition(), cs, state.previous);
   }
 
   function pruneRolling() {
@@ -3570,6 +3569,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     const block = before.length >= 8 ? currentBlock() || prepareBlock() : null;
     const cs = block?.global || [],
       forecasts = block?.variants || [];
+    const timelineForecasts = snapshotTimelineForecasts(block);
     const phaseBefore = state.phase,
       oldCycle = copy(state.cycle);
     const spatial = spatialRead(before.slice(-70)),
@@ -3692,6 +3692,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         pruneRolling();
       }
     }
+    settleTimelineForecasts(timelineForecasts, n, turn);
+    // O descarte continua em dez; a previsão seguinte nunca usa o bloco anterior.
+    state.block.data = null;
+    blockRuntimeKey = null;
+    blockRuntimeData = null;
+    variantForecastCache.clear();
+    state.block.best = rankBestVariation();
     return state.ledger.at(-1);
   }
 
@@ -3715,6 +3722,139 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     prepareBlock();
   }
 
+  function chosenVariation(owner) {
+    const value = state.variantSelections[owner];
+    return Number.isInteger(value) && value >= 0 && value <= 8 ? value : 1;
+  }
+
+  function motorForDefinition(def, cs, previous) {
+    if (!def) return null;
+    if (def.type === "VARIANT")
+      return copy(
+        currentBlock()?.variants.find((f) => f.bankId === def.id)?.choice ||
+          null,
+      );
+    if (def.type === "NUMBER") return bestNumberCombination(state.history);
+    return chooseMotor(def, cs, previous);
+  }
+
+  function variationPerformance(owner) {
+    const cutoff = state.historyTurns[0] || 1;
+    const rows = Array.from({ length: 8 }, (_, index) => {
+      const variation = index + 1;
+      const samples = (
+        state.variantBooks[variantBookId(owner, variation)]?.rows || []
+      ).filter((r) => r.turn >= cutoff);
+      const total = samples.length,
+        hits = samples.filter((r) => r.entryHit).length,
+        recent = samples.slice(-5);
+      const score =
+        ((hits + (4 * 28) / 37) / (total + 4)) * 0.65 +
+        ((recent.filter((r) => r.entryHit).length + (2 * 28) / 37) /
+          (recent.length + 2)) *
+          0.35;
+      return { variation, total, hits, score, rate: total ? hits / total : 0 };
+    }).sort(
+      (a, b) =>
+        b.score - a.score || b.hits - a.hits || a.variation - b.variation,
+    );
+    return rows.map((r, i) => ({ ...r, position: i + 1 }));
+  }
+
+  function timelineDefinitions() {
+    return [
+      { id: "TRAINER", name: "TREINADOR GLOBAL" },
+      ...VARIANT_OWNERS.flatMap((o) => [
+        {
+          id: o.id === "NUMBER" ? "NUMBER" : "ORIGINAL:" + o.id,
+          name: o.name + " • BASE",
+        },
+        ...Array.from({ length: 8 }, (_, i) => ({
+          id: variantBookId(o.id, i + 1),
+          name: o.name + " • V" + (i + 1),
+        })),
+      ]),
+      ...definitions()
+        .filter((d) => d.type !== "ORIGINAL")
+        .map((d) => ({ id: d.id, name: d.name })),
+    ];
+  }
+
+  function updateVariantButtons() {
+    const original = state.cycle?.original;
+    const owner = original?.owner || activeVariationOwner();
+    const variation = original?.variation ?? chosenVariation(owner);
+    for (const b of document.querySelectorAll("[data-variant-owner]")) {
+      b.classList.toggle(
+        "active",
+        b.dataset.variantOwner === owner &&
+          Number(b.dataset.variant) === variation,
+      );
+    }
+  }
+
+  function timelineSamples(id) {
+    const cutoff = state.historyTurns[0] || 1;
+    if (state.strategyTimeline[id])
+      return state.strategyTimeline[id].filter((r) => r.turn >= cutoff);
+    if (id.includes("@V"))
+      return (state.variantBooks[id]?.rows || [])
+        .filter((r) => r.turn >= cutoff)
+        .map((r) => ({ turn: r.turn, hit: !!r.entryHit }));
+    const samples = state.entryRows
+      .filter((r) => r.strategy === id && r.closed)
+      .map((r) => ({
+        turn: r.result === "GREEN" ? r.turn : r.turn - 1,
+        hit: r.result === "GREEN",
+      }));
+    if (state.virtual[id]?.phase === "GALE")
+      samples.push({ turn: state.totalTurns, hit: false });
+    return [
+      ...new Map(
+        samples.filter((r) => r.turn >= cutoff).map((r) => [r.turn, r]),
+      ).values(),
+    ].sort((a, b) => a.turn - b.turn);
+  }
+
+  function snapshotTimelineForecasts(block) {
+    if (!block) return [];
+    const forecasts = [];
+    const append = (id, motor) => {
+      if (!validPlay(motor?.play)) return;
+      if (!state.strategyTimeline[id])
+        state.strategyTimeline[id] = timelineSamples(id);
+      forecasts.push({ id, numbers: [...motor.play.numbers] });
+    };
+    for (const def of definitions())
+      append(
+        def.id,
+        chooseMotor(def, block.global, state.virtual[def.id]?.previous),
+      );
+    append("NUMBER", bestNumberCombination(state.history));
+    for (const f of block.variants) append(f.bankId, f.choice);
+    const trainer =
+      trainerRanking().find((d) => d.id === state.trainerChoice) ||
+      trainerRanking()[0];
+    append(
+      "TRAINER",
+      motorForDefinition(trainer, block.global, state.previous),
+    );
+    return forecasts;
+  }
+
+  function settleTimelineForecasts(forecasts, n, turn) {
+    const cutoff = state.historyTurns[0] || 1;
+    for (const f of forecasts) {
+      const rows =
+        state.strategyTimeline[f.id] || (state.strategyTimeline[f.id] = []);
+      if (rows.at(-1)?.turn !== turn)
+        rows.push({ turn, hit: f.numbers.includes(n) });
+      state.strategyTimeline[f.id] = rows
+        .filter((r) => r.turn >= cutoff)
+        .slice(-79);
+    }
+  }
+
   let state = fresh();
   let busy = false;
   let saveError = "";
@@ -3727,15 +3867,18 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.5.0 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- Estratégia BASE selecionável, além de V1–V8 em cada grupo.
+- Ranking das oito variações: posição, acerto direto e melhor ao lado do nome.
+- Linhas do tempo de primeira entrada para todas as estratégias e variações.
 - Grupos de treinadores, originais e variações recolhíveis.
 - Somente Treinador Global e Treinador Global Números.
 - Oito variações por original e Treinador Números.
 - Cada variação conserva NORMAL, DINAMICO, RX_NORMAL e RX_DINAMICO, C4/C5/C6.
 - Cada conjunto tem 12 coberturas distintas de 28 e cobre a roda inteira, 37/37.
 - Janela importada de 8 a 70; entram 10 novos, saem 10 antigos.
-- Geração das combinações a cada bloco; registro e avaliação em cada resultado.
+- Análises e próxima jogada atualizadas a cada número; descarte de dez a cada dez.
 - Jogada e defesa comprometidas preservadas, inclusive na virada do bloco.
 - Melhor variação virtual no lugar do líquido; avaliação somente com resultados passados.
 - Processamento em segundo plano quando disponível; número recebido aparece imediatamente.
@@ -3743,10 +3886,12 @@ ANÁLISE BETA V6.5.0 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.5.0",
-      KEY = "ANALISE_BETA_V650",
+    const VERSION = "6.5.2",
+      KEY = "ANALISE_BETA_V652",
       WINDOW = 70;
     const OLD_KEYS = [
+      "ANALISE_BETA_V651",
+      "ANALISE_BETA_V650",
       "ANALISE_BETA_V649",
       "ANALISE_BETA_V648",
       "ANALISE_BETA_V645",
@@ -6789,19 +6934,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       }
     }
 
-    function updateVariantButtons() {
-      const owner = state.cycle?.original?.owner || activeVariationOwner();
-      const variation =
-        state.cycle?.original?.variation || state.variantSelections[owner] || 1;
-      for (const b of document.querySelectorAll("[data-variant-owner]")) {
-        b.classList.toggle(
-          "active",
-          b.dataset.variantOwner === owner &&
-            Number(b.dataset.variant) === variation,
-        );
-      }
-    }
-
     function breakdown(strategy = null, mode = "CONGELADA") {
       const out = {
         CONTINUIDADE: { total: 0, hits: 0 },
@@ -6816,7 +6948,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       }
       return out;
     }
-    /* ATUALIZAÇÃO EM BLOCOS DE DEZ. A entrada e o G1 comprometidos permanecem
+    /* ANÁLISES A CADA RESULTADO; RETIRADA DO HISTÓRICO EM BLOCOS DE DEZ. A entrada e o G1 comprometidos permanecem
    congelados. A avaliação de cada resultado usa somente a previsão anterior. */
     let blockRuntimeKey = null;
     let blockRuntimeData = null;
@@ -6842,6 +6974,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function fresh() {
       return {
+        forecastVersion: VERSION,
         history: [],
         historyTurns: [],
         sources: [],
@@ -6884,10 +7017,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         ledger: [],
         variantBooks: {},
         variantSelections: {},
+        strategyTimeline: {},
         autoRows: [],
         autoRank: 1,
         groupsOpen: { trainers: true, originals: false },
-        open: { general: true },
+        open: { general: true, timeline: true },
         block: {
           size: 0,
           pending: 0,
@@ -6939,12 +7073,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       for (const field of [
         "variantBooks",
         "variantSelections",
+        "strategyTimeline",
         "virtual",
         "groupsOpen",
       ]) {
         if (!r[field] || typeof r[field] !== "object") r[field] = {};
       }
-      r.open = { general: r.open?.general !== false };
+      r.open = {
+        general: r.open?.general !== false,
+        timeline: r.open?.timeline !== false,
+      };
       if (
         !r.block ||
         !Array.isArray(r.block.anchor) ||
@@ -6962,6 +7100,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       }
       r.block.size = clamp(r.block.size || r.history.length, 0, 70);
       r.block.pending = clamp(Number(r.block.pending) || 0, 0, 9);
+      if (r.forecastVersion !== VERSION) {
+        r.block.data = null;
+        r.forecastVersion = VERSION;
+      }
       r.undoStack = r.undoStack.slice(-70);
       if (
         !VARIANT_OWNERS.some((o) => o.id === r.strategy) &&
@@ -7070,7 +7212,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function prepareBlock() {
       if (state.history.length < 8) return null;
-      if (state.block.data) return currentBlock();
+      if (state.block.data && state.block.decisionTurn === state.totalTurns)
+        return currentBlock();
       state.block.anchor = [...state.history].slice(-70);
       state.block.decisionTurn = state.totalTurns;
       variantForecastCache.clear();
@@ -7114,12 +7257,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function selectedVariantForecast() {
       const owner = activeVariationOwner();
-      if (!owner) return null;
+      if (!owner || chosenVariation(owner) === 0) return null;
       return (
         currentBlock()?.variants.find(
-          (f) =>
-            f.owner === owner &&
-            f.variation === (state.variantSelections[owner] || 1),
+          (f) => f.owner === owner && f.variation === chosenVariation(owner),
         ) || null
       );
     }
@@ -7153,20 +7294,22 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function activeDefinition() {
       const owner = activeVariationOwner();
+      const defs = definitions();
       if (owner && !state.manual) {
-        const variation = state.variantSelections[owner] || 1;
+        const variation = chosenVariation(owner),
+          name = VARIANT_OWNERS.find((o) => o.id === owner).name;
+        if (variation === 0)
+          return owner === "NUMBER"
+            ? { id: "NUMBER", name, type: "NUMBER" }
+            : { ...defs.find((d) => d.id === "ORIGINAL:" + owner), name };
         return {
           id: variantBookId(owner, variation),
-          name:
-            VARIANT_OWNERS.find((o) => o.id === owner).name +
-            " • V" +
-            variation,
+          name: name + " • V" + variation,
           type: "VARIANT",
           owner,
           variation,
         };
       }
-      const defs = definitions();
       if (state.strategy === "TRAINER")
         return (
           trainerRanking().find((d) => d.id === state.trainerChoice) ||
@@ -7239,13 +7382,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         return cs.find((m) => m.key === state.manual) || cs[0] || null;
       const direct = selectedVariantForecast();
       if (direct) return copy(direct.choice);
-      const def = activeDefinition();
-      if (def.type === "VARIANT")
-        return copy(
-          currentBlock()?.variants.find((f) => f.bankId === def.id)?.choice ||
-            null,
-        );
-      return chooseMotor(def, cs, state.previous);
+      return motorForDefinition(activeDefinition(), cs, state.previous);
     }
 
     function pruneRolling() {
@@ -7356,6 +7493,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         before.length >= 8 ? currentBlock() || prepareBlock() : null;
       const cs = block?.global || [],
         forecasts = block?.variants || [];
+      const timelineForecasts = snapshotTimelineForecasts(block);
       const phaseBefore = state.phase,
         oldCycle = copy(state.cycle);
       const spatial = spatialRead(before.slice(-70)),
@@ -7478,6 +7616,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           pruneRolling();
         }
       }
+      settleTimelineForecasts(timelineForecasts, n, turn);
+      // O descarte continua em dez; a previsão seguinte nunca usa o bloco anterior.
+      state.block.data = null;
+      blockRuntimeKey = null;
+      blockRuntimeData = null;
+      variantForecastCache.clear();
+      state.block.best = rankBestVariation();
       return state.ledger.at(-1);
     }
 
@@ -7499,6 +7644,145 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       };
       clearSpatialCaches();
       prepareBlock();
+    }
+
+    function chosenVariation(owner) {
+      const value = state.variantSelections[owner];
+      return Number.isInteger(value) && value >= 0 && value <= 8 ? value : 1;
+    }
+
+    function motorForDefinition(def, cs, previous) {
+      if (!def) return null;
+      if (def.type === "VARIANT")
+        return copy(
+          currentBlock()?.variants.find((f) => f.bankId === def.id)?.choice ||
+            null,
+        );
+      if (def.type === "NUMBER") return bestNumberCombination(state.history);
+      return chooseMotor(def, cs, previous);
+    }
+
+    function variationPerformance(owner) {
+      const cutoff = state.historyTurns[0] || 1;
+      const rows = Array.from({ length: 8 }, (_, index) => {
+        const variation = index + 1;
+        const samples = (
+          state.variantBooks[variantBookId(owner, variation)]?.rows || []
+        ).filter((r) => r.turn >= cutoff);
+        const total = samples.length,
+          hits = samples.filter((r) => r.entryHit).length,
+          recent = samples.slice(-5);
+        const score =
+          ((hits + (4 * 28) / 37) / (total + 4)) * 0.65 +
+          ((recent.filter((r) => r.entryHit).length + (2 * 28) / 37) /
+            (recent.length + 2)) *
+            0.35;
+        return {
+          variation,
+          total,
+          hits,
+          score,
+          rate: total ? hits / total : 0,
+        };
+      }).sort(
+        (a, b) =>
+          b.score - a.score || b.hits - a.hits || a.variation - b.variation,
+      );
+      return rows.map((r, i) => ({ ...r, position: i + 1 }));
+    }
+
+    function timelineDefinitions() {
+      return [
+        { id: "TRAINER", name: "TREINADOR GLOBAL" },
+        ...VARIANT_OWNERS.flatMap((o) => [
+          {
+            id: o.id === "NUMBER" ? "NUMBER" : "ORIGINAL:" + o.id,
+            name: o.name + " • BASE",
+          },
+          ...Array.from({ length: 8 }, (_, i) => ({
+            id: variantBookId(o.id, i + 1),
+            name: o.name + " • V" + (i + 1),
+          })),
+        ]),
+        ...definitions()
+          .filter((d) => d.type !== "ORIGINAL")
+          .map((d) => ({ id: d.id, name: d.name })),
+      ];
+    }
+
+    function updateVariantButtons() {
+      const original = state.cycle?.original;
+      const owner = original?.owner || activeVariationOwner();
+      const variation = original?.variation ?? chosenVariation(owner);
+      for (const b of document.querySelectorAll("[data-variant-owner]")) {
+        b.classList.toggle(
+          "active",
+          b.dataset.variantOwner === owner &&
+            Number(b.dataset.variant) === variation,
+        );
+      }
+    }
+
+    function timelineSamples(id) {
+      const cutoff = state.historyTurns[0] || 1;
+      if (state.strategyTimeline[id])
+        return state.strategyTimeline[id].filter((r) => r.turn >= cutoff);
+      if (id.includes("@V"))
+        return (state.variantBooks[id]?.rows || [])
+          .filter((r) => r.turn >= cutoff)
+          .map((r) => ({ turn: r.turn, hit: !!r.entryHit }));
+      const samples = state.entryRows
+        .filter((r) => r.strategy === id && r.closed)
+        .map((r) => ({
+          turn: r.result === "GREEN" ? r.turn : r.turn - 1,
+          hit: r.result === "GREEN",
+        }));
+      if (state.virtual[id]?.phase === "GALE")
+        samples.push({ turn: state.totalTurns, hit: false });
+      return [
+        ...new Map(
+          samples.filter((r) => r.turn >= cutoff).map((r) => [r.turn, r]),
+        ).values(),
+      ].sort((a, b) => a.turn - b.turn);
+    }
+
+    function snapshotTimelineForecasts(block) {
+      if (!block) return [];
+      const forecasts = [];
+      const append = (id, motor) => {
+        if (!validPlay(motor?.play)) return;
+        if (!state.strategyTimeline[id])
+          state.strategyTimeline[id] = timelineSamples(id);
+        forecasts.push({ id, numbers: [...motor.play.numbers] });
+      };
+      for (const def of definitions())
+        append(
+          def.id,
+          chooseMotor(def, block.global, state.virtual[def.id]?.previous),
+        );
+      append("NUMBER", bestNumberCombination(state.history));
+      for (const f of block.variants) append(f.bankId, f.choice);
+      const trainer =
+        trainerRanking().find((d) => d.id === state.trainerChoice) ||
+        trainerRanking()[0];
+      append(
+        "TRAINER",
+        motorForDefinition(trainer, block.global, state.previous),
+      );
+      return forecasts;
+    }
+
+    function settleTimelineForecasts(forecasts, n, turn) {
+      const cutoff = state.historyTurns[0] || 1;
+      for (const f of forecasts) {
+        const rows =
+          state.strategyTimeline[f.id] || (state.strategyTimeline[f.id] = []);
+        if (rows.at(-1)?.turn !== turn)
+          rows.push({ turn, hit: f.numbers.includes(n) });
+        state.strategyTimeline[f.id] = rows
+          .filter((r) => r.turn >= cutoff)
+          .slice(-79);
+      }
     }
 
     let state = fresh();
@@ -7580,6 +7864,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   const css = `
 *{box-sizing:border-box}body{margin:0;background:#101720;color:#f4f7fb;font:13px Arial,sans-serif}.app{max-width:1100px;margin:auto;padding:12px}h1{font-size:24px;text-align:center;color:#59e5ff;margin:15px 0 5px}.sub{text-align:center;font-size:11px;color:#b3c7d9;line-height:1.7;margin-bottom:15px}.panel{background:#1d2938;border:1px solid #405a73;border-radius:11px;padding:12px;margin:10px 0}.title{color:#47e1f8;font-size:12px;font-weight:bold;margin:13px 0}.row{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0}.btn{background:#304359;border:1px solid #708aa6;border-radius:7px;color:white;padding:10px;font-size:11px;font-weight:bold;cursor:pointer}.btn.active{background:#087e9c;border-color:#4eeaff}.btn.trainer{background:#263f4c;border-color:#4d8191}.btn.trainer.active,.btn.trainer.on{background:#086c4d;border:2px solid #42ffb0;box-shadow:0 0 13px #27e99a77,inset 0 0 8px #27e99a33}.btn.number.active{background:#705200;border:2px solid #ffdf60;box-shadow:0 0 16px #ffce3677}.btn.number10.active{background:#512884;border:2px solid #d6a3ff;box-shadow:0 0 16px #ae67ff77}.btn:disabled,.key:disabled{opacity:.35;cursor:not-allowed}textarea{width:100%;height:88px;padding:10px;border-radius:8px;background:#0c1623;border:1px solid #62758b;color:white}.status{font-size:12px;color:#b5d7e8;padding:9px 0;overflow-wrap:anywhere}.windowBox{background:#102b2c;border:1px solid #32bba2;border-radius:9px;padding:12px;margin:10px 0}.windowBox strong{font-size:27px;color:#54f0c3}.bar{height:10px;background:#34475a;border-radius:20px;overflow:hidden;margin:10px 0}.barfill{height:100%;background:#31dca9}.centers{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin:12px 0}.center{min-height:86px;min-width:0;padding:8px 2px;border:2px solid #20d7f4;border-radius:9px;background:#086c91;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;text-align:center}.center.short{background:#d2a62b;border-color:#ffe28a;color:#111}.center strong{font-size:clamp(27px,5vw,43px);line-height:1;font-weight:900}.center small{font-size:9px;font-weight:bold}.keys{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}.key{height:44px;border:1px solid #71849b;border-radius:7px;color:white;font-size:16px;font-weight:bold;cursor:pointer}.key.zero{grid-column:span 6}.history{display:flex;flex-wrap:wrap;gap:5px}.chip{min-width:47px;padding:8px;border:2px solid #667f99;border-radius:7px;text-align:center}.chip b{display:block;font-size:18px}.chip small{font-size:9px}.chip.green{border:3px solid #29e99a}.chip.loss{border:3px solid #ff416e}.chip.gale{border:3px solid #ffe045}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.metric{background:#293c51;border-radius:8px;padding:11px 5px;text-align:center}.metric small{display:block;font-size:9px;color:#bbd0e2}.metric b{display:block;font-size:22px;margin-top:5px}.good{color:#4ee4a4}.bad{color:#ff778c}.box{background:#132235;border:1px solid #46617d;border-radius:9px;padding:12px;margin:9px 0;line-height:1.7;overflow-wrap:anywhere}.g1card{background:#142438;border:1px solid #55728f;border-radius:9px;padding:12px;margin:9px 0}.g1card.selected{border:2px solid #38e6aa;background:#10382e}.cloud{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}.cloud span{display:inline-flex;min-width:36px;height:36px;align-items:center;justify-content:center;background:#2b4058;border:1px solid #64829f;border-radius:7px;font-weight:bold}.cloud span.danger{background:#69283e;border-color:#ff6989}.tablewrap{overflow:auto}table{width:100%;min-width:610px;border-collapse:collapse;font-size:11px}td,th{padding:9px;text-align:left;border-bottom:1px solid #41556e}th{color:#57def4}.listrow{border-bottom:1px solid #35485d;padding:9px 2px;font-size:11px;line-height:1.7;overflow-wrap:anywhere}.muted{color:#b1c7d9;font-size:11px;line-height:1.7;overflow-wrap:anywhere}.head{width:100%;background:#2c4056;color:white;border:1px solid #66829f;border-radius:8px;padding:12px;font-weight:bold;text-align:left;cursor:pointer;display:flex;justify-content:space-between;gap:8px}.hide{display:none}input[type=number]{width:110px;padding:9px;background:#101b2a;color:white;border:1px solid #637b95;border-radius:7px}select{padding:10px;background:#101b2a;color:white;border:1px solid #8d6eb0;border-radius:7px;max-width:100%}.play10{position:relative;min-height:86px}#centers{position:relative}.reject10{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);z-index:3;background:#d20b2b;color:white;border:2px solid #ff8c9c;text-align:center;font-size:clamp(19px,5vw,31px);font-weight:900;padding:8px 4px;box-shadow:0 3px 18px #000b;pointer-events:none}.reject10 small{display:block;font-size:10px;line-height:1.4;margin-top:3px}.triangleDrawing{max-width:540px;margin:10px auto}.triangleDrawing svg{display:block;width:100%;height:auto}@media(max-width:600px){.center{min-height:79px}.center strong{font-size:clamp(25px,7vw,37px)}.center small{font-size:8px}.btn{font-size:10px;padding:9px}}
 `;
+  const variationUINodes = new Map();
+  const timelineUINodes = new Map();
+  let timelineLayoutKey = "";
   /* CONTROLES RECOLHÍVEIS. Os elementos são construídos uma vez; o lançamento
    troca somente os textos, os centros e o placar. */
   function groupDetails(id, title, parent, open = false) {
@@ -7604,8 +7891,19 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       parent,
       false,
     );
+    const summary = details.querySelector("summary");
     const row = document.createElement("div");
     row.className = "row";
+    const base = button(
+      "BASE • " + owner.name,
+      () => changeVariation(owner.id, 0),
+      row,
+    );
+    base.dataset.variantOwner = owner.id;
+    base.dataset.variant = "0";
+    base.title =
+      "Selecionar a estratégia base, com o mesmo cálculo disponível ao Treinador Global.";
+    const buttons = new Map();
     for (let variation = 1; variation <= 8; variation++) {
       const b = button(
         "V" + variation + " • " + VARIANT_PROFILES[variation - 1].name,
@@ -7614,8 +7912,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       );
       b.dataset.variantOwner = owner.id;
       b.dataset.variant = String(variation);
+      buttons.set(variation, b);
     }
     details.appendChild(row);
+    variationUINodes.set(owner.id, { summary, row, base, buttons, order: "" });
   }
 
   function buildStrategies() {
@@ -7624,6 +7924,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     strategyButtonsSignature = signature;
     const root = $("strategies");
     root.innerHTML = "";
+    variationUINodes.clear();
     const trainers = groupDetails(
       "trainers",
       "TREINADORES INDEPENDENTES",
@@ -7798,8 +8099,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       state.block.pending +
       "/10 • " +
       (state.block.data
-        ? "ATUALIZA AO COMPLETAR DEZ"
-        : "PREPARANDO ATUALIZAÇÃO");
+        ? "JOGADA ATUALIZADA • RETIRA DEZ ANTIGOS A CADA DEZ NOVOS"
+        : "PREPARANDO PRÓXIMA JOGADA");
     $("cycleInfo").textContent = cycleIsFree()
       ? "CICLO LIVRE"
       : "CICLO " + state.phase + " • JOGADA E DEFESA PRESERVADAS";
@@ -7833,6 +8134,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           state.activeCreated === "CREATED:" + b.dataset.created,
       );
     updateVariantButtons();
+    updateVariationRanks();
+    renderTimelinePanel();
     $("last").innerHTML = state.history
       .slice(-14)
       .map((n, i) => {
@@ -7871,7 +8174,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         metricsHTML(state.ledger) +
         '<div class="title">MANUAIS ARQUIVADOS</div>' +
         metricsHTML(state.manualLog) +
-        '<div class="muted">MELHOR VARIAÇÃO: comparação dos acertos diretos virtuais, atualizada a cada bloco de dez. ' +
+        '<div class="muted">MELHOR VARIAÇÃO: comparação dos acertos diretos virtuais, atualizada a cada resultado. As combinações são recalculadas a cada dez. ' +
         (state.block.best
           ? "AVALIADA ATÉ O GIRO " + state.block.best.turn + "."
           : "Ainda sem observações.") +
@@ -8084,7 +8387,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           clean.length +
           " RESULTADOS? A JANELA TERÁ " +
           clean.length +
-          " NÚMEROS E ATUALIZARÁ A CADA DEZ NOVOS.",
+          " NÚMEROS E RETIRARÁ DEZ ANTIGOS A CADA DEZ NOVOS. A PRÓXIMA JOGADA ATUALIZA A CADA NÚMERO.",
       )
     )
       return;
@@ -8100,6 +8403,98 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     render();
   }
 
+  function updateVariationRanks() {
+    for (const owner of VARIANT_OWNERS) {
+      const ui = variationUINodes.get(owner.id);
+      if (!ui) continue;
+      const ranked = variationPerformance(owner.id),
+        ready = ranked.some((r) => r.total > 0);
+      ui.summary.textContent =
+        owner.name +
+        (ready
+          ? " • MELHOR: V" +
+            ranked[0].variation +
+            " • 3º: V" +
+            ranked[2].variation
+          : " • SEM TESTES");
+      for (const r of ranked) {
+        const b = ui.buttons.get(r.variation);
+        const text =
+          (ready ? r.position + "º • " : "") +
+          "V" +
+          r.variation +
+          " • " +
+          VARIANT_PROFILES[r.variation - 1].name +
+          " • " +
+          (r.total ? pct(r.hits, r.total) : "SEM TESTES");
+        if (b.textContent !== text) b.textContent = text;
+        b.title = r.total
+          ? r.hits +
+            " acertos diretos em " +
+            r.total +
+            " testes. Posição " +
+            r.position +
+            "."
+          : "Sem observações ainda.";
+      }
+      const order = ranked.map((r) => r.variation).join(",");
+      if (ui.order !== order) {
+        for (const r of ranked) ui.row.appendChild(ui.buttons.get(r.variation));
+        ui.order = order;
+      }
+    }
+  }
+
+  function renderTimelinePanel() {
+    const root = $("timelines");
+    if (!root) return;
+    root.hidden = !state.open.timeline;
+    if (!state.open.timeline) return;
+    const definitions = timelineDefinitions(),
+      layout = definitions.map((d) => d.id + "=" + d.name).join("|");
+    if (layout !== timelineLayoutKey) {
+      root.innerHTML = "";
+      timelineUINodes.clear();
+      timelineLayoutKey = layout;
+      for (const def of definitions) {
+        const row = document.createElement("div");
+        row.className = "timelineRow";
+        const label = document.createElement("div");
+        label.className = "timelineName";
+        label.textContent = def.name;
+        const cells = document.createElement("div");
+        cells.className = "timelineCells";
+        row.appendChild(label);
+        row.appendChild(cells);
+        root.appendChild(row);
+        timelineUINodes.set(def.id, { cells, signature: null });
+      }
+    }
+    for (const def of definitions) {
+      const rows = timelineSamples(def.id).slice(-20),
+        ui = timelineUINodes.get(def.id);
+      const signature = rows.map((r) => r.turn + ":" + Number(r.hit)).join(",");
+      if (ui.signature === signature) continue;
+      ui.signature = signature;
+      ui.cells.innerHTML = rows.length
+        ? rows
+            .map(
+              (r) =>
+                '<span class="wlCell ' +
+                (r.hit ? "wlWin" : "wlLoss") +
+                '" title="GIRO ' +
+                r.turn +
+                " • " +
+                (r.hit ? "ACERTO DIRETO" : "FORA NA PRIMEIRA ENTRADA") +
+                '">' +
+                (r.hit ? "W" : "L") +
+                "</span>",
+            )
+            .join("")
+        : '<span class="muted">AGUARDANDO TESTES</span>';
+    }
+  }
+
   document.body.innerHTML = `
 <style>${css}
 .controlGroup{margin:9px 0;padding:9px;background:#172434;border:1px solid #405a73;border-radius:8px}
@@ -8107,10 +8502,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 .controlGroup .controlGroup{background:#102030}
 .metric:last-child b{font-size:14px;overflow-wrap:anywhere}
 #receipt{min-height:25px;color:#59e5ff;padding:6px 0}
+.timelineRow{display:flex;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid #35485d}
+.timelineName{flex:0 0 225px;font-size:11px;font-weight:bold;overflow-wrap:anywhere}
+.timelineCells{display:flex;flex-wrap:wrap;gap:3px;min-width:0}
+.wlCell{display:inline-flex;width:20px;height:23px;align-items:center;justify-content:center;border-radius:4px;font-size:11px;font-weight:bold;color:#fff}
+.wlWin{background:#087f52}.wlLoss{background:#a72845}
+@media(max-width:650px){.timelineRow{display:block}.timelineName{margin-bottom:5px}.wlCell{width:18px;height:22px}}
 </style>
 <main class="app">
 <h1>ANÁLISE BETA V${VERSION}</h1>
-<div class="sub">8 VARIAÇÕES POR ORIGINAL E TREINADOR NÚMEROS • 12 MOTORES PRÓPRIOS POR VARIAÇÃO<br>ATUALIZAÇÃO A CADA 10 NOVOS • JANELA ATÉ 70</div>
+<div class="sub">8 VARIAÇÕES POR ORIGINAL E TREINADOR NÚMEROS • 12 MOTORES PRÓPRIOS POR VARIAÇÃO<br>PRÓXIMA JOGADA A CADA NÚMERO • DESCARTE EM DEZ • JANELA ATÉ 70</div>
 <section class="panel">
 <div class="title">IMPORTAR HISTÓRICO</div>
 <textarea id="paste" placeholder="Cole de 8 a 70 números, do mais antigo ao mais recente"></textarea>
@@ -8121,6 +8522,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 <section class="panel"><div class="title">ESTRATÉGIA ATIVA</div><div id="strategies"></div><div class="row" id="options"></div><div class="muted" id="selected"></div><div class="centers" id="centers"></div><div class="muted" id="coverage"></div></section>
 <section class="panel"><div class="title">TECLADO 0–36</div><div id="receipt" aria-live="polite"></div><div class="keys" id="keys"></div></section>
 <section class="panel"><div class="title">ÚLTIMOS 14 NÚMEROS</div><div class="history" id="last"></div></section>
+<section class="panel"><button class="head" id="timelineToggle">LINHAS DO TEMPO • TODAS AS ESTRATÉGIAS <span>− / +</span></button><div class="muted">PRIMEIRA ENTRADA VIRTUAL: W = ACERTO DIRETO; L = FORA DA COBERTURA. ÚLTIMOS 20 TESTES DE CADA UMA. MAIS RECENTE À DIREITA.</div><div id="timelines"></div></section>
 <section class="panel"><div class="title">FICHAS / G1</div><div class="row"><label>VALOR DA FICHA <input id="stake" type="number" min=".01" step=".01"></label><label>MULTIPLICADOR G1 <input id="multiplier" type="number" min=".01" step=".01"></label></div></section>
 <section class="panel"><button class="head" id="generalToggle">RESULTADO GERAL <span>− / +</span></button><div id="general"></div></section>
 </main>`;
@@ -8187,6 +8589,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   $("multiplier").onchange = () => {
     state.multiplier = Math.max(0.01, Number($("multiplier").value) || 1);
     scheduleSave();
+  };
+  $("timelineToggle").onclick = () => {
+    state.open.timeline = !state.open.timeline;
+    scheduleSave();
+    render();
   };
   $("generalToggle").onclick = () => {
     state.open.general = !state.open.general;
