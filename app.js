@@ -1,11 +1,11 @@
 (() => {
   "use strict";
   /*
-ANÁLISE BETA V6.5.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Estratégia BASE selecionável, além de V1–V8 em cada grupo.
 - Ranking das oito variações: posição, acerto direto e melhor ao lado do nome.
-- Linhas do tempo de primeira entrada para todas as estratégias e variações.
+- Linhas por ciclo: W verde, G1 amarelo; o mesmo quadrinho vira R vermelho se perder a defesa.
 - Grupos de treinadores, originais e variações recolhíveis.
 - Somente Treinador Global e Treinador Global Números.
 - Oito variações por original e Treinador Números.
@@ -20,10 +20,11 @@ ANÁLISE BETA V6.5.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.5.2",
-    KEY = "ANALISE_BETA_V652",
+  const VERSION = "6.5.3",
+    KEY = "ANALISE_BETA_V653",
     WINDOW = 70;
   const OLD_KEYS = [
+    "ANALISE_BETA_V652",
     "ANALISE_BETA_V651",
     "ANALISE_BETA_V650",
     "ANALISE_BETA_V649",
@@ -3100,6 +3101,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       variantBooks: {},
       variantSelections: {},
       strategyTimeline: {},
+      timelineCycles: {},
+      timelineFormat: 2,
       autoRows: [],
       autoRank: 1,
       groupsOpen: { trainers: true, originals: false },
@@ -3156,10 +3159,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       "variantBooks",
       "variantSelections",
       "strategyTimeline",
+      "timelineCycles",
       "virtual",
       "groupsOpen",
     ]) {
       if (!r[field] || typeof r[field] !== "object") r[field] = {};
+    }
+    if (data?.timelineFormat !== 2) {
+      r.strategyTimeline = {};
+      r.timelineCycles = {};
+      r.timelineFormat = 2;
     }
     r.open = {
       general: r.open?.general !== false,
@@ -3638,6 +3647,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       state.cycle = null;
       state.defense = null;
     }
+    settleTimelineForecasts(timelineForecasts, n, turn, before);
     settleNativeStrategies(
       cs,
       block?.variants.find((f) => f.owner === "NUMBER")?.choice,
@@ -3692,7 +3702,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         pruneRolling();
       }
     }
-    settleTimelineForecasts(timelineForecasts, n, turn);
+
     // O descarte continua em dez; a previsão seguinte nunca usa o bloco anterior.
     state.block.data = null;
     blockRuntimeKey = null;
@@ -3795,35 +3805,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function timelineSamples(id) {
     const cutoff = state.historyTurns[0] || 1;
-    if (state.strategyTimeline[id])
-      return state.strategyTimeline[id].filter((r) => r.turn >= cutoff);
-    if (id.includes("@V"))
-      return (state.variantBooks[id]?.rows || [])
-        .filter((r) => r.turn >= cutoff)
-        .map((r) => ({ turn: r.turn, hit: !!r.entryHit }));
-    const samples = state.entryRows
-      .filter((r) => r.strategy === id && r.closed)
-      .map((r) => ({
-        turn: r.result === "GREEN" ? r.turn : r.turn - 1,
-        hit: r.result === "GREEN",
-      }));
-    if (state.virtual[id]?.phase === "GALE")
-      samples.push({ turn: state.totalTurns, hit: false });
-    return [
-      ...new Map(
-        samples.filter((r) => r.turn >= cutoff).map((r) => [r.turn, r]),
-      ).values(),
-    ].sort((a, b) => a.turn - b.turn);
+    return (state.strategyTimeline[id] || []).filter((r) => r.turn >= cutoff);
   }
 
   function snapshotTimelineForecasts(block) {
     if (!block) return [];
     const forecasts = [];
     const append = (id, motor) => {
-      if (!validPlay(motor?.play)) return;
-      if (!state.strategyTimeline[id])
-        state.strategyTimeline[id] = timelineSamples(id);
-      forecasts.push({ id, numbers: [...motor.play.numbers] });
+      if (validPlay(motor?.play)) forecasts.push({ id, motor: copy(motor) });
     };
     for (const def of definitions())
       append(
@@ -3842,13 +3831,65 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     return forecasts;
   }
 
-  function settleTimelineForecasts(forecasts, n, turn) {
+  function settleTimelineForecasts(forecasts, n, turn, before) {
     const cutoff = state.historyTurns[0] || 1;
-    for (const f of forecasts) {
+    const all = new Map(forecasts.map((f) => [f.id, f]));
+    for (const id of Object.keys(state.timelineCycles))
+      if (!all.has(id)) all.set(id, { id });
+    for (const f of all.values()) {
       const rows =
         state.strategyTimeline[f.id] || (state.strategyTimeline[f.id] = []);
-      if (rows.at(-1)?.turn !== turn)
-        rows.push({ turn, hit: f.numbers.includes(n) });
+      let cycle = state.timelineCycles[f.id];
+      if (!cycle) {
+        if (!validPlay(f.motor?.play)) continue;
+        cycle = {
+          entry: copy(f.motor),
+          config: {
+            g1: state.g1,
+            g1Trainer: state.g1Trainer,
+            galeSkip: state.galeSkip,
+            secondHouse: state.secondHouse,
+          },
+          phase: state.secondHouse ? "SECOND_SKIP" : "ENTRY",
+          initialSkip: !!state.secondHouse,
+        };
+        state.timelineCycles[f.id] = cycle;
+      }
+      if (cycle.phase === "SECOND_SKIP") {
+        if (cycle.initialSkip) cycle.initialSkip = false;
+        else cycle.phase = "ENTRY";
+        continue;
+      }
+      if (cycle.phase === "GALE_SKIP") {
+        cycle.phase = "GALE";
+        continue;
+      }
+      if (cycle.phase === "GALE") {
+        const row = rows.find((r) => r.turn === cycle.turn);
+        if (row) {
+          row.result = cycle.defense.play.numbers.includes(n)
+            ? "GREEN G1"
+            : "LOSS";
+          row.closed = true;
+          row.closedTurn = turn;
+        }
+        delete state.timelineCycles[f.id];
+      } else if (cycle.entry.play.numbers.includes(n)) {
+        rows.push({ turn, result: "GREEN", closed: true, closedTurn: turn });
+        delete state.timelineCycles[f.id];
+      } else {
+        rows.push({ turn, result: "GREEN G1", closed: false });
+        cycle.turn = turn;
+        const h = [...before, n].slice(-70),
+          config = cycle.config;
+        const decision = config.g1Trainer
+          ? chooseG1(cycle.entry, n, h, f.id)
+          : {
+              motor: config.g1 ? fineG1(cycle.entry, n, h) : copy(cycle.entry),
+            };
+        cycle.defense = copy(decision?.motor || cycle.entry);
+        cycle.phase = config.galeSkip ? "GALE_SKIP" : "GALE";
+      }
       state.strategyTimeline[f.id] = rows
         .filter((r) => r.turn >= cutoff)
         .slice(-79);
@@ -3867,11 +3908,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.5.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Estratégia BASE selecionável, além de V1–V8 em cada grupo.
 - Ranking das oito variações: posição, acerto direto e melhor ao lado do nome.
-- Linhas do tempo de primeira entrada para todas as estratégias e variações.
+- Linhas por ciclo: W verde, G1 amarelo; o mesmo quadrinho vira R vermelho se perder a defesa.
 - Grupos de treinadores, originais e variações recolhíveis.
 - Somente Treinador Global e Treinador Global Números.
 - Oito variações por original e Treinador Números.
@@ -3886,10 +3927,11 @@ ANÁLISE BETA V6.5.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.5.2",
-      KEY = "ANALISE_BETA_V652",
+    const VERSION = "6.5.3",
+      KEY = "ANALISE_BETA_V653",
       WINDOW = 70;
     const OLD_KEYS = [
+      "ANALISE_BETA_V652",
       "ANALISE_BETA_V651",
       "ANALISE_BETA_V650",
       "ANALISE_BETA_V649",
@@ -7018,6 +7060,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         variantBooks: {},
         variantSelections: {},
         strategyTimeline: {},
+        timelineCycles: {},
+        timelineFormat: 2,
         autoRows: [],
         autoRank: 1,
         groupsOpen: { trainers: true, originals: false },
@@ -7074,10 +7118,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         "variantBooks",
         "variantSelections",
         "strategyTimeline",
+        "timelineCycles",
         "virtual",
         "groupsOpen",
       ]) {
         if (!r[field] || typeof r[field] !== "object") r[field] = {};
+      }
+      if (data?.timelineFormat !== 2) {
+        r.strategyTimeline = {};
+        r.timelineCycles = {};
+        r.timelineFormat = 2;
       }
       r.open = {
         general: r.open?.general !== false,
@@ -7562,6 +7612,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         state.cycle = null;
         state.defense = null;
       }
+      settleTimelineForecasts(timelineForecasts, n, turn, before);
       settleNativeStrategies(
         cs,
         block?.variants.find((f) => f.owner === "NUMBER")?.choice,
@@ -7616,7 +7667,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           pruneRolling();
         }
       }
-      settleTimelineForecasts(timelineForecasts, n, turn);
+
       // O descarte continua em dez; a previsão seguinte nunca usa o bloco anterior.
       state.block.data = null;
       blockRuntimeKey = null;
@@ -7725,35 +7776,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function timelineSamples(id) {
       const cutoff = state.historyTurns[0] || 1;
-      if (state.strategyTimeline[id])
-        return state.strategyTimeline[id].filter((r) => r.turn >= cutoff);
-      if (id.includes("@V"))
-        return (state.variantBooks[id]?.rows || [])
-          .filter((r) => r.turn >= cutoff)
-          .map((r) => ({ turn: r.turn, hit: !!r.entryHit }));
-      const samples = state.entryRows
-        .filter((r) => r.strategy === id && r.closed)
-        .map((r) => ({
-          turn: r.result === "GREEN" ? r.turn : r.turn - 1,
-          hit: r.result === "GREEN",
-        }));
-      if (state.virtual[id]?.phase === "GALE")
-        samples.push({ turn: state.totalTurns, hit: false });
-      return [
-        ...new Map(
-          samples.filter((r) => r.turn >= cutoff).map((r) => [r.turn, r]),
-        ).values(),
-      ].sort((a, b) => a.turn - b.turn);
+      return (state.strategyTimeline[id] || []).filter((r) => r.turn >= cutoff);
     }
 
     function snapshotTimelineForecasts(block) {
       if (!block) return [];
       const forecasts = [];
       const append = (id, motor) => {
-        if (!validPlay(motor?.play)) return;
-        if (!state.strategyTimeline[id])
-          state.strategyTimeline[id] = timelineSamples(id);
-        forecasts.push({ id, numbers: [...motor.play.numbers] });
+        if (validPlay(motor?.play)) forecasts.push({ id, motor: copy(motor) });
       };
       for (const def of definitions())
         append(
@@ -7772,13 +7802,67 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return forecasts;
     }
 
-    function settleTimelineForecasts(forecasts, n, turn) {
+    function settleTimelineForecasts(forecasts, n, turn, before) {
       const cutoff = state.historyTurns[0] || 1;
-      for (const f of forecasts) {
+      const all = new Map(forecasts.map((f) => [f.id, f]));
+      for (const id of Object.keys(state.timelineCycles))
+        if (!all.has(id)) all.set(id, { id });
+      for (const f of all.values()) {
         const rows =
           state.strategyTimeline[f.id] || (state.strategyTimeline[f.id] = []);
-        if (rows.at(-1)?.turn !== turn)
-          rows.push({ turn, hit: f.numbers.includes(n) });
+        let cycle = state.timelineCycles[f.id];
+        if (!cycle) {
+          if (!validPlay(f.motor?.play)) continue;
+          cycle = {
+            entry: copy(f.motor),
+            config: {
+              g1: state.g1,
+              g1Trainer: state.g1Trainer,
+              galeSkip: state.galeSkip,
+              secondHouse: state.secondHouse,
+            },
+            phase: state.secondHouse ? "SECOND_SKIP" : "ENTRY",
+            initialSkip: !!state.secondHouse,
+          };
+          state.timelineCycles[f.id] = cycle;
+        }
+        if (cycle.phase === "SECOND_SKIP") {
+          if (cycle.initialSkip) cycle.initialSkip = false;
+          else cycle.phase = "ENTRY";
+          continue;
+        }
+        if (cycle.phase === "GALE_SKIP") {
+          cycle.phase = "GALE";
+          continue;
+        }
+        if (cycle.phase === "GALE") {
+          const row = rows.find((r) => r.turn === cycle.turn);
+          if (row) {
+            row.result = cycle.defense.play.numbers.includes(n)
+              ? "GREEN G1"
+              : "LOSS";
+            row.closed = true;
+            row.closedTurn = turn;
+          }
+          delete state.timelineCycles[f.id];
+        } else if (cycle.entry.play.numbers.includes(n)) {
+          rows.push({ turn, result: "GREEN", closed: true, closedTurn: turn });
+          delete state.timelineCycles[f.id];
+        } else {
+          rows.push({ turn, result: "GREEN G1", closed: false });
+          cycle.turn = turn;
+          const h = [...before, n].slice(-70),
+            config = cycle.config;
+          const decision = config.g1Trainer
+            ? chooseG1(cycle.entry, n, h, f.id)
+            : {
+                motor: config.g1
+                  ? fineG1(cycle.entry, n, h)
+                  : copy(cycle.entry),
+              };
+          cycle.defense = copy(decision?.motor || cycle.entry);
+          cycle.phase = config.galeSkip ? "GALE_SKIP" : "GALE";
+        }
         state.strategyTimeline[f.id] = rows
           .filter((r) => r.turn >= cutoff)
           .slice(-79);
@@ -8473,25 +8557,28 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     for (const def of definitions) {
       const rows = timelineSamples(def.id).slice(-20),
         ui = timelineUINodes.get(def.id);
-      const signature = rows.map((r) => r.turn + ":" + Number(r.hit)).join(",");
+      const signature = rows
+        .map((r) => r.turn + ":" + r.result + ":" + r.closed)
+        .join(",");
       if (ui.signature === signature) continue;
       ui.signature = signature;
       ui.cells.innerHTML = rows.length
         ? rows
-            .map(
-              (r) =>
+            .map((r) => {
+              const green = r.result === "GREEN",
+                gale = r.result === "GREEN G1";
+              return (
                 '<span class="wlCell ' +
-                (r.hit ? "wlWin" : "wlLoss") +
+                (green ? "wlWin" : gale ? "wlGale" : "wlLoss") +
                 '" title="GIRO ' +
                 r.turn +
-                " • " +
-                (r.hit ? "ACERTO DIRETO" : "FORA NA PRIMEIRA ENTRADA") +
                 '">' +
-                (r.hit ? "W" : "L") +
-                "</span>",
-            )
+                (green ? "W" : gale ? "G1" : "R") +
+                "</span>"
+              );
+            })
             .join("")
-        : '<span class="muted">AGUARDANDO TESTES</span>';
+        : '<span class="muted">AGUARDANDO CICLOS</span>';
     }
   }
 
@@ -8506,7 +8593,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 .timelineName{flex:0 0 225px;font-size:11px;font-weight:bold;overflow-wrap:anywhere}
 .timelineCells{display:flex;flex-wrap:wrap;gap:3px;min-width:0}
 .wlCell{display:inline-flex;width:20px;height:23px;align-items:center;justify-content:center;border-radius:4px;font-size:11px;font-weight:bold;color:#fff}
-.wlWin{background:#087f52}.wlLoss{background:#a72845}
+.wlGale{background:#f1c232;color:#171717}.wlWin{background:#087f52}.wlLoss{background:#a72845}
 @media(max-width:650px){.timelineRow{display:block}.timelineName{margin-bottom:5px}.wlCell{width:18px;height:22px}}
 </style>
 <main class="app">
@@ -8522,7 +8609,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 <section class="panel"><div class="title">ESTRATÉGIA ATIVA</div><div id="strategies"></div><div class="row" id="options"></div><div class="muted" id="selected"></div><div class="centers" id="centers"></div><div class="muted" id="coverage"></div></section>
 <section class="panel"><div class="title">TECLADO 0–36</div><div id="receipt" aria-live="polite"></div><div class="keys" id="keys"></div></section>
 <section class="panel"><div class="title">ÚLTIMOS 14 NÚMEROS</div><div class="history" id="last"></div></section>
-<section class="panel"><button class="head" id="timelineToggle">LINHAS DO TEMPO • TODAS AS ESTRATÉGIAS <span>− / +</span></button><div class="muted">PRIMEIRA ENTRADA VIRTUAL: W = ACERTO DIRETO; L = FORA DA COBERTURA. ÚLTIMOS 20 TESTES DE CADA UMA. MAIS RECENTE À DIREITA.</div><div id="timelines"></div></section>
+<section class="panel"><button class="head" id="timelineToggle">LINHAS DO TEMPO • TODAS AS ESTRATÉGIAS <span>− / +</span></button><div class="muted">CICLOS VIRTUAIS: W VERDE = DIRETO; G1 AMARELO = DEFESA; R VERMELHO = LOSS FINAL. ÚLTIMOS 20 CICLOS. MAIS RECENTE À DIREITA.</div><div id="timelines"></div></section>
 <section class="panel"><div class="title">FICHAS / G1</div><div class="row"><label>VALOR DA FICHA <input id="stake" type="number" min=".01" step=".01"></label><label>MULTIPLICADOR G1 <input id="multiplier" type="number" min=".01" step=".01"></label></div></section>
 <section class="panel"><button class="head" id="generalToggle">RESULTADO GERAL <span>− / +</span></button><div id="general"></div></section>
 </main>`;
