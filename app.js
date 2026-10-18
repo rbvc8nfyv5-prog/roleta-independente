@@ -1,8 +1,10 @@
 (() => {
   "use strict";
   /*
-ANÁLISE BETA V6.5.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.4 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- Botão 3º automático por proprietário; PÓS-LOSS automático entre perdas finais recentes.
+- Pós-loss exige 3 ciclos pós-loss encerrados (mais acertos que perdas); índice penaliza repetição.
 - Estratégia BASE selecionável, além de V1–V8 em cada grupo.
 - Ranking das oito variações: posição, acerto direto e melhor ao lado do nome.
 - Linhas por ciclo: W verde, G1 amarelo; o mesmo quadrinho vira R vermelho se perder a defesa.
@@ -20,10 +22,11 @@ ANÁLISE BETA V6.5.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.5.3",
-    KEY = "ANALISE_BETA_V653",
+  const VERSION = "6.5.4",
+    KEY = "ANALISE_BETA_V654",
     WINDOW = 70;
   const OLD_KEYS = [
+    "ANALISE_BETA_V653",
     "ANALISE_BETA_V652",
     "ANALISE_BETA_V651",
     "ANALISE_BETA_V650",
@@ -3198,7 +3201,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     r.undoStack = r.undoStack.slice(-70);
     if (
       !VARIANT_OWNERS.some((o) => o.id === r.strategy) &&
-      !["TRAINER", "AUTO", "ADAPTIVE", "CREATED"].includes(r.strategy)
+      !["TRAINER", "POSTLOSS", "AUTO", "ADAPTIVE", "CREATED"].includes(
+        r.strategy,
+      )
     ) {
       r.strategy = "TRAINER";
       r.manual = null;
@@ -3384,6 +3389,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   function activeDefinition() {
     const owner = activeVariationOwner();
     const defs = definitions();
+    if (state.strategy === "POSTLOSS") {
+      const target =
+        state.cycle?.original?.postLossTarget ||
+        postLossChoice()?.motor?.postLossTarget;
+      return {
+        id: target?.defenseStrategy || target?.id || "POSTLOSS",
+        name: "PÓS-LOSS • " + (target?.name || "AGUARDANDO OPORTUNIDADE"),
+        type: "POSTLOSS",
+      };
+    }
     if (owner && !state.manual) {
       const variation = chosenVariation(owner),
         name = VARIANT_OWNERS.find((o) => o.id === owner).name;
@@ -3393,7 +3408,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           : { ...defs.find((d) => d.id === "ORIGINAL:" + owner), name };
       return {
         id: variantBookId(owner, variation),
-        name: name + " • V" + variation,
+        name:
+          name +
+          (state.variantSelections[owner] === -3 ? " • 3º AUTOMÁTICO" : "") +
+          " • V" +
+          variation,
         type: "VARIANT",
         owner,
         variation,
@@ -3465,6 +3484,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   }
 
   function activeMotor(cs = currentBlock()?.global || []) {
+    if (state.strategy === "POSTLOSS" && !state.manual)
+      return copy(postLossChoice()?.motor || null);
+    if (state.variantSelections[activeVariationOwner()] === -3 && !state.manual)
+      return thirdVariationMotor(activeVariationOwner());
     if (state.manual)
       return cs.find((m) => m.key === state.manual) || cs[0] || null;
     const direct = selectedVariantForecast();
@@ -3734,6 +3757,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function chosenVariation(owner) {
     const value = state.variantSelections[owner];
+    if (value === -3) {
+      const ranked = variationPerformance(owner);
+      return ranked.some((r) => r.total) ? ranked[2].variation : 0;
+    }
     return Number.isInteger(value) && value >= 0 && value <= 8 ? value : 1;
   }
 
@@ -3774,11 +3801,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   function timelineDefinitions() {
     return [
       { id: "TRAINER", name: "TREINADOR GLOBAL" },
+      { id: "POSTLOSS", name: "PÓS-LOSS" },
       ...VARIANT_OWNERS.flatMap((o) => [
         {
           id: o.id === "NUMBER" ? "NUMBER" : "ORIGINAL:" + o.id,
           name: o.name + " • BASE",
         },
+        { id: o.id + "@THIRD", name: o.name + " • 3º AUTOMÁTICO" },
         ...Array.from({ length: 8 }, (_, i) => ({
           id: variantBookId(o.id, i + 1),
           name: o.name + " • V" + (i + 1),
@@ -3812,7 +3841,15 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     if (!block) return [];
     const forecasts = [];
     const append = (id, motor) => {
-      if (validPlay(motor?.play)) forecasts.push({ id, motor: copy(motor) });
+      if (validPlay(motor?.play))
+        forecasts.push({
+          id,
+          motor: copy(motor),
+          defenseStrategy:
+            motor.postLossTarget?.defenseStrategy ||
+            motor.thirdTarget?.id ||
+            id,
+        });
     };
     for (const def of definitions())
       append(
@@ -3828,6 +3865,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       "TRAINER",
       motorForDefinition(trainer, block.global, state.previous),
     );
+    for (const owner of VARIANT_OWNERS)
+      append(owner.id + "@THIRD", thirdVariationMotor(owner.id, block));
+    append("POSTLOSS", postLossChoice(block)?.motor);
     return forecasts;
   }
 
@@ -3844,6 +3884,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         if (!validPlay(f.motor?.play)) continue;
         cycle = {
           entry: copy(f.motor),
+          defenseStrategy: f.defenseStrategy || f.id,
           config: {
             g1: state.g1,
             g1Trainer: state.g1Trainer,
@@ -3883,7 +3924,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         const h = [...before, n].slice(-70),
           config = cycle.config;
         const decision = config.g1Trainer
-          ? chooseG1(cycle.entry, n, h, f.id)
+          ? chooseG1(cycle.entry, n, h, cycle.defenseStrategy || f.id)
           : {
               motor: config.g1 ? fineG1(cycle.entry, n, h) : copy(cycle.entry),
             };
@@ -3894,6 +3935,130 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         .filter((r) => r.turn >= cutoff)
         .slice(-79);
     }
+  }
+  /* O terceiro é uma posição acompanhada dentro do proprietário, não uma V fixa. */
+  function thirdVariationMotor(owner, block = currentBlock()) {
+    const ranked = variationPerformance(owner);
+    if (!ranked.some((r) => r.total)) return null;
+    const variation = ranked[2].variation;
+    const forecast = block?.variants.find(
+      (f) => f.owner === owner && f.variation === variation,
+    );
+    return forecast
+      ? {
+          ...copy(forecast.choice),
+          thirdTarget: { owner, variation, id: forecast.bankId },
+        }
+      : null;
+  }
+
+  function timelineMotor(id, block = currentBlock()) {
+    if (!block) return null;
+    if (id.endsWith("@THIRD"))
+      return thirdVariationMotor(id.slice(0, -6), block);
+    if (id === "TRAINER") {
+      const definition =
+        trainerRanking().find((d) => d.id === state.trainerChoice) ||
+        trainerRanking()[0];
+      return motorForDefinition(definition, block.global, state.previous);
+    }
+    if (id === "NUMBER") return bestNumberCombination(state.history);
+    const variant = block.variants.find((f) => f.bankId === id);
+    if (variant) return copy(variant.choice);
+    const definition = definitions().find((d) => d.id === id);
+    return definition
+      ? chooseMotor(definition, block.global, state.virtual[id]?.previous)
+      : null;
+  }
+
+  /* Só ciclos encerrados antes da decisão entram na comparação.
+   O próximo ciclo depois de cada LOSS fornece uma observação pós-loss. */
+  function postLossStats(id) {
+    const rows = timelineSamples(id)
+      .filter((r) => r.closed && r.closedTurn <= state.totalTurns)
+      .sort((a, b) => a.turn - b.turn);
+    const following = [];
+    for (let i = 1; i < rows.length; i++)
+      if (
+        rows[i - 1].result === "LOSS" &&
+        rows[i].turn > rows[i - 1].closedTurn
+      ) {
+        following.push(rows[i]);
+      }
+    const recoveries = following.filter((r) => r.result !== "LOSS").length;
+    const repeatLoss = following.length - recoveries;
+    const direct = following.filter((r) => r.result === "GREEN").length;
+    const recent = following.slice(-5),
+      recentHits = recent.filter((r) => r.result !== "LOSS").length;
+    const base = 28 / 37;
+    const recovery = (recoveries + 4 * base) / (following.length + 4);
+    const short = (recentHits + 3 * base) / (recent.length + 3);
+    const first = (direct + 3 * base) / (following.length + 3);
+    let streak = 0;
+    for (let i = rows.length - 1; i >= 0 && rows[i].result === "LOSS"; i--)
+      streak++;
+    return {
+      samples: following.length,
+      recoveries,
+      repeatLoss,
+      direct,
+      streak,
+      score:
+        recovery * 0.55 +
+        short * 0.3 +
+        first * 0.15 -
+        (0.25 * repeatLoss) / (following.length + 4) -
+        0.025 * Math.max(0, streak - 1),
+      last: rows.at(-1) || null,
+    };
+  }
+
+  function postLossRanking(block = currentBlock()) {
+    if (!block) return [];
+    return timelineDefinitions()
+      .filter((d) => d.id !== "POSTLOSS")
+      .map((def) => {
+        const stats = postLossStats(def.id);
+        const justLost =
+          stats.last?.result === "LOSS" &&
+          stats.last.closedTurn === state.totalTurns;
+        const eligible =
+          justLost && stats.samples >= 3 && stats.recoveries > stats.repeatLoss;
+        return { ...def, ...stats, justLost, eligible };
+      })
+      .filter((r) => r.justLost)
+      .sort(
+        (a, b) =>
+          Number(b.eligible) - Number(a.eligible) ||
+          b.score - a.score ||
+          b.samples - a.samples ||
+          a.id.localeCompare(b.id),
+      );
+  }
+
+  function postLossChoice(block = currentBlock()) {
+    for (const candidate of postLossRanking(block)) {
+      if (!candidate.eligible) continue;
+      const motor = timelineMotor(candidate.id, block);
+      if (validPlay(motor?.play))
+        return {
+          ...candidate,
+          motor: {
+            ...copy(motor),
+            postLossTarget: {
+              id: candidate.id,
+              name: candidate.name,
+              lossTurn: candidate.last.closedTurn,
+              samples: candidate.samples,
+              recoveries: candidate.recoveries,
+              repeatLoss: candidate.repeatLoss,
+              score: candidate.score,
+              defenseStrategy: motor.thirdTarget?.id || candidate.id,
+            },
+          },
+        };
+    }
+    return null;
   }
 
   let state = fresh();
@@ -3908,8 +4073,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.5.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.4 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- Botão 3º automático por proprietário; PÓS-LOSS automático entre perdas finais recentes.
+- Pós-loss exige 3 ciclos pós-loss encerrados (mais acertos que perdas); índice penaliza repetição.
 - Estratégia BASE selecionável, além de V1–V8 em cada grupo.
 - Ranking das oito variações: posição, acerto direto e melhor ao lado do nome.
 - Linhas por ciclo: W verde, G1 amarelo; o mesmo quadrinho vira R vermelho se perder a defesa.
@@ -3927,10 +4094,11 @@ ANÁLISE BETA V6.5.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.5.3",
-      KEY = "ANALISE_BETA_V653",
+    const VERSION = "6.5.4",
+      KEY = "ANALISE_BETA_V654",
       WINDOW = 70;
     const OLD_KEYS = [
+      "ANALISE_BETA_V653",
       "ANALISE_BETA_V652",
       "ANALISE_BETA_V651",
       "ANALISE_BETA_V650",
@@ -7157,7 +7325,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       r.undoStack = r.undoStack.slice(-70);
       if (
         !VARIANT_OWNERS.some((o) => o.id === r.strategy) &&
-        !["TRAINER", "AUTO", "ADAPTIVE", "CREATED"].includes(r.strategy)
+        !["TRAINER", "POSTLOSS", "AUTO", "ADAPTIVE", "CREATED"].includes(
+          r.strategy,
+        )
       ) {
         r.strategy = "TRAINER";
         r.manual = null;
@@ -7345,6 +7515,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     function activeDefinition() {
       const owner = activeVariationOwner();
       const defs = definitions();
+      if (state.strategy === "POSTLOSS") {
+        const target =
+          state.cycle?.original?.postLossTarget ||
+          postLossChoice()?.motor?.postLossTarget;
+        return {
+          id: target?.defenseStrategy || target?.id || "POSTLOSS",
+          name: "PÓS-LOSS • " + (target?.name || "AGUARDANDO OPORTUNIDADE"),
+          type: "POSTLOSS",
+        };
+      }
       if (owner && !state.manual) {
         const variation = chosenVariation(owner),
           name = VARIANT_OWNERS.find((o) => o.id === owner).name;
@@ -7354,7 +7534,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
             : { ...defs.find((d) => d.id === "ORIGINAL:" + owner), name };
         return {
           id: variantBookId(owner, variation),
-          name: name + " • V" + variation,
+          name:
+            name +
+            (state.variantSelections[owner] === -3 ? " • 3º AUTOMÁTICO" : "") +
+            " • V" +
+            variation,
           type: "VARIANT",
           owner,
           variation,
@@ -7428,6 +7612,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
 
     function activeMotor(cs = currentBlock()?.global || []) {
+      if (state.strategy === "POSTLOSS" && !state.manual)
+        return copy(postLossChoice()?.motor || null);
+      if (
+        state.variantSelections[activeVariationOwner()] === -3 &&
+        !state.manual
+      )
+        return thirdVariationMotor(activeVariationOwner());
       if (state.manual)
         return cs.find((m) => m.key === state.manual) || cs[0] || null;
       const direct = selectedVariantForecast();
@@ -7699,6 +7890,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function chosenVariation(owner) {
       const value = state.variantSelections[owner];
+      if (value === -3) {
+        const ranked = variationPerformance(owner);
+        return ranked.some((r) => r.total) ? ranked[2].variation : 0;
+      }
       return Number.isInteger(value) && value >= 0 && value <= 8 ? value : 1;
     }
 
@@ -7745,11 +7940,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     function timelineDefinitions() {
       return [
         { id: "TRAINER", name: "TREINADOR GLOBAL" },
+        { id: "POSTLOSS", name: "PÓS-LOSS" },
         ...VARIANT_OWNERS.flatMap((o) => [
           {
             id: o.id === "NUMBER" ? "NUMBER" : "ORIGINAL:" + o.id,
             name: o.name + " • BASE",
           },
+          { id: o.id + "@THIRD", name: o.name + " • 3º AUTOMÁTICO" },
           ...Array.from({ length: 8 }, (_, i) => ({
             id: variantBookId(o.id, i + 1),
             name: o.name + " • V" + (i + 1),
@@ -7783,7 +7980,15 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (!block) return [];
       const forecasts = [];
       const append = (id, motor) => {
-        if (validPlay(motor?.play)) forecasts.push({ id, motor: copy(motor) });
+        if (validPlay(motor?.play))
+          forecasts.push({
+            id,
+            motor: copy(motor),
+            defenseStrategy:
+              motor.postLossTarget?.defenseStrategy ||
+              motor.thirdTarget?.id ||
+              id,
+          });
       };
       for (const def of definitions())
         append(
@@ -7799,6 +8004,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         "TRAINER",
         motorForDefinition(trainer, block.global, state.previous),
       );
+      for (const owner of VARIANT_OWNERS)
+        append(owner.id + "@THIRD", thirdVariationMotor(owner.id, block));
+      append("POSTLOSS", postLossChoice(block)?.motor);
       return forecasts;
     }
 
@@ -7815,6 +8023,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           if (!validPlay(f.motor?.play)) continue;
           cycle = {
             entry: copy(f.motor),
+            defenseStrategy: f.defenseStrategy || f.id,
             config: {
               g1: state.g1,
               g1Trainer: state.g1Trainer,
@@ -7854,7 +8063,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           const h = [...before, n].slice(-70),
             config = cycle.config;
           const decision = config.g1Trainer
-            ? chooseG1(cycle.entry, n, h, f.id)
+            ? chooseG1(cycle.entry, n, h, cycle.defenseStrategy || f.id)
             : {
                 motor: config.g1
                   ? fineG1(cycle.entry, n, h)
@@ -7867,6 +8076,132 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           .filter((r) => r.turn >= cutoff)
           .slice(-79);
       }
+    }
+    /* O terceiro é uma posição acompanhada dentro do proprietário, não uma V fixa. */
+    function thirdVariationMotor(owner, block = currentBlock()) {
+      const ranked = variationPerformance(owner);
+      if (!ranked.some((r) => r.total)) return null;
+      const variation = ranked[2].variation;
+      const forecast = block?.variants.find(
+        (f) => f.owner === owner && f.variation === variation,
+      );
+      return forecast
+        ? {
+            ...copy(forecast.choice),
+            thirdTarget: { owner, variation, id: forecast.bankId },
+          }
+        : null;
+    }
+
+    function timelineMotor(id, block = currentBlock()) {
+      if (!block) return null;
+      if (id.endsWith("@THIRD"))
+        return thirdVariationMotor(id.slice(0, -6), block);
+      if (id === "TRAINER") {
+        const definition =
+          trainerRanking().find((d) => d.id === state.trainerChoice) ||
+          trainerRanking()[0];
+        return motorForDefinition(definition, block.global, state.previous);
+      }
+      if (id === "NUMBER") return bestNumberCombination(state.history);
+      const variant = block.variants.find((f) => f.bankId === id);
+      if (variant) return copy(variant.choice);
+      const definition = definitions().find((d) => d.id === id);
+      return definition
+        ? chooseMotor(definition, block.global, state.virtual[id]?.previous)
+        : null;
+    }
+
+    /* Só ciclos encerrados antes da decisão entram na comparação.
+   O próximo ciclo depois de cada LOSS fornece uma observação pós-loss. */
+    function postLossStats(id) {
+      const rows = timelineSamples(id)
+        .filter((r) => r.closed && r.closedTurn <= state.totalTurns)
+        .sort((a, b) => a.turn - b.turn);
+      const following = [];
+      for (let i = 1; i < rows.length; i++)
+        if (
+          rows[i - 1].result === "LOSS" &&
+          rows[i].turn > rows[i - 1].closedTurn
+        ) {
+          following.push(rows[i]);
+        }
+      const recoveries = following.filter((r) => r.result !== "LOSS").length;
+      const repeatLoss = following.length - recoveries;
+      const direct = following.filter((r) => r.result === "GREEN").length;
+      const recent = following.slice(-5),
+        recentHits = recent.filter((r) => r.result !== "LOSS").length;
+      const base = 28 / 37;
+      const recovery = (recoveries + 4 * base) / (following.length + 4);
+      const short = (recentHits + 3 * base) / (recent.length + 3);
+      const first = (direct + 3 * base) / (following.length + 3);
+      let streak = 0;
+      for (let i = rows.length - 1; i >= 0 && rows[i].result === "LOSS"; i--)
+        streak++;
+      return {
+        samples: following.length,
+        recoveries,
+        repeatLoss,
+        direct,
+        streak,
+        score:
+          recovery * 0.55 +
+          short * 0.3 +
+          first * 0.15 -
+          (0.25 * repeatLoss) / (following.length + 4) -
+          0.025 * Math.max(0, streak - 1),
+        last: rows.at(-1) || null,
+      };
+    }
+
+    function postLossRanking(block = currentBlock()) {
+      if (!block) return [];
+      return timelineDefinitions()
+        .filter((d) => d.id !== "POSTLOSS")
+        .map((def) => {
+          const stats = postLossStats(def.id);
+          const justLost =
+            stats.last?.result === "LOSS" &&
+            stats.last.closedTurn === state.totalTurns;
+          const eligible =
+            justLost &&
+            stats.samples >= 3 &&
+            stats.recoveries > stats.repeatLoss;
+          return { ...def, ...stats, justLost, eligible };
+        })
+        .filter((r) => r.justLost)
+        .sort(
+          (a, b) =>
+            Number(b.eligible) - Number(a.eligible) ||
+            b.score - a.score ||
+            b.samples - a.samples ||
+            a.id.localeCompare(b.id),
+        );
+    }
+
+    function postLossChoice(block = currentBlock()) {
+      for (const candidate of postLossRanking(block)) {
+        if (!candidate.eligible) continue;
+        const motor = timelineMotor(candidate.id, block);
+        if (validPlay(motor?.play))
+          return {
+            ...candidate,
+            motor: {
+              ...copy(motor),
+              postLossTarget: {
+                id: candidate.id,
+                name: candidate.name,
+                lossTurn: candidate.last.closedTurn,
+                samples: candidate.samples,
+                recoveries: candidate.recoveries,
+                repeatLoss: candidate.repeatLoss,
+                score: candidate.score,
+                defenseStrategy: motor.thirdTarget?.id || candidate.id,
+              },
+            },
+          };
+      }
+      return null;
     }
 
     let state = fresh();
@@ -7987,6 +8322,12 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     base.dataset.variant = "0";
     base.title =
       "Selecionar a estratégia base, com o mesmo cálculo disponível ao Treinador Global.";
+    const third = button(
+      "3º POR DESEMPENHO • AUTOMÁTICO",
+      () => changeVariation(owner.id, -3),
+      row,
+    );
+    third.dataset.thirdOwner = owner.id;
     const buttons = new Map();
     for (let variation = 1; variation <= 8; variation++) {
       const b = button(
@@ -7999,7 +8340,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       buttons.set(variation, b);
     }
     details.appendChild(row);
-    variationUINodes.set(owner.id, { summary, row, base, buttons, order: "" });
+    variationUINodes.set(owner.id, {
+      summary,
+      row,
+      base,
+      third,
+      buttons,
+      order: "",
+    });
   }
 
   function buildStrategies() {
@@ -8024,6 +8372,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       "trainer",
     );
     trainer.dataset.choice = "TRAINER";
+    const postloss = button(
+      "PÓS-LOSS",
+      () => changeStrategy("POSTLOSS"),
+      row,
+      "trainer",
+    );
+    postloss.dataset.choice = "POSTLOSS";
     trainers.appendChild(row);
     variationControls(
       VARIANT_OWNERS.find((o) => o.id === "NUMBER"),
@@ -8220,6 +8575,31 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     updateVariantButtons();
     updateVariationRanks();
     renderTimelinePanel();
+    for (const b of document.querySelectorAll("[data-third-owner]"))
+      b.classList.toggle(
+        "active",
+        activeVariationOwner() === b.dataset.thirdOwner &&
+          state.variantSelections[b.dataset.thirdOwner] === -3,
+      );
+    if (state.strategy === "POSTLOSS") {
+      const target =
+        state.cycle?.original?.postLossTarget || motor?.postLossTarget;
+      $("selected").textContent = target
+        ? "PÓS-LOSS • " +
+          target.name +
+          " • RECUPERAÇÕES " +
+          target.recoveries +
+          "/" +
+          target.samples +
+          " • LOSS REPETIDOS " +
+          target.repeatLoss +
+          " • " +
+          state.phase
+        : "PÓS-LOSS • AGUARDANDO LOSS FINAL COM HISTÓRICO DE RECUPERAÇÃO";
+      if (!motor)
+        $("coverage").textContent =
+          "Aguarda estratégia que acabou de perder e tenha ao menos 3 ciclos pós-loss observados, com mais recuperações que perdas repetidas.";
+    }
     $("last").innerHTML = state.history
       .slice(-14)
       .map((n, i) => {
@@ -8258,7 +8638,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         metricsHTML(state.ledger) +
         '<div class="title">MANUAIS ARQUIVADOS</div>' +
         metricsHTML(state.manualLog) +
-        '<div class="muted">MELHOR VARIAÇÃO: comparação dos acertos diretos virtuais, atualizada a cada resultado. As combinações são recalculadas a cada dez. ' +
+        '<div class="muted">MELHOR VARIAÇÃO: comparação dos acertos diretos virtuais, atualizada a cada resultado. Próxima jogada recalculada a cada número; descarte dos antigos a cada dez. ' +
         (state.block.best
           ? "AVALIADA ATÉ O GIRO " + state.block.best.turn + "."
           : "Ainda sem observações.") +
@@ -8521,6 +8901,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
             "."
           : "Sem observações ainda.";
       }
+      ui.third.textContent =
+        "3º POR DESEMPENHO • " +
+        (ready ? "V" + ranked[2].variation : "AGUARDANDO TESTES");
       const order = ranked.map((r) => r.variation).join(",");
       if (ui.order !== order) {
         for (const r of ranked) ui.row.appendChild(ui.buttons.get(r.variation));
