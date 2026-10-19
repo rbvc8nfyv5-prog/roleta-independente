@@ -1,4 +1,16 @@
-/* ATUALIZAÇÃO 6.6.2: memória de números, pares, trincas, formas, saltos,
+/* ATUALIZAÇÃO 6.6.3 — BASE 6.6.2 COMPLETA.
+- Memória causal dos resultados após eventos dos polos: ruptura, retomada,
+  fusão, alternância, interrupção, saída, convergência e concentração posterior.
+- Cada evento registra o próximo resultado em relação ao polo de referência.
+- As 12 adaptativas avaliam seus critérios e recebem coberturas distintas do
+  banco de 12 motores; atribuição determinística, sem rotação por tempo.
+- Mantidos: limites de ranking, janelas e margens individuais; perfis próprios.
+- O conjunto das próximas escolhas adaptativas cobre os 37 números.
+- Ciclos/G1 comprometidos, pós-loss, pós-3-loss, MASTER, descarte de dez,
+  históricos, teclados, quadros e persistência preservados.
+- Diversidade não garante acerto ou ausência de perdas simultâneas.
+*/
+/* ATUALIZAÇÃO 6.6.3: memória de números, pares, trincas, formas, saltos,
 amplitudes, cadeias 4–8, percurso, polos, arcos, regiões e espelhos direcionais.
 Memória calculada uma vez por histórico e reutilizada; misturas próprias por variação.
 Influência limitada e avaliação causal. Estudo das 377 fontes é exploratório,
@@ -9,7 +21,7 @@ Importação distingue 00 de 0; nenhum resultado das imagens pré-treina o teste
 (() => {
   "use strict";
   /*
-ANÁLISE BETA V6.6.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -43,10 +55,11 @@ ANÁLISE BETA V6.6.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.6.2",
-    KEY = "ANALISE_BETA_V662",
+  const VERSION = "6.6.3",
+    KEY = "ANALISE_BETA_V663",
     WINDOW = 70;
   const OLD_KEYS = [
+    "ANALISE_BETA_V662",
     "ANALISE_BETA_V661",
     "ANALISE_BETA_V660",
     "ANALISE_BETA_V659",
@@ -1808,7 +1821,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     return global * (1 - w) + local.score * w;
   }
 
-  function chooseMotor(def, cs, previous) {
+  function legacyChooseMotor(def, cs, previous) {
     if (!cs.length) return null;
     const fixed = cs[clamp(state.rank - 1, 0, cs.length - 1)];
     if (def.rank) return cs[clamp(def.rank - 1, 0, cs.length - 1)];
@@ -2867,6 +2880,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   }
 
   function clearSpatialCaches() {
+    adaptiveAssignmentCache.clear();
     structuralMemoryCache.clear();
     triangleCache.clear();
     spaceCache.clear();
@@ -3960,6 +3974,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   /* Caches dependentes do estado são renovados; análises puras por histórico
    exato continuam disponíveis para reutilização, sem alterar os cálculos. */
   function clearRuntimeCaches() {
+    adaptiveAssignmentCache.clear();
     motorDiversityCache.clear();
     variantForecastCache.clear();
     blockRuntimeKey = null;
@@ -4710,380 +4725,309 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
   }
 
-  /* MEMÓRIA ESTRUTURAL CAUSAL — V6.6.2
+  /* Eventos observados no último giro, reconhecidos somente pelo prefixo.
+   Cada evento aprende sua distribuição posterior em relação ao polo de
+   referência. Fusão e ruptura não ficam misturadas com a formação A-B-A'-B'. */
+function structuralPoleEvents(h){
+if(h.length<4)return [];
+const read=trackPoles(h);
+const current=read.events.filter(event=>event.position===h.length);
+const contexts=[];
+for(const event of current){
+const kind=event.event==='RUPTURA'?'POLO_RUPTURA':
+event.event==='RETOMADA'?'POLO_RETOMADA':
+event.event==='FUSÃO'?'POLO_FUSAO':'POLO_EVENTO';
+// Primeiro polo do episódio, preservado no próprio evento; uma ruptura
+// e uma nova formação no mesmo giro não compartilham a referência errada.
+const origin=event.event==='FUSÃO'?event.number:event.anchors?.[0];
+contexts.push({kind,key:event.event,relative:true,
+origin:Number.isInteger(origin)?origin:h.at(-1)});
+}
+if(!current.length&&read.concentration?.active){
+contexts.push({kind:'POLO_EVENTO',key:'CONCENTRAÇÃO APÓS FUSÃO:'+Math.min(2,read.concentration.outside),
+relative:true,origin:read.concentration.center});
+}
+return contexts;
+}
+
+/* MEMÓRIA ESTRUTURAL CAUSAL — V6.6.3
+   Aprende apenas com resultados posteriores a contextos já formados.
+   Os dados das imagens não são inseridos como conhecimento futuro.
+   Estatísticas compartilhadas são imutáveis; cada perfil usa sua mistura.
+   Região e espelho direcionais desta camada não alteram convenções antigas.
+*/
+const structuralMemoryCache=new Map();
+const STRUCTURAL_KINDS=[
+'NUMERO','PAR','TRINCA','SALTO','FORMA','TRIANGULO',
+'AMPLITUDE','CADEIA','PERCURSO','POLOS','ARCO','REGIAO','ESPELHO',
+'POLO_EVENTO','POLO_RUPTURA','POLO_RETOMADA','POLO_FUSAO'
+];
+const STRUCTURAL_PROFILES=[
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[2,1.8,.7,1.4,1,.8,1,.6,.7,.6,.7,.7,.6,0.6,0.7,0.7,0.7],
+[.8,.7,.6,.7,.8,1,1,.7,1,1.2,1.8,2,.8,1.3,1.5,1.5,1.5],
+[.6,.8,.6,1.3,1.8,1,1.5,2.1,2.3,.7,.6,.6,.8,0.8,1,1,0.9],
+[.7,1.5,1.8,.8,2,2.5,1.4,1.1,1,.6,.6,.7,.7,1,1.1,1.1,1.1],
+[.7,.6,.5,.7,.8,.8,.8,.8,1.2,2.5,2.5,1.2,.7,2,2.2,2.2,2.2],
+[1.1,1.2,1,1.2,1.4,1.5,1.2,.8,1.7,1.5,.7,.7,1.8,1.3,1.4,1.4,1.4],
+[.7,.8,.6,2,1.7,1.2,2.5,1.4,2.2,.8,1,.6,1.4,1,1.5,1.2,1.3]
+];
+
+function structuralRegion(n){
+if([5,8,10,11,13,16,23,24,27,30,33,36].includes(n))return 'TIERS';
+if([1,6,9,14,17,20,31,34].includes(n))return 'ORPHELINS';
+return 'VOISINS';
+}
+
+function structuralContexts(h){
+if(!h.length)return [];
+const contexts=[],last=h.at(-1),position=ix(last);
+const add=(kind,key,relative=false)=>contexts.push({kind,key:String(key),relative});
+const band=v=>Math.abs(v)<=3?'C':Math.abs(v)<=9?'M':'L';
+add('NUMERO',last);
+let run=1;
+while(run<Math.min(8,h.length)&&
+structuralRegion(h[h.length-1-run])===structuralRegion(last))run++;
+add('REGIAO',structuralRegion(last)+':'+run);
+if(h.length>=2){
+const step=direction(h.at(-2),last);
+add('PAR',h.slice(-2).join(','));
+add('SALTO',step,true);
+add('ESPELHO',step===18?'MAIS18':step===-18?'MAIS19':'OUTRO:'+Math.sign(step),true);
+}
+if(h.length>=3){
+const [a,b,c]=h.slice(-3),s=direction(a,b),t=direction(b,c);
+const f=triangleFeatures(a,b,c);
+const kind=a===b&&b===c?'TRIPLA':a===b?'INICIAL':b===c?'FINAL':
+a===c?'RETORNO':s*t>0?'CONTINUIDADE':'INVERSAO';
+add('TRINCA',[a,b,c].join(','));
+add('FORMA',[s,t].join(','),true);
+add('TRIANGULO',[kind,Math.floor(f.closure/3),
+Math.round(f.area*4),f.degenerate?1:0,
+f.angles[1]==null?'X':Math.floor(f.angles[1]/30)].join(':'),true);
+add('AMPLITUDE',[hopTrend(s,t),band(s),band(t),
+Math.floor(Math.abs(Math.abs(t)-Math.abs(s))/4)].join(':'),true);
+}
+for(let size=4;size<=Math.min(8,h.length);size++){
+const nums=h.slice(-size),steps=nums.slice(1).map((n,i)=>direction(nums[i],n));
+add('CADEIA',size+':'+nums.join(','));
+add('FORMA',size+':'+steps.map(s=>Math.round(s/3)).join(','),true);
+const net=steps.reduce((s,n)=>s+n,0),length=steps.reduce((s,n)=>s+Math.abs(n),0);
+const closure=distance(nums[0],last);
+add('PERCURSO',[size,Math.round(net/4),Math.floor(length/8),
+Math.floor(closure/3),steps.map(Math.sign).join(','),
+Number(Math.abs(net)>=31&&closure<=6)].join(':'),true);
+}
+if(h.length>=4){
+const [a,b,c,d]=h.slice(-4);
+if(distance(a,b)>=8&&distance(a,c)<=2&&distance(b,d)<=2){
+const initial=distance(a,b),separation=distance(c,d);
+add('POLOS',[direction(a,c),direction(b,d),Math.floor(separation/3),
+Math.sign(separation-initial),direction(d,c)].join(':'),true);
+}
+}
+if(h.length>=10){
+const visits=Array(37).fill(0);
+for(const n of h.slice(-10))for(let k=0;k<8;k++)visits[mod(ix(n)-k)]++;
+let start=0;
+for(let k=1;k<37;k++)if(visits[k]>visits[start])start=k;
+const inside=mod(position-start)<8;
+const prior=mod(ix(h.at(-2))-start)<8;
+add('ARCO',[mod(start-position),visits[start],inside?1:0,
+prior?1:0,inside===prior?'PERMANENCIA':inside?'ENTRADA':'SAIDA'].join(':'),true);
+}
+contexts.push(...structuralPoleEvents(h));
+return contexts;
+}
+
+function structuralReadGroups(contexts,books,last){
+const groups=new Map();
+for(const context of contexts){
+const record=books.get(context.kind+'|'+context.key);
+if(!record?.total)continue;
+const confidence=record.total/(record.total+10);
+const recent=Array(37).fill(0);
+for(const n of record.recent)recent[n]++;
+const weights=Array(37).fill(0);
+for(let j=0;j<37;j++){
+const target=context.relative?mod(j-ix(context.origin??last)):j;
+const global=(record.counts[target]+6/37)/(record.total+6);
+const short=(recent[target]+4/37)/(record.recent.length+4);
+weights[j]=37*(global*.7+short*.3);
+}
+let group=groups.get(context.kind);
+if(!group){group={weights:Array(37).fill(0),mass:0,support:0,keys:0};groups.set(context.kind,group);}
+for(let j=0;j<37;j++)group.weights[j]+=weights[j]*confidence;
+group.mass+=confidence;group.support+=record.total;group.keys++;
+}
+for(const group of groups.values()){
+for(let j=0;j<37;j++)group.weights[j]/=group.mass;
+group.confidence=group.mass/group.keys;
+}
+return groups;
+}
+
+function structuralMemoryRead(history){
+const h=history.slice(-WINDOW),key=h.join(',');
+if(structuralMemoryCache.has(key))return structuralMemoryCache.get(key);
+if(h.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO INCOMPATÍVEL COM A RODA EUROPEIA.');
+const books=new Map(),performanceByKind=new Map();
+for(let end=1;end<h.length;end++){
+const prefix=h.slice(0,end),last=prefix.at(-1),actual=h[end];
+const contexts=structuralContexts(prefix);
+// A previsão é calculada antes de registrar actual.
+const groups=structuralReadGroups(contexts,books,last);
+for(const [kind,group] of groups){
+if(group.support<2)continue;
+const stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+stats.samples++;stats.sumLogGain+=clamp(Math.log(Math.max(.01,group.weights[ix(actual)])),-2,2);
+performanceByKind.set(kind,stats);
+}
+const seen=new Set();
+for(const context of contexts){
+const id=context.kind+'|'+context.key;
+if(seen.has(id))continue;
+seen.add(id);
+let record=books.get(id);
+if(!record){record={total:0,counts:Array(37).fill(0),recent:[]};books.set(id,record);}
+const target=context.relative?mod(ix(actual)-ix(context.origin??last)):ix(actual);
+record.counts[target]++;record.total++;record.recent.push(target);
+if(record.recent.length>5)record.recent.shift();
+}
+}
+const groups=structuralReadGroups(structuralContexts(h),books,h.at(-1));
+const components=STRUCTURAL_KINDS.map(kind=>{
+const group=groups.get(kind),stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+const mean=stats.samples?stats.sumLogGain/stats.samples:0;
+const gain=Math.exp(clamp(mean*stats.samples/(stats.samples+16),-.6,.25));
+return {kind,weights:group?normalizeSpace(group.weights):Array(37).fill(1),
+support:group?.support||0,confidence:group?.confidence||0,
+validationSamples:stats.samples,meanLogGain:mean,gain};
+});
+const result={components,historyLength:h.length,contextCount:books.size};
+structuralMemoryCache.set(key,result);
+if(structuralMemoryCache.size>24)structuralMemoryCache.delete(structuralMemoryCache.keys().next().value);
+return result;
+}
+
+function structuralWeights(h,variation=1){
+const memory=structuralMemoryRead(h),profile=STRUCTURAL_PROFILES[variation-1]||STRUCTURAL_PROFILES[0];
+let mass=0;
+const weights=Array(37).fill(0);
+for(let k=0;k<memory.components.length;k++){
+const component=memory.components[k],weight=profile[k]*component.confidence*component.gain;
+if(!weight)continue;
+mass+=weight;
+for(let j=0;j<37;j++)weights[j]+=component.weights[j]*weight;
+}
+return mass?normalizeSpace(weights.map(v=>v/mass)):Array(37).fill(1);
+}
+
+function applySpatial(weights,h,strength=.30){
+legacyApplySpatial(weights,h,strength);
+if(h.length<8)return weights;
+const learned=structuralWeights(h),scale=avg(weights.map(v=>Math.max(0,v)))||1;
+const reliability=Math.min(1,(h.length-7)/24);
+for(let j=0;j<37;j++)weights[j]=Math.max(.001,
+weights[j]+scale*.14*reliability*clamp(learned[j]-1,-.7,1.2));
+return weights;
+}
+
+function parseInput(text){
+// Vírgulas e pontos separam giros no formato antigo: não são casas decimais.
+const normalized=String(text).trim();
+const numbers=(normalized.match(/\d+/g)||[]);
+if(numbers.some(n=>/^0{2,}$/.test(n)))throw Error('00 NÃO É 0. ESTE SISTEMA USA A RODA EUROPEIA DE 37 NÚMEROS.');
+if(/-\s*\d/.test(normalized))throw Error('HISTÓRICO CONTÉM NÚMERO NEGATIVO.');
+const result=numbers.map(Number);
+if(result.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO DEVE CONTER SOMENTE NÚMEROS DE 0 A 36.');
+return result;
+}
+
+/* Seleção das adaptativas: pontuação própria e distribuição das coberturas.
+   Não gira estratégias por tempo nem modifica ciclos já comprometidos.
+   A coordenação vale para a PRÓXIMA entrada; resultados e G1 são independentes.
+   Coberturas distintas não garantem acertos nem impedem LOSS simultâneos. */
+const adaptiveAssignmentCache=new Map();
+
+function adaptiveCoverageSignature(motor){
+return [...motor.play.numbers].sort((a,b)=>a-b).join(',');
+}
+
+function adaptiveAssignments(cs){
+const historyKey=state.history.slice(-70).join(',');
+const bankKey=cs.map(m=>m.key+':'+m.rank+':'+adaptiveCoverageSignature(m)).join('|');
+const cacheKey=state.totalTurns+'@'+historyKey+'@'+bankKey;
+if(adaptiveAssignmentCache.has(cacheKey))return adaptiveAssignmentCache.get(cacheKey);
+// O banco normal possui 12 geometrias distintas. Em bancos incompletos,
+// a regra antiga continua disponível; não se inventa uma geometria.
+const seen=new Set(),bank=cs.filter(m=>{
+if(!validPlay(m.play))return false;
+const signature=adaptiveCoverageSignature(m);
+if(seen.has(signature))return false;
+seen.add(signature);return true;
+}).slice(0,12);
+const selections=new Map();
+if(bank.length<ADAPTATIVES.length)return selections;
+const rateCache=new Map(),profileCache=new Map();
+const rate=(motor,limit)=>{
+const key=motor.key+'@'+limit;
+if(!rateCache.has(key))rateCache.set(key,motorRate(motor.key,limit));
+return rateCache.get(key);
+};
+const configs=ADAPTATIVES.map((config,index)=>({config,index,
+previous:state.virtual['ADAPTIVE:'+config.id]?.previous||null
+})).sort((a,b)=>a.config.maxRank-b.config.maxRank||a.index-b.index);
+const scores=configs.map(({config,index,previous})=>{
+const profile=index%8+1;
+if(!profileCache.has(profile))profileCache.set(profile,structuralWeights(state.history,profile));
+const weights=profileCache.get(profile),total=weights.reduce((s,n)=>s+n,0)||37;
+return bank.map(m=>{
+if(m.rank>config.maxRank)return -Infinity;
+const performance=rate(m,3)*.55+rate(m,config.window)*.45;
+const coverage=m.play.numbers.reduce((s,n)=>s+weights[ix(n)],0)/total;
+// Conserva a margem individual de permanência e o limite de ranking.
+// A memória própria do perfil desempata desempenhos próximos.
+return performance+.08*(coverage-28/37)+(m.key===previous?config.margin:0);
+});
+});
+// Atribuição ótima determinística, 12 x 12; nenhuma ordem de chamada decide
+// qual adaptativa recebe um motor. Cada cobertura é usada no máximo uma vez.
+const size=1<<bank.length,dp=new Float64Array(size),parent=new Int16Array(size);
+dp.fill(-Infinity);parent.fill(-1);dp[0]=0;
+const population=new Uint8Array(size);
+for(let mask=1;mask<size;mask++)population[mask]=population[mask>>1]+(mask&1);
+for(let mask=0;mask<size;mask++){
+const row=population[mask];
+if(row>=configs.length||!Number.isFinite(dp[mask]))continue;
+for(let j=0;j<bank.length;j++){
+if(mask&(1<<j)||!Number.isFinite(scores[row][j]))continue;
+const next=mask|(1<<j),candidate=dp[mask]+scores[row][j];
+if(candidate>dp[next]+1e-12){dp[next]=candidate;parent[next]=j;}
+}
+}
+let mask=size-1;
+if(Number.isFinite(dp[mask]))for(let row=configs.length-1;row>=0;row--){
+const j=parent[mask];
+if(j<0)throw Error('ATRIBUIÇÃO ADAPTATIVA INCOMPLETA.');
+const selected=bank[j];
+selections.set('ADAPTIVE:'+configs[row].config.id,selected);
+mask^=1<<j;
+}
+adaptiveAssignmentCache.set(cacheKey,selections);
+if(adaptiveAssignmentCache.size>2)adaptiveAssignmentCache.delete(adaptiveAssignmentCache.keys().next().value);
+return selections;
+}
+
+function chooseMotor(def,cs,previous){
+if(def?.type==='ADAPTIVE'&&def.id?.startsWith('ADAPTIVE:')&&cs.length){
+const selected=adaptiveAssignments(cs).get(def.id);
+if(selected)return selected;
+}
+return legacyChooseMotor(def,cs,previous);
+}
 
-     Aprende apenas com resultados posteriores a contextos já formados.
 
-     Os dados das imagens não são inseridos como conhecimento futuro.
-
-     Estatísticas compartilhadas são imutáveis; cada perfil usa sua mistura.
-
-     Região e espelho direcionais desta camada não alteram convenções antigas.
-
-  */
-
-  const structuralMemoryCache=new Map();
-
-  const STRUCTURAL_KINDS=[
-
-  'NUMERO','PAR','TRINCA','SALTO','FORMA','TRIANGULO',
-
-  'AMPLITUDE','CADEIA','PERCURSO','POLOS','ARCO','REGIAO','ESPELHO'
-
-  ];
-
-  const STRUCTURAL_PROFILES=[
-
-  [1,1,1,1,1,1,1,1,1,1,1,1,1],
-
-  [2,1.8,.7,1.4,1,.8,1,.6,.7,.6,.7,.7,.6],
-
-  [.8,.7,.6,.7,.8,1,1,.7,1,1.2,1.8,2,.8],
-
-  [.6,.8,.6,1.3,1.8,1,1.5,2.1,2.3,.7,.6,.6,.8],
-
-  [.7,1.5,1.8,.8,2,2.5,1.4,1.1,1,.6,.6,.7,.7],
-
-  [.7,.6,.5,.7,.8,.8,.8,.8,1.2,2.5,2.5,1.2,.7],
-
-  [1.1,1.2,1,1.2,1.4,1.5,1.2,.8,1.7,1.5,.7,.7,1.8],
-
-  [.7,.8,.6,2,1.7,1.2,2.5,1.4,2.2,.8,1,.6,1.4]
-
-  ];
-
-
-  function structuralRegion(n){
-
-  if([5,8,10,11,13,16,23,24,27,30,33,36].includes(n))return 'TIERS';
-
-  if([1,6,9,14,17,20,31,34].includes(n))return 'ORPHELINS';
-
-  return 'VOISINS';
-
-  }
-
-
-  function structuralContexts(h){
-
-  if(!h.length)return [];
-
-  const contexts=[],last=h.at(-1),position=ix(last);
-
-  const add=(kind,key,relative=false)=>contexts.push({kind,key:String(key),relative});
-
-  const band=v=>Math.abs(v)<=3?'C':Math.abs(v)<=9?'M':'L';
-
-  add('NUMERO',last);
-
-  let run=1;
-
-  while(run<Math.min(8,h.length)&&
-
-  structuralRegion(h[h.length-1-run])===structuralRegion(last))run++;
-
-  add('REGIAO',structuralRegion(last)+':'+run);
-
-  if(h.length>=2){
-
-  const step=direction(h.at(-2),last);
-
-  add('PAR',h.slice(-2).join(','));
-
-  add('SALTO',step,true);
-
-  add('ESPELHO',step===18?'MAIS18':step===-18?'MAIS19':'OUTRO:'+Math.sign(step),true);
-
-  }
-
-  if(h.length>=3){
-
-  const [a,b,c]=h.slice(-3),s=direction(a,b),t=direction(b,c);
-
-  const f=triangleFeatures(a,b,c);
-
-  const kind=a===b&&b===c?'TRIPLA':a===b?'INICIAL':b===c?'FINAL':
-
-  a===c?'RETORNO':s*t>0?'CONTINUIDADE':'INVERSAO';
-
-  add('TRINCA',[a,b,c].join(','));
-
-  add('FORMA',[s,t].join(','),true);
-
-  add('TRIANGULO',[kind,Math.floor(f.closure/3),
-
-  Math.round(f.area*4),f.degenerate?1:0,
-
-  f.angles[1]==null?'X':Math.floor(f.angles[1]/30)].join(':'),true);
-
-  add('AMPLITUDE',[hopTrend(s,t),band(s),band(t),
-
-  Math.floor(Math.abs(Math.abs(t)-Math.abs(s))/4)].join(':'),true);
-
-  }
-
-  for(let size=4;size<=Math.min(8,h.length);size++){
-
-  const nums=h.slice(-size),steps=nums.slice(1).map((n,i)=>direction(nums[i],n));
-
-  add('CADEIA',size+':'+nums.join(','));
-
-  add('FORMA',size+':'+steps.map(s=>Math.round(s/3)).join(','),true);
-
-  const net=steps.reduce((s,n)=>s+n,0),length=steps.reduce((s,n)=>s+Math.abs(n),0);
-
-  const closure=distance(nums[0],last);
-
-  add('PERCURSO',[size,Math.round(net/4),Math.floor(length/8),
-
-  Math.floor(closure/3),steps.map(Math.sign).join(','),
-
-  Number(Math.abs(net)>=31&&closure<=6)].join(':'),true);
-
-  }
-
-  if(h.length>=4){
-
-  const [a,b,c,d]=h.slice(-4);
-
-  if(distance(a,b)>=8&&distance(a,c)<=2&&distance(b,d)<=2){
-
-  const initial=distance(a,b),separation=distance(c,d);
-
-  add('POLOS',[direction(a,c),direction(b,d),Math.floor(separation/3),
-
-  Math.sign(separation-initial),direction(d,c)].join(':'),true);
-
-  }
-
-  }
-
-  if(h.length>=10){
-
-  const visits=Array(37).fill(0);
-
-  for(const n of h.slice(-10))for(let k=0;k<8;k++)visits[mod(ix(n)-k)]++;
-
-  let start=0;
-
-  for(let k=1;k<37;k++)if(visits[k]>visits[start])start=k;
-
-  const inside=mod(position-start)<8;
-
-  const prior=mod(ix(h.at(-2))-start)<8;
-
-  add('ARCO',[mod(start-position),visits[start],inside?1:0,
-
-  prior?1:0,inside===prior?'PERMANENCIA':inside?'ENTRADA':'SAIDA'].join(':'),true);
-
-  }
-
-  return contexts;
-
-  }
-
-
-  function structuralReadGroups(contexts,books,last){
-
-  const groups=new Map();
-
-  for(const context of contexts){
-
-  const record=books.get(context.kind+'|'+context.key);
-
-  if(!record?.total)continue;
-
-  const confidence=record.total/(record.total+10);
-
-  const recent=Array(37).fill(0);
-
-  for(const n of record.recent)recent[n]++;
-
-  const weights=Array(37).fill(0);
-
-  for(let j=0;j<37;j++){
-
-  const target=context.relative?mod(j-ix(last)):j;
-
-  const global=(record.counts[target]+6/37)/(record.total+6);
-
-  const short=(recent[target]+4/37)/(record.recent.length+4);
-
-  weights[j]=37*(global*.7+short*.3);
-
-  }
-
-  let group=groups.get(context.kind);
-
-  if(!group){group={weights:Array(37).fill(0),mass:0,support:0,keys:0};groups.set(context.kind,group);}
-
-  for(let j=0;j<37;j++)group.weights[j]+=weights[j]*confidence;
-
-  group.mass+=confidence;group.support+=record.total;group.keys++;
-
-  }
-
-  for(const group of groups.values()){
-
-  for(let j=0;j<37;j++)group.weights[j]/=group.mass;
-
-  group.confidence=group.mass/group.keys;
-
-  }
-
-  return groups;
-
-  }
-
-
-  function structuralMemoryRead(history){
-
-  const h=history.slice(-WINDOW),key=h.join(',');
-
-  if(structuralMemoryCache.has(key))return structuralMemoryCache.get(key);
-
-  if(h.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO INCOMPATÍVEL COM A RODA EUROPEIA.');
-
-  const books=new Map(),performanceByKind=new Map();
-
-  for(let end=1;end<h.length;end++){
-
-  const prefix=h.slice(0,end),last=prefix.at(-1),actual=h[end];
-
-  const contexts=structuralContexts(prefix);
-
-  // A previsão é calculada antes de registrar actual.
-
-  const groups=structuralReadGroups(contexts,books,last);
-
-  for(const [kind,group] of groups){
-
-  if(group.support<2)continue;
-
-  const stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
-
-  stats.samples++;stats.sumLogGain+=clamp(Math.log(Math.max(.01,group.weights[ix(actual)])),-2,2);
-
-  performanceByKind.set(kind,stats);
-
-  }
-
-  const seen=new Set();
-
-  for(const context of contexts){
-
-  const id=context.kind+'|'+context.key;
-
-  if(seen.has(id))continue;
-
-  seen.add(id);
-
-  let record=books.get(id);
-
-  if(!record){record={total:0,counts:Array(37).fill(0),recent:[]};books.set(id,record);}
-
-  const target=context.relative?mod(ix(actual)-ix(last)):ix(actual);
-
-  record.counts[target]++;record.total++;record.recent.push(target);
-
-  if(record.recent.length>5)record.recent.shift();
-
-  }
-
-  }
-
-  const groups=structuralReadGroups(structuralContexts(h),books,h.at(-1));
-
-  const components=STRUCTURAL_KINDS.map(kind=>{
-
-  const group=groups.get(kind),stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
-
-  const mean=stats.samples?stats.sumLogGain/stats.samples:0;
-
-  const gain=Math.exp(clamp(mean*stats.samples/(stats.samples+16),-.6,.25));
-
-  return {kind,weights:group?normalizeSpace(group.weights):Array(37).fill(1),
-
-  support:group?.support||0,confidence:group?.confidence||0,
-
-  validationSamples:stats.samples,meanLogGain:mean,gain};
-
-  });
-
-  const result={components,historyLength:h.length,contextCount:books.size};
-
-  structuralMemoryCache.set(key,result);
-
-  if(structuralMemoryCache.size>24)structuralMemoryCache.delete(structuralMemoryCache.keys().next().value);
-
-  return result;
-
-  }
-
-
-  function structuralWeights(h,variation=1){
-
-  const memory=structuralMemoryRead(h),profile=STRUCTURAL_PROFILES[variation-1]||STRUCTURAL_PROFILES[0];
-
-  let mass=0;
-
-  const weights=Array(37).fill(0);
-
-  for(let k=0;k<memory.components.length;k++){
-
-  const component=memory.components[k],weight=profile[k]*component.confidence*component.gain;
-
-  if(!weight)continue;
-
-  mass+=weight;
-
-  for(let j=0;j<37;j++)weights[j]+=component.weights[j]*weight;
-
-  }
-
-  return mass?normalizeSpace(weights.map(v=>v/mass)):Array(37).fill(1);
-
-  }
-
-
-  function applySpatial(weights,h,strength=.30){
-
-  legacyApplySpatial(weights,h,strength);
-
-  if(h.length<8)return weights;
-
-  const learned=structuralWeights(h),scale=avg(weights.map(v=>Math.max(0,v)))||1;
-
-  const reliability=Math.min(1,(h.length-7)/24);
-
-  for(let j=0;j<37;j++)weights[j]=Math.max(.001,
-
-  weights[j]+scale*.14*reliability*clamp(learned[j]-1,-.7,1.2));
-
-  return weights;
-
-  }
-
-
-  function parseInput(text){
-
-  // Vírgulas e pontos separam giros no formato antigo: não são casas decimais.
-
-  const normalized=String(text).trim();
-
-  const numbers=(normalized.match(/\d+/g)||[]);
-
-  if(numbers.some(n=>/^0{2,}$/.test(n)))throw Error('00 NÃO É 0. ESTE SISTEMA USA A RODA EUROPEIA DE 37 NÚMEROS.');
-
-  if(/-\s*\d/.test(normalized))throw Error('HISTÓRICO CONTÉM NÚMERO NEGATIVO.');
-
-  const result=numbers.map(Number);
-
-  if(result.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO DEVE CONTER SOMENTE NÚMEROS DE 0 A 36.');
-
-  return result;
-
-  }
 
   let state = fresh();
   let busy = false;
@@ -5097,7 +5041,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.6.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.3 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -5131,10 +5075,11 @@ ANÁLISE BETA V6.6.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.6.2",
-      KEY = "ANALISE_BETA_V662",
+    const VERSION = "6.6.3",
+      KEY = "ANALISE_BETA_V663",
       WINDOW = 70;
     const OLD_KEYS = [
+      "ANALISE_BETA_V662",
       "ANALISE_BETA_V661",
       "ANALISE_BETA_V660",
       "ANALISE_BETA_V659",
@@ -6918,7 +6863,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return global * (1 - w) + local.score * w;
     }
 
-    function chooseMotor(def, cs, previous) {
+    function legacyChooseMotor(def, cs, previous) {
       if (!cs.length) return null;
       const fixed = cs[clamp(state.rank - 1, 0, cs.length - 1)];
       if (def.rank) return cs[clamp(def.rank - 1, 0, cs.length - 1)];
@@ -8002,6 +7947,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
 
     function clearSpatialCaches() {
+    adaptiveAssignmentCache.clear();
     structuralMemoryCache.clear();
       triangleCache.clear();
       spaceCache.clear();
@@ -9111,6 +9057,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     /* Caches dependentes do estado são renovados; análises puras por histórico
    exato continuam disponíveis para reutilização, sem alterar os cálculos. */
     function clearRuntimeCaches() {
+    adaptiveAssignmentCache.clear();
       motorDiversityCache.clear();
       variantForecastCache.clear();
       blockRuntimeKey = null;
@@ -9873,380 +9820,309 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       }
     }
 
-    /* MEMÓRIA ESTRUTURAL CAUSAL — V6.6.2
+    /* Eventos observados no último giro, reconhecidos somente pelo prefixo.
+   Cada evento aprende sua distribuição posterior em relação ao polo de
+   referência. Fusão e ruptura não ficam misturadas com a formação A-B-A'-B'. */
+function structuralPoleEvents(h){
+if(h.length<4)return [];
+const read=trackPoles(h);
+const current=read.events.filter(event=>event.position===h.length);
+const contexts=[];
+for(const event of current){
+const kind=event.event==='RUPTURA'?'POLO_RUPTURA':
+event.event==='RETOMADA'?'POLO_RETOMADA':
+event.event==='FUSÃO'?'POLO_FUSAO':'POLO_EVENTO';
+// Primeiro polo do episódio, preservado no próprio evento; uma ruptura
+// e uma nova formação no mesmo giro não compartilham a referência errada.
+const origin=event.event==='FUSÃO'?event.number:event.anchors?.[0];
+contexts.push({kind,key:event.event,relative:true,
+origin:Number.isInteger(origin)?origin:h.at(-1)});
+}
+if(!current.length&&read.concentration?.active){
+contexts.push({kind:'POLO_EVENTO',key:'CONCENTRAÇÃO APÓS FUSÃO:'+Math.min(2,read.concentration.outside),
+relative:true,origin:read.concentration.center});
+}
+return contexts;
+}
+
+/* MEMÓRIA ESTRUTURAL CAUSAL — V6.6.3
+   Aprende apenas com resultados posteriores a contextos já formados.
+   Os dados das imagens não são inseridos como conhecimento futuro.
+   Estatísticas compartilhadas são imutáveis; cada perfil usa sua mistura.
+   Região e espelho direcionais desta camada não alteram convenções antigas.
+*/
+const structuralMemoryCache=new Map();
+const STRUCTURAL_KINDS=[
+'NUMERO','PAR','TRINCA','SALTO','FORMA','TRIANGULO',
+'AMPLITUDE','CADEIA','PERCURSO','POLOS','ARCO','REGIAO','ESPELHO',
+'POLO_EVENTO','POLO_RUPTURA','POLO_RETOMADA','POLO_FUSAO'
+];
+const STRUCTURAL_PROFILES=[
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[2,1.8,.7,1.4,1,.8,1,.6,.7,.6,.7,.7,.6,0.6,0.7,0.7,0.7],
+[.8,.7,.6,.7,.8,1,1,.7,1,1.2,1.8,2,.8,1.3,1.5,1.5,1.5],
+[.6,.8,.6,1.3,1.8,1,1.5,2.1,2.3,.7,.6,.6,.8,0.8,1,1,0.9],
+[.7,1.5,1.8,.8,2,2.5,1.4,1.1,1,.6,.6,.7,.7,1,1.1,1.1,1.1],
+[.7,.6,.5,.7,.8,.8,.8,.8,1.2,2.5,2.5,1.2,.7,2,2.2,2.2,2.2],
+[1.1,1.2,1,1.2,1.4,1.5,1.2,.8,1.7,1.5,.7,.7,1.8,1.3,1.4,1.4,1.4],
+[.7,.8,.6,2,1.7,1.2,2.5,1.4,2.2,.8,1,.6,1.4,1,1.5,1.2,1.3]
+];
+
+function structuralRegion(n){
+if([5,8,10,11,13,16,23,24,27,30,33,36].includes(n))return 'TIERS';
+if([1,6,9,14,17,20,31,34].includes(n))return 'ORPHELINS';
+return 'VOISINS';
+}
+
+function structuralContexts(h){
+if(!h.length)return [];
+const contexts=[],last=h.at(-1),position=ix(last);
+const add=(kind,key,relative=false)=>contexts.push({kind,key:String(key),relative});
+const band=v=>Math.abs(v)<=3?'C':Math.abs(v)<=9?'M':'L';
+add('NUMERO',last);
+let run=1;
+while(run<Math.min(8,h.length)&&
+structuralRegion(h[h.length-1-run])===structuralRegion(last))run++;
+add('REGIAO',structuralRegion(last)+':'+run);
+if(h.length>=2){
+const step=direction(h.at(-2),last);
+add('PAR',h.slice(-2).join(','));
+add('SALTO',step,true);
+add('ESPELHO',step===18?'MAIS18':step===-18?'MAIS19':'OUTRO:'+Math.sign(step),true);
+}
+if(h.length>=3){
+const [a,b,c]=h.slice(-3),s=direction(a,b),t=direction(b,c);
+const f=triangleFeatures(a,b,c);
+const kind=a===b&&b===c?'TRIPLA':a===b?'INICIAL':b===c?'FINAL':
+a===c?'RETORNO':s*t>0?'CONTINUIDADE':'INVERSAO';
+add('TRINCA',[a,b,c].join(','));
+add('FORMA',[s,t].join(','),true);
+add('TRIANGULO',[kind,Math.floor(f.closure/3),
+Math.round(f.area*4),f.degenerate?1:0,
+f.angles[1]==null?'X':Math.floor(f.angles[1]/30)].join(':'),true);
+add('AMPLITUDE',[hopTrend(s,t),band(s),band(t),
+Math.floor(Math.abs(Math.abs(t)-Math.abs(s))/4)].join(':'),true);
+}
+for(let size=4;size<=Math.min(8,h.length);size++){
+const nums=h.slice(-size),steps=nums.slice(1).map((n,i)=>direction(nums[i],n));
+add('CADEIA',size+':'+nums.join(','));
+add('FORMA',size+':'+steps.map(s=>Math.round(s/3)).join(','),true);
+const net=steps.reduce((s,n)=>s+n,0),length=steps.reduce((s,n)=>s+Math.abs(n),0);
+const closure=distance(nums[0],last);
+add('PERCURSO',[size,Math.round(net/4),Math.floor(length/8),
+Math.floor(closure/3),steps.map(Math.sign).join(','),
+Number(Math.abs(net)>=31&&closure<=6)].join(':'),true);
+}
+if(h.length>=4){
+const [a,b,c,d]=h.slice(-4);
+if(distance(a,b)>=8&&distance(a,c)<=2&&distance(b,d)<=2){
+const initial=distance(a,b),separation=distance(c,d);
+add('POLOS',[direction(a,c),direction(b,d),Math.floor(separation/3),
+Math.sign(separation-initial),direction(d,c)].join(':'),true);
+}
+}
+if(h.length>=10){
+const visits=Array(37).fill(0);
+for(const n of h.slice(-10))for(let k=0;k<8;k++)visits[mod(ix(n)-k)]++;
+let start=0;
+for(let k=1;k<37;k++)if(visits[k]>visits[start])start=k;
+const inside=mod(position-start)<8;
+const prior=mod(ix(h.at(-2))-start)<8;
+add('ARCO',[mod(start-position),visits[start],inside?1:0,
+prior?1:0,inside===prior?'PERMANENCIA':inside?'ENTRADA':'SAIDA'].join(':'),true);
+}
+contexts.push(...structuralPoleEvents(h));
+return contexts;
+}
+
+function structuralReadGroups(contexts,books,last){
+const groups=new Map();
+for(const context of contexts){
+const record=books.get(context.kind+'|'+context.key);
+if(!record?.total)continue;
+const confidence=record.total/(record.total+10);
+const recent=Array(37).fill(0);
+for(const n of record.recent)recent[n]++;
+const weights=Array(37).fill(0);
+for(let j=0;j<37;j++){
+const target=context.relative?mod(j-ix(context.origin??last)):j;
+const global=(record.counts[target]+6/37)/(record.total+6);
+const short=(recent[target]+4/37)/(record.recent.length+4);
+weights[j]=37*(global*.7+short*.3);
+}
+let group=groups.get(context.kind);
+if(!group){group={weights:Array(37).fill(0),mass:0,support:0,keys:0};groups.set(context.kind,group);}
+for(let j=0;j<37;j++)group.weights[j]+=weights[j]*confidence;
+group.mass+=confidence;group.support+=record.total;group.keys++;
+}
+for(const group of groups.values()){
+for(let j=0;j<37;j++)group.weights[j]/=group.mass;
+group.confidence=group.mass/group.keys;
+}
+return groups;
+}
+
+function structuralMemoryRead(history){
+const h=history.slice(-WINDOW),key=h.join(',');
+if(structuralMemoryCache.has(key))return structuralMemoryCache.get(key);
+if(h.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO INCOMPATÍVEL COM A RODA EUROPEIA.');
+const books=new Map(),performanceByKind=new Map();
+for(let end=1;end<h.length;end++){
+const prefix=h.slice(0,end),last=prefix.at(-1),actual=h[end];
+const contexts=structuralContexts(prefix);
+// A previsão é calculada antes de registrar actual.
+const groups=structuralReadGroups(contexts,books,last);
+for(const [kind,group] of groups){
+if(group.support<2)continue;
+const stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+stats.samples++;stats.sumLogGain+=clamp(Math.log(Math.max(.01,group.weights[ix(actual)])),-2,2);
+performanceByKind.set(kind,stats);
+}
+const seen=new Set();
+for(const context of contexts){
+const id=context.kind+'|'+context.key;
+if(seen.has(id))continue;
+seen.add(id);
+let record=books.get(id);
+if(!record){record={total:0,counts:Array(37).fill(0),recent:[]};books.set(id,record);}
+const target=context.relative?mod(ix(actual)-ix(context.origin??last)):ix(actual);
+record.counts[target]++;record.total++;record.recent.push(target);
+if(record.recent.length>5)record.recent.shift();
+}
+}
+const groups=structuralReadGroups(structuralContexts(h),books,h.at(-1));
+const components=STRUCTURAL_KINDS.map(kind=>{
+const group=groups.get(kind),stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+const mean=stats.samples?stats.sumLogGain/stats.samples:0;
+const gain=Math.exp(clamp(mean*stats.samples/(stats.samples+16),-.6,.25));
+return {kind,weights:group?normalizeSpace(group.weights):Array(37).fill(1),
+support:group?.support||0,confidence:group?.confidence||0,
+validationSamples:stats.samples,meanLogGain:mean,gain};
+});
+const result={components,historyLength:h.length,contextCount:books.size};
+structuralMemoryCache.set(key,result);
+if(structuralMemoryCache.size>24)structuralMemoryCache.delete(structuralMemoryCache.keys().next().value);
+return result;
+}
+
+function structuralWeights(h,variation=1){
+const memory=structuralMemoryRead(h),profile=STRUCTURAL_PROFILES[variation-1]||STRUCTURAL_PROFILES[0];
+let mass=0;
+const weights=Array(37).fill(0);
+for(let k=0;k<memory.components.length;k++){
+const component=memory.components[k],weight=profile[k]*component.confidence*component.gain;
+if(!weight)continue;
+mass+=weight;
+for(let j=0;j<37;j++)weights[j]+=component.weights[j]*weight;
+}
+return mass?normalizeSpace(weights.map(v=>v/mass)):Array(37).fill(1);
+}
+
+function applySpatial(weights,h,strength=.30){
+legacyApplySpatial(weights,h,strength);
+if(h.length<8)return weights;
+const learned=structuralWeights(h),scale=avg(weights.map(v=>Math.max(0,v)))||1;
+const reliability=Math.min(1,(h.length-7)/24);
+for(let j=0;j<37;j++)weights[j]=Math.max(.001,
+weights[j]+scale*.14*reliability*clamp(learned[j]-1,-.7,1.2));
+return weights;
+}
+
+function parseInput(text){
+// Vírgulas e pontos separam giros no formato antigo: não são casas decimais.
+const normalized=String(text).trim();
+const numbers=(normalized.match(/\d+/g)||[]);
+if(numbers.some(n=>/^0{2,}$/.test(n)))throw Error('00 NÃO É 0. ESTE SISTEMA USA A RODA EUROPEIA DE 37 NÚMEROS.');
+if(/-\s*\d/.test(normalized))throw Error('HISTÓRICO CONTÉM NÚMERO NEGATIVO.');
+const result=numbers.map(Number);
+if(result.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO DEVE CONTER SOMENTE NÚMEROS DE 0 A 36.');
+return result;
+}
+
+/* Seleção das adaptativas: pontuação própria e distribuição das coberturas.
+   Não gira estratégias por tempo nem modifica ciclos já comprometidos.
+   A coordenação vale para a PRÓXIMA entrada; resultados e G1 são independentes.
+   Coberturas distintas não garantem acertos nem impedem LOSS simultâneos. */
+const adaptiveAssignmentCache=new Map();
+
+function adaptiveCoverageSignature(motor){
+return [...motor.play.numbers].sort((a,b)=>a-b).join(',');
+}
+
+function adaptiveAssignments(cs){
+const historyKey=state.history.slice(-70).join(',');
+const bankKey=cs.map(m=>m.key+':'+m.rank+':'+adaptiveCoverageSignature(m)).join('|');
+const cacheKey=state.totalTurns+'@'+historyKey+'@'+bankKey;
+if(adaptiveAssignmentCache.has(cacheKey))return adaptiveAssignmentCache.get(cacheKey);
+// O banco normal possui 12 geometrias distintas. Em bancos incompletos,
+// a regra antiga continua disponível; não se inventa uma geometria.
+const seen=new Set(),bank=cs.filter(m=>{
+if(!validPlay(m.play))return false;
+const signature=adaptiveCoverageSignature(m);
+if(seen.has(signature))return false;
+seen.add(signature);return true;
+}).slice(0,12);
+const selections=new Map();
+if(bank.length<ADAPTATIVES.length)return selections;
+const rateCache=new Map(),profileCache=new Map();
+const rate=(motor,limit)=>{
+const key=motor.key+'@'+limit;
+if(!rateCache.has(key))rateCache.set(key,motorRate(motor.key,limit));
+return rateCache.get(key);
+};
+const configs=ADAPTATIVES.map((config,index)=>({config,index,
+previous:state.virtual['ADAPTIVE:'+config.id]?.previous||null
+})).sort((a,b)=>a.config.maxRank-b.config.maxRank||a.index-b.index);
+const scores=configs.map(({config,index,previous})=>{
+const profile=index%8+1;
+if(!profileCache.has(profile))profileCache.set(profile,structuralWeights(state.history,profile));
+const weights=profileCache.get(profile),total=weights.reduce((s,n)=>s+n,0)||37;
+return bank.map(m=>{
+if(m.rank>config.maxRank)return -Infinity;
+const performance=rate(m,3)*.55+rate(m,config.window)*.45;
+const coverage=m.play.numbers.reduce((s,n)=>s+weights[ix(n)],0)/total;
+// Conserva a margem individual de permanência e o limite de ranking.
+// A memória própria do perfil desempata desempenhos próximos.
+return performance+.08*(coverage-28/37)+(m.key===previous?config.margin:0);
+});
+});
+// Atribuição ótima determinística, 12 x 12; nenhuma ordem de chamada decide
+// qual adaptativa recebe um motor. Cada cobertura é usada no máximo uma vez.
+const size=1<<bank.length,dp=new Float64Array(size),parent=new Int16Array(size);
+dp.fill(-Infinity);parent.fill(-1);dp[0]=0;
+const population=new Uint8Array(size);
+for(let mask=1;mask<size;mask++)population[mask]=population[mask>>1]+(mask&1);
+for(let mask=0;mask<size;mask++){
+const row=population[mask];
+if(row>=configs.length||!Number.isFinite(dp[mask]))continue;
+for(let j=0;j<bank.length;j++){
+if(mask&(1<<j)||!Number.isFinite(scores[row][j]))continue;
+const next=mask|(1<<j),candidate=dp[mask]+scores[row][j];
+if(candidate>dp[next]+1e-12){dp[next]=candidate;parent[next]=j;}
+}
+}
+let mask=size-1;
+if(Number.isFinite(dp[mask]))for(let row=configs.length-1;row>=0;row--){
+const j=parent[mask];
+if(j<0)throw Error('ATRIBUIÇÃO ADAPTATIVA INCOMPLETA.');
+const selected=bank[j];
+selections.set('ADAPTIVE:'+configs[row].config.id,selected);
+mask^=1<<j;
+}
+adaptiveAssignmentCache.set(cacheKey,selections);
+if(adaptiveAssignmentCache.size>2)adaptiveAssignmentCache.delete(adaptiveAssignmentCache.keys().next().value);
+return selections;
+}
+
+function chooseMotor(def,cs,previous){
+if(def?.type==='ADAPTIVE'&&def.id?.startsWith('ADAPTIVE:')&&cs.length){
+const selected=adaptiveAssignments(cs).get(def.id);
+if(selected)return selected;
+}
+return legacyChooseMotor(def,cs,previous);
+}
 
-       Aprende apenas com resultados posteriores a contextos já formados.
 
-       Os dados das imagens não são inseridos como conhecimento futuro.
-
-       Estatísticas compartilhadas são imutáveis; cada perfil usa sua mistura.
-
-       Região e espelho direcionais desta camada não alteram convenções antigas.
-
-    */
-
-    const structuralMemoryCache=new Map();
-
-    const STRUCTURAL_KINDS=[
-
-    'NUMERO','PAR','TRINCA','SALTO','FORMA','TRIANGULO',
-
-    'AMPLITUDE','CADEIA','PERCURSO','POLOS','ARCO','REGIAO','ESPELHO'
-
-    ];
-
-    const STRUCTURAL_PROFILES=[
-
-    [1,1,1,1,1,1,1,1,1,1,1,1,1],
-
-    [2,1.8,.7,1.4,1,.8,1,.6,.7,.6,.7,.7,.6],
-
-    [.8,.7,.6,.7,.8,1,1,.7,1,1.2,1.8,2,.8],
-
-    [.6,.8,.6,1.3,1.8,1,1.5,2.1,2.3,.7,.6,.6,.8],
-
-    [.7,1.5,1.8,.8,2,2.5,1.4,1.1,1,.6,.6,.7,.7],
-
-    [.7,.6,.5,.7,.8,.8,.8,.8,1.2,2.5,2.5,1.2,.7],
-
-    [1.1,1.2,1,1.2,1.4,1.5,1.2,.8,1.7,1.5,.7,.7,1.8],
-
-    [.7,.8,.6,2,1.7,1.2,2.5,1.4,2.2,.8,1,.6,1.4]
-
-    ];
-
-
-    function structuralRegion(n){
-
-    if([5,8,10,11,13,16,23,24,27,30,33,36].includes(n))return 'TIERS';
-
-    if([1,6,9,14,17,20,31,34].includes(n))return 'ORPHELINS';
-
-    return 'VOISINS';
-
-    }
-
-
-    function structuralContexts(h){
-
-    if(!h.length)return [];
-
-    const contexts=[],last=h.at(-1),position=ix(last);
-
-    const add=(kind,key,relative=false)=>contexts.push({kind,key:String(key),relative});
-
-    const band=v=>Math.abs(v)<=3?'C':Math.abs(v)<=9?'M':'L';
-
-    add('NUMERO',last);
-
-    let run=1;
-
-    while(run<Math.min(8,h.length)&&
-
-    structuralRegion(h[h.length-1-run])===structuralRegion(last))run++;
-
-    add('REGIAO',structuralRegion(last)+':'+run);
-
-    if(h.length>=2){
-
-    const step=direction(h.at(-2),last);
-
-    add('PAR',h.slice(-2).join(','));
-
-    add('SALTO',step,true);
-
-    add('ESPELHO',step===18?'MAIS18':step===-18?'MAIS19':'OUTRO:'+Math.sign(step),true);
-
-    }
-
-    if(h.length>=3){
-
-    const [a,b,c]=h.slice(-3),s=direction(a,b),t=direction(b,c);
-
-    const f=triangleFeatures(a,b,c);
-
-    const kind=a===b&&b===c?'TRIPLA':a===b?'INICIAL':b===c?'FINAL':
-
-    a===c?'RETORNO':s*t>0?'CONTINUIDADE':'INVERSAO';
-
-    add('TRINCA',[a,b,c].join(','));
-
-    add('FORMA',[s,t].join(','),true);
-
-    add('TRIANGULO',[kind,Math.floor(f.closure/3),
-
-    Math.round(f.area*4),f.degenerate?1:0,
-
-    f.angles[1]==null?'X':Math.floor(f.angles[1]/30)].join(':'),true);
-
-    add('AMPLITUDE',[hopTrend(s,t),band(s),band(t),
-
-    Math.floor(Math.abs(Math.abs(t)-Math.abs(s))/4)].join(':'),true);
-
-    }
-
-    for(let size=4;size<=Math.min(8,h.length);size++){
-
-    const nums=h.slice(-size),steps=nums.slice(1).map((n,i)=>direction(nums[i],n));
-
-    add('CADEIA',size+':'+nums.join(','));
-
-    add('FORMA',size+':'+steps.map(s=>Math.round(s/3)).join(','),true);
-
-    const net=steps.reduce((s,n)=>s+n,0),length=steps.reduce((s,n)=>s+Math.abs(n),0);
-
-    const closure=distance(nums[0],last);
-
-    add('PERCURSO',[size,Math.round(net/4),Math.floor(length/8),
-
-    Math.floor(closure/3),steps.map(Math.sign).join(','),
-
-    Number(Math.abs(net)>=31&&closure<=6)].join(':'),true);
-
-    }
-
-    if(h.length>=4){
-
-    const [a,b,c,d]=h.slice(-4);
-
-    if(distance(a,b)>=8&&distance(a,c)<=2&&distance(b,d)<=2){
-
-    const initial=distance(a,b),separation=distance(c,d);
-
-    add('POLOS',[direction(a,c),direction(b,d),Math.floor(separation/3),
-
-    Math.sign(separation-initial),direction(d,c)].join(':'),true);
-
-    }
-
-    }
-
-    if(h.length>=10){
-
-    const visits=Array(37).fill(0);
-
-    for(const n of h.slice(-10))for(let k=0;k<8;k++)visits[mod(ix(n)-k)]++;
-
-    let start=0;
-
-    for(let k=1;k<37;k++)if(visits[k]>visits[start])start=k;
-
-    const inside=mod(position-start)<8;
-
-    const prior=mod(ix(h.at(-2))-start)<8;
-
-    add('ARCO',[mod(start-position),visits[start],inside?1:0,
-
-    prior?1:0,inside===prior?'PERMANENCIA':inside?'ENTRADA':'SAIDA'].join(':'),true);
-
-    }
-
-    return contexts;
-
-    }
-
-
-    function structuralReadGroups(contexts,books,last){
-
-    const groups=new Map();
-
-    for(const context of contexts){
-
-    const record=books.get(context.kind+'|'+context.key);
-
-    if(!record?.total)continue;
-
-    const confidence=record.total/(record.total+10);
-
-    const recent=Array(37).fill(0);
-
-    for(const n of record.recent)recent[n]++;
-
-    const weights=Array(37).fill(0);
-
-    for(let j=0;j<37;j++){
-
-    const target=context.relative?mod(j-ix(last)):j;
-
-    const global=(record.counts[target]+6/37)/(record.total+6);
-
-    const short=(recent[target]+4/37)/(record.recent.length+4);
-
-    weights[j]=37*(global*.7+short*.3);
-
-    }
-
-    let group=groups.get(context.kind);
-
-    if(!group){group={weights:Array(37).fill(0),mass:0,support:0,keys:0};groups.set(context.kind,group);}
-
-    for(let j=0;j<37;j++)group.weights[j]+=weights[j]*confidence;
-
-    group.mass+=confidence;group.support+=record.total;group.keys++;
-
-    }
-
-    for(const group of groups.values()){
-
-    for(let j=0;j<37;j++)group.weights[j]/=group.mass;
-
-    group.confidence=group.mass/group.keys;
-
-    }
-
-    return groups;
-
-    }
-
-
-    function structuralMemoryRead(history){
-
-    const h=history.slice(-WINDOW),key=h.join(',');
-
-    if(structuralMemoryCache.has(key))return structuralMemoryCache.get(key);
-
-    if(h.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO INCOMPATÍVEL COM A RODA EUROPEIA.');
-
-    const books=new Map(),performanceByKind=new Map();
-
-    for(let end=1;end<h.length;end++){
-
-    const prefix=h.slice(0,end),last=prefix.at(-1),actual=h[end];
-
-    const contexts=structuralContexts(prefix);
-
-    // A previsão é calculada antes de registrar actual.
-
-    const groups=structuralReadGroups(contexts,books,last);
-
-    for(const [kind,group] of groups){
-
-    if(group.support<2)continue;
-
-    const stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
-
-    stats.samples++;stats.sumLogGain+=clamp(Math.log(Math.max(.01,group.weights[ix(actual)])),-2,2);
-
-    performanceByKind.set(kind,stats);
-
-    }
-
-    const seen=new Set();
-
-    for(const context of contexts){
-
-    const id=context.kind+'|'+context.key;
-
-    if(seen.has(id))continue;
-
-    seen.add(id);
-
-    let record=books.get(id);
-
-    if(!record){record={total:0,counts:Array(37).fill(0),recent:[]};books.set(id,record);}
-
-    const target=context.relative?mod(ix(actual)-ix(last)):ix(actual);
-
-    record.counts[target]++;record.total++;record.recent.push(target);
-
-    if(record.recent.length>5)record.recent.shift();
-
-    }
-
-    }
-
-    const groups=structuralReadGroups(structuralContexts(h),books,h.at(-1));
-
-    const components=STRUCTURAL_KINDS.map(kind=>{
-
-    const group=groups.get(kind),stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
-
-    const mean=stats.samples?stats.sumLogGain/stats.samples:0;
-
-    const gain=Math.exp(clamp(mean*stats.samples/(stats.samples+16),-.6,.25));
-
-    return {kind,weights:group?normalizeSpace(group.weights):Array(37).fill(1),
-
-    support:group?.support||0,confidence:group?.confidence||0,
-
-    validationSamples:stats.samples,meanLogGain:mean,gain};
-
-    });
-
-    const result={components,historyLength:h.length,contextCount:books.size};
-
-    structuralMemoryCache.set(key,result);
-
-    if(structuralMemoryCache.size>24)structuralMemoryCache.delete(structuralMemoryCache.keys().next().value);
-
-    return result;
-
-    }
-
-
-    function structuralWeights(h,variation=1){
-
-    const memory=structuralMemoryRead(h),profile=STRUCTURAL_PROFILES[variation-1]||STRUCTURAL_PROFILES[0];
-
-    let mass=0;
-
-    const weights=Array(37).fill(0);
-
-    for(let k=0;k<memory.components.length;k++){
-
-    const component=memory.components[k],weight=profile[k]*component.confidence*component.gain;
-
-    if(!weight)continue;
-
-    mass+=weight;
-
-    for(let j=0;j<37;j++)weights[j]+=component.weights[j]*weight;
-
-    }
-
-    return mass?normalizeSpace(weights.map(v=>v/mass)):Array(37).fill(1);
-
-    }
-
-
-    function applySpatial(weights,h,strength=.30){
-
-    legacyApplySpatial(weights,h,strength);
-
-    if(h.length<8)return weights;
-
-    const learned=structuralWeights(h),scale=avg(weights.map(v=>Math.max(0,v)))||1;
-
-    const reliability=Math.min(1,(h.length-7)/24);
-
-    for(let j=0;j<37;j++)weights[j]=Math.max(.001,
-
-    weights[j]+scale*.14*reliability*clamp(learned[j]-1,-.7,1.2));
-
-    return weights;
-
-    }
-
-
-    function parseInput(text){
-
-    // Vírgulas e pontos separam giros no formato antigo: não são casas decimais.
-
-    const normalized=String(text).trim();
-
-    const numbers=(normalized.match(/\d+/g)||[]);
-
-    if(numbers.some(n=>/^0{2,}$/.test(n)))throw Error('00 NÃO É 0. ESTE SISTEMA USA A RODA EUROPEIA DE 37 NÚMEROS.');
-
-    if(/-\s*\d/.test(normalized))throw Error('HISTÓRICO CONTÉM NÚMERO NEGATIVO.');
-
-    const result=numbers.map(Number);
-
-    if(result.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO DEVE CONTER SOMENTE NÚMEROS DE 0 A 36.');
-
-    return result;
-
-    }
 
     let state = fresh();
     let busy = false;
