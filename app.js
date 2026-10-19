@@ -1,8 +1,11 @@
 (() => {
   "use strict";
   /*
-ANÁLISE BETA V6.5.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.8 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- MASTER decide entre as estratégias, incluindo o Treinador Global independente.
+- Após encerrar entrada/G1, MASTER observa dois resultados completos antes do próximo sinal.
+- Linha MASTER registra os ciclos executados; sem resultados fictícios durante a pausa.
 - Ajuste visual: quadro expande sob a própria linha, sem rolagem programada; textos e números compactos.
 - Pós-loss exclusivamente das 12 adaptativas; pode intervir sobre qualquer seleção quando ligado.
 - Nome da linha do tempo abre quadro de jogo; indicação pós-loss destacada; placares separados.
@@ -26,10 +29,11 @@ ANÁLISE BETA V6.5.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.5.7",
-    KEY = "ANALISE_BETA_V657",
+  const VERSION = "6.5.8",
+    KEY = "ANALISE_BETA_V658",
     WINDOW = 70;
   const OLD_KEYS = [
+    "ANALISE_BETA_V657",
     "ANALISE_BETA_V656",
     "ANALISE_BETA_V655",
     "ANALISE_BETA_V654",
@@ -3075,7 +3079,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       manualCount: 0,
       manualLog: [],
       undoStack: [],
-      strategy: "TRAINER",
+      strategy: "MASTER",
+      masterChoice: null,
+      masterHistory: [],
+      masterResumeTurn: 0,
+      globalStrategyPrevious: null,
       postLossEnabled: false,
       focusTimelineId: null,
       rank: 3,
@@ -3154,6 +3162,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       "decisions",
       "ledger",
       "autoRows",
+      "masterHistory",
     ])
       if (!Array.isArray(r[field])) r[field] = [];
     r.totalTurns = Math.max(
@@ -3185,6 +3194,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     if (data?.postLossEnabled === undefined && r.strategy === "POSTLOSS")
       r.postLossEnabled = true;
     r.postLossEnabled = !!r.postLossEnabled;
+    if (data?.forecastVersion !== VERSION && data?.strategy === "TRAINER")
+      r.strategy = "MASTER";
+    r.masterResumeTurn = Math.max(0, Number(r.masterResumeTurn) || 0);
+    if (r.cycle && !r.cycle.controller) r.cycle.controller = r.strategy;
     r.open = {
       general: r.open?.general !== false,
       timeline: r.open?.timeline !== false,
@@ -3213,9 +3226,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     r.undoStack = r.undoStack.slice(-70);
     if (
       !VARIANT_OWNERS.some((o) => o.id === r.strategy) &&
-      !["TRAINER", "POSTLOSS", "AUTO", "ADAPTIVE", "CREATED"].includes(
-        r.strategy,
-      )
+      ![
+        "MASTER",
+        "TRAINER",
+        "POSTLOSS",
+        "AUTO",
+        "ADAPTIVE",
+        "CREATED",
+      ].includes(r.strategy)
     ) {
       r.strategy = "TRAINER";
       r.manual = null;
@@ -3344,6 +3362,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     updateNumberChoice();
     updateTrainer();
     blockRuntimeKey = null;
+    updateMaster(currentBlock());
     return currentBlock();
   }
 
@@ -3400,6 +3419,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   }
 
   function activeDefinition() {
+    if (
+      state.strategy === "MASTER" &&
+      !state.cycle &&
+      masterRestRemaining() > 0
+    )
+      return {
+        id: "MASTER",
+        name: "MASTER • PAUSA • FALTAM " + masterRestRemaining() + " GIRO(S)",
+        type: "MASTER",
+      };
     const target = state.cycle
       ? state.cycle.original?.postLossTarget
       : !state.manual &&
@@ -3411,6 +3440,23 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         id: target.defenseStrategy || target.id,
         name: "JOGADA PÓS-LOSS • " + target.name,
         type: "POSTLOSS",
+      };
+    if (
+      state.cycle?.controller === "TRAINER" &&
+      state.cycle.original?.globalStrategyTarget
+    )
+      return {
+        id: "TRAINER",
+        name:
+          "TREINADOR GLOBAL • " +
+          state.cycle.original.globalStrategyTarget.name,
+        type: "GLOBAL_STRATEGY",
+      };
+    if (state.cycle?.original?.masterTarget)
+      return {
+        id: state.cycle.strategy,
+        name: "MASTER • " + state.cycle.original.masterTarget.name,
+        type: "MASTER",
       };
     if (state.cycle)
       return (
@@ -3472,6 +3518,12 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   }
 
   function activeMotor(cs = currentBlock()?.global || []) {
+    if (
+      state.strategy === "MASTER" &&
+      !state.cycle &&
+      masterRestRemaining() > 0
+    )
+      return null;
     if (state.manual)
       return cs.find((m) => m.key === state.manual) || cs[0] || null;
     if (state.postLossEnabled || state.strategy === "POSTLOSS") {
@@ -3479,6 +3531,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (selected) return copy(selected.motor);
     }
     if (state.strategy === "POSTLOSS") return null;
+    if (state.strategy === "MASTER")
+      return copy(masterSelection()?.motor || null);
+    if (state.strategy === "TRAINER") return copy(independentGlobalMotor());
     if (state.variantSelections[activeVariationOwner()] === -3)
       return thirdVariationMotor(activeVariationOwner());
     const direct = selectedVariantForecast();
@@ -3594,18 +3649,27 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       forecasts = block?.variants || [];
     const timelineForecasts = snapshotTimelineForecasts(block);
     const phaseBefore = state.phase,
-      oldCycle = copy(state.cycle);
+      oldCycle = copy(state.cycle),
+      definitionBefore = activeDefinition();
+    const controller = oldCycle?.controller || state.strategy;
+    const masterPaused =
+      state.strategy === "MASTER" &&
+      state.phase === "ENTRY" &&
+      masterRestRemaining() > 0;
     const spatial = spatialRead(before.slice(-70)),
       after = [...before, n].slice(-70);
     let result = "AGUARDANDO",
       played = null;
-    if (state.phase === "ENTRY") {
+    if (masterPaused) {
+      result = "PAUSA MASTER";
+    } else if (state.phase === "ENTRY") {
       const motor = activeMotor(cs);
       if (motor) {
         played = copy(motor);
         state.previous = motor.key;
         state.cycle = {
-          strategy: activeDefinition().id,
+          controller: state.strategy,
+          strategy: definitionBefore.id,
           original: copy(motor),
           entryTurn: turn,
           entryTrigger: trigger,
@@ -3661,6 +3725,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       state.cycle = null;
       state.defense = null;
     }
+    recordMasterCycle(controller, oldCycle, played, result, turn);
     settleTimelineForecasts(timelineForecasts, n, turn, before);
     settleNativeStrategies(
       cs,
@@ -3682,13 +3747,17 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     );
     const playRoute = played ? (postLossTarget ? "POSTLOSS" : "NORMAL") : null;
     state.ledger.push({
+      controller,
+      masterTarget: copy(
+        oldCycle?.original?.masterTarget || played?.masterTarget || null,
+      ),
       playRoute,
       postLossTarget,
       turn,
       number: n,
       source,
       trigger,
-      strategy: oldCycle?.strategy || activeDefinition().id,
+      strategy: oldCycle?.strategy || definitionBefore.id,
       motor: played?.key || "—",
       phase: phaseBefore,
       result,
@@ -3797,7 +3866,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function timelineDefinitions() {
     return [
-      { id: "TRAINER", name: "TREINADOR GLOBAL" },
+      { id: "MASTER", name: "TREINADOR GLOBAL MASTER" },
+      { id: "TRAINER", name: "TREINADOR GLOBAL • ESTRATÉGIA" },
       { id: "POSTLOSS", name: "PÓS-LOSS" },
       ...VARIANT_OWNERS.flatMap((o) => [
         {
@@ -3858,10 +3928,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     const trainer =
       trainerRanking().find((d) => d.id === state.trainerChoice) ||
       trainerRanking()[0];
-    append(
-      "TRAINER",
-      motorForDefinition(trainer, block.global, state.previous),
-    );
+    append("TRAINER", independentGlobalMotor(block));
     for (const owner of VARIANT_OWNERS)
       append(owner.id + "@THIRD", thirdVariationMotor(owner.id, block));
     append("POSTLOSS", postLossChoice(block)?.motor);
@@ -3874,11 +3941,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     for (const id of Object.keys(state.timelineCycles))
       if (!all.has(id)) all.set(id, { id });
     for (const f of all.values()) {
+      if (f.id === "MASTER") continue;
       const rows =
         state.strategyTimeline[f.id] || (state.strategyTimeline[f.id] = []);
       let cycle = state.timelineCycles[f.id];
       if (!cycle) {
         if (!validPlay(f.motor?.play)) continue;
+        if (f.id === "TRAINER") state.globalStrategyPrevious = f.motor.key;
         cycle = {
           entry: copy(f.motor),
           defenseStrategy: f.defenseStrategy || f.id,
@@ -3953,12 +4022,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     if (!block) return null;
     if (id.endsWith("@THIRD"))
       return thirdVariationMotor(id.slice(0, -6), block);
-    if (id === "TRAINER") {
-      const definition =
-        trainerRanking().find((d) => d.id === state.trainerChoice) ||
-        trainerRanking()[0];
-      return motorForDefinition(definition, block.global, state.previous);
-    }
+    if (id === "TRAINER") return independentGlobalMotor(block);
     if (id === "NUMBER") return bestNumberCombination(state.history);
     const variant = block.variants.find((f) => f.bankId === id);
     if (variant) return copy(variant.choice);
@@ -4093,7 +4157,26 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         variation,
       };
     }
-    if (state.strategy === "TRAINER") return trainerBaseDefinition();
+    if (state.strategy === "MASTER") {
+      const chosen = masterSelection();
+      return chosen
+        ? {
+            id: chosen.motor.masterTarget.defenseStrategy,
+            name: "MASTER • " + chosen.name,
+            type: "MASTER",
+          }
+        : {
+            id: "MASTER",
+            name: "MASTER • AGUARDANDO HISTÓRICO",
+            type: "MASTER",
+          };
+    }
+    if (state.strategy === "TRAINER")
+      return {
+        id: "TRAINER",
+        name: "TREINADOR GLOBAL • " + trainerBaseDefinition().name,
+        type: "GLOBAL_STRATEGY",
+      };
     if (state.strategy === "AUTO")
       return defs.find((d) => d.id === "RANK:" + state.rank) || defs[0];
     if (state.strategy === "ADAPTIVE")
@@ -4112,6 +4195,146 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     };
   }
 
+  function masterRestRemaining() {
+    return Math.max(
+      0,
+      (Number(state.masterResumeTurn) || 0) - (state.totalTurns + 1),
+    );
+  }
+
+  function masterDefinitions() {
+    return timelineDefinitions().filter(
+      (d) => !["MASTER", "POSTLOSS"].includes(d.id),
+    );
+  }
+
+  /* Todos os candidatos são comparados por ciclos completos sob a mesma fórmula. */
+  function masterRanking(block = currentBlock()) {
+    if (!block) return [];
+    return masterDefinitions()
+      .map((def) => {
+        const rows = timelineSamples(def.id)
+          .filter((r) => r.closed && r.closedTurn <= state.totalTurns)
+          .slice(-30);
+        const direct = rows.filter((r) => r.result === "GREEN").length;
+        const hits = rows.filter((r) => r.result !== "LOSS").length,
+          recent = rows.slice(-5);
+        const recentDirect = recent.filter((r) => r.result === "GREEN").length;
+        const recentLoss = recent.filter((r) => r.result === "LOSS").length,
+          base = 28 / 37;
+        const score =
+          (0.55 * (direct + base * 6)) / (rows.length + 6) +
+          (0.35 * (hits + base * 6)) / (rows.length + 6) +
+          (0.1 * (recentDirect + base * 3)) / (recent.length + 3) -
+          (0.15 * recentLoss) / (recent.length + 3);
+        const motor = timelineMotor(def.id, block);
+        return {
+          ...def,
+          total: rows.length,
+          direct,
+          hits,
+          loss: rows.length - hits,
+          score,
+          eligible: validPlay(motor?.play),
+        };
+      })
+      .filter((d) => d.eligible)
+      .sort(
+        (a, b) =>
+          b.score - a.score || b.total - a.total || a.id.localeCompare(b.id),
+      );
+  }
+
+  function updateMaster(block = currentBlock()) {
+    const best = masterRanking(block)[0];
+    if (!best) return;
+    if (state.masterChoice !== best.id) {
+      state.masterHistory.push({
+        turn: state.totalTurns,
+        from: state.masterChoice || "INICIAL",
+        to: best.id,
+        name: best.name,
+        score: best.score,
+        total: best.total,
+      });
+      state.masterHistory = state.masterHistory.slice(-70);
+    }
+    state.masterChoice = best.id;
+  }
+
+  function independentGlobalMotor(block = currentBlock()) {
+    const definition = trainerBaseDefinition();
+    const motor = block
+      ? motorForDefinition(
+          definition,
+          block.global,
+          state.globalStrategyPrevious,
+        )
+      : null;
+    return validPlay(motor?.play)
+      ? {
+          ...copy(motor),
+          globalStrategyTarget: { id: definition.id, name: definition.name },
+        }
+      : null;
+  }
+
+  function masterSelection(block = currentBlock()) {
+    if (!block) return null;
+    const definition = masterDefinitions().find(
+      (d) => d.id === state.masterChoice,
+    );
+    if (!definition) return null;
+    const motor = timelineMotor(definition.id, block);
+    return validPlay(motor?.play)
+      ? {
+          ...definition,
+          motor: {
+            ...copy(motor),
+            masterTarget: {
+              id: definition.id,
+              name: definition.name,
+              defenseStrategy: motor.thirdTarget?.id || definition.id,
+            },
+          },
+        }
+      : null;
+  }
+
+  function recordMasterCycle(controller, oldCycle, played, result, turn) {
+    if (controller !== "MASTER") return;
+    if (!["GREEN", "GALE", "GREEN G1", "LOSS"].includes(result)) return;
+    const rows =
+      state.strategyTimeline.MASTER || (state.strategyTimeline.MASTER = []);
+    const start = oldCycle?.entryTurn || turn;
+    let row = rows.find((r) => r.turn === start);
+    const target =
+      oldCycle?.original?.postLossTarget ||
+      oldCycle?.original?.masterTarget ||
+      played?.postLossTarget ||
+      played?.masterTarget;
+    if (!row) {
+      row = {
+        turn: start,
+        result: "GREEN G1",
+        closed: false,
+        targetId: target?.id || null,
+        targetName: target?.name || null,
+      };
+      rows.push(row);
+    }
+    row.result = result === "GALE" ? "GREEN G1" : result;
+    row.closed = result !== "GALE";
+    if (row.closed) {
+      row.closedTurn = turn;
+      state.masterResumeTurn = turn + 3;
+    }
+    const cutoff = state.historyTurns[0] || 1;
+    state.strategyTimeline.MASTER = rows
+      .filter((r) => r.turn >= cutoff)
+      .slice(-79);
+  }
+
   let state = fresh();
   let busy = false;
   let saveError = "";
@@ -4124,8 +4347,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.5.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.5.8 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- MASTER decide entre as estratégias, incluindo o Treinador Global independente.
+- Após encerrar entrada/G1, MASTER observa dois resultados completos antes do próximo sinal.
+- Linha MASTER registra os ciclos executados; sem resultados fictícios durante a pausa.
 - Ajuste visual: quadro expande sob a própria linha, sem rolagem programada; textos e números compactos.
 - Pós-loss exclusivamente das 12 adaptativas; pode intervir sobre qualquer seleção quando ligado.
 - Nome da linha do tempo abre quadro de jogo; indicação pós-loss destacada; placares separados.
@@ -4149,10 +4375,11 @@ ANÁLISE BETA V6.5.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.5.7",
-      KEY = "ANALISE_BETA_V657",
+    const VERSION = "6.5.8",
+      KEY = "ANALISE_BETA_V658",
       WINDOW = 70;
     const OLD_KEYS = [
+      "ANALISE_BETA_V657",
       "ANALISE_BETA_V656",
       "ANALISE_BETA_V655",
       "ANALISE_BETA_V654",
@@ -7250,7 +7477,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         manualCount: 0,
         manualLog: [],
         undoStack: [],
-        strategy: "TRAINER",
+        strategy: "MASTER",
+        masterChoice: null,
+        masterHistory: [],
+        masterResumeTurn: 0,
+        globalStrategyPrevious: null,
         postLossEnabled: false,
         focusTimelineId: null,
         rank: 3,
@@ -7329,6 +7560,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         "decisions",
         "ledger",
         "autoRows",
+        "masterHistory",
       ])
         if (!Array.isArray(r[field])) r[field] = [];
       r.totalTurns = Math.max(
@@ -7360,6 +7592,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (data?.postLossEnabled === undefined && r.strategy === "POSTLOSS")
         r.postLossEnabled = true;
       r.postLossEnabled = !!r.postLossEnabled;
+      if (data?.forecastVersion !== VERSION && data?.strategy === "TRAINER")
+        r.strategy = "MASTER";
+      r.masterResumeTurn = Math.max(0, Number(r.masterResumeTurn) || 0);
+      if (r.cycle && !r.cycle.controller) r.cycle.controller = r.strategy;
       r.open = {
         general: r.open?.general !== false,
         timeline: r.open?.timeline !== false,
@@ -7388,9 +7624,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       r.undoStack = r.undoStack.slice(-70);
       if (
         !VARIANT_OWNERS.some((o) => o.id === r.strategy) &&
-        !["TRAINER", "POSTLOSS", "AUTO", "ADAPTIVE", "CREATED"].includes(
-          r.strategy,
-        )
+        ![
+          "MASTER",
+          "TRAINER",
+          "POSTLOSS",
+          "AUTO",
+          "ADAPTIVE",
+          "CREATED",
+        ].includes(r.strategy)
       ) {
         r.strategy = "TRAINER";
         r.manual = null;
@@ -7519,6 +7760,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       updateNumberChoice();
       updateTrainer();
       blockRuntimeKey = null;
+      updateMaster(currentBlock());
       return currentBlock();
     }
 
@@ -7577,6 +7819,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
 
     function activeDefinition() {
+      if (
+        state.strategy === "MASTER" &&
+        !state.cycle &&
+        masterRestRemaining() > 0
+      )
+        return {
+          id: "MASTER",
+          name: "MASTER • PAUSA • FALTAM " + masterRestRemaining() + " GIRO(S)",
+          type: "MASTER",
+        };
       const target = state.cycle
         ? state.cycle.original?.postLossTarget
         : !state.manual &&
@@ -7588,6 +7840,23 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           id: target.defenseStrategy || target.id,
           name: "JOGADA PÓS-LOSS • " + target.name,
           type: "POSTLOSS",
+        };
+      if (
+        state.cycle?.controller === "TRAINER" &&
+        state.cycle.original?.globalStrategyTarget
+      )
+        return {
+          id: "TRAINER",
+          name:
+            "TREINADOR GLOBAL • " +
+            state.cycle.original.globalStrategyTarget.name,
+          type: "GLOBAL_STRATEGY",
+        };
+      if (state.cycle?.original?.masterTarget)
+        return {
+          id: state.cycle.strategy,
+          name: "MASTER • " + state.cycle.original.masterTarget.name,
+          type: "MASTER",
         };
       if (state.cycle)
         return (
@@ -7649,6 +7918,12 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
 
     function activeMotor(cs = currentBlock()?.global || []) {
+      if (
+        state.strategy === "MASTER" &&
+        !state.cycle &&
+        masterRestRemaining() > 0
+      )
+        return null;
       if (state.manual)
         return cs.find((m) => m.key === state.manual) || cs[0] || null;
       if (state.postLossEnabled || state.strategy === "POSTLOSS") {
@@ -7656,6 +7931,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         if (selected) return copy(selected.motor);
       }
       if (state.strategy === "POSTLOSS") return null;
+      if (state.strategy === "MASTER")
+        return copy(masterSelection()?.motor || null);
+      if (state.strategy === "TRAINER") return copy(independentGlobalMotor());
       if (state.variantSelections[activeVariationOwner()] === -3)
         return thirdVariationMotor(activeVariationOwner());
       const direct = selectedVariantForecast();
@@ -7773,18 +8051,27 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         forecasts = block?.variants || [];
       const timelineForecasts = snapshotTimelineForecasts(block);
       const phaseBefore = state.phase,
-        oldCycle = copy(state.cycle);
+        oldCycle = copy(state.cycle),
+        definitionBefore = activeDefinition();
+      const controller = oldCycle?.controller || state.strategy;
+      const masterPaused =
+        state.strategy === "MASTER" &&
+        state.phase === "ENTRY" &&
+        masterRestRemaining() > 0;
       const spatial = spatialRead(before.slice(-70)),
         after = [...before, n].slice(-70);
       let result = "AGUARDANDO",
         played = null;
-      if (state.phase === "ENTRY") {
+      if (masterPaused) {
+        result = "PAUSA MASTER";
+      } else if (state.phase === "ENTRY") {
         const motor = activeMotor(cs);
         if (motor) {
           played = copy(motor);
           state.previous = motor.key;
           state.cycle = {
-            strategy: activeDefinition().id,
+            controller: state.strategy,
+            strategy: definitionBefore.id,
             original: copy(motor),
             entryTurn: turn,
             entryTrigger: trigger,
@@ -7840,6 +8127,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         state.cycle = null;
         state.defense = null;
       }
+      recordMasterCycle(controller, oldCycle, played, result, turn);
       settleTimelineForecasts(timelineForecasts, n, turn, before);
       settleNativeStrategies(
         cs,
@@ -7865,13 +8153,17 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           : "NORMAL"
         : null;
       state.ledger.push({
+        controller,
+        masterTarget: copy(
+          oldCycle?.original?.masterTarget || played?.masterTarget || null,
+        ),
         playRoute,
         postLossTarget,
         turn,
         number: n,
         source,
         trigger,
-        strategy: oldCycle?.strategy || activeDefinition().id,
+        strategy: oldCycle?.strategy || definitionBefore.id,
         motor: played?.key || "—",
         phase: phaseBefore,
         result,
@@ -7986,7 +8278,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function timelineDefinitions() {
       return [
-        { id: "TRAINER", name: "TREINADOR GLOBAL" },
+        { id: "MASTER", name: "TREINADOR GLOBAL MASTER" },
+        { id: "TRAINER", name: "TREINADOR GLOBAL • ESTRATÉGIA" },
         { id: "POSTLOSS", name: "PÓS-LOSS" },
         ...VARIANT_OWNERS.flatMap((o) => [
           {
@@ -8047,10 +8340,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       const trainer =
         trainerRanking().find((d) => d.id === state.trainerChoice) ||
         trainerRanking()[0];
-      append(
-        "TRAINER",
-        motorForDefinition(trainer, block.global, state.previous),
-      );
+      append("TRAINER", independentGlobalMotor(block));
       for (const owner of VARIANT_OWNERS)
         append(owner.id + "@THIRD", thirdVariationMotor(owner.id, block));
       append("POSTLOSS", postLossChoice(block)?.motor);
@@ -8063,11 +8353,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       for (const id of Object.keys(state.timelineCycles))
         if (!all.has(id)) all.set(id, { id });
       for (const f of all.values()) {
+        if (f.id === "MASTER") continue;
         const rows =
           state.strategyTimeline[f.id] || (state.strategyTimeline[f.id] = []);
         let cycle = state.timelineCycles[f.id];
         if (!cycle) {
           if (!validPlay(f.motor?.play)) continue;
+          if (f.id === "TRAINER") state.globalStrategyPrevious = f.motor.key;
           cycle = {
             entry: copy(f.motor),
             defenseStrategy: f.defenseStrategy || f.id,
@@ -8144,12 +8436,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (!block) return null;
       if (id.endsWith("@THIRD"))
         return thirdVariationMotor(id.slice(0, -6), block);
-      if (id === "TRAINER") {
-        const definition =
-          trainerRanking().find((d) => d.id === state.trainerChoice) ||
-          trainerRanking()[0];
-        return motorForDefinition(definition, block.global, state.previous);
-      }
+      if (id === "TRAINER") return independentGlobalMotor(block);
       if (id === "NUMBER") return bestNumberCombination(state.history);
       const variant = block.variants.find((f) => f.bankId === id);
       if (variant) return copy(variant.choice);
@@ -8284,7 +8571,26 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           variation,
         };
       }
-      if (state.strategy === "TRAINER") return trainerBaseDefinition();
+      if (state.strategy === "MASTER") {
+        const chosen = masterSelection();
+        return chosen
+          ? {
+              id: chosen.motor.masterTarget.defenseStrategy,
+              name: "MASTER • " + chosen.name,
+              type: "MASTER",
+            }
+          : {
+              id: "MASTER",
+              name: "MASTER • AGUARDANDO HISTÓRICO",
+              type: "MASTER",
+            };
+      }
+      if (state.strategy === "TRAINER")
+        return {
+          id: "TRAINER",
+          name: "TREINADOR GLOBAL • " + trainerBaseDefinition().name,
+          type: "GLOBAL_STRATEGY",
+        };
       if (state.strategy === "AUTO")
         return defs.find((d) => d.id === "RANK:" + state.rank) || defs[0];
       if (state.strategy === "ADAPTIVE")
@@ -8305,6 +8611,148 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           (r) => !["NORMAL", "POSTLOSS"].includes(r.playRoute),
         ),
       };
+    }
+
+    function masterRestRemaining() {
+      return Math.max(
+        0,
+        (Number(state.masterResumeTurn) || 0) - (state.totalTurns + 1),
+      );
+    }
+
+    function masterDefinitions() {
+      return timelineDefinitions().filter(
+        (d) => !["MASTER", "POSTLOSS"].includes(d.id),
+      );
+    }
+
+    /* Todos os candidatos são comparados por ciclos completos sob a mesma fórmula. */
+    function masterRanking(block = currentBlock()) {
+      if (!block) return [];
+      return masterDefinitions()
+        .map((def) => {
+          const rows = timelineSamples(def.id)
+            .filter((r) => r.closed && r.closedTurn <= state.totalTurns)
+            .slice(-30);
+          const direct = rows.filter((r) => r.result === "GREEN").length;
+          const hits = rows.filter((r) => r.result !== "LOSS").length,
+            recent = rows.slice(-5);
+          const recentDirect = recent.filter(
+            (r) => r.result === "GREEN",
+          ).length;
+          const recentLoss = recent.filter((r) => r.result === "LOSS").length,
+            base = 28 / 37;
+          const score =
+            (0.55 * (direct + base * 6)) / (rows.length + 6) +
+            (0.35 * (hits + base * 6)) / (rows.length + 6) +
+            (0.1 * (recentDirect + base * 3)) / (recent.length + 3) -
+            (0.15 * recentLoss) / (recent.length + 3);
+          const motor = timelineMotor(def.id, block);
+          return {
+            ...def,
+            total: rows.length,
+            direct,
+            hits,
+            loss: rows.length - hits,
+            score,
+            eligible: validPlay(motor?.play),
+          };
+        })
+        .filter((d) => d.eligible)
+        .sort(
+          (a, b) =>
+            b.score - a.score || b.total - a.total || a.id.localeCompare(b.id),
+        );
+    }
+
+    function updateMaster(block = currentBlock()) {
+      const best = masterRanking(block)[0];
+      if (!best) return;
+      if (state.masterChoice !== best.id) {
+        state.masterHistory.push({
+          turn: state.totalTurns,
+          from: state.masterChoice || "INICIAL",
+          to: best.id,
+          name: best.name,
+          score: best.score,
+          total: best.total,
+        });
+        state.masterHistory = state.masterHistory.slice(-70);
+      }
+      state.masterChoice = best.id;
+    }
+
+    function independentGlobalMotor(block = currentBlock()) {
+      const definition = trainerBaseDefinition();
+      const motor = block
+        ? motorForDefinition(
+            definition,
+            block.global,
+            state.globalStrategyPrevious,
+          )
+        : null;
+      return validPlay(motor?.play)
+        ? {
+            ...copy(motor),
+            globalStrategyTarget: { id: definition.id, name: definition.name },
+          }
+        : null;
+    }
+
+    function masterSelection(block = currentBlock()) {
+      if (!block) return null;
+      const definition = masterDefinitions().find(
+        (d) => d.id === state.masterChoice,
+      );
+      if (!definition) return null;
+      const motor = timelineMotor(definition.id, block);
+      return validPlay(motor?.play)
+        ? {
+            ...definition,
+            motor: {
+              ...copy(motor),
+              masterTarget: {
+                id: definition.id,
+                name: definition.name,
+                defenseStrategy: motor.thirdTarget?.id || definition.id,
+              },
+            },
+          }
+        : null;
+    }
+
+    function recordMasterCycle(controller, oldCycle, played, result, turn) {
+      if (controller !== "MASTER") return;
+      if (!["GREEN", "GALE", "GREEN G1", "LOSS"].includes(result)) return;
+      const rows =
+        state.strategyTimeline.MASTER || (state.strategyTimeline.MASTER = []);
+      const start = oldCycle?.entryTurn || turn;
+      let row = rows.find((r) => r.turn === start);
+      const target =
+        oldCycle?.original?.postLossTarget ||
+        oldCycle?.original?.masterTarget ||
+        played?.postLossTarget ||
+        played?.masterTarget;
+      if (!row) {
+        row = {
+          turn: start,
+          result: "GREEN G1",
+          closed: false,
+          targetId: target?.id || null,
+          targetName: target?.name || null,
+        };
+        rows.push(row);
+      }
+      row.result = result === "GALE" ? "GREEN G1" : result;
+      row.closed = result !== "GALE";
+      if (row.closed) {
+        row.closedTurn = turn;
+        state.masterResumeTurn = turn + 3;
+      }
+      const cutoff = state.historyTurns[0] || 1;
+      state.strategyTimeline.MASTER = rows
+        .filter((r) => r.turn >= cutoff)
+        .slice(-79);
     }
 
     let state = fresh();
@@ -8468,9 +8916,16 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     );
     const row = document.createElement("div");
     row.className = "row";
+    const master = button(
+      "TREINADOR GLOBAL MASTER",
+      () => changeStrategy("MASTER"),
+      row,
+      "trainer",
+    );
+    master.dataset.choice = "MASTER";
     const trainer = button(
-      "TREINADOR GLOBAL",
-      () => toggleTrainer(),
+      "TREINADOR GLOBAL • ESTRATÉGIA",
+      () => changeStrategy("TRAINER"),
       row,
       "trainer",
     );
@@ -8752,6 +9207,24 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       state.cycle?.original?.postLossTarget || motor?.postLossTarget;
     $("selected").className =
       "playNotice " + (target ? "postLossNotice" : "normalNotice");
+    if (
+      state.strategy === "MASTER" &&
+      !state.cycle &&
+      masterRestRemaining() > 0
+    ) {
+      $("selected").textContent =
+        "MASTER • SEM ENTRADA • FALTAM " +
+        masterRestRemaining() +
+        " GIRO(S) DE PAUSA";
+      $("selected").className = "playNotice normalNotice";
+      $("cycleInfo").textContent =
+        "CICLO ENCERRADO • MASTER AGUARDA DOIS RESULTADOS COMPLETOS";
+      $("coverage").textContent =
+        "PAUSA MASTER: registre os resultados, sem nova entrada.";
+    } else if (state.strategy === "MASTER" && motor?.masterTarget) {
+      $("selected").textContent =
+        "MASTER ESCOLHEU: " + motor.masterTarget.name + " • " + state.phase;
+    }
     renderFocusGame(motor);
     $("stake").value = state.stake;
     $("multiplier").value = state.multiplier;
@@ -8920,6 +9393,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         strategy: row.strategy,
         motor: row.motor,
         phase: row.phase,
+        controller: row.controller,
+        masterTarget: copy(row.masterTarget),
         playRoute: row.playRoute,
         postLossTarget: copy(row.postLossTarget),
         timestamp: Date.now(),
@@ -9104,10 +9579,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       alert("AGUARDE ENCERRAR O CICLO ATUAL.");
       return;
     }
-    state.strategy =
-      state.strategy === "TRAINER" && state.postLossEnabled
-        ? "POSTLOSS"
-        : "TRAINER";
+    state.strategy = "TRAINER";
     state.manual = null;
     scheduleSave();
     render();
@@ -9141,7 +9613,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return;
     }
     if (!timelineDefinitions().some((d) => d.id === id)) return;
-    if (id === "TRAINER") state.strategy = "TRAINER";
+    if (id === "MASTER") state.strategy = "MASTER";
+    else if (id === "TRAINER") state.strategy = "TRAINER";
     else if (id === "POSTLOSS") {
       state.strategy = "POSTLOSS";
       state.postLossEnabled = true;
