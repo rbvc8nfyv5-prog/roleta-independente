@@ -1,8 +1,22 @@
+/* ATUALIZAÇÃO 6.6.2: memória de números, pares, trincas, formas, saltos,
+amplitudes, cadeias 4–8, percurso, polos, arcos, regiões e espelhos direcionais.
+Memória calculada uma vez por histórico e reutilizada; misturas próprias por variação.
+Influência limitada e avaliação causal. Estudo das 377 fontes é exploratório,
+com lacunas e consolidação provisória: não comprova vantagem nas apostas.
+Defesas congeladas e ciclos, pós-loss, pós-3-loss, MASTER, históricos e telas preservados.
+Importação distingue 00 de 0; nenhum resultado das imagens pré-treina o teste histórico.
+*/
 (() => {
   "use strict";
   /*
-ANÁLISE BETA V6.5.8 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
+- Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
+- Busca geométrica validada preservada; seleção parcial exata e metadados de geometria reutilizados; salvamento compactado em segundo plano.
+- Número aparece imediatamente; indicação atualiza uma única vez, sem tela provisória vazia.
+- Estado completo salvo após cada número, com retomada da fila ao reabrir.
+- Reutilização de caches de análises puras; critérios e cálculos mantidos.
 - MASTER decide entre as estratégias, incluindo o Treinador Global independente.
 - Após encerrar entrada/G1, MASTER observa dois resultados completos antes do próximo sinal.
 - Linha MASTER registra os ciclos executados; sem resultados fictícios durante a pausa.
@@ -29,10 +43,14 @@ ANÁLISE BETA V6.5.8 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.5.8",
-    KEY = "ANALISE_BETA_V658",
+  const VERSION = "6.6.2",
+    KEY = "ANALISE_BETA_V662",
     WINDOW = 70;
   const OLD_KEYS = [
+    "ANALISE_BETA_V661",
+    "ANALISE_BETA_V660",
+    "ANALISE_BETA_V659",
+    "ANALISE_BETA_V658",
     "ANALISE_BETA_V657",
     "ANALISE_BETA_V656",
     "ANALISE_BETA_V655",
@@ -214,34 +232,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     return play;
   }
 
-  function read(key) {
-    try {
-      return JSON.parse(localStorage.getItem(key) || "null", (k, v) =>
-        v && typeof v.__betaPlay === "string"
-          ? restoreShape(v.__betaPlay, v.score)
-          : v,
-      );
-    } catch {
-      return null;
-    }
-  }
-
-  function save() {
-    try {
-      localStorage.setItem(
-        KEY,
-        JSON.stringify(state, (k, v) =>
-          validPlay(v) ? { __betaPlay: signaturePlay(v), score: v.score } : v,
-        ),
-      );
-      saveError = "";
-      return true;
-    } catch (e) {
-      saveError = String(e.message || e);
-      return false;
-    }
-  }
-
   function cycleIsFree() {
     return state.phase === "ENTRY" && state.cycle === null;
   }
@@ -255,59 +245,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   for (const b of [...FIVE, ...THREE])
     b.mask = b.numbers.reduce((s, n) => s | (1n << BigInt(ix(n))), 0n);
-
-  function rawGeometry(weights, mandatory = []) {
-    const score = (b) => ({
-        ...b,
-        value: b.numbers.reduce((s, n) => s + (weights[ix(n)] || 0), 0),
-      }),
-      fives = FIVE.map(score).sort((a, b) => b.value - a.value),
-      threes = THREE.map(score)
-        .filter((b) => mandatory.every((n) => b.numbers.includes(n)))
-        .sort((a, b) => b.value - a.value);
-    let best = null;
-    for (const small of threes) {
-      let beam = [{ blocks: [small], mask: small.mask, score: small.value }];
-      for (let step = 0; step < 5; step++) {
-        const next = [];
-        for (const item of beam)
-          for (const b of fives) {
-            if ((item.mask & b.mask) !== 0n) continue;
-            next.push({
-              blocks: [...item.blocks, b],
-              mask: item.mask | b.mask,
-              score: item.score + b.value,
-            });
-          }
-        next.sort((a, b) => b.score - a.score);
-        beam = [];
-        const seen = new Set();
-        for (const item of next) {
-          const k = String(item.mask);
-          if (seen.has(k)) continue;
-          seen.add(k);
-          beam.push(item);
-          if (beam.length >= 6) break;
-        }
-        if (!beam.length) break;
-      }
-      for (const item of beam)
-        if (item.blocks.length === 6 && (!best || item.score > best.score))
-          best = item;
-    }
-    if (!best) return null;
-    const blocks = best.blocks.map((b) => ({
-        center: b.center,
-        radius: b.radius,
-        numbers: [...b.numbers],
-      })),
-      p = {
-        blocks,
-        numbers: blocks.flatMap((b) => b.numbers),
-        score: best.score,
-      };
-    return validPlay(p) ? p : null;
-  }
 
   function missing(play) {
     return validPlay(play)
@@ -1159,7 +1096,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     return r;
   }
 
-  function applySpatial(weights, h, strength = 0.3) {
+  function legacyApplySpatial(weights, h, strength = 0.3) {
     if (h.length < 3) return weights;
     const r = spatialRead(h),
       scale = avg(weights.map((v) => Math.max(0, v))) || 1,
@@ -1366,18 +1303,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function coverageCode(play) {
     return [...play.numbers].sort((a, b) => a - b).join(",");
-  }
-
-  function diversityCandidate(play) {
-    const covered = new Set(play.numbers);
-    let low = 0,
-      high = 0;
-    for (let n = 0; n < 37; n++)
-      if (!covered.has(n)) {
-        if (n < 32) low |= 1 << n;
-        else high |= 1 << (n - 32);
-      }
-    return { play, low, high, code: coverageCode(play) };
   }
 
   function population32(n) {
@@ -2380,7 +2305,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     return new Promise((r) => requestAnimationFrame(() => r()));
   }
 
-  function parseInput(text) {
+  function legacyParseInput(text) {
     return (String(text).match(/\d+/g) || [])
       .map(Number)
       .filter((n) => Number.isInteger(n) && n >= 0 && n <= 36);
@@ -2535,6 +2460,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       }
       return value;
     });
+    const memoryWeights = structuralWeights(h, variation);
+    for (let j = 0; j < 37; j++) additive[j] += .18 * clamp(memoryWeights[j] - 1, -.7, 1.2);
     const raw = normalized.map((v, j) =>
       Math.max(0.001, v * coefficient + additive[j]),
     );
@@ -2557,80 +2484,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       candidate.indices || (candidate.indices = candidate.play.numbers.map(ix));
     for (let k = 0; k < indices.length; k++) sum += weights[indices[k]];
     return sum;
-  }
-
-  function fastIndependentMotors(proposals) {
-    const pool = diversityCandidates();
-    const candidates = proposals.map((m) => {
-      const ranked = pool.map((c, j) => ({
-        candidate: c,
-        score: m.poolScores[j],
-        index: j,
-      }));
-      ranked.sort((a, b) => b.score - a.score || a.index - b.index);
-      return ranked.slice(0, 96);
-    });
-    let chosen = null,
-      chosenScore = -Infinity;
-    for (const step of [1, 5, 7]) {
-      const selected = Array(12).fill(null),
-        counts = Array(37).fill(0);
-      for (let k = 0; k < 12; k++) {
-        const i = (k * step) % 12;
-        let best = null,
-          value = -Infinity;
-        for (const item of candidates[i]) {
-          if (selected.some((c) => c && sharedCoverage(c, item.candidate) > 24))
-            continue;
-          let newNumbers = 0;
-          for (const n of item.candidate.play.numbers)
-            if (!counts[n]) newNumbers++;
-          const score = item.score + 0.08 * newNumbers;
-          if (score > value) {
-            value = score;
-            best = item.candidate;
-          }
-        }
-        if (!best) break;
-        selected[i] = best;
-        for (const n of best.play.numbers) counts[n]++;
-      }
-      if (selected.some((c) => !c) || counts.some((n) => !n)) continue;
-      const score = selected.reduce(
-        (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
-        0,
-      );
-      if (score > chosenScore) {
-        chosenScore = score;
-        chosen = selected;
-      }
-    }
-    if (!chosen) {
-      for (let shift = 0; shift < 37; shift++) {
-        const selected = diversitySafety.map((c) =>
-          diversityCandidate(rotatedDiversity(c.play, shift)),
-        );
-        const score = selected.reduce(
-          (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
-          0,
-        );
-        if (score > chosenScore) {
-          chosenScore = score;
-          chosen = selected;
-        }
-      }
-    }
-    const result = proposals.map((m, i) => {
-      const { weights, poolScores, ...motor } = m;
-      const play = copy(chosen[i].play);
-      play.score = candidateFit(chosen[i], weights);
-      return { ...motor, score: play.score, play };
-    });
-    if (!validMotorEnsemble(result))
-      throw Error("CONJUNTO INCOMPLETO: " + proposals[0].bankId);
-    result.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
-    result.forEach((m, i) => (m.rank = i + 1));
-    return result;
   }
 
   function variantMotorRate(key, limit = 12) {
@@ -2729,268 +2582,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
   }
 
-  function allVariantForecasts(h, onlyOwner = null) {
-    if (h.length < 8) return [];
-    const key =
-      h.join(",") +
-      "|" +
-      state.totalTurns +
-      (onlyOwner ? "|OWNER:" + onlyOwner : "");
-    if (variantForecastCache.has(key)) return variantForecastCache.get(key);
-    const spatial = spatialRead(h),
-      baseWeights = new Map(),
-      shared = { base: new Map(), additive: new Map() };
-    for (const family of FAMILIES)
-      for (const radius of RADII) {
-        const base = weightsFor(h, family, radius),
-          key = family + "_" + radius;
-        baseWeights.set(key, base);
-        const normalized = normalizeSpace(base);
-        shared.base.set(
-          key,
-          diversityCandidates().map((c) => candidateFit(c, normalized)),
-        );
-      }
-    const forecasts = [];
-    for (const owner of VARIANT_OWNERS.filter(
-      (o) => !onlyOwner || o.id === onlyOwner,
-    ))
-      for (let variation = 1; variation <= 8; variation++) {
-        const bankId = variantBookId(owner.id, variation),
-          proposals = [];
-        for (const family of FAMILIES)
-          for (const radius of RADII) {
-            const analysis = variantAnalyticalWeights(
-              h,
-              family,
-              radius,
-              owner.id,
-              variation,
-              baseWeights.get(family + "_" + radius),
-              spatial,
-              shared,
-            );
-            proposals.push({
-              key: bankId + "::" + family + "_" + radius,
-              bankId,
-              owner: owner.id,
-              variation,
-              family,
-              radius,
-              weights: analysis.weights,
-              poolScores: analysis.poolScores,
-              spatialKeys: [...spatial.keys],
-              componentShares: [...spatial.adaptive.shares],
-              adaptiveSamples: spatial.adaptive.samples,
-              spatialVersion: VERSION,
-            });
-          }
-        const cs = fastIndependentMotors(proposals);
-        forecasts.push({
-          bankId,
-          owner: owner.id,
-          name: owner.name,
-          variation,
-          motors: cs,
-          _weights: proposals,
-          choice: chooseVariant(owner.id, variation, cs, h),
-        });
-      }
-    coordinateOwnerVariations(forecasts);
-    for (const f of forecasts) delete f._weights;
-    variantForecastCache.set(key, forecasts);
-    if (variantForecastCache.size > 4)
-      variantForecastCache.delete(variantForecastCache.keys().next().value);
-    return forecasts;
-  }
-
-  function coordinateOwnerVariations(forecasts) {
-    for (const owner of VARIANT_OWNERS) {
-      const group = forecasts.filter((f) => f.owner === owner.id);
-      if (!group.length) continue;
-      const alternatives = group.map((f) => {
-        if (owner.id === "CONSENSUS" || owner.id === "UNION") {
-          const weights = Array(37).fill(0);
-          const members =
-            owner.id === "UNION" ? f.motors.slice(0, 3) : f.motors;
-          for (const m of members)
-            for (const n of m.play.numbers)
-              weights[ix(n)] += 1 / (1 + m.rank * 0.1);
-          applySpatial(weights, state.history, 0.25);
-          const ranked = diversityCandidates()
-            .map((candidate, index) => ({
-              candidate,
-              index,
-              score: candidateFit(candidate, weights),
-            }))
-            .sort((a, b) => b.score - a.score || a.index - b.index);
-          return [
-            f.choice,
-            ...ranked.slice(0, 96).map((r) => ({
-              key: owner.id,
-              rank: 0,
-              play: { ...copy(r.candidate.play), score: r.score },
-              score: r.score,
-              spatialKeys: [...spatialRead(state.history).keys],
-            })),
-          ];
-        }
-        let motors =
-          owner.id === "FIXED" ? f.motors.slice(0, 4) : [...f.motors];
-        if (owner.id === "BEST" || owner.id === "SWITCH")
-          motors.sort(
-            (a, b) =>
-              variantMotorRate(b.key, owner.id === "BEST" ? 20 : 12) -
-                variantMotorRate(a.key, owner.id === "BEST" ? 20 : 12) ||
-              a.rank - b.rank,
-          );
-        if (owner.id === "NUMBER")
-          motors.sort((a, b) => {
-            const score = (m) =>
-              compareNumberCombination(
-                { play: m.play, covered: m.play.numbers },
-                state.history.at(-1),
-                state.history,
-              ).score;
-            return score(b) - score(a) || a.rank - b.rank;
-          });
-        return [f.choice, ...motors];
-      });
-      let final = null;
-      for (const order of [0, 1, 2, 3, 4, 5, 6, 7]) {
-        const selected = Array(8).fill(null),
-          counts = Array(37).fill(0);
-        let failed = false;
-        for (let k = 0; k < 8; k++) {
-          const index = (k + order) % 8,
-            f = group[index];
-          const choices = alternatives[index].filter(
-            (m, i, a) =>
-              a.findIndex(
-                (x) => coverageCode(x.play) === coverageCode(m.play),
-              ) === i,
-          );
-          let best = null,
-            bestScore = -Infinity;
-          for (let i = 0; i < choices.length; i++) {
-            const motor = choices[i],
-              candidate = diversityCandidate(motor.play);
-            if (
-              selected.some(
-                (m) =>
-                  m &&
-                  sharedCoverage(diversityCandidate(m.play), candidate) > 27,
-              )
-            )
-              continue;
-            let additional = 0;
-            for (const n of motor.play.numbers) if (!counts[n]) additional++;
-            const score = (i === 0 ? 0.25 : 0) + 1 / (1 + i) + additional * 2;
-            if (score > bestScore) {
-              best = motor;
-              bestScore = score;
-            }
-          }
-          if (!best) {
-            failed = true;
-            break;
-          }
-          selected[index] = {
-            ...copy(best),
-            bankId: f.bankId,
-            owner: f.owner,
-            variation: f.variation,
-          };
-          if (owner.id === "FIXED")
-            selected[index].autoRank = best.autoRank || best.rank;
-          if (owner.id === "NUMBER")
-            Object.assign(selected[index], {
-              type: "NUMBER",
-              trigger: state.history.at(-1),
-              sourceNumber: best.sourceNumber ?? state.history.at(-1),
-              sourceTurn: best.sourceTurn ?? state.totalTurns,
-            });
-          for (const n of best.play.numbers) counts[n]++;
-        }
-        if (!failed && counts.every(Boolean)) {
-          final = selected;
-          break;
-        }
-      }
-      if (!final) {
-        // Reserva de conjuntos inteiros: conserva a regra da original, inclusive
-        // AUTO exclusivamente 1–4, sem transformar CONSENSO em um motor isolado.
-        const options = group.map((f) => {
-          const weights = new Map(f._weights.map((m) => [m.key, m.weights]));
-          return Array.from({ length: 37 }, (_, shift) => {
-            const motors = f.motors
-              .map((m, i) => {
-                const play = rotatedDiversity(diversitySafety[i].play, shift);
-                play.score = play.numbers.reduce(
-                  (sum, n) => sum + weights.get(m.key)[ix(n)],
-                  0,
-                );
-                return { ...m, play, score: play.score };
-              })
-              .sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
-            motors.forEach((m, i) => (m.rank = i + 1));
-            return {
-              motors,
-              choice: chooseVariant(
-                f.owner,
-                f.variation,
-                motors,
-                state.history,
-              ),
-            };
-          });
-        });
-        for (let order = 0; order < 8 && !final; order++) {
-          const selected = Array(8).fill(null),
-            banks = Array(8).fill(null),
-            counts = Array(37).fill(0);
-          for (let k = 0; k < 8; k++) {
-            const index = (k + order) % 8;
-            let best = null,
-              bestValue = -Infinity;
-            for (const option of options[index]) {
-              const candidate = diversityCandidate(option.choice.play);
-              if (
-                selected.some(
-                  (m) =>
-                    m &&
-                    sharedCoverage(diversityCandidate(m.play), candidate) > 27,
-                )
-              )
-                continue;
-              const gain = option.choice.play.numbers.filter(
-                (n) => !counts[n],
-              ).length;
-              const value = gain * 2 + option.choice.score / 100;
-              if (value > bestValue) {
-                best = option;
-                bestValue = value;
-              }
-            }
-            if (!best) break;
-            selected[index] = best.choice;
-            banks[index] = best.motors;
-            for (const n of best.choice.play.numbers) counts[n]++;
-          }
-          if (selected.every(Boolean) && counts.every(Boolean)) {
-            final = selected;
-            for (let i = 0; i < 8; i++) group[i].motors = banks[i];
-          }
-        }
-      }
-      if (!final)
-        throw Error(
-          "NÃO FOI POSSÍVEL DIVERSIFICAR AS OITO VARIAÇÕES: " + owner.id,
-        );
-      for (let i = 0; i < 8; i++) group[i].choice = final[i];
-    }
-  }
-
   function activeVariationOwner() {
     return VARIANT_OWNERS.some((o) => o.id === state.strategy)
       ? state.strategy
@@ -3057,6 +2648,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   let inputRunning = false;
   let saveTimer = null;
   let lastInputMs = 0;
+  let durableTurn = 0;
   const geometryMemo = new Map();
 
   function geometry(weights, mandatory = []) {
@@ -3085,6 +2677,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       masterResumeTurn: 0,
       globalStrategyPrevious: null,
       postLossEnabled: false,
+      postThreeEnabled: false,
+      postThreeUsed: {},
+      strategyStreaks: {},
       focusTimelineId: null,
       rank: 3,
       manual: null,
@@ -3183,6 +2778,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       "timelineCycles",
       "virtual",
       "groupsOpen",
+      "postThreeUsed",
+      "strategyStreaks",
     ]) {
       if (!r[field] || typeof r[field] !== "object") r[field] = {};
     }
@@ -3194,7 +2791,12 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     if (data?.postLossEnabled === undefined && r.strategy === "POSTLOSS")
       r.postLossEnabled = true;
     r.postLossEnabled = !!r.postLossEnabled;
-    if (data?.forecastVersion !== VERSION && data?.strategy === "TRAINER")
+    r.postThreeEnabled = !!r.postThreeEnabled;
+    if (
+      data?.forecastVersion !== VERSION &&
+      data?.strategy === "TRAINER" &&
+      !Object.prototype.hasOwnProperty.call(data, "masterResumeTurn")
+    )
       r.strategy = "MASTER";
     r.masterResumeTurn = Math.max(0, Number(r.masterResumeTurn) || 0);
     if (r.cycle && !r.cycle.controller) r.cycle.controller = r.strategy;
@@ -3246,6 +2848,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       [
         "strategy",
         "postLossEnabled",
+        "postThreeEnabled",
         "rank",
         "manual",
         "adaptive",
@@ -3264,6 +2867,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   }
 
   function clearSpatialCaches() {
+    structuralMemoryCache.clear();
     triangleCache.clear();
     spaceCache.clear();
     rawSpaceCache.clear();
@@ -3422,7 +3026,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     if (
       state.strategy === "MASTER" &&
       !state.cycle &&
-      masterRestRemaining() > 0
+      masterRestRemaining() > 0 &&
+      !priorityRecoveryChoice()
     )
       return {
         id: "MASTER",
@@ -3431,14 +3036,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       };
     const target = state.cycle
       ? state.cycle.original?.postLossTarget
-      : !state.manual &&
-          (state.postLossEnabled || state.strategy === "POSTLOSS")
-        ? postLossChoice()?.motor?.postLossTarget
-        : null;
+      : priorityRecoveryChoice()?.motor?.postLossTarget;
     if (target)
       return {
         id: target.defenseStrategy || target.id,
-        name: "JOGADA PÓS-LOSS • " + target.name,
+        name:
+          (target.kind === "POST3"
+            ? "JOGADA PÓS-3 LOSS • "
+            : "JOGADA PÓS-LOSS • ") + target.name,
         type: "POSTLOSS",
       };
     if (
@@ -3518,6 +3123,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   }
 
   function activeMotor(cs = currentBlock()?.global || []) {
+    const recovery = priorityRecoveryChoice();
+    if (recovery) return copy(recovery.motor);
     if (
       state.strategy === "MASTER" &&
       !state.cycle &&
@@ -3655,7 +3262,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     const masterPaused =
       state.strategy === "MASTER" &&
       state.phase === "ENTRY" &&
-      masterRestRemaining() > 0;
+      masterRestRemaining() > 0 &&
+      !priorityRecoveryChoice(block);
     const spatial = spatialRead(before.slice(-70)),
       after = [...before, n].slice(-70);
     let result = "AGUARDANDO",
@@ -3667,6 +3275,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (motor) {
         played = copy(motor);
         state.previous = motor.key;
+        if (motor.postLossTarget?.kind === "POST3")
+          state.postThreeUsed[motor.postLossTarget.id] =
+            motor.postLossTarget.lossTurn;
         state.cycle = {
           controller: state.strategy,
           strategy: definitionBefore.id,
@@ -3727,6 +3338,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
     recordMasterCycle(controller, oldCycle, played, result, turn);
     settleTimelineForecasts(timelineForecasts, n, turn, before);
+    updateStrategyStreaks(turn);
     settleNativeStrategies(
       cs,
       block?.variants.find((f) => f.owner === "NUMBER")?.choice,
@@ -3745,7 +3357,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     const postLossTarget = copy(
       oldCycle?.original?.postLossTarget || played?.postLossTarget || null,
     );
-    const playRoute = played ? (postLossTarget ? "POSTLOSS" : "NORMAL") : null;
+    const playRoute = played
+      ? postLossTarget
+        ? postLossTarget.kind === "POST3"
+          ? "POST3LOSS"
+          : "POSTLOSS"
+        : "NORMAL"
+      : null;
     state.ledger.push({
       controller,
       masterTarget: copy(
@@ -4022,6 +3640,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     if (!block) return null;
     if (id.endsWith("@THIRD"))
       return thirdVariationMotor(id.slice(0, -6), block);
+    if (id === "MASTER") return masterSelection(block)?.motor || null;
     if (id === "TRAINER") return independentGlobalMotor(block);
     if (id === "NUMBER") return bestNumberCombination(state.history);
     const variant = block.variants.find((f) => f.bankId === id);
@@ -4190,8 +3809,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     return {
       normal: rows.filter((r) => r.playRoute === "NORMAL"),
       postLoss: rows.filter((r) => r.playRoute === "POSTLOSS"),
+      postThree: rows.filter((r) => r.playRoute === "POST3LOSS"),
       combined: rows,
-      legacy: rows.filter((r) => !["NORMAL", "POSTLOSS"].includes(r.playRoute)),
+      legacy: rows.filter(
+        (r) => !["NORMAL", "POSTLOSS", "POST3LOSS"].includes(r.playRoute),
+      ),
     };
   }
 
@@ -4335,6 +3957,1134 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       .slice(-79);
   }
 
+  /* Caches dependentes do estado são renovados; análises puras por histórico
+   exato continuam disponíveis para reutilização, sem alterar os cálculos. */
+  function clearRuntimeCaches() {
+    motorDiversityCache.clear();
+    variantForecastCache.clear();
+    blockRuntimeKey = null;
+    blockRuntimeData = null;
+  }
+
+  /* Checkpoints completos. LZW síncrono reduz o espaço ocupado sem cortar histórico,
+   treinamento, ciclos ou desfazer. A fila possui seu próprio diário causal. */
+  function packSession(text) {
+    const bytes = unescape(encodeURIComponent(text)),
+      dictionary = new Map();
+    let next = 257,
+      phrase = "",
+      chunk = "",
+      chunks = [];
+    const emit = (code) => {
+      chunk += String.fromCharCode(code);
+      if (chunk.length >= 8192) {
+        chunks.push(chunk);
+        chunk = "";
+      }
+    };
+    for (let i = 0; i < bytes.length; i++) {
+      const char = bytes[i],
+        joined = phrase + char;
+      if (!phrase || dictionary.has(joined)) {
+        phrase = joined;
+        continue;
+      }
+      emit(phrase.length === 1 ? phrase.charCodeAt(0) : dictionary.get(phrase));
+      if (next < 65535) dictionary.set(joined, next++);
+      else {
+        emit(256);
+        dictionary.clear();
+        next = 257;
+      }
+      phrase = char;
+    }
+    if (phrase)
+      emit(phrase.length === 1 ? phrase.charCodeAt(0) : dictionary.get(phrase));
+    chunks.push(chunk);
+    return "BETA_LZW1:" + chunks.join("");
+  }
+  function unpackSession(text) {
+    if (!text.startsWith("BETA_LZW1:")) return text;
+    const dictionary = [],
+      parts = [];
+    let next = 257,
+      previous = "";
+    for (let i = 10; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if (code === 256) {
+        dictionary.length = 0;
+        next = 257;
+        previous = "";
+        continue;
+      }
+      const value =
+        code < 256
+          ? String.fromCharCode(code)
+          : dictionary[code] || (code === next ? previous + previous[0] : null);
+      if (value == null) throw Error("Checkpoint inválido.");
+      parts.push(value);
+      if (previous && next < 65535) dictionary[next++] = previous + value[0];
+      previous = value;
+    }
+    return decodeURIComponent(escape(parts.join("")));
+  }
+  function read(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null) return null;
+      return JSON.parse(unpackSession(raw), (k, v) =>
+        v && typeof v.__betaPlay === "string"
+          ? restoreShape(v.__betaPlay, v.score)
+          : v,
+      );
+    } catch (error) {
+      saveError =
+        "Não foi possível recuperar o estado salvo: " +
+        String(error.message || error);
+      return null;
+    }
+  }
+  function save() {
+    try {
+      if (typeof checkpointSerial !== "undefined") checkpointSerial++;
+      if (typeof checkpointEpoch !== "undefined") checkpointEpoch++;
+      const raw = JSON.stringify(state, (k, v) =>
+        validPlay(v) ? { __betaPlay: signaturePlay(v), score: v.score } : v,
+      );
+      localStorage.setItem(KEY, packSession(raw));
+      pruneSavedVersions();
+      durableTurn = state.totalTurns;
+      saveError = "";
+      return true;
+    } catch (error) {
+      saveError = "SALVAMENTO FALHOU: " + String(error.message || error);
+      return false;
+    }
+  }
+
+  /* Busca geométrica original validada: cinco blocos de cinco e um de três,
+   sem reaproveitar combinações intermediárias da busca otimizada. */
+  function rawGeometry(weights, mandatory = []) {
+    const score = (b) => ({
+        ...b,
+        value: b.numbers.reduce((s, n) => s + (weights[ix(n)] || 0), 0),
+      }),
+      fives = FIVE.map(score).sort((a, b) => b.value - a.value),
+      threes = THREE.map(score)
+        .filter((b) => mandatory.every((n) => b.numbers.includes(n)))
+        .sort((a, b) => b.value - a.value);
+    let best = null;
+    for (const small of threes) {
+      let beam = [{ blocks: [small], mask: small.mask, score: small.value }];
+      for (let step = 0; step < 5; step++) {
+        const next = [];
+        for (const item of beam)
+          for (const b of fives) {
+            if ((item.mask & b.mask) !== 0n) continue;
+            next.push({
+              blocks: [...item.blocks, b],
+              mask: item.mask | b.mask,
+              score: item.score + b.value,
+            });
+          }
+        next.sort((a, b) => b.score - a.score);
+        beam = [];
+        const seen = new Set();
+        for (const item of next) {
+          const k = String(item.mask);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          beam.push(item);
+          if (beam.length >= 6) break;
+        }
+        if (!beam.length) break;
+      }
+      for (const item of beam)
+        if (item.blocks.length === 6 && (!best || item.score > best.score))
+          best = item;
+    }
+    if (!best) return null;
+    const blocks = best.blocks.map((b) => ({
+        center: b.center,
+        radius: b.radius,
+        numbers: [...b.numbers],
+      })),
+      p = {
+        blocks,
+        numbers: blocks.flatMap((b) => b.numbers),
+        score: best.score,
+      };
+    return validPlay(p) ? p : null;
+  }
+
+  /* Seleção parcial exata: somente os 96 melhores são ordenados e materializados.
+   Mesma pontuação, mesma ordem de desempate pelo índice de origem. */
+  function topPoolCandidates(scores, limit = 96) {
+    const pool = diversityCandidates(),
+      heap = [];
+    const worse = (a, b) =>
+      scores[a] < scores[b] || (scores[a] === scores[b] && a > b);
+    for (let index = 0; index < scores.length; index++) {
+      if (heap.length < limit) {
+        heap.push(index);
+        let child = heap.length - 1;
+        while (child) {
+          const parent = (child - 1) >> 1;
+          if (!worse(heap[child], heap[parent])) break;
+          [heap[child], heap[parent]] = [heap[parent], heap[child]];
+          child = parent;
+        }
+      } else if (worse(heap[0], index)) {
+        heap[0] = index;
+        let parent = 0;
+        while (true) {
+          let child = parent * 2 + 1;
+          if (child >= heap.length) break;
+          if (child + 1 < heap.length && worse(heap[child + 1], heap[child]))
+            child++;
+          if (!worse(heap[child], heap[parent])) break;
+          [heap[child], heap[parent]] = [heap[parent], heap[child]];
+          parent = child;
+        }
+      }
+    }
+    return heap
+      .sort((a, b) => scores[b] - scores[a] || a - b)
+      .map((index) => ({
+        candidate: pool[index],
+        score: scores[index],
+        index,
+      }));
+  }
+
+  function fastIndependentMotors(proposals) {
+    const pool = diversityCandidates();
+    const candidates = proposals.map((m) => topPoolCandidates(m.poolScores));
+    let chosen = null,
+      chosenScore = -Infinity;
+    for (const step of [1, 5, 7]) {
+      const selected = Array(12).fill(null),
+        counts = Array(37).fill(0);
+      for (let k = 0; k < 12; k++) {
+        const i = (k * step) % 12;
+        let best = null,
+          value = -Infinity;
+        for (const item of candidates[i]) {
+          if (selected.some((c) => c && sharedCoverage(c, item.candidate) > 24))
+            continue;
+          let newNumbers = 0;
+          for (const n of item.candidate.play.numbers)
+            if (!counts[n]) newNumbers++;
+          const score = item.score + 0.08 * newNumbers;
+          if (score > value) {
+            value = score;
+            best = item.candidate;
+          }
+        }
+        if (!best) break;
+        selected[i] = best;
+        for (const n of best.play.numbers) counts[n]++;
+      }
+      if (selected.some((c) => !c) || counts.some((n) => !n)) continue;
+      const score = selected.reduce(
+        (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
+        0,
+      );
+      if (score > chosenScore) {
+        chosenScore = score;
+        chosen = selected;
+      }
+    }
+    if (!chosen) {
+      for (let shift = 0; shift < 37; shift++) {
+        const selected = diversitySafety.map((c) =>
+          diversityCandidate(rotatedDiversity(c.play, shift)),
+        );
+        const score = selected.reduce(
+          (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
+          0,
+        );
+        if (score > chosenScore) {
+          chosenScore = score;
+          chosen = selected;
+        }
+      }
+    }
+    const result = proposals.map((m, i) => {
+      const { weights, poolScores, ...motor } = m;
+      const play = copy(chosen[i].play);
+      play.score = candidateFit(chosen[i], weights);
+      return { ...motor, score: play.score, play };
+    });
+    if (!validMotorEnsemble(result))
+      throw Error("CONJUNTO INCOMPLETO: " + proposals[0].bankId);
+    result.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
+    result.forEach((m, i) => (m.rank = i + 1));
+    return result;
+  }
+
+  function coordinateOwnerVariations(forecasts) {
+    for (const owner of VARIANT_OWNERS) {
+      const group = forecasts.filter((f) => f.owner === owner.id);
+      if (!group.length) continue;
+      const alternatives = group.map((f) => {
+        if (owner.id === "CONSENSUS" || owner.id === "UNION") {
+          const weights = Array(37).fill(0);
+          const members =
+            owner.id === "UNION" ? f.motors.slice(0, 3) : f.motors;
+          for (const m of members)
+            for (const n of m.play.numbers)
+              weights[ix(n)] += 1 / (1 + m.rank * 0.1);
+          applySpatial(weights, state.history, 0.25);
+          const ranked = topPoolCandidates(
+            diversityCandidates().map((candidate) =>
+              candidateFit(candidate, weights),
+            ),
+          );
+          return [
+            f.choice,
+            ...ranked.slice(0, 96).map((r) => ({
+              key: owner.id,
+              rank: 0,
+              play: { ...copy(r.candidate.play), score: r.score },
+              score: r.score,
+              spatialKeys: [...spatialRead(state.history).keys],
+            })),
+          ];
+        }
+        let motors =
+          owner.id === "FIXED" ? f.motors.slice(0, 4) : [...f.motors];
+        if (owner.id === "BEST" || owner.id === "SWITCH")
+          motors.sort(
+            (a, b) =>
+              variantMotorRate(b.key, owner.id === "BEST" ? 20 : 12) -
+                variantMotorRate(a.key, owner.id === "BEST" ? 20 : 12) ||
+              a.rank - b.rank,
+          );
+        if (owner.id === "NUMBER")
+          motors.sort((a, b) => {
+            const score = (m) =>
+              compareNumberCombination(
+                { play: m.play, covered: m.play.numbers },
+                state.history.at(-1),
+                state.history,
+              ).score;
+            return score(b) - score(a) || a.rank - b.rank;
+          });
+        return [f.choice, ...motors];
+      });
+      const prepared = alternatives.map((items) => {
+        const seen = new Set();
+        return items
+          .filter((m) => {
+            const code = coverageCode(m.play);
+            if (seen.has(code)) return false;
+            seen.add(code);
+            return true;
+          })
+          .map((motor) => ({
+            motor,
+            candidate: diversityCandidate(motor.play),
+          }));
+      });
+      let final = null;
+      for (const order of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        const selected = Array(8).fill(null),
+          counts = Array(37).fill(0);
+        let failed = false;
+        for (let k = 0; k < 8; k++) {
+          const index = (k + order) % 8,
+            f = group[index];
+          const choices = prepared[index];
+          let best = null,
+            bestScore = -Infinity;
+          for (let i = 0; i < choices.length; i++) {
+            const { motor, candidate } = choices[i];
+            if (
+              selected.some(
+                (m) =>
+                  m &&
+                  sharedCoverage(diversityCandidate(m.play), candidate) > 27,
+              )
+            )
+              continue;
+            let additional = 0;
+            for (const n of motor.play.numbers) if (!counts[n]) additional++;
+            const score = (i === 0 ? 0.25 : 0) + 1 / (1 + i) + additional * 2;
+            if (score > bestScore) {
+              best = motor;
+              bestScore = score;
+            }
+          }
+          if (!best) {
+            failed = true;
+            break;
+          }
+          selected[index] = {
+            ...copy(best),
+            bankId: f.bankId,
+            owner: f.owner,
+            variation: f.variation,
+          };
+          if (owner.id === "FIXED")
+            selected[index].autoRank = best.autoRank || best.rank;
+          if (owner.id === "NUMBER")
+            Object.assign(selected[index], {
+              type: "NUMBER",
+              trigger: state.history.at(-1),
+              sourceNumber: best.sourceNumber ?? state.history.at(-1),
+              sourceTurn: best.sourceTurn ?? state.totalTurns,
+            });
+          for (const n of best.play.numbers) counts[n]++;
+        }
+        if (!failed && counts.every(Boolean)) {
+          final = selected;
+          break;
+        }
+      }
+      if (!final) {
+        // Reserva de conjuntos inteiros: conserva a regra da original, inclusive
+        // AUTO exclusivamente 1–4, sem transformar CONSENSO em um motor isolado.
+        const options = group.map((f) => {
+          const weights = new Map(f._weights.map((m) => [m.key, m.weights]));
+          return Array.from({ length: 37 }, (_, shift) => {
+            const motors = f.motors
+              .map((m, i) => {
+                const play = rotatedDiversity(diversitySafety[i].play, shift);
+                play.score = play.numbers.reduce(
+                  (sum, n) => sum + weights.get(m.key)[ix(n)],
+                  0,
+                );
+                return { ...m, play, score: play.score };
+              })
+              .sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
+            motors.forEach((m, i) => (m.rank = i + 1));
+            return {
+              motors,
+              choice: chooseVariant(
+                f.owner,
+                f.variation,
+                motors,
+                state.history,
+              ),
+            };
+          });
+        });
+        for (let order = 0; order < 8 && !final; order++) {
+          const selected = Array(8).fill(null),
+            banks = Array(8).fill(null),
+            counts = Array(37).fill(0);
+          for (let k = 0; k < 8; k++) {
+            const index = (k + order) % 8;
+            let best = null,
+              bestValue = -Infinity;
+            for (const option of options[index]) {
+              const candidate = diversityCandidate(option.choice.play);
+              if (
+                selected.some(
+                  (m) =>
+                    m &&
+                    sharedCoverage(diversityCandidate(m.play), candidate) > 27,
+                )
+              )
+                continue;
+              const gain = option.choice.play.numbers.filter(
+                (n) => !counts[n],
+              ).length;
+              const value = gain * 2 + option.choice.score / 100;
+              if (value > bestValue) {
+                best = option;
+                bestValue = value;
+              }
+            }
+            if (!best) break;
+            selected[index] = best.choice;
+            banks[index] = best.motors;
+            for (const n of best.choice.play.numbers) counts[n]++;
+          }
+          if (selected.every(Boolean) && counts.every(Boolean)) {
+            final = selected;
+            for (let i = 0; i < 8; i++) group[i].motors = banks[i];
+          }
+        }
+      }
+      if (!final)
+        throw Error(
+          "NÃO FOI POSSÍVEL DIVERSIFICAR AS OITO VARIAÇÕES: " + owner.id,
+        );
+      for (let i = 0; i < 8; i++) group[i].choice = final[i];
+    }
+  }
+
+  const coverageCandidateMemo = new WeakMap();
+  function diversityCandidate(play) {
+    if (coverageCandidateMemo.has(play)) return coverageCandidateMemo.get(play);
+    const covered = new Set(play.numbers);
+    let low = 0,
+      high = 0;
+    for (let n = 0; n < 37; n++)
+      if (!covered.has(n)) {
+        if (n < 32) low |= 1 << n;
+        else high |= 1 << (n - 32);
+      }
+    const candidate = { play, low, high, code: coverageCode(play) };
+    coverageCandidateMemo.set(play, candidate);
+    return candidate;
+  }
+
+  function allVariantForecasts(h, onlyOwner = null) {
+    if (h.length < 8) return [];
+    const key =
+      h.join(",") +
+      "|" +
+      state.totalTurns +
+      (onlyOwner ? "|OWNER:" + onlyOwner : "");
+    if (variantForecastCache.has(key)) return variantForecastCache.get(key);
+    const spatial = spatialRead(h),
+      baseWeights = new Map(),
+      shared = { base: new Map(), additive: new Map() };
+    for (const family of FAMILIES)
+      for (const radius of RADII) {
+        const base = weightsFor(h, family, radius),
+          key = family + "_" + radius;
+        baseWeights.set(key, base);
+        const normalized = normalizeSpace(base);
+        shared.base.set(
+          key,
+          diversityCandidates().map((c) => candidateFit(c, normalized)),
+        );
+      }
+    const forecasts = [];
+    for (const owner of VARIANT_OWNERS.filter(
+      (o) =>
+        !onlyOwner ||
+        (Array.isArray(onlyOwner)
+          ? onlyOwner.includes(o.id)
+          : o.id === onlyOwner),
+    ))
+      for (let variation = 1; variation <= 8; variation++) {
+        const bankId = variantBookId(owner.id, variation),
+          proposals = [];
+        for (const family of FAMILIES)
+          for (const radius of RADII) {
+            const analysis = variantAnalyticalWeights(
+              h,
+              family,
+              radius,
+              owner.id,
+              variation,
+              baseWeights.get(family + "_" + radius),
+              spatial,
+              shared,
+            );
+            proposals.push({
+              key: bankId + "::" + family + "_" + radius,
+              bankId,
+              owner: owner.id,
+              variation,
+              family,
+              radius,
+              weights: analysis.weights,
+              poolScores: analysis.poolScores,
+              spatialKeys: [...spatial.keys],
+              componentShares: [...spatial.adaptive.shares],
+              adaptiveSamples: spatial.adaptive.samples,
+              spatialVersion: VERSION,
+            });
+          }
+        const cs = fastIndependentMotors(proposals);
+        forecasts.push({
+          bankId,
+          owner: owner.id,
+          name: owner.name,
+          variation,
+          motors: cs,
+          _weights: proposals,
+          choice: chooseVariant(owner.id, variation, cs, h),
+        });
+      }
+    coordinateOwnerVariations(forecasts);
+    for (const f of forecasts) delete f._weights;
+    variantForecastCache.set(key, forecasts);
+    if (variantForecastCache.size > 4)
+      variantForecastCache.delete(variantForecastCache.keys().next().value);
+    return forecasts;
+  }
+
+  /* Dois calculadores persistentes repartem as oito famílias de estratégias.
+   Nenhuma combinação é reutilizada de um resultado anterior. */
+  let bankCalculators = null,
+    bankRequestId = 0;
+  function createBankCalculator() {
+    const url = URL.createObjectURL(
+      new Blob(["(" + analysisBackground.toString() + ")();"], {
+        type: "text/javascript",
+      }),
+    );
+    const worker = new Worker(url);
+    URL.revokeObjectURL(url);
+    const requests = new Map();
+    worker.onmessage = (event) => {
+      const data = event.data,
+        request = requests.get(data.id);
+      if (!request) return;
+      requests.delete(data.id);
+      data.error
+        ? request.reject(Error(data.error))
+        : request.resolve(data.variants);
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      for (const request of requests.values())
+        request.reject(Error("Calculador indisponível."));
+      requests.clear();
+      bankCalculators = null;
+    };
+    return { worker, requests };
+  }
+  function requestBankCalculation(calculator, owners) {
+    return new Promise((resolve, reject) => {
+      const id = ++bankRequestId;
+      calculator.requests.set(id, { resolve, reject });
+      calculator.worker.postMessage({
+        id,
+        action: "BANKS",
+        state: { ...state, undoStack: [] },
+        owners,
+      });
+    });
+  }
+  async function prepareBlockParallel() {
+    if (state.history.length < 8) return null;
+    if (state.block.data && state.block.decisionTurn === state.totalTurns)
+      return currentBlock();
+    if (typeof Worker === "undefined" || typeof Blob === "undefined")
+      return prepareBlock();
+    try {
+      if (!bankCalculators)
+        bankCalculators = [createBankCalculator(), createBankCalculator()];
+      const groups = [
+        VARIANT_OWNERS.filter((_, i) => i % 2 === 0).map((o) => o.id),
+        VARIANT_OWNERS.filter((_, i) => i % 2 === 1).map((o) => o.id),
+      ];
+      const pending = Promise.all(
+        bankCalculators.map((calculator, i) =>
+          requestBankCalculation(calculator, groups[i]),
+        ),
+      );
+      const anchor = [...state.history].slice(-70),
+        global = motors(anchor);
+      const partitions = await pending;
+      const byId = new Map(partitions.flat().map((f) => [f.bankId, f]));
+      const variants = [];
+      for (const owner of VARIANT_OWNERS)
+        for (let variation = 1; variation <= 8; variation++) {
+          const id = variantBookId(owner.id, variation),
+            forecast = byId.get(id);
+          if (!forecast) throw Error("Variação ausente: " + id);
+          variants.push(forecast);
+        }
+      state.block.anchor = anchor;
+      state.block.decisionTurn = state.totalTurns;
+      state.block.data = { global: global.map(compactMotor), variants };
+      state.block.best = rankBestVariation();
+      registerNumberCombination(anchor, state.totalTurns);
+      updateNumberChoice();
+      updateTrainer();
+      blockRuntimeKey = null;
+      updateMaster(currentBlock());
+      return currentBlock();
+    } catch (error) {
+      if (bankCalculators)
+        for (const calculator of bankCalculators) calculator.worker.terminate();
+      bankCalculators = null;
+      return prepareBlock();
+    }
+  }
+
+  /* Os contadores de sequência não são apagados pelo descarte da janela. */
+  function updateStrategyStreaks(turn = state.totalTurns) {
+    for (const [id, rows] of Object.entries(state.strategyTimeline)) {
+      const closed = rows
+        .filter((r) => r.closed && r.closedTurn <= turn)
+        .sort((a, b) => a.closedTurn - b.closedTurn);
+      let counter = state.strategyStreaks[id];
+      if (!counter) {
+        let loss = 0;
+        for (
+          let i = closed.length - 1;
+          i >= 0 && closed[i].result === "LOSS";
+          i--
+        )
+          loss++;
+        const last = closed.at(-1);
+        if (last)
+          state.strategyStreaks[id] = {
+            loss,
+            closedTurn: last.closedTurn,
+            result: last.result,
+          };
+        continue;
+      }
+      for (const row of closed)
+        if (row.closedTurn > counter.closedTurn) {
+          counter = {
+            loss: row.result === "LOSS" ? counter.loss + 1 : 0,
+            closedTurn: row.closedTurn,
+            result: row.result,
+          };
+        }
+      state.strategyStreaks[id] = counter;
+    }
+  }
+  function postThreeChoice(block = currentBlock()) {
+    if (!block) return null;
+    const candidates = timelineDefinitions()
+      .filter((d) => !["POSTLOSS", "POST3LOSS"].includes(d.id))
+      .map((def) => {
+        const stats = postLossStats(def.id),
+          counter = state.strategyStreaks[def.id];
+        const streak = counter?.loss ?? stats.streak,
+          lossTurn = counter?.closedTurn ?? stats.last?.closedTurn;
+        return { ...def, ...stats, streak, lossTurn };
+      })
+      .filter(
+        (candidate) =>
+          candidate.streak >= 3 &&
+          candidate.lossTurn > (state.postThreeUsed[candidate.id] || 0),
+      )
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.samples - a.samples ||
+          b.lossTurn - a.lossTurn ||
+          a.id.localeCompare(b.id),
+      );
+    for (const candidate of candidates) {
+      const motor = timelineMotor(candidate.id, block);
+      if (!validPlay(motor?.play)) continue;
+      return {
+        ...candidate,
+        motor: {
+          ...copy(motor),
+          postLossTarget: {
+            kind: "POST3",
+            id: candidate.id,
+            name: candidate.name,
+            lossTurn: candidate.lossTurn,
+            streak: candidate.streak,
+            samples: candidate.samples,
+            recoveries: candidate.recoveries,
+            repeatLoss: candidate.repeatLoss,
+            score: candidate.score,
+            defenseStrategy:
+              motor.thirdTarget?.id ||
+              motor.globalStrategyTarget?.id ||
+              motor.masterTarget?.defenseStrategy ||
+              candidate.id,
+          },
+        },
+      };
+    }
+    return null;
+  }
+  function priorityRecoveryChoice(block = currentBlock()) {
+    if (state.postThreeEnabled) {
+      const choice = postThreeChoice(block);
+      if (choice) return choice;
+    }
+    return state.postLossEnabled || state.strategy === "POSTLOSS"
+      ? postLossChoice(block)
+      : null;
+  }
+
+  /* Só remove cópias de versões anteriores depois de gravar a sessão completa
+   na chave atual; a sessão em uso e seus registros permanecem intactos. */
+  function pruneSavedVersions() {
+    if (!localStorage.getItem(KEY)) return;
+    for (const oldKey of OLD_KEYS) {
+      try {
+        localStorage.removeItem?.(oldKey);
+        localStorage.removeItem?.(oldKey + "_QUEUE");
+      } catch (error) {}
+    }
+  }
+
+  /* MEMÓRIA ESTRUTURAL CAUSAL — V6.6.2
+
+     Aprende apenas com resultados posteriores a contextos já formados.
+
+     Os dados das imagens não são inseridos como conhecimento futuro.
+
+     Estatísticas compartilhadas são imutáveis; cada perfil usa sua mistura.
+
+     Região e espelho direcionais desta camada não alteram convenções antigas.
+
+  */
+
+  const structuralMemoryCache=new Map();
+
+  const STRUCTURAL_KINDS=[
+
+  'NUMERO','PAR','TRINCA','SALTO','FORMA','TRIANGULO',
+
+  'AMPLITUDE','CADEIA','PERCURSO','POLOS','ARCO','REGIAO','ESPELHO'
+
+  ];
+
+  const STRUCTURAL_PROFILES=[
+
+  [1,1,1,1,1,1,1,1,1,1,1,1,1],
+
+  [2,1.8,.7,1.4,1,.8,1,.6,.7,.6,.7,.7,.6],
+
+  [.8,.7,.6,.7,.8,1,1,.7,1,1.2,1.8,2,.8],
+
+  [.6,.8,.6,1.3,1.8,1,1.5,2.1,2.3,.7,.6,.6,.8],
+
+  [.7,1.5,1.8,.8,2,2.5,1.4,1.1,1,.6,.6,.7,.7],
+
+  [.7,.6,.5,.7,.8,.8,.8,.8,1.2,2.5,2.5,1.2,.7],
+
+  [1.1,1.2,1,1.2,1.4,1.5,1.2,.8,1.7,1.5,.7,.7,1.8],
+
+  [.7,.8,.6,2,1.7,1.2,2.5,1.4,2.2,.8,1,.6,1.4]
+
+  ];
+
+
+  function structuralRegion(n){
+
+  if([5,8,10,11,13,16,23,24,27,30,33,36].includes(n))return 'TIERS';
+
+  if([1,6,9,14,17,20,31,34].includes(n))return 'ORPHELINS';
+
+  return 'VOISINS';
+
+  }
+
+
+  function structuralContexts(h){
+
+  if(!h.length)return [];
+
+  const contexts=[],last=h.at(-1),position=ix(last);
+
+  const add=(kind,key,relative=false)=>contexts.push({kind,key:String(key),relative});
+
+  const band=v=>Math.abs(v)<=3?'C':Math.abs(v)<=9?'M':'L';
+
+  add('NUMERO',last);
+
+  let run=1;
+
+  while(run<Math.min(8,h.length)&&
+
+  structuralRegion(h[h.length-1-run])===structuralRegion(last))run++;
+
+  add('REGIAO',structuralRegion(last)+':'+run);
+
+  if(h.length>=2){
+
+  const step=direction(h.at(-2),last);
+
+  add('PAR',h.slice(-2).join(','));
+
+  add('SALTO',step,true);
+
+  add('ESPELHO',step===18?'MAIS18':step===-18?'MAIS19':'OUTRO:'+Math.sign(step),true);
+
+  }
+
+  if(h.length>=3){
+
+  const [a,b,c]=h.slice(-3),s=direction(a,b),t=direction(b,c);
+
+  const f=triangleFeatures(a,b,c);
+
+  const kind=a===b&&b===c?'TRIPLA':a===b?'INICIAL':b===c?'FINAL':
+
+  a===c?'RETORNO':s*t>0?'CONTINUIDADE':'INVERSAO';
+
+  add('TRINCA',[a,b,c].join(','));
+
+  add('FORMA',[s,t].join(','),true);
+
+  add('TRIANGULO',[kind,Math.floor(f.closure/3),
+
+  Math.round(f.area*4),f.degenerate?1:0,
+
+  f.angles[1]==null?'X':Math.floor(f.angles[1]/30)].join(':'),true);
+
+  add('AMPLITUDE',[hopTrend(s,t),band(s),band(t),
+
+  Math.floor(Math.abs(Math.abs(t)-Math.abs(s))/4)].join(':'),true);
+
+  }
+
+  for(let size=4;size<=Math.min(8,h.length);size++){
+
+  const nums=h.slice(-size),steps=nums.slice(1).map((n,i)=>direction(nums[i],n));
+
+  add('CADEIA',size+':'+nums.join(','));
+
+  add('FORMA',size+':'+steps.map(s=>Math.round(s/3)).join(','),true);
+
+  const net=steps.reduce((s,n)=>s+n,0),length=steps.reduce((s,n)=>s+Math.abs(n),0);
+
+  const closure=distance(nums[0],last);
+
+  add('PERCURSO',[size,Math.round(net/4),Math.floor(length/8),
+
+  Math.floor(closure/3),steps.map(Math.sign).join(','),
+
+  Number(Math.abs(net)>=31&&closure<=6)].join(':'),true);
+
+  }
+
+  if(h.length>=4){
+
+  const [a,b,c,d]=h.slice(-4);
+
+  if(distance(a,b)>=8&&distance(a,c)<=2&&distance(b,d)<=2){
+
+  const initial=distance(a,b),separation=distance(c,d);
+
+  add('POLOS',[direction(a,c),direction(b,d),Math.floor(separation/3),
+
+  Math.sign(separation-initial),direction(d,c)].join(':'),true);
+
+  }
+
+  }
+
+  if(h.length>=10){
+
+  const visits=Array(37).fill(0);
+
+  for(const n of h.slice(-10))for(let k=0;k<8;k++)visits[mod(ix(n)-k)]++;
+
+  let start=0;
+
+  for(let k=1;k<37;k++)if(visits[k]>visits[start])start=k;
+
+  const inside=mod(position-start)<8;
+
+  const prior=mod(ix(h.at(-2))-start)<8;
+
+  add('ARCO',[mod(start-position),visits[start],inside?1:0,
+
+  prior?1:0,inside===prior?'PERMANENCIA':inside?'ENTRADA':'SAIDA'].join(':'),true);
+
+  }
+
+  return contexts;
+
+  }
+
+
+  function structuralReadGroups(contexts,books,last){
+
+  const groups=new Map();
+
+  for(const context of contexts){
+
+  const record=books.get(context.kind+'|'+context.key);
+
+  if(!record?.total)continue;
+
+  const confidence=record.total/(record.total+10);
+
+  const recent=Array(37).fill(0);
+
+  for(const n of record.recent)recent[n]++;
+
+  const weights=Array(37).fill(0);
+
+  for(let j=0;j<37;j++){
+
+  const target=context.relative?mod(j-ix(last)):j;
+
+  const global=(record.counts[target]+6/37)/(record.total+6);
+
+  const short=(recent[target]+4/37)/(record.recent.length+4);
+
+  weights[j]=37*(global*.7+short*.3);
+
+  }
+
+  let group=groups.get(context.kind);
+
+  if(!group){group={weights:Array(37).fill(0),mass:0,support:0,keys:0};groups.set(context.kind,group);}
+
+  for(let j=0;j<37;j++)group.weights[j]+=weights[j]*confidence;
+
+  group.mass+=confidence;group.support+=record.total;group.keys++;
+
+  }
+
+  for(const group of groups.values()){
+
+  for(let j=0;j<37;j++)group.weights[j]/=group.mass;
+
+  group.confidence=group.mass/group.keys;
+
+  }
+
+  return groups;
+
+  }
+
+
+  function structuralMemoryRead(history){
+
+  const h=history.slice(-WINDOW),key=h.join(',');
+
+  if(structuralMemoryCache.has(key))return structuralMemoryCache.get(key);
+
+  if(h.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO INCOMPATÍVEL COM A RODA EUROPEIA.');
+
+  const books=new Map(),performanceByKind=new Map();
+
+  for(let end=1;end<h.length;end++){
+
+  const prefix=h.slice(0,end),last=prefix.at(-1),actual=h[end];
+
+  const contexts=structuralContexts(prefix);
+
+  // A previsão é calculada antes de registrar actual.
+
+  const groups=structuralReadGroups(contexts,books,last);
+
+  for(const [kind,group] of groups){
+
+  if(group.support<2)continue;
+
+  const stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+
+  stats.samples++;stats.sumLogGain+=clamp(Math.log(Math.max(.01,group.weights[ix(actual)])),-2,2);
+
+  performanceByKind.set(kind,stats);
+
+  }
+
+  const seen=new Set();
+
+  for(const context of contexts){
+
+  const id=context.kind+'|'+context.key;
+
+  if(seen.has(id))continue;
+
+  seen.add(id);
+
+  let record=books.get(id);
+
+  if(!record){record={total:0,counts:Array(37).fill(0),recent:[]};books.set(id,record);}
+
+  const target=context.relative?mod(ix(actual)-ix(last)):ix(actual);
+
+  record.counts[target]++;record.total++;record.recent.push(target);
+
+  if(record.recent.length>5)record.recent.shift();
+
+  }
+
+  }
+
+  const groups=structuralReadGroups(structuralContexts(h),books,h.at(-1));
+
+  const components=STRUCTURAL_KINDS.map(kind=>{
+
+  const group=groups.get(kind),stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+
+  const mean=stats.samples?stats.sumLogGain/stats.samples:0;
+
+  const gain=Math.exp(clamp(mean*stats.samples/(stats.samples+16),-.6,.25));
+
+  return {kind,weights:group?normalizeSpace(group.weights):Array(37).fill(1),
+
+  support:group?.support||0,confidence:group?.confidence||0,
+
+  validationSamples:stats.samples,meanLogGain:mean,gain};
+
+  });
+
+  const result={components,historyLength:h.length,contextCount:books.size};
+
+  structuralMemoryCache.set(key,result);
+
+  if(structuralMemoryCache.size>24)structuralMemoryCache.delete(structuralMemoryCache.keys().next().value);
+
+  return result;
+
+  }
+
+
+  function structuralWeights(h,variation=1){
+
+  const memory=structuralMemoryRead(h),profile=STRUCTURAL_PROFILES[variation-1]||STRUCTURAL_PROFILES[0];
+
+  let mass=0;
+
+  const weights=Array(37).fill(0);
+
+  for(let k=0;k<memory.components.length;k++){
+
+  const component=memory.components[k],weight=profile[k]*component.confidence*component.gain;
+
+  if(!weight)continue;
+
+  mass+=weight;
+
+  for(let j=0;j<37;j++)weights[j]+=component.weights[j]*weight;
+
+  }
+
+  return mass?normalizeSpace(weights.map(v=>v/mass)):Array(37).fill(1);
+
+  }
+
+
+  function applySpatial(weights,h,strength=.30){
+
+  legacyApplySpatial(weights,h,strength);
+
+  if(h.length<8)return weights;
+
+  const learned=structuralWeights(h),scale=avg(weights.map(v=>Math.max(0,v)))||1;
+
+  const reliability=Math.min(1,(h.length-7)/24);
+
+  for(let j=0;j<37;j++)weights[j]=Math.max(.001,
+
+  weights[j]+scale*.14*reliability*clamp(learned[j]-1,-.7,1.2));
+
+  return weights;
+
+  }
+
+
+  function parseInput(text){
+
+  // Vírgulas e pontos separam giros no formato antigo: não são casas decimais.
+
+  const normalized=String(text).trim();
+
+  const numbers=(normalized.match(/\d+/g)||[]);
+
+  if(numbers.some(n=>/^0{2,}$/.test(n)))throw Error('00 NÃO É 0. ESTE SISTEMA USA A RODA EUROPEIA DE 37 NÚMEROS.');
+
+  if(/-\s*\d/.test(normalized))throw Error('HISTÓRICO CONTÉM NÚMERO NEGATIVO.');
+
+  const result=numbers.map(Number);
+
+  if(result.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO DEVE CONTER SOMENTE NÚMEROS DE 0 A 36.');
+
+  return result;
+
+  }
+
   let state = fresh();
   let busy = false;
   let saveError = "";
@@ -4347,8 +5097,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.5.8 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.2 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
+- Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
+- Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
+- Busca geométrica validada preservada; seleção parcial exata e metadados de geometria reutilizados; salvamento compactado em segundo plano.
+- Número aparece imediatamente; indicação atualiza uma única vez, sem tela provisória vazia.
+- Estado completo salvo após cada número, com retomada da fila ao reabrir.
+- Reutilização de caches de análises puras; critérios e cálculos mantidos.
 - MASTER decide entre as estratégias, incluindo o Treinador Global independente.
 - Após encerrar entrada/G1, MASTER observa dois resultados completos antes do próximo sinal.
 - Linha MASTER registra os ciclos executados; sem resultados fictícios durante a pausa.
@@ -4375,10 +5131,14 @@ ANÁLISE BETA V6.5.8 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.5.8",
-      KEY = "ANALISE_BETA_V658",
+    const VERSION = "6.6.2",
+      KEY = "ANALISE_BETA_V662",
       WINDOW = 70;
     const OLD_KEYS = [
+      "ANALISE_BETA_V661",
+      "ANALISE_BETA_V660",
+      "ANALISE_BETA_V659",
+      "ANALISE_BETA_V658",
       "ANALISE_BETA_V657",
       "ANALISE_BETA_V656",
       "ANALISE_BETA_V655",
@@ -4560,34 +5320,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return play;
     }
 
-    function read(key) {
-      try {
-        return JSON.parse(localStorage.getItem(key) || "null", (k, v) =>
-          v && typeof v.__betaPlay === "string"
-            ? restoreShape(v.__betaPlay, v.score)
-            : v,
-        );
-      } catch {
-        return null;
-      }
-    }
-
-    function save() {
-      try {
-        localStorage.setItem(
-          KEY,
-          JSON.stringify(state, (k, v) =>
-            validPlay(v) ? { __betaPlay: signaturePlay(v), score: v.score } : v,
-          ),
-        );
-        saveError = "";
-        return true;
-      } catch (e) {
-        saveError = String(e.message || e);
-        return false;
-      }
-    }
-
     function cycleIsFree() {
       return state.phase === "ENTRY" && state.cycle === null;
     }
@@ -4605,59 +5337,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     for (const b of [...FIVE, ...THREE])
       b.mask = b.numbers.reduce((s, n) => s | (1n << BigInt(ix(n))), 0n);
-
-    function rawGeometry(weights, mandatory = []) {
-      const score = (b) => ({
-          ...b,
-          value: b.numbers.reduce((s, n) => s + (weights[ix(n)] || 0), 0),
-        }),
-        fives = FIVE.map(score).sort((a, b) => b.value - a.value),
-        threes = THREE.map(score)
-          .filter((b) => mandatory.every((n) => b.numbers.includes(n)))
-          .sort((a, b) => b.value - a.value);
-      let best = null;
-      for (const small of threes) {
-        let beam = [{ blocks: [small], mask: small.mask, score: small.value }];
-        for (let step = 0; step < 5; step++) {
-          const next = [];
-          for (const item of beam)
-            for (const b of fives) {
-              if ((item.mask & b.mask) !== 0n) continue;
-              next.push({
-                blocks: [...item.blocks, b],
-                mask: item.mask | b.mask,
-                score: item.score + b.value,
-              });
-            }
-          next.sort((a, b) => b.score - a.score);
-          beam = [];
-          const seen = new Set();
-          for (const item of next) {
-            const k = String(item.mask);
-            if (seen.has(k)) continue;
-            seen.add(k);
-            beam.push(item);
-            if (beam.length >= 6) break;
-          }
-          if (!beam.length) break;
-        }
-        for (const item of beam)
-          if (item.blocks.length === 6 && (!best || item.score > best.score))
-            best = item;
-      }
-      if (!best) return null;
-      const blocks = best.blocks.map((b) => ({
-          center: b.center,
-          radius: b.radius,
-          numbers: [...b.numbers],
-        })),
-        p = {
-          blocks,
-          numbers: blocks.flatMap((b) => b.numbers),
-          score: best.score,
-        };
-      return validPlay(p) ? p : null;
-    }
 
     function missing(play) {
       return validPlay(play)
@@ -5516,7 +6195,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return r;
     }
 
-    function applySpatial(weights, h, strength = 0.3) {
+    function legacyApplySpatial(weights, h, strength = 0.3) {
       if (h.length < 3) return weights;
       const r = spatialRead(h),
         scale = avg(weights.map((v) => Math.max(0, v))) || 1,
@@ -5724,18 +6403,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function coverageCode(play) {
       return [...play.numbers].sort((a, b) => a - b).join(",");
-    }
-
-    function diversityCandidate(play) {
-      const covered = new Set(play.numbers);
-      let low = 0,
-        high = 0;
-      for (let n = 0; n < 37; n++)
-        if (!covered.has(n)) {
-          if (n < 32) low |= 1 << n;
-          else high |= 1 << (n - 32);
-        }
-      return { play, low, high, code: coverageCode(play) };
     }
 
     function population32(n) {
@@ -6757,7 +7424,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return new Promise((r) => requestAnimationFrame(() => r()));
     }
 
-    function parseInput(text) {
+    function legacyParseInput(text) {
       return (String(text).match(/\d+/g) || [])
         .map(Number)
         .filter((n) => Number.isInteger(n) && n >= 0 && n <= 36);
@@ -6922,7 +7589,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         }
         return value;
       });
-      const raw = normalized.map((v, j) =>
+      const memoryWeights = structuralWeights(h, variation);
+    for (let j = 0; j < 37; j++) additive[j] += .18 * clamp(memoryWeights[j] - 1, -.7, 1.2);
+    const raw = normalized.map((v, j) =>
         Math.max(0.001, v * coefficient + additive[j]),
       );
       if (!shared) return normalizeSpace(raw);
@@ -6948,82 +7617,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         (candidate.indices = candidate.play.numbers.map(ix));
       for (let k = 0; k < indices.length; k++) sum += weights[indices[k]];
       return sum;
-    }
-
-    function fastIndependentMotors(proposals) {
-      const pool = diversityCandidates();
-      const candidates = proposals.map((m) => {
-        const ranked = pool.map((c, j) => ({
-          candidate: c,
-          score: m.poolScores[j],
-          index: j,
-        }));
-        ranked.sort((a, b) => b.score - a.score || a.index - b.index);
-        return ranked.slice(0, 96);
-      });
-      let chosen = null,
-        chosenScore = -Infinity;
-      for (const step of [1, 5, 7]) {
-        const selected = Array(12).fill(null),
-          counts = Array(37).fill(0);
-        for (let k = 0; k < 12; k++) {
-          const i = (k * step) % 12;
-          let best = null,
-            value = -Infinity;
-          for (const item of candidates[i]) {
-            if (
-              selected.some((c) => c && sharedCoverage(c, item.candidate) > 24)
-            )
-              continue;
-            let newNumbers = 0;
-            for (const n of item.candidate.play.numbers)
-              if (!counts[n]) newNumbers++;
-            const score = item.score + 0.08 * newNumbers;
-            if (score > value) {
-              value = score;
-              best = item.candidate;
-            }
-          }
-          if (!best) break;
-          selected[i] = best;
-          for (const n of best.play.numbers) counts[n]++;
-        }
-        if (selected.some((c) => !c) || counts.some((n) => !n)) continue;
-        const score = selected.reduce(
-          (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
-          0,
-        );
-        if (score > chosenScore) {
-          chosenScore = score;
-          chosen = selected;
-        }
-      }
-      if (!chosen) {
-        for (let shift = 0; shift < 37; shift++) {
-          const selected = diversitySafety.map((c) =>
-            diversityCandidate(rotatedDiversity(c.play, shift)),
-          );
-          const score = selected.reduce(
-            (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
-            0,
-          );
-          if (score > chosenScore) {
-            chosenScore = score;
-            chosen = selected;
-          }
-        }
-      }
-      const result = proposals.map((m, i) => {
-        const { weights, poolScores, ...motor } = m;
-        const play = copy(chosen[i].play);
-        play.score = candidateFit(chosen[i], weights);
-        return { ...motor, score: play.score, play };
-      });
-      if (!validMotorEnsemble(result))
-        throw Error("CONJUNTO INCOMPLETO: " + proposals[0].bankId);
-      result.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
-      result.forEach((m, i) => (m.rank = i + 1));
-      return result;
     }
 
     function variantMotorRate(key, limit = 12) {
@@ -7124,271 +7717,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       }
     }
 
-    function allVariantForecasts(h, onlyOwner = null) {
-      if (h.length < 8) return [];
-      const key =
-        h.join(",") +
-        "|" +
-        state.totalTurns +
-        (onlyOwner ? "|OWNER:" + onlyOwner : "");
-      if (variantForecastCache.has(key)) return variantForecastCache.get(key);
-      const spatial = spatialRead(h),
-        baseWeights = new Map(),
-        shared = { base: new Map(), additive: new Map() };
-      for (const family of FAMILIES)
-        for (const radius of RADII) {
-          const base = weightsFor(h, family, radius),
-            key = family + "_" + radius;
-          baseWeights.set(key, base);
-          const normalized = normalizeSpace(base);
-          shared.base.set(
-            key,
-            diversityCandidates().map((c) => candidateFit(c, normalized)),
-          );
-        }
-      const forecasts = [];
-      for (const owner of VARIANT_OWNERS.filter(
-        (o) => !onlyOwner || o.id === onlyOwner,
-      ))
-        for (let variation = 1; variation <= 8; variation++) {
-          const bankId = variantBookId(owner.id, variation),
-            proposals = [];
-          for (const family of FAMILIES)
-            for (const radius of RADII) {
-              const analysis = variantAnalyticalWeights(
-                h,
-                family,
-                radius,
-                owner.id,
-                variation,
-                baseWeights.get(family + "_" + radius),
-                spatial,
-                shared,
-              );
-              proposals.push({
-                key: bankId + "::" + family + "_" + radius,
-                bankId,
-                owner: owner.id,
-                variation,
-                family,
-                radius,
-                weights: analysis.weights,
-                poolScores: analysis.poolScores,
-                spatialKeys: [...spatial.keys],
-                componentShares: [...spatial.adaptive.shares],
-                adaptiveSamples: spatial.adaptive.samples,
-                spatialVersion: VERSION,
-              });
-            }
-          const cs = fastIndependentMotors(proposals);
-          forecasts.push({
-            bankId,
-            owner: owner.id,
-            name: owner.name,
-            variation,
-            motors: cs,
-            _weights: proposals,
-            choice: chooseVariant(owner.id, variation, cs, h),
-          });
-        }
-      coordinateOwnerVariations(forecasts);
-      for (const f of forecasts) delete f._weights;
-      variantForecastCache.set(key, forecasts);
-      if (variantForecastCache.size > 4)
-        variantForecastCache.delete(variantForecastCache.keys().next().value);
-      return forecasts;
-    }
-
-    function coordinateOwnerVariations(forecasts) {
-      for (const owner of VARIANT_OWNERS) {
-        const group = forecasts.filter((f) => f.owner === owner.id);
-        if (!group.length) continue;
-        const alternatives = group.map((f) => {
-          if (owner.id === "CONSENSUS" || owner.id === "UNION") {
-            const weights = Array(37).fill(0);
-            const members =
-              owner.id === "UNION" ? f.motors.slice(0, 3) : f.motors;
-            for (const m of members)
-              for (const n of m.play.numbers)
-                weights[ix(n)] += 1 / (1 + m.rank * 0.1);
-            applySpatial(weights, state.history, 0.25);
-            const ranked = diversityCandidates()
-              .map((candidate, index) => ({
-                candidate,
-                index,
-                score: candidateFit(candidate, weights),
-              }))
-              .sort((a, b) => b.score - a.score || a.index - b.index);
-            return [
-              f.choice,
-              ...ranked.slice(0, 96).map((r) => ({
-                key: owner.id,
-                rank: 0,
-                play: { ...copy(r.candidate.play), score: r.score },
-                score: r.score,
-                spatialKeys: [...spatialRead(state.history).keys],
-              })),
-            ];
-          }
-          let motors =
-            owner.id === "FIXED" ? f.motors.slice(0, 4) : [...f.motors];
-          if (owner.id === "BEST" || owner.id === "SWITCH")
-            motors.sort(
-              (a, b) =>
-                variantMotorRate(b.key, owner.id === "BEST" ? 20 : 12) -
-                  variantMotorRate(a.key, owner.id === "BEST" ? 20 : 12) ||
-                a.rank - b.rank,
-            );
-          if (owner.id === "NUMBER")
-            motors.sort((a, b) => {
-              const score = (m) =>
-                compareNumberCombination(
-                  { play: m.play, covered: m.play.numbers },
-                  state.history.at(-1),
-                  state.history,
-                ).score;
-              return score(b) - score(a) || a.rank - b.rank;
-            });
-          return [f.choice, ...motors];
-        });
-        let final = null;
-        for (const order of [0, 1, 2, 3, 4, 5, 6, 7]) {
-          const selected = Array(8).fill(null),
-            counts = Array(37).fill(0);
-          let failed = false;
-          for (let k = 0; k < 8; k++) {
-            const index = (k + order) % 8,
-              f = group[index];
-            const choices = alternatives[index].filter(
-              (m, i, a) =>
-                a.findIndex(
-                  (x) => coverageCode(x.play) === coverageCode(m.play),
-                ) === i,
-            );
-            let best = null,
-              bestScore = -Infinity;
-            for (let i = 0; i < choices.length; i++) {
-              const motor = choices[i],
-                candidate = diversityCandidate(motor.play);
-              if (
-                selected.some(
-                  (m) =>
-                    m &&
-                    sharedCoverage(diversityCandidate(m.play), candidate) > 27,
-                )
-              )
-                continue;
-              let additional = 0;
-              for (const n of motor.play.numbers) if (!counts[n]) additional++;
-              const score = (i === 0 ? 0.25 : 0) + 1 / (1 + i) + additional * 2;
-              if (score > bestScore) {
-                best = motor;
-                bestScore = score;
-              }
-            }
-            if (!best) {
-              failed = true;
-              break;
-            }
-            selected[index] = {
-              ...copy(best),
-              bankId: f.bankId,
-              owner: f.owner,
-              variation: f.variation,
-            };
-            if (owner.id === "FIXED")
-              selected[index].autoRank = best.autoRank || best.rank;
-            if (owner.id === "NUMBER")
-              Object.assign(selected[index], {
-                type: "NUMBER",
-                trigger: state.history.at(-1),
-                sourceNumber: best.sourceNumber ?? state.history.at(-1),
-                sourceTurn: best.sourceTurn ?? state.totalTurns,
-              });
-            for (const n of best.play.numbers) counts[n]++;
-          }
-          if (!failed && counts.every(Boolean)) {
-            final = selected;
-            break;
-          }
-        }
-        if (!final) {
-          // Reserva de conjuntos inteiros: conserva a regra da original, inclusive
-          // AUTO exclusivamente 1–4, sem transformar CONSENSO em um motor isolado.
-          const options = group.map((f) => {
-            const weights = new Map(f._weights.map((m) => [m.key, m.weights]));
-            return Array.from({ length: 37 }, (_, shift) => {
-              const motors = f.motors
-                .map((m, i) => {
-                  const play = rotatedDiversity(diversitySafety[i].play, shift);
-                  play.score = play.numbers.reduce(
-                    (sum, n) => sum + weights.get(m.key)[ix(n)],
-                    0,
-                  );
-                  return { ...m, play, score: play.score };
-                })
-                .sort(
-                  (a, b) => b.score - a.score || a.key.localeCompare(b.key),
-                );
-              motors.forEach((m, i) => (m.rank = i + 1));
-              return {
-                motors,
-                choice: chooseVariant(
-                  f.owner,
-                  f.variation,
-                  motors,
-                  state.history,
-                ),
-              };
-            });
-          });
-          for (let order = 0; order < 8 && !final; order++) {
-            const selected = Array(8).fill(null),
-              banks = Array(8).fill(null),
-              counts = Array(37).fill(0);
-            for (let k = 0; k < 8; k++) {
-              const index = (k + order) % 8;
-              let best = null,
-                bestValue = -Infinity;
-              for (const option of options[index]) {
-                const candidate = diversityCandidate(option.choice.play);
-                if (
-                  selected.some(
-                    (m) =>
-                      m &&
-                      sharedCoverage(diversityCandidate(m.play), candidate) >
-                        27,
-                  )
-                )
-                  continue;
-                const gain = option.choice.play.numbers.filter(
-                  (n) => !counts[n],
-                ).length;
-                const value = gain * 2 + option.choice.score / 100;
-                if (value > bestValue) {
-                  best = option;
-                  bestValue = value;
-                }
-              }
-              if (!best) break;
-              selected[index] = best.choice;
-              banks[index] = best.motors;
-              for (const n of best.choice.play.numbers) counts[n]++;
-            }
-            if (selected.every(Boolean) && counts.every(Boolean)) {
-              final = selected;
-              for (let i = 0; i < 8; i++) group[i].motors = banks[i];
-            }
-          }
-        }
-        if (!final)
-          throw Error(
-            "NÃO FOI POSSÍVEL DIVERSIFICAR AS OITO VARIAÇÕES: " + owner.id,
-          );
-        for (let i = 0; i < 8; i++) group[i].choice = final[i];
-      }
-    }
-
     function activeVariationOwner() {
       return VARIANT_OWNERS.some((o) => o.id === state.strategy)
         ? state.strategy
@@ -7455,6 +7783,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     let inputRunning = false;
     let saveTimer = null;
     let lastInputMs = 0;
+    let durableTurn = 0;
     const geometryMemo = new Map();
 
     function geometry(weights, mandatory = []) {
@@ -7483,6 +7812,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         masterResumeTurn: 0,
         globalStrategyPrevious: null,
         postLossEnabled: false,
+        postThreeEnabled: false,
+        postThreeUsed: {},
+        strategyStreaks: {},
         focusTimelineId: null,
         rank: 3,
         manual: null,
@@ -7581,6 +7913,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         "timelineCycles",
         "virtual",
         "groupsOpen",
+        "postThreeUsed",
+        "strategyStreaks",
       ]) {
         if (!r[field] || typeof r[field] !== "object") r[field] = {};
       }
@@ -7592,7 +7926,12 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (data?.postLossEnabled === undefined && r.strategy === "POSTLOSS")
         r.postLossEnabled = true;
       r.postLossEnabled = !!r.postLossEnabled;
-      if (data?.forecastVersion !== VERSION && data?.strategy === "TRAINER")
+      r.postThreeEnabled = !!r.postThreeEnabled;
+      if (
+        data?.forecastVersion !== VERSION &&
+        data?.strategy === "TRAINER" &&
+        !Object.prototype.hasOwnProperty.call(data, "masterResumeTurn")
+      )
         r.strategy = "MASTER";
       r.masterResumeTurn = Math.max(0, Number(r.masterResumeTurn) || 0);
       if (r.cycle && !r.cycle.controller) r.cycle.controller = r.strategy;
@@ -7644,6 +7983,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         [
           "strategy",
           "postLossEnabled",
+          "postThreeEnabled",
           "rank",
           "manual",
           "adaptive",
@@ -7662,6 +8002,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
 
     function clearSpatialCaches() {
+    structuralMemoryCache.clear();
       triangleCache.clear();
       spaceCache.clear();
       rawSpaceCache.clear();
@@ -7822,7 +8163,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (
         state.strategy === "MASTER" &&
         !state.cycle &&
-        masterRestRemaining() > 0
+        masterRestRemaining() > 0 &&
+        !priorityRecoveryChoice()
       )
         return {
           id: "MASTER",
@@ -7831,14 +8173,14 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         };
       const target = state.cycle
         ? state.cycle.original?.postLossTarget
-        : !state.manual &&
-            (state.postLossEnabled || state.strategy === "POSTLOSS")
-          ? postLossChoice()?.motor?.postLossTarget
-          : null;
+        : priorityRecoveryChoice()?.motor?.postLossTarget;
       if (target)
         return {
           id: target.defenseStrategy || target.id,
-          name: "JOGADA PÓS-LOSS • " + target.name,
+          name:
+            (target.kind === "POST3"
+              ? "JOGADA PÓS-3 LOSS • "
+              : "JOGADA PÓS-LOSS • ") + target.name,
           type: "POSTLOSS",
         };
       if (
@@ -7918,6 +8260,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
 
     function activeMotor(cs = currentBlock()?.global || []) {
+      const recovery = priorityRecoveryChoice();
+      if (recovery) return copy(recovery.motor);
       if (
         state.strategy === "MASTER" &&
         !state.cycle &&
@@ -8057,7 +8401,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       const masterPaused =
         state.strategy === "MASTER" &&
         state.phase === "ENTRY" &&
-        masterRestRemaining() > 0;
+        masterRestRemaining() > 0 &&
+        !priorityRecoveryChoice(block);
       const spatial = spatialRead(before.slice(-70)),
         after = [...before, n].slice(-70);
       let result = "AGUARDANDO",
@@ -8069,6 +8414,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         if (motor) {
           played = copy(motor);
           state.previous = motor.key;
+          if (motor.postLossTarget?.kind === "POST3")
+            state.postThreeUsed[motor.postLossTarget.id] =
+              motor.postLossTarget.lossTurn;
           state.cycle = {
             controller: state.strategy,
             strategy: definitionBefore.id,
@@ -8129,6 +8477,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       }
       recordMasterCycle(controller, oldCycle, played, result, turn);
       settleTimelineForecasts(timelineForecasts, n, turn, before);
+      updateStrategyStreaks(turn);
       settleNativeStrategies(
         cs,
         block?.variants.find((f) => f.owner === "NUMBER")?.choice,
@@ -8149,7 +8498,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       );
       const playRoute = played
         ? postLossTarget
-          ? "POSTLOSS"
+          ? postLossTarget.kind === "POST3"
+            ? "POST3LOSS"
+            : "POSTLOSS"
           : "NORMAL"
         : null;
       state.ledger.push({
@@ -8436,6 +8787,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       if (!block) return null;
       if (id.endsWith("@THIRD"))
         return thirdVariationMotor(id.slice(0, -6), block);
+      if (id === "MASTER") return masterSelection(block)?.motor || null;
       if (id === "TRAINER") return independentGlobalMotor(block);
       if (id === "NUMBER") return bestNumberCombination(state.history);
       const variant = block.variants.find((f) => f.bankId === id);
@@ -8606,9 +8958,10 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return {
         normal: rows.filter((r) => r.playRoute === "NORMAL"),
         postLoss: rows.filter((r) => r.playRoute === "POSTLOSS"),
+        postThree: rows.filter((r) => r.playRoute === "POST3LOSS"),
         combined: rows,
         legacy: rows.filter(
-          (r) => !["NORMAL", "POSTLOSS"].includes(r.playRoute),
+          (r) => !["NORMAL", "POSTLOSS", "POST3LOSS"].includes(r.playRoute),
         ),
       };
     }
@@ -8755,11 +9108,1151 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         .slice(-79);
     }
 
+    /* Caches dependentes do estado são renovados; análises puras por histórico
+   exato continuam disponíveis para reutilização, sem alterar os cálculos. */
+    function clearRuntimeCaches() {
+      motorDiversityCache.clear();
+      variantForecastCache.clear();
+      blockRuntimeKey = null;
+      blockRuntimeData = null;
+    }
+
+    /* Checkpoints completos. LZW síncrono reduz o espaço ocupado sem cortar histórico,
+   treinamento, ciclos ou desfazer. A fila possui seu próprio diário causal. */
+    function packSession(text) {
+      const bytes = unescape(encodeURIComponent(text)),
+        dictionary = new Map();
+      let next = 257,
+        phrase = "",
+        chunk = "",
+        chunks = [];
+      const emit = (code) => {
+        chunk += String.fromCharCode(code);
+        if (chunk.length >= 8192) {
+          chunks.push(chunk);
+          chunk = "";
+        }
+      };
+      for (let i = 0; i < bytes.length; i++) {
+        const char = bytes[i],
+          joined = phrase + char;
+        if (!phrase || dictionary.has(joined)) {
+          phrase = joined;
+          continue;
+        }
+        emit(
+          phrase.length === 1 ? phrase.charCodeAt(0) : dictionary.get(phrase),
+        );
+        if (next < 65535) dictionary.set(joined, next++);
+        else {
+          emit(256);
+          dictionary.clear();
+          next = 257;
+        }
+        phrase = char;
+      }
+      if (phrase)
+        emit(
+          phrase.length === 1 ? phrase.charCodeAt(0) : dictionary.get(phrase),
+        );
+      chunks.push(chunk);
+      return "BETA_LZW1:" + chunks.join("");
+    }
+    function unpackSession(text) {
+      if (!text.startsWith("BETA_LZW1:")) return text;
+      const dictionary = [],
+        parts = [];
+      let next = 257,
+        previous = "";
+      for (let i = 10; i < text.length; i++) {
+        const code = text.charCodeAt(i);
+        if (code === 256) {
+          dictionary.length = 0;
+          next = 257;
+          previous = "";
+          continue;
+        }
+        const value =
+          code < 256
+            ? String.fromCharCode(code)
+            : dictionary[code] ||
+              (code === next ? previous + previous[0] : null);
+        if (value == null) throw Error("Checkpoint inválido.");
+        parts.push(value);
+        if (previous && next < 65535) dictionary[next++] = previous + value[0];
+        previous = value;
+      }
+      return decodeURIComponent(escape(parts.join("")));
+    }
+    function read(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw == null) return null;
+        return JSON.parse(unpackSession(raw), (k, v) =>
+          v && typeof v.__betaPlay === "string"
+            ? restoreShape(v.__betaPlay, v.score)
+            : v,
+        );
+      } catch (error) {
+        saveError =
+          "Não foi possível recuperar o estado salvo: " +
+          String(error.message || error);
+        return null;
+      }
+    }
+    function save() {
+      try {
+        if (typeof checkpointSerial !== "undefined") checkpointSerial++;
+        if (typeof checkpointEpoch !== "undefined") checkpointEpoch++;
+        const raw = JSON.stringify(state, (k, v) =>
+          validPlay(v) ? { __betaPlay: signaturePlay(v), score: v.score } : v,
+        );
+        localStorage.setItem(KEY, packSession(raw));
+        pruneSavedVersions();
+        durableTurn = state.totalTurns;
+        saveError = "";
+        return true;
+      } catch (error) {
+        saveError = "SALVAMENTO FALHOU: " + String(error.message || error);
+        return false;
+      }
+    }
+
+    /* Busca geométrica original validada: cinco blocos de cinco e um de três,
+   sem reaproveitar combinações intermediárias da busca otimizada. */
+    function rawGeometry(weights, mandatory = []) {
+      const score = (b) => ({
+          ...b,
+          value: b.numbers.reduce((s, n) => s + (weights[ix(n)] || 0), 0),
+        }),
+        fives = FIVE.map(score).sort((a, b) => b.value - a.value),
+        threes = THREE.map(score)
+          .filter((b) => mandatory.every((n) => b.numbers.includes(n)))
+          .sort((a, b) => b.value - a.value);
+      let best = null;
+      for (const small of threes) {
+        let beam = [{ blocks: [small], mask: small.mask, score: small.value }];
+        for (let step = 0; step < 5; step++) {
+          const next = [];
+          for (const item of beam)
+            for (const b of fives) {
+              if ((item.mask & b.mask) !== 0n) continue;
+              next.push({
+                blocks: [...item.blocks, b],
+                mask: item.mask | b.mask,
+                score: item.score + b.value,
+              });
+            }
+          next.sort((a, b) => b.score - a.score);
+          beam = [];
+          const seen = new Set();
+          for (const item of next) {
+            const k = String(item.mask);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            beam.push(item);
+            if (beam.length >= 6) break;
+          }
+          if (!beam.length) break;
+        }
+        for (const item of beam)
+          if (item.blocks.length === 6 && (!best || item.score > best.score))
+            best = item;
+      }
+      if (!best) return null;
+      const blocks = best.blocks.map((b) => ({
+          center: b.center,
+          radius: b.radius,
+          numbers: [...b.numbers],
+        })),
+        p = {
+          blocks,
+          numbers: blocks.flatMap((b) => b.numbers),
+          score: best.score,
+        };
+      return validPlay(p) ? p : null;
+    }
+
+    /* Seleção parcial exata: somente os 96 melhores são ordenados e materializados.
+   Mesma pontuação, mesma ordem de desempate pelo índice de origem. */
+    function topPoolCandidates(scores, limit = 96) {
+      const pool = diversityCandidates(),
+        heap = [];
+      const worse = (a, b) =>
+        scores[a] < scores[b] || (scores[a] === scores[b] && a > b);
+      for (let index = 0; index < scores.length; index++) {
+        if (heap.length < limit) {
+          heap.push(index);
+          let child = heap.length - 1;
+          while (child) {
+            const parent = (child - 1) >> 1;
+            if (!worse(heap[child], heap[parent])) break;
+            [heap[child], heap[parent]] = [heap[parent], heap[child]];
+            child = parent;
+          }
+        } else if (worse(heap[0], index)) {
+          heap[0] = index;
+          let parent = 0;
+          while (true) {
+            let child = parent * 2 + 1;
+            if (child >= heap.length) break;
+            if (child + 1 < heap.length && worse(heap[child + 1], heap[child]))
+              child++;
+            if (!worse(heap[child], heap[parent])) break;
+            [heap[child], heap[parent]] = [heap[parent], heap[child]];
+            parent = child;
+          }
+        }
+      }
+      return heap
+        .sort((a, b) => scores[b] - scores[a] || a - b)
+        .map((index) => ({
+          candidate: pool[index],
+          score: scores[index],
+          index,
+        }));
+    }
+
+    function fastIndependentMotors(proposals) {
+      const pool = diversityCandidates();
+      const candidates = proposals.map((m) => topPoolCandidates(m.poolScores));
+      let chosen = null,
+        chosenScore = -Infinity;
+      for (const step of [1, 5, 7]) {
+        const selected = Array(12).fill(null),
+          counts = Array(37).fill(0);
+        for (let k = 0; k < 12; k++) {
+          const i = (k * step) % 12;
+          let best = null,
+            value = -Infinity;
+          for (const item of candidates[i]) {
+            if (
+              selected.some((c) => c && sharedCoverage(c, item.candidate) > 24)
+            )
+              continue;
+            let newNumbers = 0;
+            for (const n of item.candidate.play.numbers)
+              if (!counts[n]) newNumbers++;
+            const score = item.score + 0.08 * newNumbers;
+            if (score > value) {
+              value = score;
+              best = item.candidate;
+            }
+          }
+          if (!best) break;
+          selected[i] = best;
+          for (const n of best.play.numbers) counts[n]++;
+        }
+        if (selected.some((c) => !c) || counts.some((n) => !n)) continue;
+        const score = selected.reduce(
+          (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
+          0,
+        );
+        if (score > chosenScore) {
+          chosenScore = score;
+          chosen = selected;
+        }
+      }
+      if (!chosen) {
+        for (let shift = 0; shift < 37; shift++) {
+          const selected = diversitySafety.map((c) =>
+            diversityCandidate(rotatedDiversity(c.play, shift)),
+          );
+          const score = selected.reduce(
+            (sum, c, i) => sum + candidateFit(c, proposals[i].weights),
+            0,
+          );
+          if (score > chosenScore) {
+            chosenScore = score;
+            chosen = selected;
+          }
+        }
+      }
+      const result = proposals.map((m, i) => {
+        const { weights, poolScores, ...motor } = m;
+        const play = copy(chosen[i].play);
+        play.score = candidateFit(chosen[i], weights);
+        return { ...motor, score: play.score, play };
+      });
+      if (!validMotorEnsemble(result))
+        throw Error("CONJUNTO INCOMPLETO: " + proposals[0].bankId);
+      result.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
+      result.forEach((m, i) => (m.rank = i + 1));
+      return result;
+    }
+
+    function coordinateOwnerVariations(forecasts) {
+      for (const owner of VARIANT_OWNERS) {
+        const group = forecasts.filter((f) => f.owner === owner.id);
+        if (!group.length) continue;
+        const alternatives = group.map((f) => {
+          if (owner.id === "CONSENSUS" || owner.id === "UNION") {
+            const weights = Array(37).fill(0);
+            const members =
+              owner.id === "UNION" ? f.motors.slice(0, 3) : f.motors;
+            for (const m of members)
+              for (const n of m.play.numbers)
+                weights[ix(n)] += 1 / (1 + m.rank * 0.1);
+            applySpatial(weights, state.history, 0.25);
+            const ranked = topPoolCandidates(
+              diversityCandidates().map((candidate) =>
+                candidateFit(candidate, weights),
+              ),
+            );
+            return [
+              f.choice,
+              ...ranked.slice(0, 96).map((r) => ({
+                key: owner.id,
+                rank: 0,
+                play: { ...copy(r.candidate.play), score: r.score },
+                score: r.score,
+                spatialKeys: [...spatialRead(state.history).keys],
+              })),
+            ];
+          }
+          let motors =
+            owner.id === "FIXED" ? f.motors.slice(0, 4) : [...f.motors];
+          if (owner.id === "BEST" || owner.id === "SWITCH")
+            motors.sort(
+              (a, b) =>
+                variantMotorRate(b.key, owner.id === "BEST" ? 20 : 12) -
+                  variantMotorRate(a.key, owner.id === "BEST" ? 20 : 12) ||
+                a.rank - b.rank,
+            );
+          if (owner.id === "NUMBER")
+            motors.sort((a, b) => {
+              const score = (m) =>
+                compareNumberCombination(
+                  { play: m.play, covered: m.play.numbers },
+                  state.history.at(-1),
+                  state.history,
+                ).score;
+              return score(b) - score(a) || a.rank - b.rank;
+            });
+          return [f.choice, ...motors];
+        });
+        const prepared = alternatives.map((items) => {
+          const seen = new Set();
+          return items
+            .filter((m) => {
+              const code = coverageCode(m.play);
+              if (seen.has(code)) return false;
+              seen.add(code);
+              return true;
+            })
+            .map((motor) => ({
+              motor,
+              candidate: diversityCandidate(motor.play),
+            }));
+        });
+        let final = null;
+        for (const order of [0, 1, 2, 3, 4, 5, 6, 7]) {
+          const selected = Array(8).fill(null),
+            counts = Array(37).fill(0);
+          let failed = false;
+          for (let k = 0; k < 8; k++) {
+            const index = (k + order) % 8,
+              f = group[index];
+            const choices = prepared[index];
+            let best = null,
+              bestScore = -Infinity;
+            for (let i = 0; i < choices.length; i++) {
+              const { motor, candidate } = choices[i];
+              if (
+                selected.some(
+                  (m) =>
+                    m &&
+                    sharedCoverage(diversityCandidate(m.play), candidate) > 27,
+                )
+              )
+                continue;
+              let additional = 0;
+              for (const n of motor.play.numbers) if (!counts[n]) additional++;
+              const score = (i === 0 ? 0.25 : 0) + 1 / (1 + i) + additional * 2;
+              if (score > bestScore) {
+                best = motor;
+                bestScore = score;
+              }
+            }
+            if (!best) {
+              failed = true;
+              break;
+            }
+            selected[index] = {
+              ...copy(best),
+              bankId: f.bankId,
+              owner: f.owner,
+              variation: f.variation,
+            };
+            if (owner.id === "FIXED")
+              selected[index].autoRank = best.autoRank || best.rank;
+            if (owner.id === "NUMBER")
+              Object.assign(selected[index], {
+                type: "NUMBER",
+                trigger: state.history.at(-1),
+                sourceNumber: best.sourceNumber ?? state.history.at(-1),
+                sourceTurn: best.sourceTurn ?? state.totalTurns,
+              });
+            for (const n of best.play.numbers) counts[n]++;
+          }
+          if (!failed && counts.every(Boolean)) {
+            final = selected;
+            break;
+          }
+        }
+        if (!final) {
+          // Reserva de conjuntos inteiros: conserva a regra da original, inclusive
+          // AUTO exclusivamente 1–4, sem transformar CONSENSO em um motor isolado.
+          const options = group.map((f) => {
+            const weights = new Map(f._weights.map((m) => [m.key, m.weights]));
+            return Array.from({ length: 37 }, (_, shift) => {
+              const motors = f.motors
+                .map((m, i) => {
+                  const play = rotatedDiversity(diversitySafety[i].play, shift);
+                  play.score = play.numbers.reduce(
+                    (sum, n) => sum + weights.get(m.key)[ix(n)],
+                    0,
+                  );
+                  return { ...m, play, score: play.score };
+                })
+                .sort(
+                  (a, b) => b.score - a.score || a.key.localeCompare(b.key),
+                );
+              motors.forEach((m, i) => (m.rank = i + 1));
+              return {
+                motors,
+                choice: chooseVariant(
+                  f.owner,
+                  f.variation,
+                  motors,
+                  state.history,
+                ),
+              };
+            });
+          });
+          for (let order = 0; order < 8 && !final; order++) {
+            const selected = Array(8).fill(null),
+              banks = Array(8).fill(null),
+              counts = Array(37).fill(0);
+            for (let k = 0; k < 8; k++) {
+              const index = (k + order) % 8;
+              let best = null,
+                bestValue = -Infinity;
+              for (const option of options[index]) {
+                const candidate = diversityCandidate(option.choice.play);
+                if (
+                  selected.some(
+                    (m) =>
+                      m &&
+                      sharedCoverage(diversityCandidate(m.play), candidate) >
+                        27,
+                  )
+                )
+                  continue;
+                const gain = option.choice.play.numbers.filter(
+                  (n) => !counts[n],
+                ).length;
+                const value = gain * 2 + option.choice.score / 100;
+                if (value > bestValue) {
+                  best = option;
+                  bestValue = value;
+                }
+              }
+              if (!best) break;
+              selected[index] = best.choice;
+              banks[index] = best.motors;
+              for (const n of best.choice.play.numbers) counts[n]++;
+            }
+            if (selected.every(Boolean) && counts.every(Boolean)) {
+              final = selected;
+              for (let i = 0; i < 8; i++) group[i].motors = banks[i];
+            }
+          }
+        }
+        if (!final)
+          throw Error(
+            "NÃO FOI POSSÍVEL DIVERSIFICAR AS OITO VARIAÇÕES: " + owner.id,
+          );
+        for (let i = 0; i < 8; i++) group[i].choice = final[i];
+      }
+    }
+
+    const coverageCandidateMemo = new WeakMap();
+    function diversityCandidate(play) {
+      if (coverageCandidateMemo.has(play))
+        return coverageCandidateMemo.get(play);
+      const covered = new Set(play.numbers);
+      let low = 0,
+        high = 0;
+      for (let n = 0; n < 37; n++)
+        if (!covered.has(n)) {
+          if (n < 32) low |= 1 << n;
+          else high |= 1 << (n - 32);
+        }
+      const candidate = { play, low, high, code: coverageCode(play) };
+      coverageCandidateMemo.set(play, candidate);
+      return candidate;
+    }
+
+    function allVariantForecasts(h, onlyOwner = null) {
+      if (h.length < 8) return [];
+      const key =
+        h.join(",") +
+        "|" +
+        state.totalTurns +
+        (onlyOwner ? "|OWNER:" + onlyOwner : "");
+      if (variantForecastCache.has(key)) return variantForecastCache.get(key);
+      const spatial = spatialRead(h),
+        baseWeights = new Map(),
+        shared = { base: new Map(), additive: new Map() };
+      for (const family of FAMILIES)
+        for (const radius of RADII) {
+          const base = weightsFor(h, family, radius),
+            key = family + "_" + radius;
+          baseWeights.set(key, base);
+          const normalized = normalizeSpace(base);
+          shared.base.set(
+            key,
+            diversityCandidates().map((c) => candidateFit(c, normalized)),
+          );
+        }
+      const forecasts = [];
+      for (const owner of VARIANT_OWNERS.filter(
+        (o) =>
+          !onlyOwner ||
+          (Array.isArray(onlyOwner)
+            ? onlyOwner.includes(o.id)
+            : o.id === onlyOwner),
+      ))
+        for (let variation = 1; variation <= 8; variation++) {
+          const bankId = variantBookId(owner.id, variation),
+            proposals = [];
+          for (const family of FAMILIES)
+            for (const radius of RADII) {
+              const analysis = variantAnalyticalWeights(
+                h,
+                family,
+                radius,
+                owner.id,
+                variation,
+                baseWeights.get(family + "_" + radius),
+                spatial,
+                shared,
+              );
+              proposals.push({
+                key: bankId + "::" + family + "_" + radius,
+                bankId,
+                owner: owner.id,
+                variation,
+                family,
+                radius,
+                weights: analysis.weights,
+                poolScores: analysis.poolScores,
+                spatialKeys: [...spatial.keys],
+                componentShares: [...spatial.adaptive.shares],
+                adaptiveSamples: spatial.adaptive.samples,
+                spatialVersion: VERSION,
+              });
+            }
+          const cs = fastIndependentMotors(proposals);
+          forecasts.push({
+            bankId,
+            owner: owner.id,
+            name: owner.name,
+            variation,
+            motors: cs,
+            _weights: proposals,
+            choice: chooseVariant(owner.id, variation, cs, h),
+          });
+        }
+      coordinateOwnerVariations(forecasts);
+      for (const f of forecasts) delete f._weights;
+      variantForecastCache.set(key, forecasts);
+      if (variantForecastCache.size > 4)
+        variantForecastCache.delete(variantForecastCache.keys().next().value);
+      return forecasts;
+    }
+
+    /* Dois calculadores persistentes repartem as oito famílias de estratégias.
+   Nenhuma combinação é reutilizada de um resultado anterior. */
+    let bankCalculators = null,
+      bankRequestId = 0;
+    function createBankCalculator() {
+      const url = URL.createObjectURL(
+        new Blob(["(" + analysisBackground.toString() + ")();"], {
+          type: "text/javascript",
+        }),
+      );
+      const worker = new Worker(url);
+      URL.revokeObjectURL(url);
+      const requests = new Map();
+      worker.onmessage = (event) => {
+        const data = event.data,
+          request = requests.get(data.id);
+        if (!request) return;
+        requests.delete(data.id);
+        data.error
+          ? request.reject(Error(data.error))
+          : request.resolve(data.variants);
+      };
+      worker.onerror = () => {
+        worker.terminate();
+        for (const request of requests.values())
+          request.reject(Error("Calculador indisponível."));
+        requests.clear();
+        bankCalculators = null;
+      };
+      return { worker, requests };
+    }
+    function requestBankCalculation(calculator, owners) {
+      return new Promise((resolve, reject) => {
+        const id = ++bankRequestId;
+        calculator.requests.set(id, { resolve, reject });
+        calculator.worker.postMessage({
+          id,
+          action: "BANKS",
+          state: { ...state, undoStack: [] },
+          owners,
+        });
+      });
+    }
+    async function prepareBlockParallel() {
+      if (state.history.length < 8) return null;
+      if (state.block.data && state.block.decisionTurn === state.totalTurns)
+        return currentBlock();
+      if (typeof Worker === "undefined" || typeof Blob === "undefined")
+        return prepareBlock();
+      try {
+        if (!bankCalculators)
+          bankCalculators = [createBankCalculator(), createBankCalculator()];
+        const groups = [
+          VARIANT_OWNERS.filter((_, i) => i % 2 === 0).map((o) => o.id),
+          VARIANT_OWNERS.filter((_, i) => i % 2 === 1).map((o) => o.id),
+        ];
+        const pending = Promise.all(
+          bankCalculators.map((calculator, i) =>
+            requestBankCalculation(calculator, groups[i]),
+          ),
+        );
+        const anchor = [...state.history].slice(-70),
+          global = motors(anchor);
+        const partitions = await pending;
+        const byId = new Map(partitions.flat().map((f) => [f.bankId, f]));
+        const variants = [];
+        for (const owner of VARIANT_OWNERS)
+          for (let variation = 1; variation <= 8; variation++) {
+            const id = variantBookId(owner.id, variation),
+              forecast = byId.get(id);
+            if (!forecast) throw Error("Variação ausente: " + id);
+            variants.push(forecast);
+          }
+        state.block.anchor = anchor;
+        state.block.decisionTurn = state.totalTurns;
+        state.block.data = { global: global.map(compactMotor), variants };
+        state.block.best = rankBestVariation();
+        registerNumberCombination(anchor, state.totalTurns);
+        updateNumberChoice();
+        updateTrainer();
+        blockRuntimeKey = null;
+        updateMaster(currentBlock());
+        return currentBlock();
+      } catch (error) {
+        if (bankCalculators)
+          for (const calculator of bankCalculators)
+            calculator.worker.terminate();
+        bankCalculators = null;
+        return prepareBlock();
+      }
+    }
+
+    /* Os contadores de sequência não são apagados pelo descarte da janela. */
+    function updateStrategyStreaks(turn = state.totalTurns) {
+      for (const [id, rows] of Object.entries(state.strategyTimeline)) {
+        const closed = rows
+          .filter((r) => r.closed && r.closedTurn <= turn)
+          .sort((a, b) => a.closedTurn - b.closedTurn);
+        let counter = state.strategyStreaks[id];
+        if (!counter) {
+          let loss = 0;
+          for (
+            let i = closed.length - 1;
+            i >= 0 && closed[i].result === "LOSS";
+            i--
+          )
+            loss++;
+          const last = closed.at(-1);
+          if (last)
+            state.strategyStreaks[id] = {
+              loss,
+              closedTurn: last.closedTurn,
+              result: last.result,
+            };
+          continue;
+        }
+        for (const row of closed)
+          if (row.closedTurn > counter.closedTurn) {
+            counter = {
+              loss: row.result === "LOSS" ? counter.loss + 1 : 0,
+              closedTurn: row.closedTurn,
+              result: row.result,
+            };
+          }
+        state.strategyStreaks[id] = counter;
+      }
+    }
+    function postThreeChoice(block = currentBlock()) {
+      if (!block) return null;
+      const candidates = timelineDefinitions()
+        .filter((d) => !["POSTLOSS", "POST3LOSS"].includes(d.id))
+        .map((def) => {
+          const stats = postLossStats(def.id),
+            counter = state.strategyStreaks[def.id];
+          const streak = counter?.loss ?? stats.streak,
+            lossTurn = counter?.closedTurn ?? stats.last?.closedTurn;
+          return { ...def, ...stats, streak, lossTurn };
+        })
+        .filter(
+          (candidate) =>
+            candidate.streak >= 3 &&
+            candidate.lossTurn > (state.postThreeUsed[candidate.id] || 0),
+        )
+        .sort(
+          (a, b) =>
+            b.score - a.score ||
+            b.samples - a.samples ||
+            b.lossTurn - a.lossTurn ||
+            a.id.localeCompare(b.id),
+        );
+      for (const candidate of candidates) {
+        const motor = timelineMotor(candidate.id, block);
+        if (!validPlay(motor?.play)) continue;
+        return {
+          ...candidate,
+          motor: {
+            ...copy(motor),
+            postLossTarget: {
+              kind: "POST3",
+              id: candidate.id,
+              name: candidate.name,
+              lossTurn: candidate.lossTurn,
+              streak: candidate.streak,
+              samples: candidate.samples,
+              recoveries: candidate.recoveries,
+              repeatLoss: candidate.repeatLoss,
+              score: candidate.score,
+              defenseStrategy:
+                motor.thirdTarget?.id ||
+                motor.globalStrategyTarget?.id ||
+                motor.masterTarget?.defenseStrategy ||
+                candidate.id,
+            },
+          },
+        };
+      }
+      return null;
+    }
+    function priorityRecoveryChoice(block = currentBlock()) {
+      if (state.postThreeEnabled) {
+        const choice = postThreeChoice(block);
+        if (choice) return choice;
+      }
+      return state.postLossEnabled || state.strategy === "POSTLOSS"
+        ? postLossChoice(block)
+        : null;
+    }
+
+    /* Só remove cópias de versões anteriores depois de gravar a sessão completa
+   na chave atual; a sessão em uso e seus registros permanecem intactos. */
+    function pruneSavedVersions() {
+      if (!localStorage.getItem(KEY)) return;
+      for (const oldKey of OLD_KEYS) {
+        try {
+          localStorage.removeItem?.(oldKey);
+          localStorage.removeItem?.(oldKey + "_QUEUE");
+        } catch (error) {}
+      }
+    }
+
+    /* MEMÓRIA ESTRUTURAL CAUSAL — V6.6.2
+
+       Aprende apenas com resultados posteriores a contextos já formados.
+
+       Os dados das imagens não são inseridos como conhecimento futuro.
+
+       Estatísticas compartilhadas são imutáveis; cada perfil usa sua mistura.
+
+       Região e espelho direcionais desta camada não alteram convenções antigas.
+
+    */
+
+    const structuralMemoryCache=new Map();
+
+    const STRUCTURAL_KINDS=[
+
+    'NUMERO','PAR','TRINCA','SALTO','FORMA','TRIANGULO',
+
+    'AMPLITUDE','CADEIA','PERCURSO','POLOS','ARCO','REGIAO','ESPELHO'
+
+    ];
+
+    const STRUCTURAL_PROFILES=[
+
+    [1,1,1,1,1,1,1,1,1,1,1,1,1],
+
+    [2,1.8,.7,1.4,1,.8,1,.6,.7,.6,.7,.7,.6],
+
+    [.8,.7,.6,.7,.8,1,1,.7,1,1.2,1.8,2,.8],
+
+    [.6,.8,.6,1.3,1.8,1,1.5,2.1,2.3,.7,.6,.6,.8],
+
+    [.7,1.5,1.8,.8,2,2.5,1.4,1.1,1,.6,.6,.7,.7],
+
+    [.7,.6,.5,.7,.8,.8,.8,.8,1.2,2.5,2.5,1.2,.7],
+
+    [1.1,1.2,1,1.2,1.4,1.5,1.2,.8,1.7,1.5,.7,.7,1.8],
+
+    [.7,.8,.6,2,1.7,1.2,2.5,1.4,2.2,.8,1,.6,1.4]
+
+    ];
+
+
+    function structuralRegion(n){
+
+    if([5,8,10,11,13,16,23,24,27,30,33,36].includes(n))return 'TIERS';
+
+    if([1,6,9,14,17,20,31,34].includes(n))return 'ORPHELINS';
+
+    return 'VOISINS';
+
+    }
+
+
+    function structuralContexts(h){
+
+    if(!h.length)return [];
+
+    const contexts=[],last=h.at(-1),position=ix(last);
+
+    const add=(kind,key,relative=false)=>contexts.push({kind,key:String(key),relative});
+
+    const band=v=>Math.abs(v)<=3?'C':Math.abs(v)<=9?'M':'L';
+
+    add('NUMERO',last);
+
+    let run=1;
+
+    while(run<Math.min(8,h.length)&&
+
+    structuralRegion(h[h.length-1-run])===structuralRegion(last))run++;
+
+    add('REGIAO',structuralRegion(last)+':'+run);
+
+    if(h.length>=2){
+
+    const step=direction(h.at(-2),last);
+
+    add('PAR',h.slice(-2).join(','));
+
+    add('SALTO',step,true);
+
+    add('ESPELHO',step===18?'MAIS18':step===-18?'MAIS19':'OUTRO:'+Math.sign(step),true);
+
+    }
+
+    if(h.length>=3){
+
+    const [a,b,c]=h.slice(-3),s=direction(a,b),t=direction(b,c);
+
+    const f=triangleFeatures(a,b,c);
+
+    const kind=a===b&&b===c?'TRIPLA':a===b?'INICIAL':b===c?'FINAL':
+
+    a===c?'RETORNO':s*t>0?'CONTINUIDADE':'INVERSAO';
+
+    add('TRINCA',[a,b,c].join(','));
+
+    add('FORMA',[s,t].join(','),true);
+
+    add('TRIANGULO',[kind,Math.floor(f.closure/3),
+
+    Math.round(f.area*4),f.degenerate?1:0,
+
+    f.angles[1]==null?'X':Math.floor(f.angles[1]/30)].join(':'),true);
+
+    add('AMPLITUDE',[hopTrend(s,t),band(s),band(t),
+
+    Math.floor(Math.abs(Math.abs(t)-Math.abs(s))/4)].join(':'),true);
+
+    }
+
+    for(let size=4;size<=Math.min(8,h.length);size++){
+
+    const nums=h.slice(-size),steps=nums.slice(1).map((n,i)=>direction(nums[i],n));
+
+    add('CADEIA',size+':'+nums.join(','));
+
+    add('FORMA',size+':'+steps.map(s=>Math.round(s/3)).join(','),true);
+
+    const net=steps.reduce((s,n)=>s+n,0),length=steps.reduce((s,n)=>s+Math.abs(n),0);
+
+    const closure=distance(nums[0],last);
+
+    add('PERCURSO',[size,Math.round(net/4),Math.floor(length/8),
+
+    Math.floor(closure/3),steps.map(Math.sign).join(','),
+
+    Number(Math.abs(net)>=31&&closure<=6)].join(':'),true);
+
+    }
+
+    if(h.length>=4){
+
+    const [a,b,c,d]=h.slice(-4);
+
+    if(distance(a,b)>=8&&distance(a,c)<=2&&distance(b,d)<=2){
+
+    const initial=distance(a,b),separation=distance(c,d);
+
+    add('POLOS',[direction(a,c),direction(b,d),Math.floor(separation/3),
+
+    Math.sign(separation-initial),direction(d,c)].join(':'),true);
+
+    }
+
+    }
+
+    if(h.length>=10){
+
+    const visits=Array(37).fill(0);
+
+    for(const n of h.slice(-10))for(let k=0;k<8;k++)visits[mod(ix(n)-k)]++;
+
+    let start=0;
+
+    for(let k=1;k<37;k++)if(visits[k]>visits[start])start=k;
+
+    const inside=mod(position-start)<8;
+
+    const prior=mod(ix(h.at(-2))-start)<8;
+
+    add('ARCO',[mod(start-position),visits[start],inside?1:0,
+
+    prior?1:0,inside===prior?'PERMANENCIA':inside?'ENTRADA':'SAIDA'].join(':'),true);
+
+    }
+
+    return contexts;
+
+    }
+
+
+    function structuralReadGroups(contexts,books,last){
+
+    const groups=new Map();
+
+    for(const context of contexts){
+
+    const record=books.get(context.kind+'|'+context.key);
+
+    if(!record?.total)continue;
+
+    const confidence=record.total/(record.total+10);
+
+    const recent=Array(37).fill(0);
+
+    for(const n of record.recent)recent[n]++;
+
+    const weights=Array(37).fill(0);
+
+    for(let j=0;j<37;j++){
+
+    const target=context.relative?mod(j-ix(last)):j;
+
+    const global=(record.counts[target]+6/37)/(record.total+6);
+
+    const short=(recent[target]+4/37)/(record.recent.length+4);
+
+    weights[j]=37*(global*.7+short*.3);
+
+    }
+
+    let group=groups.get(context.kind);
+
+    if(!group){group={weights:Array(37).fill(0),mass:0,support:0,keys:0};groups.set(context.kind,group);}
+
+    for(let j=0;j<37;j++)group.weights[j]+=weights[j]*confidence;
+
+    group.mass+=confidence;group.support+=record.total;group.keys++;
+
+    }
+
+    for(const group of groups.values()){
+
+    for(let j=0;j<37;j++)group.weights[j]/=group.mass;
+
+    group.confidence=group.mass/group.keys;
+
+    }
+
+    return groups;
+
+    }
+
+
+    function structuralMemoryRead(history){
+
+    const h=history.slice(-WINDOW),key=h.join(',');
+
+    if(structuralMemoryCache.has(key))return structuralMemoryCache.get(key);
+
+    if(h.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO INCOMPATÍVEL COM A RODA EUROPEIA.');
+
+    const books=new Map(),performanceByKind=new Map();
+
+    for(let end=1;end<h.length;end++){
+
+    const prefix=h.slice(0,end),last=prefix.at(-1),actual=h[end];
+
+    const contexts=structuralContexts(prefix);
+
+    // A previsão é calculada antes de registrar actual.
+
+    const groups=structuralReadGroups(contexts,books,last);
+
+    for(const [kind,group] of groups){
+
+    if(group.support<2)continue;
+
+    const stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+
+    stats.samples++;stats.sumLogGain+=clamp(Math.log(Math.max(.01,group.weights[ix(actual)])),-2,2);
+
+    performanceByKind.set(kind,stats);
+
+    }
+
+    const seen=new Set();
+
+    for(const context of contexts){
+
+    const id=context.kind+'|'+context.key;
+
+    if(seen.has(id))continue;
+
+    seen.add(id);
+
+    let record=books.get(id);
+
+    if(!record){record={total:0,counts:Array(37).fill(0),recent:[]};books.set(id,record);}
+
+    const target=context.relative?mod(ix(actual)-ix(last)):ix(actual);
+
+    record.counts[target]++;record.total++;record.recent.push(target);
+
+    if(record.recent.length>5)record.recent.shift();
+
+    }
+
+    }
+
+    const groups=structuralReadGroups(structuralContexts(h),books,h.at(-1));
+
+    const components=STRUCTURAL_KINDS.map(kind=>{
+
+    const group=groups.get(kind),stats=performanceByKind.get(kind)||{samples:0,sumLogGain:0};
+
+    const mean=stats.samples?stats.sumLogGain/stats.samples:0;
+
+    const gain=Math.exp(clamp(mean*stats.samples/(stats.samples+16),-.6,.25));
+
+    return {kind,weights:group?normalizeSpace(group.weights):Array(37).fill(1),
+
+    support:group?.support||0,confidence:group?.confidence||0,
+
+    validationSamples:stats.samples,meanLogGain:mean,gain};
+
+    });
+
+    const result={components,historyLength:h.length,contextCount:books.size};
+
+    structuralMemoryCache.set(key,result);
+
+    if(structuralMemoryCache.size>24)structuralMemoryCache.delete(structuralMemoryCache.keys().next().value);
+
+    return result;
+
+    }
+
+
+    function structuralWeights(h,variation=1){
+
+    const memory=structuralMemoryRead(h),profile=STRUCTURAL_PROFILES[variation-1]||STRUCTURAL_PROFILES[0];
+
+    let mass=0;
+
+    const weights=Array(37).fill(0);
+
+    for(let k=0;k<memory.components.length;k++){
+
+    const component=memory.components[k],weight=profile[k]*component.confidence*component.gain;
+
+    if(!weight)continue;
+
+    mass+=weight;
+
+    for(let j=0;j<37;j++)weights[j]+=component.weights[j]*weight;
+
+    }
+
+    return mass?normalizeSpace(weights.map(v=>v/mass)):Array(37).fill(1);
+
+    }
+
+
+    function applySpatial(weights,h,strength=.30){
+
+    legacyApplySpatial(weights,h,strength);
+
+    if(h.length<8)return weights;
+
+    const learned=structuralWeights(h),scale=avg(weights.map(v=>Math.max(0,v)))||1;
+
+    const reliability=Math.min(1,(h.length-7)/24);
+
+    for(let j=0;j<37;j++)weights[j]=Math.max(.001,
+
+    weights[j]+scale*.14*reliability*clamp(learned[j]-1,-.7,1.2));
+
+    return weights;
+
+    }
+
+
+    function parseInput(text){
+
+    // Vírgulas e pontos separam giros no formato antigo: não são casas decimais.
+
+    const normalized=String(text).trim();
+
+    const numbers=(normalized.match(/\d+/g)||[]);
+
+    if(numbers.some(n=>/^0{2,}$/.test(n)))throw Error('00 NÃO É 0. ESTE SISTEMA USA A RODA EUROPEIA DE 37 NÚMEROS.');
+
+    if(/-\s*\d/.test(normalized))throw Error('HISTÓRICO CONTÉM NÚMERO NEGATIVO.');
+
+    const result=numbers.map(Number);
+
+    if(result.some(n=>!Number.isInteger(n)||n<0||n>36))throw Error('HISTÓRICO DEVE CONTER SOMENTE NÚMEROS DE 0 A 36.');
+
+    return result;
+
+    }
+
     let state = fresh();
     let busy = false;
     let saveError = "";
 
-    self.onmessage = function (event) {
+    self.onmessage = async function (event) {
       const data = event.data;
       try {
         if (data.action === "IMPORT") {
@@ -8768,16 +10261,32 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           return;
         }
         state = normalizeState(data.state);
-        clearSpatialCaches();
+        clearRuntimeCaches();
         if (data.action === "RESTORE") {
-          prepareBlock();
+          clearSpatialCaches();
+          await prepareBlockParallel();
           self.postMessage({ id: data.id, kind: "FINAL", state });
+          return;
+        }
+        if (data.action === "BANKS") {
+          const forecasts = allVariantForecasts(
+            state.history.slice(-70),
+            data.owners,
+          );
+          const variants = forecasts.map((f) => ({
+            bankId: f.bankId,
+            owner: f.owner,
+            name: f.name,
+            variation: f.variation,
+            motors: f.motors.map(compactMotor),
+            choice: compactMotor(f.choice),
+          }));
+          self.postMessage({ id: data.id, variants });
           return;
         }
         spin(data.number, "TEMPO REAL");
         if (!state.block.data && state.history.length >= 8) {
-          self.postMessage({ id: data.id, kind: "PREVIEW", state });
-          prepareBlock();
+          await prepareBlockParallel();
         }
         self.postMessage({ id: data.id, kind: "FINAL", state });
       } catch (error) {
@@ -8932,6 +10441,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     trainer.dataset.choice = "TRAINER";
     const postloss = button("PÓS-LOSS", () => togglePostLoss(), row, "trainer");
     postloss.dataset.choice = "POSTLOSS";
+    const postThree = button(
+      "PÓS-3 LOSS • TODAS",
+      () => togglePostThree(),
+      row,
+      "trainer",
+    );
+    postThree.dataset.choice = "POST3LOSS";
     trainers.appendChild(row);
     variationControls(
       VARIANT_OWNERS.find((o) => o.id === "NUMBER"),
@@ -9082,7 +10598,6 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       state.totalTurns +
       " • " +
       state.phase +
-      (lastInputMs ? " • " + Math.round(lastInputMs) + " ms" : "") +
       (saveError ? " • FALHA AO SALVAR: " + saveError : "");
     $("counter").textContent = state.block.size + " / 70";
     $("barfill").style.width = (100 * state.block.size) / 70 + "%";
@@ -9103,18 +10618,20 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       " • " +
       (motor?.key || "AGUARDANDO ATUALIZAÇÃO") +
       (state.cycle?.decision ? " • G1 " + state.cycle.decision.mode : "");
-    $("centers").innerHTML = centersHTML(motor?.play);
+    patchHTML($("centers"), centersHTML(motor?.play));
     $("coverage").textContent = motor
       ? "28 COBERTOS • 9 DESCOBERTOS: " + missing(motor.play).join(" • ")
       : "IMPORTE DE 8 A 70 RESULTADOS.";
     for (const b of document.querySelectorAll("[data-choice]"))
       b.classList.toggle(
         "active",
-        b.dataset.choice === "POSTLOSS"
-          ? !!state.postLossEnabled
-          : state.strategy === "ADAPTIVE"
-            ? b.dataset.choice === state.adaptive
-            : b.dataset.choice === state.strategy,
+        b.dataset.choice === "POST3LOSS"
+          ? !!state.postThreeEnabled
+          : b.dataset.choice === "POSTLOSS"
+            ? !!state.postLossEnabled
+            : state.strategy === "ADAPTIVE"
+              ? b.dataset.choice === state.adaptive
+              : b.dataset.choice === state.strategy,
       );
     for (const b of document.querySelectorAll("[data-rank]"))
       b.classList.toggle(
@@ -9138,10 +10655,17 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         activeVariationOwner() === b.dataset.thirdOwner &&
           state.variantSelections[b.dataset.thirdOwner] === -3,
       );
-    if (state.strategy === "POSTLOSS" || state.postLossEnabled) {
+    if (
+      state.strategy === "POSTLOSS" ||
+      state.postLossEnabled ||
+      state.postThreeEnabled
+    ) {
       const target =
         state.cycle?.original?.postLossTarget || motor?.postLossTarget;
-      const prefix = "JOGADA PÓS-LOSS • ADAPTATIVAS";
+      const prefix =
+        target?.kind === "POST3"
+          ? "JOGADA PÓS-3 LOSS • PRIORIDADE"
+          : "JOGADA PÓS-LOSS • ADAPTATIVAS";
       if (target)
         $("selected").textContent =
           prefix +
@@ -9156,7 +10680,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           " • " +
           state.phase;
       else if (state.strategy !== "POSTLOSS")
-        $("selected").textContent += " • PÓS-LOSS DAS ADAPTATIVAS LIGADO";
+        $("selected").textContent +=
+          (state.postLossEnabled ? " • PÓS-LOSS LIGADO" : "") +
+          (state.postThreeEnabled ? " • PÓS-3 LOSS LIGADO" : "");
       else $("selected").textContent = prefix + " • AGUARDANDO LOSS FINAL";
       if (!motor)
         $("coverage").textContent =
@@ -9164,37 +10690,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
             ? "Aguarda um LOSS final. Sem mínimo de ciclos."
             : "Preparando a próxima jogada do Treinador Global.";
     }
-    $("last").innerHTML = state.history
-      .slice(-14)
-      .map((n, i) => {
-        const turn =
-          state.historyTurns[
-            state.historyTurns.length - Math.min(14, state.history.length) + i
-          ];
-        const result =
-          state.ledger.find((r) => r.turn === turn)?.result || "HISTÓRICO";
-        const cls =
-          result === "LOSS"
-            ? "loss"
-            : result.startsWith("GREEN")
-              ? "green"
-              : result === "GALE"
-                ? "gale"
-                : "";
-        return (
-          '<div class="chip ' +
-          cls +
-          '" style="background:' +
-          (n === 0 ? "#087b50" : RED.has(n) ? "#a72740" : "#14181f") +
-          '"><b>' +
-          n +
-          "</b><small>" +
-          esc(result) +
-          "</small></div>"
-        );
-      })
-      .reverse()
-      .join("");
+    renderLastNumbers();
     $("general").hidden = !state.open.general;
     if (state.open.general) {
       $("general").innerHTML =
@@ -9210,7 +10706,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     if (
       state.strategy === "MASTER" &&
       !state.cycle &&
-      masterRestRemaining() > 0
+      masterRestRemaining() > 0 &&
+      !target
     ) {
       $("selected").textContent =
         "MASTER • SEM ENTRADA • FALTAM " +
@@ -9237,7 +10734,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         scheduleSave();
         return;
       }
-      save();
+      saveAsync();
     }, 150);
   }
 
@@ -9252,6 +10749,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function undo() {
     if (busy || !state.undoStack.length) return;
+    checkpointSerial++;
+    checkpointEpoch++;
     applyInverse(state.undoStack.pop().ops);
     clearSpatialCaches();
     scheduleSave();
@@ -9324,6 +10823,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       else importNumbersCore(numbers, opts, customManualLog || []);
       clearSpatialCaches();
       save();
+      persistPendingInputs();
     } catch (error) {
       state = before;
       clearSpatialCaches();
@@ -9341,6 +10841,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       return;
     }
     inputQueue.push(n);
+    pendingReceipts.push(n);
+    persistPendingInputs();
+    renderLastNumbers();
     $("receipt").textContent =
       "NÚMERO " +
       n +
@@ -9356,33 +10859,20 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     clearTimeout(saveTimer);
     const number = inputQueue.shift(),
       oldUndo = state.undoStack;
-    await waitFrame();
     await new Promise((resolve) => setTimeout(resolve, 0));
     const before = undoSnapshot();
     const started = performance.now();
     try {
-      const result = await workerRequest(
-        "SPIN",
-        { number, state: { ...state, undoStack: [] } },
-        (preview) => {
-          state = {
-            ...preview,
-            undoStack: oldUndo,
-            manualLog: before.manualLog,
-            manualCount: before.manualCount,
-          };
-          clearSpatialCaches();
-          render();
-        },
-      );
+      const result = await workerRequest("SPIN", {
+        number,
+        state: { ...state, undoStack: [] },
+      });
       if (result) state = { ...result, undoStack: oldUndo };
       else {
         spin(number, "TEMPO REAL");
-        render();
-        await waitFrame();
         prepareBlock();
       }
-      clearSpatialCaches();
+      clearRuntimeCaches();
       const row = state.ledger.at(-1);
       state.manualLog.push({
         id: Date.now() + "_" + state.totalTurns,
@@ -9407,16 +10897,20 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       });
       state.undoStack = state.undoStack.slice(-70);
       lastInputMs = performance.now() - started;
-      scheduleSave();
+      pendingReceipts.shift();
+      persistPendingInputs();
     } catch (error) {
       state = { ...before, undoStack: oldUndo };
       clearSpatialCaches();
       inputQueue = [];
+      pendingReceipts = [];
+      persistPendingInputs();
       alert("ERRO AO INSERIR NÚMERO: " + String(error.message || error));
     } finally {
       inputRunning = false;
       setBusy(false);
       render();
+      saveAsync();
       $("receipt").textContent = inputQueue.length
         ? "FILA: " + inputQueue.join(" • ")
         : "ÚLTIMO NÚMERO REGISTRADO: " + number;
@@ -9450,6 +10944,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     state = fresh();
     clearSpatialCaches();
     save();
+    pendingReceipts = [];
+    inputQueue = [];
+    persistPendingInputs();
     render();
   }
 
@@ -9696,11 +11193,11 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         esc(target.name) +
         "</div>" +
         timelineCellsHTML(target.id);
-    $("focusLast").innerHTML = $("last").innerHTML;
+    patchHTML($("focusLast"), $("last").innerHTML);
     $("focusMode").textContent = $("selected").textContent;
     $("focusMode").className =
       "playNotice " + (target ? "postLossNotice" : "normalNotice");
-    $("focusCenters").innerHTML = centersHTML(motor?.play);
+    patchHTML($("focusCenters"), centersHTML(motor?.play));
     $("focusCoverage").textContent = $("coverage").textContent;
     for (const b of document.querySelectorAll("[data-focus-number]"))
       b.disabled = busy && !inputRunning;
@@ -9715,7 +11212,9 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       metricsHTML(groups.normal) +
       '<div class="title postLossText">PÓS-LOSS • ADAPTATIVAS</div>' +
       metricsHTML(groups.postLoss) +
-      '<div class="title">NORMAL + PÓS-LOSS • TOTAL</div>' +
+      '<div class="title postLossText">PÓS-3 LOSS • TODAS</div>' +
+      metricsHTML(groups.postThree) +
+      '<div class="title">NORMAL + PÓS-LOSS + PÓS-3 LOSS • TOTAL</div>' +
       metricsHTML(groups.combined) +
       (legacy
         ? '<div class="muted">' +
@@ -9723,6 +11222,189 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
           " ciclos anteriores sem identificação de normal/pós-loss permanecem somente no total.</div>"
         : "")
     );
+  }
+
+  let pendingReceipts = [];
+
+  function patchHTML(element, html) {
+    if (element && element.innerHTML !== html) element.innerHTML = html;
+  }
+
+  function renderLastNumbers() {
+    const known = state.history.map((n, i) => ({
+      number: n,
+      turn: state.historyTurns[i],
+      pending: false,
+    }));
+    const pending = pendingReceipts.map((n) => ({ number: n, pending: true }));
+    const html = [...known, ...pending]
+      .slice(-14)
+      .reverse()
+      .map((item) => {
+        const n = item.number,
+          row = item.pending
+            ? null
+            : state.ledger.find((r) => r.turn === item.turn);
+        const result = item.pending ? "" : row?.result || "HISTÓRICO";
+        const cls =
+          result === "LOSS"
+            ? "loss"
+            : result.startsWith("GREEN")
+              ? "green"
+              : result === "GALE"
+                ? "gale"
+                : "";
+        return (
+          '<div class="chip ' +
+          cls +
+          '" style="background:' +
+          (n === 0 ? "#087b50" : RED.has(n) ? "#a72740" : "#14181f") +
+          '"><b>' +
+          n +
+          "</b><small>" +
+          (result ? esc(result) : "&nbsp;") +
+          "</small></div>"
+        );
+      })
+      .join("");
+    patchHTML($("last"), html);
+    patchHTML($("focusLast"), html);
+  }
+
+  function persistPendingInputs() {
+    try {
+      localStorage.setItem(
+        KEY + "_QUEUE",
+        JSON.stringify({
+          baseTurn: durableTurn,
+          numbers: state.manualLog
+            .filter((r) => r.turn > durableTurn)
+            .map((r) => r.number)
+            .concat(pendingReceipts),
+        }),
+      );
+    } catch (error) {
+      saveError =
+        "SALVAMENTO DA FILA FALHOU: " + String(error.message || error);
+    }
+  }
+  function resumePendingInputs() {
+    try {
+      const journal = JSON.parse(
+        localStorage.getItem(KEY + "_QUEUE") || "null",
+      );
+      if (
+        !journal ||
+        !Number.isInteger(journal.baseTurn) ||
+        journal.baseTurn > state.totalTurns
+      )
+        return;
+      const numbers = cleanNumbers(journal.numbers).slice(
+        Math.max(0, state.totalTurns - journal.baseTurn),
+      );
+      if (!numbers.length) return;
+      pendingReceipts = [...numbers];
+      inputQueue = [...numbers];
+      renderLastNumbers();
+      drainInputQueue();
+    } catch (error) {
+      saveError =
+        "Não foi possível recuperar a fila: " + String(error.message || error);
+    }
+  }
+
+  /* A compactação do checkpoint não ocupa mais a thread do teclado. O diário
+   curto permanece síncrono até o checkpoint confirmar que foi gravado. */
+  let checkpointWorker = null,
+    checkpointSerial = 0,
+    checkpointBusy = false,
+    checkpointNext = null,
+    checkpointEpoch = 0;
+  function saveAsync() {
+    if (typeof Worker === "undefined") {
+      scheduleCheckpointFallback();
+      return;
+    }
+    try {
+      if (!checkpointWorker) {
+        const source =
+          "const packSession=" +
+          packSession.toString() +
+          ";self.onmessage=e=>{try{self.postMessage({id:e.data.id,epoch:e.data.epoch,turn:e.data.turn,packed:packSession(e.data.raw)});}catch(error){self.postMessage({id:e.data.id,epoch:e.data.epoch,error:String(error.message||error)});}};";
+        const url = URL.createObjectURL(
+          new Blob([source], { type: "text/javascript" }),
+        );
+        checkpointWorker = new Worker(url);
+        URL.revokeObjectURL(url);
+        checkpointWorker.onmessage = (event) => {
+          const result = event.data;
+          checkpointBusy = false;
+          if (result.epoch === checkpointEpoch && result.turn >= durableTurn) {
+            if (result.error) saveError = result.error;
+            else
+              try {
+                localStorage.setItem(KEY, result.packed);
+                pruneSavedVersions();
+                durableTurn = result.turn;
+                saveError = "";
+                persistPendingInputs();
+              } catch (error) {
+                saveError =
+                  "SALVAMENTO FALHOU: " + String(error.message || error);
+              }
+          }
+          const next = checkpointNext;
+          checkpointNext = null;
+          if (next && next.id === checkpointSerial) {
+            checkpointBusy = true;
+            checkpointWorker.postMessage(next);
+          }
+        };
+        checkpointWorker.onerror = () => {
+          checkpointWorker.terminate();
+          checkpointWorker = null;
+          checkpointBusy = false;
+          checkpointNext = null;
+          scheduleCheckpointFallback();
+        };
+      }
+      const id = ++checkpointSerial,
+        turn = state.totalTurns;
+      const raw = JSON.stringify(state, (k, v) =>
+        validPlay(v) ? { __betaPlay: signaturePlay(v), score: v.score } : v,
+      );
+      const message = { id, epoch: checkpointEpoch, turn, raw };
+      if (checkpointBusy) checkpointNext = message;
+      else {
+        checkpointBusy = true;
+        checkpointWorker.postMessage(message);
+      }
+    } catch (error) {
+      scheduleCheckpointFallback();
+    }
+  }
+  function scheduleCheckpointFallback() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (inputRunning || busy) {
+        scheduleCheckpointFallback();
+        return;
+      }
+      save();
+      persistPendingInputs();
+    }, 250);
+  }
+
+  function togglePostThree() {
+    if (busy) return;
+    if (!cycleIsFree()) {
+      alert("AGUARDE ENCERRAR O CICLO ATUAL.");
+      return;
+    }
+    state.postThreeEnabled = !state.postThreeEnabled;
+    state.manual = null;
+    scheduleSave();
+    render();
   }
 
   document.body.innerHTML = `
@@ -9811,12 +11493,15 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     b.onclick = () => addManual(n);
     $("keys").appendChild(b);
   }
-  $("import").onclick = () => importHistory(parseInput($("paste").value));
+  $("import").onclick = () => {
+    try { importHistory(parseInput($("paste").value)); }
+    catch (error) { alert(String(error.message || error)); }
+  };
   $("restore").onclick = async () => {
     if (busy) return;
     for (const key of [KEY, ...OLD_KEYS]) {
       const data = read(key);
-      if (data?.history?.length) {
+      if (data && Array.isArray(data.history)) {
         state = normalizeState(data);
         if (key !== KEY) state.undoStack = [];
         clearSpatialCaches();
@@ -9856,12 +11541,13 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   for (const key of [KEY, ...OLD_KEYS]) {
     const data = read(key);
-    if (data?.history?.length) {
+    if (data && Array.isArray(data.history)) {
       state = normalizeState(data);
       if (key !== KEY) state.undoStack = [];
       break;
     }
   }
+  durableTurn = state.totalTurns;
   render();
   if (state.history.length >= 8 && !state.block.data) {
     setBusy(true, "PREPARANDO HISTÓRICO");
@@ -9880,11 +11566,22 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       } finally {
         setBusy(false);
         render();
+        resumePendingInputs();
       }
     }, 0);
-  }
+  } else resumePendingInputs();
   globalThis.addEventListener?.("pagehide", () => {
     clearTimeout(saveTimer);
+    checkpointSerial++;
     save();
+    persistPendingInputs();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      clearTimeout(saveTimer);
+      checkpointSerial++;
+      save();
+      persistPendingInputs();
+    }
   });
 })();
