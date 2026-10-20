@@ -1,16 +1,42 @@
-/* ANÁLISE BETA 6.6.4 — BASE DE CÁLCULO 6.6.1.
-Cálculos, motores, variações, treinadores, G1 e pausas mantidos da 6.6.1.
-Salvamento próprio: esta versão não adota automaticamente estados antigos.
-Cada importação inicia um calculador novo e registra a sequência/configuração.
-A tela mostra o ID da importação, total e extremos cronológicos para conferência.
-Uma execução substituída não pode voltar a renderizar ou salvar sobre a atual.
-Teste de referência: 44 giros, 24 mais antigo / 16 mais recente, MASTER,
-sem pós-loss/pós-3-loss e sem pular giros: 10 GREEN, 2 GREEN G1, 0 LOSS.
-Esse resultado histórico não é garantia para outros históricos ou novas entradas.
+/* ANÁLISE BETA 6.6.4 — DOIS CONJUNTOS COMPLETOS.
+BASE: 6.6.4, com os cálculos da 6.6.1 preservados.
+NORMAL: histórico na ordem cronológica escolhida na importação.
+INVERTIDO: os mesmos resultados em ordem reversa, com treinamento próprio.
+Todas as estratégias, variações, linhas do tempo, centros, teclados,
+últimos 14, resultados, ciclos e defesas são independentes por conjunto.
+Qualquer teclado registra o mesmo resultado novo nos dois conjuntos.
+A reversão se aplica à importação; os novos resultados são anexados aos dois.
+Importar, recuperar, desfazer e zerar atuam nos dois conjuntos juntos.
+O salvamento de cada conjunto tem chave própria e não substitui a 6.6.4 simples.
+As jogadas podem coincidir. Duas leituras não garantem mais acertos.
 */
 (() => {
+"use strict";
+// Interface de cada leitura: o motor completo permanece em uma instância própria.
+function createSideDocument(root, nativeDocument, listeners){
+ return {
+  body:root,
+  getElementById:id=>root.getElementById(id),
+  querySelector:selector=>root.querySelector(selector),
+  querySelectorAll:selector=>root.querySelectorAll(selector),
+  createElement:tag=>nativeDocument.createElement(tag),
+  get visibilityState(){return nativeDocument.visibilityState;},
+  addEventListener(type,handler,options){
+   const target=type==='visibilitychange'?nativeDocument:root;
+   target.addEventListener(type,handler,options);listeners.push([target,type,handler,options]);
+  }
+ };
+}
+
+function runBetaSide(side,root,coordinator,nativeDocument){
+const sideListeners=[];
+const document=createSideDocument(root,nativeDocument,sideListeners);
+function sideWindowAdd(type,handler,options){
+ globalThis.addEventListener(type,handler,options);sideListeners.push([globalThis,type,handler,options]);
+}
+
   "use strict";
-if(typeof globalThis.__analiseBetaDispose==='function')globalThis.__analiseBetaDispose();
+if(typeof globalThis['__analiseBetaDispose_'+side]==='function')globalThis['__analiseBetaDispose_'+side]();
 let appAlive=true;
 function isCurrentApp(){return appAlive;}
 
@@ -50,7 +76,7 @@ ANÁLISE BETA V6.6.4 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
   const VERSION = "6.6.4",
-    KEY = "ANALISE_BETA_V664",
+    KEY = 'ANALISE_BETA_V664_DUAL_'+side,
     WINDOW = 70;
   const OLD_KEYS=[];
   const W = [
@@ -9983,7 +10009,7 @@ if(!isCurrentApp())return;
       key.disabled = value && !inputRunning;
   }
 
-  function undo() {
+  function undoSide() {
     if (busy || !state.undoStack.length) return;
     checkpointSerial++;
     checkpointEpoch++;
@@ -10006,9 +10032,9 @@ if(!isCurrentApp())return;
           );
           workerClient = new Worker(url);
           URL.revokeObjectURL(url);
-          if (globalThis.__analiseBetaWorker)
-            globalThis.__analiseBetaWorker.terminate();
-          globalThis.__analiseBetaWorker = workerClient;
+          if (globalThis['__analiseBetaWorker_'+side])
+            globalThis['__analiseBetaWorker_'+side].terminate();
+          globalThis['__analiseBetaWorker_'+side] = workerClient;
           workerClient.onmessage = (event) => {
             const message = event.data,
               request = clientRequests.get(message.id);
@@ -10075,7 +10101,7 @@ if(!isCurrentApp())return;
     }
   }
 
-  function addManual(n) {
+  function addSideManual(n) {
     if (busy && !inputRunning) return;
     if (state.history.length < 8) {
       alert("IMPORTE DE 8 A 70 RESULTADOS.");
@@ -10159,7 +10185,7 @@ if(!isCurrentApp())return;
     }
   }
 
-  async function importHistory(numbers) {
+  async function importSideHistory(numbers) {
     if (busy) return;
     const clean = cleanNumbers(numbers).slice(-70);
     if (clean.length < 8) {
@@ -10180,7 +10206,7 @@ if(!isCurrentApp())return;
     await loadHistory(clean);
   }
 
-  function clearAll() {
+  function clearSide() {
     if (busy || !confirm("ZERAR HISTÓRICO, TREINADORES E REGISTROS?")) return;
     state = fresh();
     clearSpatialCaches();
@@ -10655,6 +10681,9 @@ if(!isCurrentApp())return;
 
   document.body.innerHTML = `
 <style>${css}
+:host{display:block;color:#f4f7fb;font:13px Arial,sans-serif}
+#paste,#import,#restore,#undo,#clear{display:none}
+
 .controlGroup{margin:9px 0;padding:9px;background:#172434;border:1px solid #405a73;border-radius:8px}
 .controlGroup summary{cursor:pointer;padding:9px;color:#59e5ff;font-weight:bold}
 .controlGroup .controlGroup{background:#102030}
@@ -10691,10 +10720,10 @@ if(!isCurrentApp())return;
 @media(max-width:650px){.timelineRow{display:block}.timelineName{margin-bottom:5px}.wlCell{width:18px;height:22px}}
 </style>
 <main class="app">
-<h1>ANÁLISE BETA V${VERSION}</h1>
+<h1>${side} • ANÁLISE BETA V${VERSION}</h1>
 <div class="sub">8 VARIAÇÕES POR ORIGINAL E TREINADOR NÚMEROS • 12 MOTORES PRÓPRIOS POR VARIAÇÃO<br>PRÓXIMA JOGADA A CADA NÚMERO • DESCARTE EM DEZ • JANELA ATÉ 70</div>
 <section class="panel">
-<div class="title">IMPORTAR HISTÓRICO</div>
+<div class="title">LEITURA ${side}</div>
 <textarea id="paste" placeholder="Cole de 8 a 70 números, do mais antigo ao mais recente"></textarea>
 <div class="row"><button class="btn" id="import">IMPORTAR</button><button class="btn" id="restore">RECUPERAR HISTÓRICO</button><button class="btn" id="undo">APAGAR ÚLTIMO MANUAL</button><button class="btn" id="clear">ZERAR TUDO</button></div>
 <div class="status" id="status"></div>
@@ -10814,7 +10843,7 @@ if(!isCurrentApp())return;
       }
     }, 0);
   } else resumePendingInputs();
-  globalThis.addEventListener?.("pagehide", () => {
+  sideWindowAdd("pagehide", () => {
     clearTimeout(saveTimer);
     checkpointSerial++;
     save();
@@ -10829,12 +10858,223 @@ if(!isCurrentApp())return;
     }
   });
 
-globalThis.__analiseBetaDispose=()=>{
+globalThis['__analiseBetaDispose_'+side]=()=>{
  if(!appAlive)return;
  clearTimeout(saveTimer);save();persistPendingInputs();appAlive=false;
  if(workerClient)workerClient.terminate();
  if(checkpointWorker)checkpointWorker.terminate();
  clientRequests.clear();
 };
-})();
 
+// Teclado e comandos de sessão são compartilhados. Estratégias, escolhas,
+// estatísticas, G1 e pausas continuam locais a esta leitura.
+function addManual(n){return coordinator.add(n);}
+function undo(){return coordinator.undo();}
+function clearAll(){return coordinator.clear();}
+function importHistory(numbers){return coordinator.import(numbers);}
+const sideDispose=globalThis['__analiseBetaDispose_'+side];
+return {
+ side,root,
+ getState:()=>state,
+ busy:()=>busy||inputRunning||inputQueue.length>0,
+ canEnqueue:()=>appAlive&&state.history.length>=8&&(!busy||inputRunning),
+ enqueue(n){addSideManual(n);},
+ async importLocal(numbers){
+  await loadHistory(numbers);
+  if(JSON.stringify(state.history)!==JSON.stringify(numbers))throw Error('A importação '+side+' não foi concluída.');
+ },
+ undoLocal(){undoSide();},
+ clearLocal(){
+  state=fresh();clearSpatialCaches();save();pendingReceipts=[];inputQueue=[];persistPendingInputs();render();
+ },
+ async restoreLocal(){await $('restore').onclick();},
+ snapshot:()=>copy(state),
+ rollback(snapshot){state=normalizeState(copy(snapshot));clearSpatialCaches();save();persistPendingInputs();render();},
+ saveLocal(){return save();},
+ dispose(){
+  sideDispose();
+  for(const [target,type,handler,options] of sideListeners)target.removeEventListener(type,handler,options);
+ },
+ select(id){selectTimeline(id);},
+ // Exportação para conferência dos testes e dos registros, sem tocar no motor.
+ summary(){return {side,version:VERSION,turn:state.totalTurns,phase:state.phase,
+  history:[...state.history],audit:copy(state.importAudit),metrics:metrics(state.ledger),
+  timelineIds:timelineDefinitions().map(d=>d.id),manual:state.manualLog.map(r=>r.number)};}
+};
+
+}
+
+// Um número digitado é observado pelos dois sistemas. A inversão vale para
+// o histórico inicial; resultados ao vivo são anexados ao fim de AMBOS.
+const nativeDocument=globalThis.document;
+if(typeof globalThis.__analiseBetaDualDispose==='function')globalThis.__analiseBetaDualDispose();
+if(typeof globalThis.__analiseBetaDispose==='function')globalThis.__analiseBetaDispose();
+let alive=true,operation=false,monitoring=false,aligned=true,expectedTurn=0;
+const sides={};
+nativeDocument.body.innerHTML=`
+<style>
+body{margin:0;background:#101720;color:#f4f7fb;font:13px Arial,sans-serif}
+#beta-dual-app{max-width:2200px;margin:auto;padding:10px;box-sizing:border-box}
+#beta-dual-app *{box-sizing:border-box}
+#beta-dual-app h1{font-size:22px;color:#59e5ff;margin:8px 0}
+#beta-dual-app .dual-import{background:#1d2938;border:1px solid #405a73;border-radius:10px;padding:12px;margin-bottom:12px}
+#beta-dual-app textarea{display:block;width:100%;height:85px;background:#0c1623;color:#fff;border:1px solid #62758b;border-radius:7px;padding:9px;font:16px Arial,sans-serif;margin:8px 0}
+#beta-dual-app .dual-controls{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+#beta-dual-app button,#beta-dual-app select{background:#304359;border:1px solid #708aa6;border-radius:7px;color:#fff;padding:10px;font-size:12px;min-height:40px}
+#beta-dual-app button{cursor:pointer}
+#beta-dual-app button:disabled{opacity:.4;cursor:default}
+#beta-dual-app label{display:block;line-height:1.7}
+#beta-dual-app .dual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+#beta-dual-app .dual-pane{min-width:0}
+#beta-dual-app .dual-heading{margin:0;padding:10px 12px;background:#123b55;color:#a4f1ff;border-radius:8px;font-size:17px}
+#beta-dual-app .dual-pane:last-child .dual-heading{background:#482264;color:#edcaff}
+#beta-dual-app .dual-status{min-height:24px;line-height:1.6;margin-top:8px;overflow-wrap:anywhere;color:#c4d8eb}
+@media(max-width:1050px){#beta-dual-app .dual-grid{grid-template-columns:1fr}}
+</style>
+<main id="beta-dual-app">
+<section class="dual-import">
+<h1>ANÁLISE BETA 6.6.4 • NORMAL + INVERTIDO</h1>
+<label for="dual-paste">IMPORTAR HISTÓRICO NOS DOIS CONJUNTOS</label>
+<textarea id="dual-paste" placeholder="Cole de 8 a 70 resultados; selecione abaixo a ordem em que foram copiados."></textarea>
+<div class="dual-controls">
+<label>ORDEM COPIADA
+<select id="dual-order">
+<option value="OLDEST">MAIS ANTIGO → MAIS RECENTE</option>
+<option value="NEWEST">MAIS RECENTE → MAIS ANTIGO</option>
+</select></label>
+<button type="button" id="dual-import">IMPORTAR NORMAL + INVERTIDO</button>
+<button type="button" id="dual-undo">APAGAR ÚLTIMO DOS DOIS</button>
+<button type="button" id="dual-restore">RECUPERAR OS DOIS</button>
+<button type="button" id="dual-clear">ZERAR OS DOIS</button>
+</div>
+<div class="dual-status" id="dual-status" role="status" aria-live="polite">NORMAL: sequência cronológica. INVERTIDO: histórico importado em ordem reversa.</div>
+</section>
+<div class="dual-grid">
+<section class="dual-pane"><h2 class="dual-heading">NORMAL • ORDEM CRONOLÓGICA</h2><div id="dual-normal"></div></section>
+<section class="dual-pane"><h2 class="dual-heading">INVERTIDO • LEITURA REVERSA DO HISTÓRICO</h2><div id="dual-inverted"></div></section>
+</div>
+</main>`;
+const ui=id=>nativeDocument.getElementById(id);
+const status=message=>{if(alive)ui('dual-status').textContent=message;};
+const stateKey='ANALISE_BETA_V664_DUAL_INPUT_ORDER';
+try{const saved=localStorage.getItem(stateKey);if(['OLDEST','NEWEST'].includes(saved))ui('dual-order').value=saved;}catch{}
+ui('dual-order').onchange=()=>{try{localStorage.setItem(stateKey,ui('dual-order').value);}catch{}};
+function both(){return [sides.NORMAL,sides.INVERTIDO].filter(Boolean);}
+function running(){return operation||both().some(s=>s.busy());}
+function updateButtons(){
+ const blocked=running();
+ for(const id of ['dual-import','dual-undo','dual-restore','dual-clear'])ui(id).disabled=blocked;
+ for(const id of ['dual-normal','dual-inverted'])ui(id).inert=operation;
+}
+function inputNumbers(text){
+ const tokens=String(text).match(/\d+/g)||[];
+ if(tokens.some(n=>/^0{2,}$/.test(n)))throw Error('00 não é 0. Use somente a roda de 0 a 36.');
+ if(/-\s*\d/.test(String(text)))throw Error('O histórico contém número negativo.');
+ const numbers=tokens.map(Number);
+ if(numbers.some(n=>n>36))throw Error('O histórico contém número maior que 36.');
+ return numbers;
+}
+function prepareHistories(numbers,order){
+ let normal=[...numbers];
+ if(order==='NEWEST')normal.reverse();
+ // Seleciona os 70 mais recentes ANTES de inverter a segunda leitura.
+ normal=normal.slice(-70);
+ return {NORMAL:normal,INVERTIDO:[...normal].reverse()};
+}
+async function idle(){
+ while(alive&&both().some(s=>s.busy()))await new Promise(resolve=>setTimeout(resolve,20));
+}
+function checkAlignment(){
+ const [a,b]=both().map(s=>s.getState());
+ aligned=!!a&&!!b&&a.totalTurns===b.totalTurns&&
+ JSON.stringify(a.manualLog.map(r=>r.number))===JSON.stringify(b.manualLog.map(r=>r.number));
+ if(aligned)expectedTurn=a.totalTurns;
+ else status('RETOMADA INCOMPLETA ENTRE OS DOIS CONJUNTOS. RECUPERE OU IMPORTE O HISTÓRICO ANTES DE CONTINUAR.');
+ return aligned;
+}
+async function watchNumbers(){
+ if(monitoring)return;
+ monitoring=true;
+ await idle();
+ if(alive){
+  const turns=both().map(s=>s.getState().totalTurns);
+  if(turns.some(n=>n!==expectedTurn)){
+   aligned=false;status('NÚMERO NÃO CONCLUÍDO NOS DOIS CONJUNTOS. RECUPERE OU IMPORTE ANTES DE CONTINUAR.');
+  }else{
+   checkAlignment();
+   if(aligned)status('NORMAL E INVERTIDO ATUALIZADOS • GIRO '+expectedTurn+' • JOGADAS E G1 INDEPENDENTES');
+  }
+  updateButtons();
+ }
+ monitoring=false;
+}
+const coordinator={
+ async import(numbers){
+  if(!alive||running())return false;
+  if(!Array.isArray(numbers))throw Error('HISTÓRICO INVÁLIDO.');
+  if(numbers.some(n=>!Number.isInteger(n)||n<0||n>36)){alert('USE SOMENTE NÚMEROS DE 0 A 36.');return false;}
+  if(numbers.length<8){alert('INFORME PELO MENOS OITO NÚMEROS.');return false;}
+  const histories=prepareHistories(numbers,ui('dual-order').value);
+  if(!confirm('IMPORTAR '+histories.NORMAL.length+' NÚMEROS NOS DOIS CONJUNTOS?\nNORMAL E INVERTIDO TERÃO TREINAMENTO E CICLOS PRÓPRIOS.'))return false;
+  operation=true;updateButtons();
+  const snapshots=both().map(s=>s.snapshot());
+  try{
+   status('LENDO HISTÓRICO NORMAL…');
+   await sides.NORMAL.importLocal(histories.NORMAL);
+   if(!alive)return false;
+   status('LENDO O MESMO HISTÓRICO INVERTIDO…');
+   await sides.INVERTIDO.importLocal(histories.INVERTIDO);
+   if(!alive)return false;
+   checkAlignment();ui('dual-paste').value='';
+   status('DUAS LEITURAS CONCLUÍDAS • '+histories.NORMAL.length+' NÚMEROS • NORMAL: '+histories.NORMAL[0]+' → '+histories.NORMAL.at(-1)+' • INVERTIDO: '+histories.INVERTIDO[0]+' → '+histories.INVERTIDO.at(-1));
+   return true;
+  }catch(error){
+   if(alive){both().forEach((s,i)=>s.rollback(snapshots[i]));checkAlignment();status('IMPORTAÇÃO NÃO CONCLUÍDA. OS DOIS ESTADOS ANTERIORES FORAM PRESERVADOS.');alert(String(error.message||error));}
+   return false;
+  }finally{operation=false;if(alive)updateButtons();}
+ },
+ add(n){
+  if(!alive||operation||!aligned)return false;
+  if(!Number.isInteger(n)||n<0||n>36)return false;
+  if(both().length!==2||both().some(s=>!s.canEnqueue())){status('AGUARDE A PREPARAÇÃO DOS DOIS CONJUNTOS OU IMPORTE UM HISTÓRICO.');return false;}
+  expectedTurn++;status('NÚMERO '+n+' RECEBIDO NOS DOIS CONJUNTOS');
+  for(const side of both())side.enqueue(n);
+  updateButtons();watchNumbers();return true;
+ },
+ undo(){
+  if(!alive||running())return false;
+  if(both().some(s=>!s.getState().undoStack.length)){alert('NÃO HÁ UM LANÇAMENTO MANUAL PARA DESFAZER NOS DOIS CONJUNTOS.');return false;}
+  both().forEach(s=>s.undoLocal());checkAlignment();status('ÚLTIMO NÚMERO DESFEITO NOS DOIS CONJUNTOS');updateButtons();return true;
+ },
+ clear(){
+  if(!alive||running())return false;
+  if(!confirm('ZERAR OS DOIS HISTÓRICOS, TREINADORES E REGISTROS?'))return false;
+  both().forEach(s=>s.clearLocal());aligned=true;expectedTurn=0;status('NORMAL E INVERTIDO ZERADOS');updateButtons();return true;
+ },
+ async restore(){
+  if(!alive||running())return false;
+  operation=true;updateButtons();status('RECUPERANDO NORMAL E INVERTIDO…');
+  try{
+   for(const side of both())await side.restoreLocal();
+   await idle();if(alive&&checkAlignment())status('DUAS SESSÕES RECUPERADAS • GIRO '+expectedTurn);
+  }finally{operation=false;if(alive)updateButtons();}
+ },
+ busy:running,prepareHistories,inputNumbers
+};
+for(const [side,id] of [['NORMAL','dual-normal'],['INVERTIDO','dual-inverted']]){
+ const root=ui(id).attachShadow({mode:'open'});
+ sides[side]=runBetaSide(side,root,coordinator,nativeDocument);
+}
+ui('dual-import').onclick=()=>{try{coordinator.import(inputNumbers(ui('dual-paste').value));}catch(error){alert(String(error.message||error));}};
+ui('dual-undo').onclick=()=>coordinator.undo();
+ui('dual-clear').onclick=()=>coordinator.clear();
+ui('dual-restore').onclick=()=>coordinator.restore();
+globalThis.__analiseBetaDual={...coordinator,normal:sides.NORMAL,inverted:sides.INVERTIDO};
+globalThis.__analiseBetaDualDispose=()=>{
+ if(!alive)return;
+ alive=false;both().forEach(s=>s.dispose());
+};
+updateButtons();
+(async()=>{await idle();if(!alive)return;if(checkAlignment()&&expectedTurn)status('NORMAL E INVERTIDO RETOMADOS • GIRO '+expectedTurn);updateButtons();})();
+
+})();
