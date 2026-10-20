@@ -1,10 +1,10 @@
-/* ANÁLISE BETA 6.6.4 — DOIS CONJUNTOS COMPLETOS.
+/* ANÁLISE BETA 6.6.5 — DUAS LEITURAS EM UMA TELA COMPACTA.
 BASE: 6.6.4, com os cálculos da 6.6.1 preservados.
 NORMAL: histórico na ordem cronológica escolhida na importação.
 INVERTIDO: os mesmos resultados em ordem reversa, com treinamento próprio.
-Todas as estratégias, variações, linhas do tempo, centros, teclados,
+Todas as estratégias, variações, linhas do tempo e centros,
 últimos 14, resultados, ciclos e defesas são independentes por conjunto.
-Qualquer teclado registra o mesmo resultado novo nos dois conjuntos.
+Um único teclado registra o mesmo resultado novo nos dois conjuntos.
 A reversão se aplica à importação; os novos resultados são anexados aos dois.
 Importar, recuperar, desfazer e zerar atuam nos dois conjuntos juntos.
 O salvamento de cada conjunto tem chave própria e não substitui a 6.6.4 simples.
@@ -12,19 +12,20 @@ As jogadas podem coincidir. Duas leituras não garantem mais acertos.
 */
 (() => {
 "use strict";
-// Interface de cada leitura: o motor completo permanece em uma instância própria.
-function createSideDocument(root, nativeDocument, listeners){
+// Cada leitura encontra apenas seus próprios elementos, mesmo quando os
+// quadros são reunidos na tela única. Nenhum ID de uma leitura busca a outra.
+function createSideDocument(root,nativeDocument,listeners){
+ const scopes=[root];
+ function all(selector){return [...new Set(scopes.flatMap(scope=>[...scope.querySelectorAll(selector)]))];}
  return {
   body:root,
-  getElementById:id=>root.getElementById(id),
-  querySelector:selector=>root.querySelector(selector),
-  querySelectorAll:selector=>root.querySelectorAll(selector),
+  registerScope(element){if(!scopes.includes(element))scopes.push(element);},
+  getElementById(id){for(const scope of scopes){if(scope.id===id)return scope;const el=scope.getElementById?scope.getElementById(id):scope.querySelector('[id="'+id+'"]');if(el)return el;}return null;},
+  querySelector:selector=>all(selector)[0]||null,
+  querySelectorAll:all,
   createElement:tag=>nativeDocument.createElement(tag),
   get visibilityState(){return nativeDocument.visibilityState;},
-  addEventListener(type,handler,options){
-   const target=type==='visibilitychange'?nativeDocument:root;
-   target.addEventListener(type,handler,options);listeners.push([target,type,handler,options]);
-  }
+  addEventListener(type,handler,options){const target=type==='visibilitychange'?nativeDocument:root;target.addEventListener(type,handler,options);listeners.push([target,type,handler,options]);}
  };
 }
 
@@ -41,7 +42,7 @@ let appAlive=true;
 function isCurrentApp(){return appAlive;}
 
   /*
-ANÁLISE BETA V6.6.4 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.5 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -75,7 +76,7 @@ ANÁLISE BETA V6.6.4 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.6.4",
+  const VERSION = "6.6.5",
     KEY = 'ANALISE_BETA_V664_DUAL_'+side,
     WINDOW = 70;
   const OLD_KEYS=[];
@@ -4740,7 +4741,7 @@ if(!isCurrentApp())return false;
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.6.4 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.5 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -4774,7 +4775,7 @@ ANÁLISE BETA V6.6.4 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.6.4",
+    const VERSION = "6.6.5",
       KEY = "ANALISE_BETA_V664",
       WINDOW = 70;
     const OLD_KEYS=[];
@@ -9827,8 +9828,7 @@ state.importAudit=describeImport(clean,opts);
   function render() {
 if(!isCurrentApp())return;
 
-    try {
-      performRender();
+    try {performRender();coordinator.render?.();
     } catch (error) {
       console.error(error);
       if ($("status"))
@@ -10425,7 +10425,7 @@ if(!isCurrentApp())return;
         '<div class="timelineCells" id="focusTimeline"></div><div class="muted" id="focusTimelineLabel"></div>' +
         '<div class="title">ÚLTIMOS 14 NÚMEROS</div><div class="history" id="focusLast"></div>' +
         '<div id="focusMode" aria-live="polite"></div><div class="centers" id="focusCenters"></div><div class="muted" id="focusCoverage"></div>' +
-        '<div class="title">TECLADO 0–36</div><div class="keys" id="focusKeys"></div><div class="status" id="focusReceipt" aria-live="polite"></div>';
+        '<div class="keys" id="focusKeys" hidden></div><div class="status" id="focusReceipt" aria-live="polite"></div>';
       $("focusClose").onclick = () => {
         state.focusTimelineId = null;
         scheduleSave();
@@ -10875,6 +10875,11 @@ function importHistory(numbers){return coordinator.import(numbers);}
 const sideDispose=globalThis['__analiseBetaDispose_'+side];
 return {
  side,root,
+ styles:()=>root.querySelector('style').textContent,
+ element:id=>$(id),
+ mount(id,target){const element=$(id);if(!element)return null;document.registerScope(element);target.appendChild(element);return element;},
+ timelineRows(){return timelineDefinitions().map(def=>{const ui=timelineUINodes.get(def.id);if(ui)document.registerScope(ui.item);return {id:def.id,name:def.name,item:ui?.item};});},
+ setFinancial(stake,multiplier){state.stake=stake;state.multiplier=multiplier;$('stake').value=stake;$('multiplier').value=multiplier;scheduleSave();},
  getState:()=>state,
  busy:()=>busy||inputRunning||inputQueue.length>0,
  canEnqueue:()=>appAlive&&state.history.length>=8&&(!busy||inputRunning),
@@ -10911,49 +10916,83 @@ if(typeof globalThis.__analiseBetaDualDispose==='function')globalThis.__analiseB
 if(typeof globalThis.__analiseBetaDispose==='function')globalThis.__analiseBetaDispose();
 let alive=true,operation=false,monitoring=false,aligned=true,expectedTurn=0;
 const sides={};
-nativeDocument.body.innerHTML=`
+let unifiedReady=false;
+const pairedRows=new Map();
+nativeDocument.body.innerHTML=`<style id="dual-base-style"></style>
 <style>
 body{margin:0;background:#101720;color:#f4f7fb;font:13px Arial,sans-serif}
-#beta-dual-app{max-width:2200px;margin:auto;padding:10px;box-sizing:border-box}
+#beta-dual-app{max-width:1100px;margin:auto;padding:10px;box-sizing:border-box}
 #beta-dual-app *{box-sizing:border-box}
 #beta-dual-app h1{font-size:22px;color:#59e5ff;margin:8px 0}
-#beta-dual-app .dual-import{background:#1d2938;border:1px solid #405a73;border-radius:10px;padding:12px;margin-bottom:12px}
-#beta-dual-app textarea{display:block;width:100%;height:85px;background:#0c1623;color:#fff;border:1px solid #62758b;border-radius:7px;padding:9px;font:16px Arial,sans-serif;margin:8px 0}
+#beta-dual-app textarea{display:block;width:100%;height:75px;background:#0c1623;color:#fff;border:1px solid #62758b;border-radius:7px;padding:9px;font:16px Arial,sans-serif;margin:8px 0}
 #beta-dual-app .dual-controls{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
-#beta-dual-app button,#beta-dual-app select{background:#304359;border:1px solid #708aa6;border-radius:7px;color:#fff;padding:10px;font-size:12px;min-height:40px}
-#beta-dual-app button{cursor:pointer}
+#beta-dual-app .dual-controls button,#beta-dual-app select{background:#304359;border:1px solid #708aa6;border-radius:7px;color:#fff;padding:9px;min-height:40px}
+#beta-dual-app .dual-controls button{cursor:pointer}
 #beta-dual-app button:disabled{opacity:.4;cursor:default}
 #beta-dual-app label{display:block;line-height:1.7}
-#beta-dual-app .dual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
-#beta-dual-app .dual-pane{min-width:0}
-#beta-dual-app .dual-heading{margin:0;padding:10px 12px;background:#123b55;color:#a4f1ff;border-radius:8px;font-size:17px}
-#beta-dual-app .dual-pane:last-child .dual-heading{background:#482264;color:#edcaff}
-#beta-dual-app .dual-status{min-height:24px;line-height:1.6;margin-top:8px;overflow-wrap:anywhere;color:#c4d8eb}
-@media(max-width:1050px){#beta-dual-app .dual-grid{grid-template-columns:1fr}}
+#beta-dual-app .dual-status{line-height:1.6;margin-top:8px;overflow-wrap:anywhere;color:#c4d8eb}
+#beta-dual-app .reading-card{border:1px solid #4386ad;border-left:5px solid #59d3ff;background:#122b3e;border-radius:7px;padding:8px;margin:7px 0;min-width:0}
+#beta-dual-app .reading-card.reverse{border-left-color:#4483ee;background:#182b45}
+#beta-dual-app .reading-mark{font-size:11px;color:#b5dcf3;display:flex;align-items:center;gap:6px;margin-bottom:4px}
+#beta-dual-app .reading-dot{display:inline-block;width:10px;height:10px;background:#59d3ff;border-radius:2px;flex:none}
+#beta-dual-app .reverse .reading-dot{background:#4483ee}
+#beta-dual-app .centers{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:7px 0}
+#beta-dual-app .center{min-height:57px;padding:5px 1px;gap:3px;border-width:1px}
+#beta-dual-app .center strong{font-size:clamp(21px,5.5vw,29px)}
+#beta-dual-app .center small{font-size:8px}
+#beta-dual-app .playNotice{font-size:12px;padding:7px;margin:5px 0;border-width:2px}
+#beta-dual-app .history-lane{display:flex;align-items:center;gap:5px;margin:7px 0;min-width:0}
+#beta-dual-app .history-lane .history{flex:1;display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:2px;min-width:0}
+#beta-dual-app .history-lane .chip{min-width:0;padding:4px 0;border-width:1px;border-radius:3px}
+#beta-dual-app .history-lane .chip b{font-size:clamp(10px,2.6vw,15px);line-height:1.2}
+#beta-dual-app .history-lane .chip small{display:none}
+#beta-dual-app .timeline-pair{margin:7px 0;border:1px solid #366181;border-radius:7px;overflow:hidden}
+#beta-dual-app .timelineItem{padding:0 7px;background:#11283a;border-left:4px solid #59d3ff}
+#beta-dual-app .timelineItem.reverse-lane{background:#182b45;border-left-color:#4483ee}
+#beta-dual-app .timelineRow{border:0;margin:0}
+#beta-dual-app .reverse-lane .timelineName{flex:0 0 32px;width:32px;font-size:0;min-height:32px;padding:3px;margin:0}
+#beta-dual-app .reverse-lane .timelineName::before{content:'↶';font-size:16px}
+#beta-dual-app .reverse-lane .timelineRow{padding-top:3px;padding-bottom:7px}
+#beta-dual-app .focusGame .keys,#beta-dual-app .focusGame [id="focusReceipt"]{display:none}
+#beta-dual-app .history-lane .history [title]{cursor:default}
+#beta-dual-app [hidden]{display:none!important}
+#beta-dual-app .control-label{font-size:11px;color:#b5dcf3;padding:6px 0}
+#beta-dual-app .audit-details .muted{font-size:10px}
+@media(max-width:650px){#beta-dual-app .reverse-lane .timelineRow{display:flex;gap:6px}#beta-dual-app .timelineName{font-size:12px}#beta-dual-app .history-lane{gap:3px}}
 </style>
 <main id="beta-dual-app">
-<section class="dual-import">
-<h1>ANÁLISE BETA 6.6.4 • NORMAL + INVERTIDO</h1>
-<label for="dual-paste">IMPORTAR HISTÓRICO NOS DOIS CONJUNTOS</label>
-<textarea id="dual-paste" placeholder="Cole de 8 a 70 resultados; selecione abaixo a ordem em que foram copiados."></textarea>
+<section class="panel">
+<h1>ANÁLISE BETA 6.6.5</h1>
+<label for="dual-paste">IMPORTAR HISTÓRICO</label>
+<textarea id="dual-paste" placeholder="Cole de 8 a 70 resultados."></textarea>
 <div class="dual-controls">
-<label>ORDEM COPIADA
-<select id="dual-order">
-<option value="OLDEST">MAIS ANTIGO → MAIS RECENTE</option>
-<option value="NEWEST">MAIS RECENTE → MAIS ANTIGO</option>
-</select></label>
-<button type="button" id="dual-import">IMPORTAR NORMAL + INVERTIDO</button>
-<button type="button" id="dual-undo">APAGAR ÚLTIMO DOS DOIS</button>
-<button type="button" id="dual-restore">RECUPERAR OS DOIS</button>
-<button type="button" id="dual-clear">ZERAR OS DOIS</button>
+<label>ORDEM COPIADA <select id="dual-order"><option value="OLDEST">MAIS ANTIGO → MAIS RECENTE</option><option value="NEWEST">MAIS RECENTE → MAIS ANTIGO</option></select></label>
+<button type="button" id="dual-import">IMPORTAR</button><button type="button" id="dual-undo">APAGAR ÚLTIMO</button><button type="button" id="dual-restore">RECUPERAR</button><button type="button" id="dual-clear">ZERAR TUDO</button>
 </div>
-<div class="dual-status" id="dual-status" role="status" aria-live="polite">NORMAL: sequência cronológica. INVERTIDO: histórico importado em ordem reversa.</div>
+<div class="dual-status" id="dual-status" role="status" aria-live="polite">Duas leituras independentes • um teclado.</div>
+<details class="audit-details"><summary>Conferir importação e janela</summary><div id="dual-audit-normal"></div><div id="dual-audit-inverted"></div></details>
 </section>
-<div class="dual-grid">
-<section class="dual-pane"><h2 class="dual-heading">NORMAL • ORDEM CRONOLÓGICA</h2><div id="dual-normal"></div></section>
-<section class="dual-pane"><h2 class="dual-heading">INVERTIDO • LEITURA REVERSA DO HISTÓRICO</h2><div id="dual-inverted"></div></section>
-</div>
-</main>`;
+<section class="panel">
+<div class="title">TREINADORES E ESTRATÉGIAS</div>
+<div class="dual-controls"><label>AJUSTAR LEITURA <select id="dual-control-side"><option value="NORMAL">NORMAL</option><option value="INVERTIDO">INVERSA</option></select></label></div>
+<div id="dual-controls-normal"></div><div id="dual-controls-inverted" hidden></div>
+</section>
+<section class="panel" id="dual-plays">
+<div class="title">JOGADAS</div>
+<div class="reading-card"><div class="reading-mark"><span class="reading-dot"></span>NORMAL</div><div id="dual-play-normal"></div></div>
+<div class="reading-card reverse"><div class="reading-mark"><span class="reading-dot"></span>INVERSA</div><div id="dual-play-inverted"></div></div>
+</section>
+<section class="panel"><div class="title">TECLADO 0–36</div><div id="dual-keyboard"></div></section>
+<section class="panel" id="dual-last-panel"><div class="title">ÚLTIMOS 14 NÚMEROS</div>
+<div class="history-lane"><span class="reading-dot" title="Normal" aria-label="Normal"></span><div id="dual-last-normal"></div></div>
+<div class="history-lane reverse"><span class="reading-dot" title="Inversa" aria-label="Inversa"></span><div id="dual-last-inverted"></div></div>
+</section>
+<section class="panel"><button class="head" id="dual-timeline-toggle">LINHAS DO TEMPO • NORMAL / INVERSA <span>− / +</span></button><div class="muted">W = direto • G1 = defesa • R = LOSS final. Linha de cima: normal. Linha azul de baixo: inversa.</div><div id="dual-timelines"></div></section>
+<section class="panel"><div class="title">FICHAS / G1</div><div class="row" id="dual-financial"></div></section>
+<section class="panel"><button class="head" id="dual-general-toggle">RESULTADO GERAL <span>− / +</span></button><div id="dual-general"><details open><summary>NORMAL</summary><div id="dual-result-normal"></div></details><details><summary>INVERSA</summary><div id="dual-result-inverted"></div></details></div></section>
+<div id="dual-normal" hidden></div><div id="dual-inverted" hidden></div>
+</main>
+`;
 const ui=id=>nativeDocument.getElementById(id);
 const status=message=>{if(alive)ui('dual-status').textContent=message;};
 const stateKey='ANALISE_BETA_V664_DUAL_INPUT_ORDER';
@@ -10964,7 +11003,7 @@ function running(){return operation||both().some(s=>s.busy());}
 function updateButtons(){
  const blocked=running();
  for(const id of ['dual-import','dual-undo','dual-restore','dual-clear'])ui(id).disabled=blocked;
- for(const id of ['dual-normal','dual-inverted'])ui(id).inert=operation;
+ for(const id of ['dual-controls-normal','dual-controls-inverted','dual-plays','dual-keyboard','dual-timelines'])ui(id).inert=operation;
 }
 function inputNumbers(text){
  const tokens=String(text).match(/\d+/g)||[];
@@ -11059,12 +11098,57 @@ const coordinator={
    await idle();if(alive&&checkAlignment())status('DUAS SESSÕES RECUPERADAS • GIRO '+expectedTurn);
   }finally{operation=false;if(alive)updateButtons();}
  },
+ render(){if(unifiedReady)pairTimelines();},
  busy:running,prepareHistories,inputNumbers
 };
 for(const [side,id] of [['NORMAL','dual-normal'],['INVERTIDO','dual-inverted']]){
  const root=ui(id).attachShadow({mode:'open'});
  sides[side]=runBetaSide(side,root,coordinator,nativeDocument);
 }
+function pairTimelines(){
+ const normal=sides.NORMAL.timelineRows(),inverse=new Map(sides.INVERTIDO.timelineRows().map(row=>[row.id,row]));
+ for(const row of normal){
+  const reversed=inverse.get(row.id);if(!row.item||!reversed?.item)continue;
+  let pair=pairedRows.get(row.id);
+  if(!pair){pair=nativeDocument.createElement('div');pair.className='timeline-pair';pair.dataset.strategy=row.id;pairedRows.set(row.id,pair);ui('dual-timelines').appendChild(pair);}
+  row.item.classList.add('normal-lane');reversed.item.classList.add('reverse-lane');
+  const label=reversed.item.querySelector('.timelineName');if(label)label.setAttribute('aria-label',row.name+' • leitura inversa');
+  if(row.item.parentNode!==pair)pair.appendChild(row.item);
+  if(reversed.item.parentNode!==pair)pair.appendChild(reversed.item);
+  // Existing focus elements remain below their own timeline, including after rebuilds.
+ }
+ for(const [side,id] of [['NORMAL','dual-controls-normal'],['INVERTIDO','dual-controls-inverted']]){
+  const focus=sides[side].element('focusGame');
+  if(focus&&!focus.hidden){const wanted=pairedRows.get(sides[side].getState().focusTimelineId);const rows=side==='NORMAL'?normal:[...inverse.values()];const lane=rows.find(row=>row.id===sides[side].getState().focusTimelineId)?.item;if(wanted&&lane&&focus.parentNode!==lane)lane.appendChild(focus);}
+ }
+}
+function mountUnified(){
+ ui('dual-base-style').textContent=sides.NORMAL.styles();
+ for(const [side,tail] of [['NORMAL','normal'],['INVERTIDO','inverted']]){
+  const engine=sides[side];
+  for(const id of ['strategies','options'])engine.mount(id,ui('dual-controls-'+tail));
+  for(const id of ['selected','centers','coverage'])engine.mount(id,ui('dual-play-'+tail));
+  for(const id of ['status','importAudit','counter','windowInfo','cycleInfo'])engine.mount(id,ui('dual-audit-'+tail));
+  engine.mount('last',ui('dual-last-'+tail));
+  // The wrapper itself stretches to the available history lane width.
+  ui('dual-last-'+tail).style.flex='1';ui('dual-last-'+tail).style.minWidth='0';
+  engine.mount('general',ui('dual-result-'+tail));
+  // Register the focus root before it moves under a timeline row.
+  engine.mount('focusGame',ui('dual-timelines'));
+ }
+ for(const id of ['receipt','keys'])sides.NORMAL.mount(id,ui('dual-keyboard'));
+ for(const [id,label] of [['stake','VALOR DA FICHA'],['multiplier','MULTIPLICADOR G1']]){
+  const wrapper=nativeDocument.createElement('label');wrapper.textContent=label;
+  sides.NORMAL.mount(id,wrapper);ui('dual-financial').appendChild(wrapper);
+  const input=sides.NORMAL.element(id),previous=input.onchange;
+  input.onchange=()=>{previous?.();const s=sides.NORMAL.getState();sides.INVERTIDO.setFinancial(s.stake,s.multiplier);};
+ }
+ unifiedReady=true;pairTimelines();
+}
+mountUnified();
+ui('dual-control-side').onchange=()=>{const inverse=ui('dual-control-side').value==='INVERTIDO';ui('dual-controls-normal').hidden=inverse;ui('dual-controls-inverted').hidden=!inverse;};
+ui('dual-timeline-toggle').onclick=()=>{ui('dual-timelines').hidden=!ui('dual-timelines').hidden;};
+ui('dual-general-toggle').onclick=()=>{ui('dual-general').hidden=!ui('dual-general').hidden;};
 ui('dual-import').onclick=()=>{try{coordinator.import(inputNumbers(ui('dual-paste').value));}catch(error){alert(String(error.message||error));}};
 ui('dual-undo').onclick=()=>coordinator.undo();
 ui('dual-clear').onclick=()=>coordinator.clear();
