@@ -1,4 +1,18 @@
-/* ANÁLISE BETA 6.6.5 — DUAS LEITURAS EM UMA TELA COMPACTA.
+/* V6.6.6 — MEMÓRIA CAUSAL DO QUARTO RESULTADO.
+Acrescenta trinca→quarto, forma girada/refletida, amplitude/proporção,
+encadeamento de 4–8, fechamento/contorno, sucessores de arcos e polos.
+Atlas: 1.369 formas relativas, equivalentes a 50.653 trincas numéricas.
+Enumeração geométrica NÃO significa ocorrências observadas ou acertos.
+OPÇÃO EXPERIMENTAL, DESLIGADA POR PADRÃO: não houve ganho consistente.
+Oito canais usam somente resultados já conhecidos; influência total até 20%
+do componente de triangulação, e somente com avaliação causal favorável.
+Desligada, ou na falta de suporte, preserva exatamente o peso anterior.
+A avaliação desta memória não bloqueia gatilhos PÓS-LOSS/PÓS-3 LOSS.
+A tela compacta, os dois sentidos, um teclado, as estratégias e as defesas
+comprometidas permanecem. Sessões da 6.6.5 são retomadas sem reimportação.
+Resultados anteriores não são recalculados como se usassem o novo motor.
+*/
+/* ANÁLISE BETA 6.6.6 — DUAS LEITURAS EM UMA TELA COMPACTA.
 BASE: 6.6.4, com os cálculos da 6.6.1 preservados.
 NORMAL: histórico na ordem cronológica escolhida na importação.
 INVERTIDO: os mesmos resultados em ordem reversa, com treinamento próprio.
@@ -42,7 +56,7 @@ let appAlive=true;
 function isCurrentApp(){return appAlive;}
 
   /*
-ANÁLISE BETA V6.6.5 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.6 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -76,7 +90,7 @@ ANÁLISE BETA V6.6.5 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.6.5",
+  const VERSION = "6.6.6",
     KEY = 'ANALISE_BETA_V664_DUAL_'+side,
     WINDOW = 70;
   const OLD_KEYS=[];
@@ -477,7 +491,161 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     );
   }
 
+/* Memória causal do quarto resultado. Geometria simulada não é observação.
+   O atlas enumera formas possíveis; distribuições usam SOMENTE sucessores vistos.
+   Cada canal conta uma ocorrência uma vez. Canais não somam suas amostras.
+   Sem suporte e avaliação cronológica favorável, a influência é exatamente zero. */
+function createTriangleMemory666(wheel){
+  const N=37, index=Array(N), names=[
+    'TRINCA EXATA → QUARTO', 'FORMA GIRADA', 'FORMA REFLETIDA',
+    'AMPLITUDE E PROPORÇÃO', 'ENCADEAMENTO 4–8', 'FECHAMENTO E CONTORNO',
+    'ARCO → PRÓXIMO RESULTADO', 'POLOS → PRÓXIMO RESULTADO'
+  ];
+  wheel.forEach((n,i)=>{index[n]=i;});
+  const mod=n=>(n%N+N)%N;
+  const jump=(a,b)=>{const d=mod(b-a);return d<=18?d:d-N;};
+  const dist=(a,b)=>Math.abs(jump(a,b));
+  const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
+  const cache=new Map(), forecasts=new Map();
+  const keep=(map,key,value)=>{map.set(key,value);if(map.size>384)map.delete(map.keys().next().value);return value;};
+  const points=Array.from({length:N},(_,i)=>[Math.sin(i*2*Math.PI/N),Math.cos(i*2*Math.PI/N)]);
+  const chord=(a,b)=>Math.hypot(points[a][0]-points[b][0],points[a][1]-points[b][1]);
+  const angle=(a,b,c)=>{
+    const x=points[a][0]-points[b][0],y=points[a][1]-points[b][1];
+    const u=points[c][0]-points[b][0],v=points[c][1]-points[b][1];
+    const length=Math.hypot(x,y)*Math.hypot(u,v);
+    return length<1e-12?null:Math.acos(Math.max(-1,Math.min(1,(x*u+y*v)/length)))*180/Math.PI;
+  };
+  // Fixar A na posição 0 elimina apenas rotações: 37² formas, todas as repetições inclusas.
+  const atlas=Array.from({length:N*N},(_,id)=>{
+    const b=Math.floor(id/N),c=id%N,s1=jump(0,b),s2=jump(b,c);
+    const closure=dist(0,c),net=s1+s2;
+    const area=Math.abs((points[b][0]-points[0][0])*(points[c][1]-points[0][1])-(points[b][1]-points[0][1])*(points[c][0]-points[0][0]))/2;
+    const type=b===0&&c===0?'TRIPLA':c===0?'RETORNO':b===0?'REPETIÇÃO INICIAL':b===c?'REPETIÇÃO FINAL':Math.sign(s1)===Math.sign(s2)?'CONTINUIDADE':'INVERSÃO';
+    return Object.freeze({s1,s2,closure,net,length:Math.abs(s1)+Math.abs(s2),
+      trend:Math.sign(Math.abs(s2)-Math.abs(s1)),type,area,degenerate:area<1e-10,
+      ratio:s1?Math.abs(s2/s1):null,
+      contour:Math.sign(s1)===Math.sign(s2)&&s1!==0&&Math.abs(net)>=31&&closure<=6,
+      chords:[chord(0,b),chord(b,c),chord(0,c)],angles:[angle(b,0,c),angle(0,b,c),angle(0,c,b)]});
+  });
+  const feature=(a,b,c)=>atlas[mod(b-a)*N+mod(c-a)];
+  const kernels=Array.from({length:N},(_,center)=>{
+    const values=Array.from({length:N},(_,j)=>Math.exp(-dist(center,j)/1.25));
+    const total=values.reduce((s,v)=>s+v,0);return values.map(v=>v/total);
+  });
+  function arc(p,end){
+    const start=Math.max(0,end-5);let best=null;
+    for(let sector=0;sector<N;sector++){
+      let count=0;for(let i=start;i<=end;i++)if(mod(p[i]-sector)<8)count++;
+      if(!best||count>best.count)best={start:sector,count};
+    }
+    if(!best||best.count<3)return null;
+    const inside=mod(p[end]-best.start)<8;
+    return {...best,inside,total:end-start+1,offset:mod(p[end]-best.start)};
+  }
+  function poles(p,end){
+    if(end<3)return null;
+    const a=p[end-3],b=p[end-2],c=p[end-1],d=p[end];
+    if(dist(a,b)<8||dist(a,c)>2||dist(b,d)>2)return null;
+    const initial=dist(a,b),separation=dist(c,d);
+    return {a,b,c,d,separation,movement:Math.sign(separation-initial)};
+  }
+  function raw(history){
+    const h=history.slice(-70),key=h.join(',');if(cache.has(key))return cache.get(key);
+    const p=h.map(n=>index[n]),end=p.length-1;
+    const modes=names.map(name=>({name,support:0,occurrences:0,weights:Array(N).fill(6)}));
+    if(end<2)return keep(cache,key,modes.map(m=>({...m,weights:Array(N).fill(1)})));
+    const current=feature(p[end-2],p[end-1],p[end]);
+    const currentArc=arc(p,end),currentPoles=poles(p,end);
+    function add(k,weight,center,exact=false){
+      if(weight<0.025)return;
+      const mode=modes[k];mode.support+=weight;mode.occurrences++;
+      if(exact)mode.weights[mod(center)]+=weight*N;
+      else for(let j=0;j<N;j++)mode.weights[j]+=weight*N*kernels[mod(center)][j];
+    }
+    for(let old=2;old<end;old++){
+      // old+1 is an observed successor and is never the unknown next spin.
+      const f=feature(p[old-2],p[old-1],p[old]),next=p[old+1];
+      const recency=Math.exp(-(end-old-1)/28),delta=jump(p[old],next);
+      if(h[old-2]===h[end-2]&&h[old-1]===h[end-1]&&h[old]===h[end])add(0,recency,next,true);
+      const shape=(f.type===current.type?1:0.2)*(f.trend===current.trend?1:0.4);
+      const sameDiff=Math.abs(f.s1-current.s1)+Math.abs(f.s2-current.s2);
+      if(sameDiff<=4)add(1,recency*Math.exp(-sameDiff/2)*shape,p[end]+delta);
+      const reflectedDiff=Math.abs(f.s1+current.s1)+Math.abs(f.s2+current.s2);
+      if(reflectedDiff<=4)add(2,recency*Math.exp(-reflectedDiff/2)*shape,p[end]-delta);
+      const amplitudeDiff=Math.abs(Math.abs(f.s1)-Math.abs(current.s1))+Math.abs(Math.abs(f.s2)-Math.abs(current.s2));
+      if(amplitudeDiff<=5&&f.trend===current.trend&&Math.abs(f.closure-current.closure)<=3){
+        const sign=Math.sign(current.s2)*Math.sign(f.s2)||1;
+        const ratio=f.ratio==null||current.ratio==null?1:Math.exp(-Math.abs(Math.log((f.ratio+0.1)/(current.ratio+0.1))));
+        add(3,recency*Math.exp(-amplitudeDiff/3)*ratio,p[end]+delta*sign);
+      }
+      // One historical endpoint contributes once: choose its longest supported chain.
+      let chain=null;
+      for(let length=Math.min(8,old+1,end+1);length>=4;length--){
+        let error=0,opposite=0;
+        for(let k=0;k<length-1;k++){
+          const a=jump(p[end-k-1],p[end-k]),b=jump(p[old-k-1],p[old-k]);
+          error+=Math.abs(a-b);if(Math.sign(a)!==Math.sign(b))opposite++;
+        }
+        if(error/(length-1)<=2&&opposite<=1){chain={error:error/(length-1),length};break;}
+      }
+      if(chain)add(4,recency*Math.exp(-chain.error/2)*(chain.length-2)/6,p[end]+delta);
+      if(current.closure<=6&&f.closure<=6&&current.contour===f.contour&&f.type===current.type&&f.trend===current.trend){
+        const similarity=Math.exp(-Math.abs(current.closure-f.closure)/2-Math.abs(current.length-f.length)/8-Math.abs(current.area-f.area));
+        add(5,recency*similarity,p[end-2]+jump(p[old-2],next));
+      }
+      const oldArc=currentArc?arc(p,old):null;
+      if(oldArc&&oldArc.inside===currentArc.inside&&Math.abs(oldArc.count-currentArc.count)<=1&&Math.abs(oldArc.total-currentArc.total)<=1){
+        const relative=dist(oldArc.offset,currentArc.offset);
+        if(relative<=4)add(6,recency*Math.exp(-relative/2),currentArc.start+mod(next-oldArc.start));
+      }
+      const oldPoles=currentPoles?poles(p,old):null;
+      if(oldPoles&&oldPoles.movement===currentPoles.movement&&Math.abs(oldPoles.separation-currentPoles.separation)<=3){
+        add(7,recency*Math.exp(-Math.abs(oldPoles.separation-currentPoles.separation)/2),currentPoles.c+jump(oldPoles.c,next));
+      }
+    }
+    for(const mode of modes){const average=mean(mode.weights);mode.weights=mode.weights.map(v=>v/average);}
+    return keep(cache,key,modes);
+  }
+  function analyze(history,baseline){
+    const h=history.slice(-70),key=h.join(',');if(forecasts.has(key))return forecasts.get(key);
+    const current=raw(h),base=baseline(h),logs=names.map(()=>[]);
+    // Rolling chronological validation. No actual result enters its own forecast.
+    for(let t=Math.max(8,h.length-24);t<h.length;t++){
+      const before=h.slice(0,t),past=raw(before),previous=baseline(before),outcome=index[h[t]];
+      for(let k=0;k<names.length;k++){
+        if(past[k].support<2||past[k].occurrences<3)continue;
+        const comparison=previous[outcome],trial=0.85*comparison+0.15*past[k].weights[outcome];
+        logs[k].push(Math.log(Math.max(1e-9,trial)/Math.max(1e-9,comparison)));
+      }
+    }
+    const modes=current.map((model,k)=>{
+      const values=logs[k],gain=mean(values),count=values.length;
+      const variance=count>1?values.reduce((s,x)=>s+(x-gain)**2,0)/(count-1):0;
+      const stderr=count?Math.sqrt(variance/count):0;
+      const recentGain=mean(values.slice(-4));
+      const active=count>=8&&model.occurrences>=3&&model.support>=2&&gain>stderr&&recentGain>0;
+      const mass=active?Math.min(0.2,(gain-stderr)*5)*count/(count+16)*Math.min(1,model.support/8):0;
+      return {...model,evaluations:count,meanLogGain:gain,stderr,recentGain,active,mass};
+    });
+    const totalMass=modes.reduce((s,m)=>s+m.mass,0),influence=Math.min(0.2,totalMass);
+    const weights=totalMass?base.map((v,j)=>v*(1-influence)+influence*modes.reduce((s,m)=>s+m.weights[j]*m.mass,0)/totalMass):[...base];
+    return keep(forecasts,key,{weights,modes,influence,observedSuccessors:Math.max(0,h.length-3),
+      status:influence?'ATIVA EM TESTE CRONOLÓGICO':'SEM SUPORTE FAVORÁVEL — BASE PRESERVADA'});
+  }
+  return {raw,analyze,feature,atlas,names,clear(){cache.clear();forecasts.clear();}};
+}
+
+
+  const triangleMemory666 = createTriangleMemory666(W);
   function triangleAnalysis(h) {
+    const original=legacyTriangleAnalysis(h);
+    if(!state.structuralMemoryEnabled)return original;
+    const successor=triangleMemory666.analyze(h,past=>legacyTriangleAnalysis(past).weights);
+    return {...original,weights:successor.weights,successorMemory:successor};
+  }
+
+  function legacyTriangleAnalysis(h) {
     const key = h.join(",");
     if (triangleCache.has(key)) return triangleCache.get(key);
     const triples = [];
@@ -2666,6 +2834,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
   function fresh() {
     return {
+      structuralMemoryVersion: "6.6.6",
+      structuralMemoryEnabled: false,
       forecastVersion: VERSION,
       history: [],
       historyTurns: [],
@@ -2843,13 +3013,18 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       r.strategy = "TRAINER";
       r.manual = null;
     }
+    if(data.structuralMemoryVersion!=="6.6.6"){
+      r.structuralMemoryVersion="6.6.6";
+      r.block={...r.block,data:null};
+    }
+
     return r;
   }
 
   function settings() {
     return Object.fromEntries(
       [
-        "strategy",
+        "structuralMemoryEnabled","strategy",
         "postLossEnabled",
         "postThreeEnabled",
         "rank",
@@ -2870,6 +3045,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
   }
 
   function clearSpatialCaches() {
+    triangleMemory666.clear();
     triangleCache.clear();
     spaceCache.clear();
     rawSpaceCache.clear();
@@ -3429,7 +3605,7 @@ function importFingerprint(value){
 }
 function describeImport(numbers,opts){
  const config={};
- for(const key of ['strategy','postLossEnabled','postThreeEnabled','rank','manual','adaptive',
+ for(const key of ['structuralMemoryEnabled','strategy','postLossEnabled','postThreeEnabled','rank','manual','adaptive',
  'created','activeCreated','g1','g1Trainer','galeSkip','secondHouse'])config[key]=copy(opts[key]);
  return {version:VERSION,count:numbers.length,oldest:numbers[0],newest:numbers.at(-1),
  historyId:importFingerprint(numbers),settingsId:importFingerprint(config),config};
@@ -4741,7 +4917,7 @@ if(!isCurrentApp())return false;
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.6.5 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.6 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -4775,7 +4951,7 @@ ANÁLISE BETA V6.6.5 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.6.5",
+    const VERSION = "6.6.6",
       KEY = "ANALISE_BETA_V664",
       WINDOW = 70;
     const OLD_KEYS=[];
@@ -5183,7 +5359,161 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
       );
     }
 
-    function triangleAnalysis(h) {
+/* Memória causal do quarto resultado. Geometria simulada não é observação.
+   O atlas enumera formas possíveis; distribuições usam SOMENTE sucessores vistos.
+   Cada canal conta uma ocorrência uma vez. Canais não somam suas amostras.
+   Sem suporte e avaliação cronológica favorável, a influência é exatamente zero. */
+function createTriangleMemory666(wheel){
+  const N=37, index=Array(N), names=[
+    'TRINCA EXATA → QUARTO', 'FORMA GIRADA', 'FORMA REFLETIDA',
+    'AMPLITUDE E PROPORÇÃO', 'ENCADEAMENTO 4–8', 'FECHAMENTO E CONTORNO',
+    'ARCO → PRÓXIMO RESULTADO', 'POLOS → PRÓXIMO RESULTADO'
+  ];
+  wheel.forEach((n,i)=>{index[n]=i;});
+  const mod=n=>(n%N+N)%N;
+  const jump=(a,b)=>{const d=mod(b-a);return d<=18?d:d-N;};
+  const dist=(a,b)=>Math.abs(jump(a,b));
+  const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
+  const cache=new Map(), forecasts=new Map();
+  const keep=(map,key,value)=>{map.set(key,value);if(map.size>384)map.delete(map.keys().next().value);return value;};
+  const points=Array.from({length:N},(_,i)=>[Math.sin(i*2*Math.PI/N),Math.cos(i*2*Math.PI/N)]);
+  const chord=(a,b)=>Math.hypot(points[a][0]-points[b][0],points[a][1]-points[b][1]);
+  const angle=(a,b,c)=>{
+    const x=points[a][0]-points[b][0],y=points[a][1]-points[b][1];
+    const u=points[c][0]-points[b][0],v=points[c][1]-points[b][1];
+    const length=Math.hypot(x,y)*Math.hypot(u,v);
+    return length<1e-12?null:Math.acos(Math.max(-1,Math.min(1,(x*u+y*v)/length)))*180/Math.PI;
+  };
+  // Fixar A na posição 0 elimina apenas rotações: 37² formas, todas as repetições inclusas.
+  const atlas=Array.from({length:N*N},(_,id)=>{
+    const b=Math.floor(id/N),c=id%N,s1=jump(0,b),s2=jump(b,c);
+    const closure=dist(0,c),net=s1+s2;
+    const area=Math.abs((points[b][0]-points[0][0])*(points[c][1]-points[0][1])-(points[b][1]-points[0][1])*(points[c][0]-points[0][0]))/2;
+    const type=b===0&&c===0?'TRIPLA':c===0?'RETORNO':b===0?'REPETIÇÃO INICIAL':b===c?'REPETIÇÃO FINAL':Math.sign(s1)===Math.sign(s2)?'CONTINUIDADE':'INVERSÃO';
+    return Object.freeze({s1,s2,closure,net,length:Math.abs(s1)+Math.abs(s2),
+      trend:Math.sign(Math.abs(s2)-Math.abs(s1)),type,area,degenerate:area<1e-10,
+      ratio:s1?Math.abs(s2/s1):null,
+      contour:Math.sign(s1)===Math.sign(s2)&&s1!==0&&Math.abs(net)>=31&&closure<=6,
+      chords:[chord(0,b),chord(b,c),chord(0,c)],angles:[angle(b,0,c),angle(0,b,c),angle(0,c,b)]});
+  });
+  const feature=(a,b,c)=>atlas[mod(b-a)*N+mod(c-a)];
+  const kernels=Array.from({length:N},(_,center)=>{
+    const values=Array.from({length:N},(_,j)=>Math.exp(-dist(center,j)/1.25));
+    const total=values.reduce((s,v)=>s+v,0);return values.map(v=>v/total);
+  });
+  function arc(p,end){
+    const start=Math.max(0,end-5);let best=null;
+    for(let sector=0;sector<N;sector++){
+      let count=0;for(let i=start;i<=end;i++)if(mod(p[i]-sector)<8)count++;
+      if(!best||count>best.count)best={start:sector,count};
+    }
+    if(!best||best.count<3)return null;
+    const inside=mod(p[end]-best.start)<8;
+    return {...best,inside,total:end-start+1,offset:mod(p[end]-best.start)};
+  }
+  function poles(p,end){
+    if(end<3)return null;
+    const a=p[end-3],b=p[end-2],c=p[end-1],d=p[end];
+    if(dist(a,b)<8||dist(a,c)>2||dist(b,d)>2)return null;
+    const initial=dist(a,b),separation=dist(c,d);
+    return {a,b,c,d,separation,movement:Math.sign(separation-initial)};
+  }
+  function raw(history){
+    const h=history.slice(-70),key=h.join(',');if(cache.has(key))return cache.get(key);
+    const p=h.map(n=>index[n]),end=p.length-1;
+    const modes=names.map(name=>({name,support:0,occurrences:0,weights:Array(N).fill(6)}));
+    if(end<2)return keep(cache,key,modes.map(m=>({...m,weights:Array(N).fill(1)})));
+    const current=feature(p[end-2],p[end-1],p[end]);
+    const currentArc=arc(p,end),currentPoles=poles(p,end);
+    function add(k,weight,center,exact=false){
+      if(weight<0.025)return;
+      const mode=modes[k];mode.support+=weight;mode.occurrences++;
+      if(exact)mode.weights[mod(center)]+=weight*N;
+      else for(let j=0;j<N;j++)mode.weights[j]+=weight*N*kernels[mod(center)][j];
+    }
+    for(let old=2;old<end;old++){
+      // old+1 is an observed successor and is never the unknown next spin.
+      const f=feature(p[old-2],p[old-1],p[old]),next=p[old+1];
+      const recency=Math.exp(-(end-old-1)/28),delta=jump(p[old],next);
+      if(h[old-2]===h[end-2]&&h[old-1]===h[end-1]&&h[old]===h[end])add(0,recency,next,true);
+      const shape=(f.type===current.type?1:0.2)*(f.trend===current.trend?1:0.4);
+      const sameDiff=Math.abs(f.s1-current.s1)+Math.abs(f.s2-current.s2);
+      if(sameDiff<=4)add(1,recency*Math.exp(-sameDiff/2)*shape,p[end]+delta);
+      const reflectedDiff=Math.abs(f.s1+current.s1)+Math.abs(f.s2+current.s2);
+      if(reflectedDiff<=4)add(2,recency*Math.exp(-reflectedDiff/2)*shape,p[end]-delta);
+      const amplitudeDiff=Math.abs(Math.abs(f.s1)-Math.abs(current.s1))+Math.abs(Math.abs(f.s2)-Math.abs(current.s2));
+      if(amplitudeDiff<=5&&f.trend===current.trend&&Math.abs(f.closure-current.closure)<=3){
+        const sign=Math.sign(current.s2)*Math.sign(f.s2)||1;
+        const ratio=f.ratio==null||current.ratio==null?1:Math.exp(-Math.abs(Math.log((f.ratio+0.1)/(current.ratio+0.1))));
+        add(3,recency*Math.exp(-amplitudeDiff/3)*ratio,p[end]+delta*sign);
+      }
+      // One historical endpoint contributes once: choose its longest supported chain.
+      let chain=null;
+      for(let length=Math.min(8,old+1,end+1);length>=4;length--){
+        let error=0,opposite=0;
+        for(let k=0;k<length-1;k++){
+          const a=jump(p[end-k-1],p[end-k]),b=jump(p[old-k-1],p[old-k]);
+          error+=Math.abs(a-b);if(Math.sign(a)!==Math.sign(b))opposite++;
+        }
+        if(error/(length-1)<=2&&opposite<=1){chain={error:error/(length-1),length};break;}
+      }
+      if(chain)add(4,recency*Math.exp(-chain.error/2)*(chain.length-2)/6,p[end]+delta);
+      if(current.closure<=6&&f.closure<=6&&current.contour===f.contour&&f.type===current.type&&f.trend===current.trend){
+        const similarity=Math.exp(-Math.abs(current.closure-f.closure)/2-Math.abs(current.length-f.length)/8-Math.abs(current.area-f.area));
+        add(5,recency*similarity,p[end-2]+jump(p[old-2],next));
+      }
+      const oldArc=currentArc?arc(p,old):null;
+      if(oldArc&&oldArc.inside===currentArc.inside&&Math.abs(oldArc.count-currentArc.count)<=1&&Math.abs(oldArc.total-currentArc.total)<=1){
+        const relative=dist(oldArc.offset,currentArc.offset);
+        if(relative<=4)add(6,recency*Math.exp(-relative/2),currentArc.start+mod(next-oldArc.start));
+      }
+      const oldPoles=currentPoles?poles(p,old):null;
+      if(oldPoles&&oldPoles.movement===currentPoles.movement&&Math.abs(oldPoles.separation-currentPoles.separation)<=3){
+        add(7,recency*Math.exp(-Math.abs(oldPoles.separation-currentPoles.separation)/2),currentPoles.c+jump(oldPoles.c,next));
+      }
+    }
+    for(const mode of modes){const average=mean(mode.weights);mode.weights=mode.weights.map(v=>v/average);}
+    return keep(cache,key,modes);
+  }
+  function analyze(history,baseline){
+    const h=history.slice(-70),key=h.join(',');if(forecasts.has(key))return forecasts.get(key);
+    const current=raw(h),base=baseline(h),logs=names.map(()=>[]);
+    // Rolling chronological validation. No actual result enters its own forecast.
+    for(let t=Math.max(8,h.length-24);t<h.length;t++){
+      const before=h.slice(0,t),past=raw(before),previous=baseline(before),outcome=index[h[t]];
+      for(let k=0;k<names.length;k++){
+        if(past[k].support<2||past[k].occurrences<3)continue;
+        const comparison=previous[outcome],trial=0.85*comparison+0.15*past[k].weights[outcome];
+        logs[k].push(Math.log(Math.max(1e-9,trial)/Math.max(1e-9,comparison)));
+      }
+    }
+    const modes=current.map((model,k)=>{
+      const values=logs[k],gain=mean(values),count=values.length;
+      const variance=count>1?values.reduce((s,x)=>s+(x-gain)**2,0)/(count-1):0;
+      const stderr=count?Math.sqrt(variance/count):0;
+      const recentGain=mean(values.slice(-4));
+      const active=count>=8&&model.occurrences>=3&&model.support>=2&&gain>stderr&&recentGain>0;
+      const mass=active?Math.min(0.2,(gain-stderr)*5)*count/(count+16)*Math.min(1,model.support/8):0;
+      return {...model,evaluations:count,meanLogGain:gain,stderr,recentGain,active,mass};
+    });
+    const totalMass=modes.reduce((s,m)=>s+m.mass,0),influence=Math.min(0.2,totalMass);
+    const weights=totalMass?base.map((v,j)=>v*(1-influence)+influence*modes.reduce((s,m)=>s+m.weights[j]*m.mass,0)/totalMass):[...base];
+    return keep(forecasts,key,{weights,modes,influence,observedSuccessors:Math.max(0,h.length-3),
+      status:influence?'ATIVA EM TESTE CRONOLÓGICO':'SEM SUPORTE FAVORÁVEL — BASE PRESERVADA'});
+  }
+  return {raw,analyze,feature,atlas,names,clear(){cache.clear();forecasts.clear();}};
+}
+
+
+    const triangleMemory666 = createTriangleMemory666(W);
+  function triangleAnalysis(h) {
+    const original=legacyTriangleAnalysis(h);
+    if(!state.structuralMemoryEnabled)return original;
+    const successor=triangleMemory666.analyze(h,past=>legacyTriangleAnalysis(past).weights);
+    return {...original,weights:successor.weights,successorMemory:successor};
+  }
+
+    function legacyTriangleAnalysis(h) {
       const key = h.join(",");
       if (triangleCache.has(key)) return triangleCache.get(key);
       const triples = [];
@@ -7412,6 +7742,8 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
 
     function fresh() {
       return {
+      structuralMemoryVersion: "6.6.6",
+      structuralMemoryEnabled: false,
         forecastVersion: VERSION,
         history: [],
         historyTurns: [],
@@ -7589,13 +7921,18 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
         r.strategy = "TRAINER";
         r.manual = null;
       }
+    if(data.structuralMemoryVersion!=="6.6.6"){
+      r.structuralMemoryVersion="6.6.6";
+      r.block={...r.block,data:null};
+    }
+
       return r;
     }
 
     function settings() {
       return Object.fromEntries(
         [
-          "strategy",
+          "structuralMemoryEnabled","strategy",
           "postLossEnabled",
           "postThreeEnabled",
           "rank",
@@ -7616,6 +7953,7 @@ Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 3
     }
 
     function clearSpatialCaches() {
+    triangleMemory666.clear();
       triangleCache.clear();
       spaceCache.clear();
       rawSpaceCache.clear();
@@ -8179,7 +8517,7 @@ function importFingerprint(value){
 }
 function describeImport(numbers,opts){
  const config={};
- for(const key of ['strategy','postLossEnabled','postThreeEnabled','rank','manual','adaptive',
+ for(const key of ['structuralMemoryEnabled','strategy','postLossEnabled','postThreeEnabled','rank','manual','adaptive',
  'created','activeCreated','g1','g1Trainer','galeSkip','secondHouse'])config[key]=copy(opts[key]);
  return {version:VERSION,count:numbers.length,oldest:numbers[0],newest:numbers.at(-1),
  historyId:importFingerprint(numbers),settingsId:importFingerprint(config),config};
@@ -9551,6 +9889,23 @@ state.importAudit=describeImport(clean,opts);
     };
   }
 
+
+  async function toggleStructuralMemory666(){
+    if(busy)return;
+    if(!cycleIsFree()){alert('AGUARDE ENCERRAR O CICLO ATUAL.');return;}
+    const previous=copy(state);
+    setBusy(true,'PREPARANDO MEMÓRIA TRIANGULAR');await waitFrame();
+    try{
+      state.structuralMemoryEnabled=!state.structuralMemoryEnabled;
+      state.block.data=null;clearSpatialCaches();
+      const result=await workerRequest('RESTORE',{state:{...state,undoStack:[]}});
+      if(!isCurrentApp())return;
+      if(result){const stack=state.undoStack;state={...result,undoStack:stack};}
+      else if(state.history.length>=8)prepareBlock();
+      save();
+    }catch(error){state=previous;clearSpatialCaches();alert(String(error.message||error));}
+    finally{if(isCurrentApp()){setBusy(false);render();}}
+  }
   function button(label, action, parent, extra = "") {
     const b = document.createElement("button");
     b.className = "btn " + extra;
@@ -9980,6 +10335,7 @@ if(receipt)receipt.textContent=audit?'ÚLTIMA IMPORTAÇÃO '+audit.historyId+' �
       $("selected").textContent =
         "MASTER ESCOLHEU: " + motor.masterTarget.name + " • " + state.phase;
     }
+    if(state.structuralMemoryEnabled)$("selected").textContent+=" • TRIANGULAÇÃO EXPERIMENTAL";
     renderFocusGame(motor);
     $("stake").value = state.stake;
     $("multiplier").value = state.multiplier;
@@ -10760,6 +11116,10 @@ if(!isCurrentApp())return;
     );
     b.dataset.option = field;
   }
+
+  const structuralButton666=button('MEMÓRIA TRIANGULAR • TESTE',toggleStructuralMemory666,$('options'));
+  structuralButton666.dataset.option='structuralMemoryEnabled';
+  structuralButton666.title='Experimental: a comparação histórica não demonstrou ganho consistente. Desligada preserva os pesos anteriores.';
   for (let n = 0; n <= 36; n++) {
     const b = document.createElement("button");
     b.className = "key" + (n === 0 ? " zero" : "");
@@ -10880,6 +11240,7 @@ return {
  mount(id,target){const element=$(id);if(!element)return null;document.registerScope(element);target.appendChild(element);return element;},
  timelineRows(){return timelineDefinitions().map(def=>{const ui=timelineUINodes.get(def.id);if(ui)document.registerScope(ui.item);return {id:def.id,name:def.name,item:ui?.item};});},
  setFinancial(stake,multiplier){state.stake=stake;state.multiplier=multiplier;$('stake').value=stake;$('multiplier').value=multiplier;scheduleSave();},
+ structuralDiagnostics(simulate=false){if(!state.structuralMemoryEnabled&&!simulate)return {status:'DESLIGADA — SEM GANHO COMPROVADO',influence:0};const r=triangleMemory666.analyze(state.history,past=>legacyTriangleAnalysis(past).weights);return {status:r.status,influence:r.influence,observedSuccessors:r.observedSuccessors,modes:r.modes.map(({name,support,occurrences,evaluations,meanLogGain,stderr,active,mass})=>({name,support,occurrences,evaluations,meanLogGain,stderr,active,mass}))};},
  getState:()=>state,
  busy:()=>busy||inputRunning||inputQueue.length>0,
  canEnqueue:()=>appAlive&&state.history.length>=8&&(!busy||inputRunning),
@@ -10962,7 +11323,7 @@ body{margin:0;background:#101720;color:#f4f7fb;font:13px Arial,sans-serif}
 </style>
 <main id="beta-dual-app">
 <section class="panel">
-<h1>ANÁLISE BETA 6.6.5</h1>
+<h1>ANÁLISE BETA 6.6.6</h1>
 <label for="dual-paste">IMPORTAR HISTÓRICO</label>
 <textarea id="dual-paste" placeholder="Cole de 8 a 70 resultados."></textarea>
 <div class="dual-controls">
