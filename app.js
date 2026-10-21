@@ -1,28 +1,26 @@
-/* V6.6.7 — AMPLIAÇÃO ATIVA DENTRO DOS MOTORES.
-Não depende do botão experimental da 6.6.6, que continua separado.
-Em cada prefixo examina os 37 próximos números: trincas exatas, giradas,
-refletidas, direções, áreas, ângulos, cordas, perímetro, amplitudes, proporções,
-fechamento/contorno, cadeias 4–8, polos móveis (tolerâncias 0–8) e arcos 1–37.
-Os eventos incluem formação, continuidade, inversão, interrupção, retomada,
-convergência, divergência, manutenção, fusão, concentração, dispersão e ruptura;
-nos arcos: formação, entrada, permanência, saída, reentrada, enfraquecimento,
-retomada, substituição e encerramento.
-Cada família/raio/variação recebe pesos próprios dessas leituras antes da
-geometria. A ausência de suporte deixa o canal neutro, sem apagar a hipótese.
-Guarda o prefixo anterior e a cobertura dos motores antes de interpretar o erro.
-Enumerar os 37 resultados não equivale a prever os 37 nem a uma aposta vencedora.
-Escopo finito explícito: não é promessa de todas as estruturas matemáticas
-concebíveis, de cobertura individual de 37, ou de acerto garantido.
-Tela única, controles, ciclos e defesas comprometidas são preservados.
-Verificações: 50.653 trincas e 50.653 continuações relativas, causalidade,
-108 canais / 3.996 interpretações por prefixo completo, 65 bancos de 12,
-28 números por jogada, união 37/37, importações idênticas, worker equivalente,
-interface simulada, auditoria anterior ao resultado, persistência e descarte 10.
-Teste de referência de 44 giros: 5 GREEN diretos, 5 GREEN G1, 1 G1 pendente.
-O teste comprova funcionamento; não comprova melhoria de acerto.
-Não foi feita nova inspeção visual em navegador/iPhone nesta entrega.
+/* ANÁLISE BETA V6.6.9 — LEITURAS ATIVAS DA JANELA COMPLETA.
+Atlas integral de 1.369 formas de triangulação e 361 pares de amplitudes.
+Encadeamentos de todos os comprimentos 4..70 disponíveis na janela:
+sequência numérica, deslocamentos, reflexão, amplitudes, direção,
+fechamento, percurso, interrupção, retomada e mudanças de direção.
+Polos: 1.369 pares ordenados de posições, distâncias 0..18,
+19 tolerâncias 0..18, convergência/divergência, fusão, ruptura,
+retomada, concentração, dispersão e sobreposição explicitamente descrita.
+A sobreposição em tolerâncias largas não representa dois polos distintos.
+Arcos: 37 inícios por 37 larguras e todas as janelas 1..70 disponíveis.
+Roda inteira: 37 parametrizações equivalentes, uma cobertura neutra.
+Não duplica esses casos como observações independentes nem como vitórias.
+Todas as leituras alimentam os pesos antes da geometria de 28 números.
+Nenhum painel novo, botão de ativação ou importação obrigatória.
+Ciclos e defesas comprometidas, treinadores, pós-loss, duas leituras,
+linha do tempo, persistência, teclado e controles anteriores preservados.
+Só padrões anteriores com sucessor conhecido fornecem evidência.
+Cadeia tão longa quanto a janela é descrita sem inventar sucessor histórico.
+Escopo: leitura dentro da janela de até 70 resultados, com estes critérios
+explícitos. Não significa todas as definições matemáticas imagináveis,
+nem cobertura individual de 37, nem melhoria de acerto comprovada.
 */
-/* V6.6.7 — MEMÓRIA CAUSAL DO QUARTO RESULTADO.
+/* V6.6.9 — MEMÓRIA CAUSAL DO QUARTO RESULTADO.
 Acrescenta trinca→quarto, forma girada/refletida, amplitude/proporção,
 encadeamento de 4–8, fechamento/contorno, sucessores de arcos e polos.
 Atlas: 1.369 formas relativas, equivalentes a 50.653 trincas numéricas.
@@ -36,7 +34,7 @@ A tela compacta, os dois sentidos, um teclado, as estratégias e as defesas
 comprometidas permanecem. Sessões da 6.6.5 são retomadas sem reimportação.
 Resultados anteriores não são recalculados como se usassem o novo motor.
 */
-/* ANÁLISE BETA 6.6.7 — DUAS LEITURAS EM UMA TELA COMPACTA.
+/* ANÁLISE BETA 6.6.9 — DUAS LEITURAS EM UMA TELA COMPACTA.
 BASE: 6.6.4, com os cálculos da 6.6.1 preservados.
 NORMAL: histórico na ordem cronológica escolhida na importação.
 INVERTIDO: os mesmos resultados em ordem reversa, com treinamento próprio.
@@ -80,7 +78,7 @@ let appAlive=true;
 function isCurrentApp(){return appAlive;}
 
   /*
-ANÁLISE BETA V6.6.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.9 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -114,7 +112,7 @@ ANÁLISE BETA V6.6.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.6.7",
+  const VERSION = "6.6.9",
     KEY = 'ANALISE_BETA_V664_DUAL_'+side,
     WINDOW = 70;
   const OLD_KEYS=[];
@@ -694,6 +692,254 @@ function createMotorReadings667(wheel, atlas) {
     [.8, 2.2, 1.4, 1.5, .6, 1.3]
   ];
 
+  /* Atlas completo: nenhum corte por ranking, frequência ou classe.
+     ID = posição relativa de B * 37 + posição relativa de C, com A = 0.
+     Cada registro guarda atributos exatos; somente o passado fornece sucessores. */
+  const relativeForms = Array.from({ length: 1369 }, (_, id) => {
+    const b = Math.floor(id / 37), c = id % 37;
+    const shape = atlas.feature(0, b, c);
+    return Object.freeze({ ...shape, id, positions: Object.freeze([0, b, c]),
+      amplitudes: Object.freeze([Math.abs(shape.s1), Math.abs(shape.s2)]),
+      amplitudeId: Math.abs(shape.s1) * 19 + Math.abs(shape.s2),
+      amplitudeChange: Math.abs(shape.s2) - Math.abs(shape.s1),
+      perimeter: shape.chords.reduce((sum, value) => sum + value, 0),
+      partialReturn: c !== 0 && shape.s1 * shape.s2 < 0 && shape.closure < Math.abs(shape.s1),
+      signedResidual: shape.net - Math.round(shape.net / 37) * 37,
+      algebraicTurns: shape.net / 37,
+      chords: Object.freeze([...shape.chords]), angles: Object.freeze([...shape.angles])
+    });
+  });
+  const amplitudeForms = Array.from({ length: 361 }, (_, id) => {
+    const first = Math.floor(id / 19), second = id % 19;
+    return Object.freeze({ id, first, second, difference: second - first,
+      ratio: first === 0 ? null : second / first,
+      trend: second < first ? 'CONTRAÇÃO' : second > first ? 'EXPANSÃO' : 'MANUTENÇÃO' });
+  });
+  const formId = (a, b, c) => mod(b - a) * 37 + mod(c - a);
+  const kernelCache = new Map();
+
+  function fullKernels(currentId) {
+    if (kernelCache.has(currentId)) return kernelCache.get(currentId);
+    const current = relativeForms[currentId];
+    const geometry = new Float64Array(1369);
+    const closure = new Float64Array(1369);
+    const amplitude = new Float64Array(361);
+    for (const old of relativeForms) {
+      // Todos os 1.369 registros são avaliados, sem faixas arredondadas.
+      const steps = (Math.abs(current.s1 - old.s1) + Math.abs(current.s2 - old.s2)) / 12;
+      const chords = current.chords.reduce((sum, value, i) => sum + Math.abs(value - old.chords[i]), 0) / 3;
+      const angles = current.angles.reduce((sum, value, i) => {
+        const other = old.angles[i];
+        return sum + (value == null || other == null ? Number(value !== other) : Math.abs(value - other) / 180);
+      }, 0) / 3;
+      const area = Math.abs(current.area - old.area);
+      const ratio = current.ratio == null || old.ratio == null
+        ? Number(current.ratio !== old.ratio)
+        : Math.abs(Math.atan(current.ratio) - Math.atan(old.ratio));
+      const attributes = Math.abs(current.closure - old.closure) / 18 +
+        Math.abs(current.amplitudeChange - old.amplitudeChange) / 36 + ratio +
+        Number(current.partialReturn !== old.partialReturn) + Number(current.degenerate !== old.degenerate);
+      geometry[old.id] = Math.exp(-steps - chords - angles - area - attributes) + (old.id === currentId ? 4 : 0);
+      closure[old.id] = Math.exp(-Math.abs(current.closure - old.closure) / 4 -
+        Math.abs(current.net - old.net) / 12 - Math.abs(current.length - old.length) / 12 -
+        Number(current.contour !== old.contour));
+    }
+    for (const old of amplitudeForms) {
+      amplitude[old.id] = Math.exp(-(Math.abs(current.amplitudes[0] - old.first) +
+        Math.abs(current.amplitudes[1] - old.second)) / 5 -
+        Math.abs(current.amplitudeChange - old.difference) / 8) +
+        (old.id === current.amplitudeId ? 3 : 0);
+    }
+    const result = { geometry, closure, amplitude };
+    kernelCache.set(currentId, result);
+    if (kernelCache.size > 32) kernelCache.delete(kernelCache.keys().next().value);
+    return result;
+  }
+
+  function exhaustiveRead(prefix) {
+    const formCounts = new Uint16Array(1369);
+    const amplitudeCounts = new Uint16Array(361);
+    const observed = new Map();
+    // A trinca corrente ainda não tem sucessor e não pode treiná-lo.
+    for (let end = 2; end < prefix.length - 1; end++) {
+      const id = formId(prefix[end - 2], prefix[end - 1], prefix[end]);
+      const shape = relativeForms[id];
+      const nextStep = jump(prefix[end], prefix[end + 1]);
+      const mass = Math.exp(-(prefix.length - 2 - end) / 28);
+      formCounts[id]++;
+      amplitudeCounts[shape.amplitudeId]++;
+      let record = observed.get(id);
+      if (!record) {
+        record = { id, count: 0, mass: 0, successors: new Map() };
+        observed.set(id, record);
+      }
+      record.count++;
+      record.mass += mass;
+      const next = record.successors.get(nextStep) || { step: nextStep, count: 0, mass: 0 };
+      next.count++;
+      next.mass += mass;
+      record.successors.set(nextStep, next);
+    }
+    const currentId = prefix.length >= 3 ? formId(...prefix.slice(-3)) : null;
+    const groups = [0, 1, 3].map(group => ({ name: ['TRIANGULAÇÃO', 'AMPLITUDE', '', 'FECHAMENTO/PERCURSO'][group],
+      group, support: 0, modes: group === 1 ? 361 : 1369, weights: Array(37).fill(8) }));
+    if (currentId != null) {
+      const kernels = fullKernels(currentId);
+      const anchor = prefix.at(-1);
+      // Percorre explicitamente o atlas inteiro. Sem ocorrência, contribuição
+      // observada é zero; o registro continua disponível, sem inventar evidência.
+      for (let id = 0; id < 1369; id++) {
+        const shape = relativeForms[id], record = observed.get(id);
+        if (!record) continue;
+        const coefficients = [kernels.geometry[id], kernels.amplitude[shape.amplitudeId], kernels.closure[id]];
+        groups.forEach((group, index) => {
+          const coefficient = coefficients[index];
+          group.support += coefficient * record.mass;
+          for (const successor of record.successors.values()) {
+            const target = mod(anchor + successor.step);
+            const contribution = coefficient * successor.mass * 37;
+            group.weights[target] += contribution * .7;
+            group.weights[mod(target - 1)] += contribution * .15;
+            group.weights[mod(target + 1)] += contribution * .15;
+          }
+        });
+      }
+    }
+    groups.forEach(group => { group.weights = normalize(group.weights); });
+    return { currentId, formsEvaluated: currentId == null ? 0 : 1369,
+      amplitudesEvaluated: currentId == null ? 0 : 361,
+      representedForms: 1369, representedAmplitudes: 361,
+      numericTriples: 50653, formCounts, amplitudeCounts,
+      observedForms: observed.size, successorSamples: Math.max(0, prefix.length - 3),
+      observed: [...observed.values()].map(record => ({ ...record, successors: [...record.successors.values()] })), groups };
+  }
+
+  function catalogue(history, id = null) {
+    const reading = read(history), data = reading.exhaustive;
+    const describe = form => ({ ...form, occurrences: data.formCounts[form.id],
+      successors: data.observed.find(record => record.id === form.id)?.successors || [],
+      status: data.formCounts[form.id] ? 'OBSERVADA COM SUCESSOR' : 'REPRESENTADA SEM SUCESSOR OBSERVADO' });
+    if (id != null) return Number.isInteger(id) && id >= 0 && id < 1369 ? describe(relativeForms[id]) : null;
+    return relativeForms.map(describe);
+  }
+
+  // Capacidade finita explícita: qualquer sequência de até 70 resultados pode
+  // ser descrita. Apenas sequências anteriores com sucessor treinam os pesos.
+  const polePairs = Object.freeze(Array.from({length:1369},(_,id)=>{
+    const a=Math.floor(id/37),b=id%37;
+    return Object.freeze({id,positionA:a,positionB:b,numberA:wheel[a],numberB:wheel[b],
+      separation:distance(a,b),direction:jump(a,b)});
+  }));
+
+  function polePairReading(prefix,next,a,b,tolerance){
+    if(![a,b,next,tolerance].every(Number.isInteger)||a<0||a>36||b<0||b>36||next<0||next>36||tolerance<0||tolerance>18)return null;
+    const da=distance(a,next),db=distance(b,next),insideA=da<=tolerance,insideB=db<=tolerance;
+    const last=prefix.at(-1),previous=prefix.length>1?prefix.at(-2):null;
+    const side=n=>n==null?-1:distance(a,n)>tolerance&&distance(b,n)>tolerance?-1:distance(a,n)<distance(b,n)?0:distance(a,n)>distance(b,n)?1:2;
+    const currentSide=side(next),lastSide=side(last),priorSide=side(previous);
+    let event=currentSide<0?'FORA DOS POLOS':currentSide===2?'SOBREPOSIÇÃO DOS POLOS':lastSide<0?'RETOMADA':lastSide===currentSide?'PERMANÊNCIA':'ALTERNÂNCIA';
+    if(currentSide<0&&lastSide>=0)event='SAÍDA DOS POLOS';
+    if(currentSide<0&&lastSide<0&&priorSide>=0)event='RUPTURA';
+    if(a===b&&currentSide>=0)event='POLO ÚNICO / CONCENTRAÇÃO';
+    const oldSeparation=distance(a,b);
+    const newSeparation=currentSide===0?distance(next,b):currentSide===1?distance(a,next):oldSeparation;
+    const movement=Math.sign(newSeparation-oldSeparation);
+    if(currentSide>=0&&currentSide<2&&oldSeparation>0&&newSeparation===0)event='FUSÃO';
+    else if(event==='ALTERNÂNCIA'&&movement<0)event='CONVERGÊNCIA';
+    else if(event==='ALTERNÂNCIA'&&movement>0)event='DIVERGÊNCIA';
+    return {tolerance,positionA:a,positionB:b,numberA:wheel[a],numberB:wheel[b],
+      separation:oldSeparation,nextSeparation:newSeparation,movement,distanceA:da,distanceB:db,
+      insideA,insideB,overlap:insideA&&insideB,side:currentSide,event,
+      shiftA:currentSide===0?jump(a,next):0,shiftB:currentSide===1?jump(b,next):0};
+  }
+
+  function poleWindowWeights(prefix){
+    const weights=Array(37).fill(8),tolerances=Array.from({length:19},(_,t)=>({tolerance:t,support:0}));
+    if(prefix.length<4)return {name:'POLOS',weights:normalize(weights),support:0,tolerances,pairPositions:1369,separations:19};
+    const current=prefix.slice(-4),[a,b,c,d]=current;
+    const features=q=>({initial:distance(q[0],q[1]),final:distance(q[2],q[3]),
+      shiftA:jump(q[0],q[2]),shiftB:jump(q[1],q[3]),span:jump(q[0],q[1])});
+    const now=features(current);let support=0,samples=0;
+    for(let end=3;end<prefix.length-1;end++){
+      const q=prefix.slice(end-3,end+1),old=features(q);
+      const geometry=Math.exp(-Math.abs(now.initial-old.initial)/6-Math.abs(now.final-old.final)/6-
+        Math.abs(now.shiftA-old.shiftA)/8-Math.abs(now.shiftB-old.shiftB)/8-Math.abs(now.span-old.span)/10);
+      let coefficient=0;
+      for(let t=0;t<=18;t++){
+        const activeNow=Math.abs(now.shiftA)<=t&&Math.abs(now.shiftB)<=t;
+        const activeOld=Math.abs(old.shiftA)<=t&&Math.abs(old.shiftB)<=t;
+        // 0..18 são examinados; sobreposição é explícita e não são 19 ensaios independentes.
+        const overlapNow=now.final<=2*t,overlapOld=old.final<=2*t;
+        const similarity=geometry*(activeNow===activeOld?1:.25)*(overlapNow===overlapOld?1:.5);
+        tolerances[t].support+=similarity;
+        coefficient+=similarity/19;
+      }
+      const mass=coefficient*Math.exp(-(prefix.length-2-end)/28);
+      const next=mod(c+jump(q[2],prefix[end+1]));
+      weights[next]+=mass*37*.7;weights[mod(next-1)]+=mass*37*.15;weights[mod(next+1)]+=mass*37*.15;
+      support+=mass;samples++;
+    }
+    return {name:'POLOS',weights:normalize(weights),support,tolerances,pairPositions:1369,separations:19,samples,
+      current:{...now,numbers:current.map(p=>wheel[p]),movement:Math.sign(now.final-now.initial)}};
+  }
+
+  // Todas as janelas 1..N, todos os 37 inícios, larguras 1..36.
+  // Largura 37 também é representada, mas é neutra: contém a roda inteira.
+  function arcWindowWeights(prefix){
+    const length=prefix.length,weights=Array(37).fill(8),tables=[];
+    const windows=Array.from({length},(_,i)=>i+1);
+    if(!length)return {name:'ARCOS',weights,support:0,windows,sectorCases:1369,uniqueCovers:1333};
+    const eventTables=[],runTables=[];
+    const previousFlags=new Uint8Array(1369),runs=new Uint8Array(1369),seen=new Uint8Array(1369);
+    for(let end=0;end<length;end++){
+      const table=new Uint8Array((end+1)*1369),frequency=new Uint8Array(37);
+      for(let window=1;window<=end+1;window++){
+        frequency[prefix[end-window+1]]++;
+        const offset=(window-1)*1369;
+        for(let start=0;start<37;start++){
+          let count=0;
+          for(let width=1;width<=37;width++){
+            count+=frequency[mod(start+width-1)];
+            table[offset+(width-1)*37+start]=count;
+          }
+        }
+      }
+      tables.push(table);
+      const events=new Uint8Array(1369),runSnapshot=new Uint8Array(1369);
+      for(let width=1;width<=37;width++)for(let start=0;start<37;start++){
+        const id=(width-1)*37+start,inside=Number(mod(prefix[end]-start)<width);
+        // 0=fora,1=entrada,2=permanência,3=saída,4=reentrada.
+        events[id]=inside?(end&&previousFlags[id]?2:seen[id]?4:1):(end&&previousFlags[id]?3:0);
+        runs[id]=end&&previousFlags[id]===inside?runs[id]+1:1;
+        runSnapshot[id]=runs[id];previousFlags[id]=inside;if(inside)seen[id]=1;
+      }
+      eventTables.push(events);runTables.push(runSnapshot);
+    }
+    const current=tables.at(-1),currentEvents=eventTables.at(-1),currentRuns=runTables.at(-1);
+    let support=0,comparisons=0;
+    for(let end=0;end<length-1;end++){
+      let coefficient=0,windowCount=end+1;
+      for(let window=1;window<=windowCount;window++){
+        let sum=0;const offset=(window-1)*1369;
+        // Cada leitura espacial participa uma vez; sem somar como acertos.
+        for(let id=0;id<1332;id++){
+          const delta=Math.abs(current[offset+id]-tables[end][offset+id]);
+          const density=1/(1+delta/window);
+          const transition=currentEvents[id]===eventTables[end][id]?1:.35;
+          const duration=1/(1+Math.abs(currentRuns[id]-runTables[end][id])/window);
+          sum+=density*transition*duration;
+        }
+        coefficient+=sum/1332;comparisons+=1332;
+      }
+      const mass=coefficient/windowCount*Math.exp(-(length-2-end)/28);
+      const next=prefix[end+1];
+      weights[next]+=mass*37*.7;weights[mod(next-1)]+=mass*37*.15;weights[mod(next+1)]+=mass*37*.15;
+      support+=mass;
+    }
+    return {name:'ARCOS',weights:normalize(weights),support,windows,sectorCases:1369,
+      uniqueCovers:1333,comparisons,representedWindowSectorCases:length*1369};
+  }
+
   function poleStep(previous, prefix, next, tolerance) {
     const state = previous ? {
       ...previous,
@@ -752,7 +998,7 @@ function createMotorReadings667(wheel, atlas) {
     }
     if (!state.active && prefix.length >= 3 && state.event !== 'FUSÃO') {
       const [a, b, c] = prefix.slice(-3);
-      if (distance(a, b) >= Math.max(8, 2 * tolerance + 2) &&
+      if (distance(a, b) >= (tolerance<=8?Math.max(8,2*tolerance+2):0) &&
           distance(a, c) <= tolerance && distance(b, next) <= tolerance) {
         const split = state.concentration != null || state.fromFusion;
         state.anchors = [c, next];
@@ -763,7 +1009,7 @@ function createMotorReadings667(wheel, atlas) {
         state.outside = 0;
         state.active = true;
         state.concentration = null;
-        state.event = split ? 'NOVOS POLOS APÓS FUSÃO' : 'FORMAÇÃO';
+        state.event = tolerance>8&&distance(c,next)<=2*tolerance?'SOBREPOSIÇÃO DOS POLOS':split ? 'NOVOS POLOS APÓS FUSÃO' : 'FORMAÇÃO';
       }
     }
     if(state.active)state.inactiveAge=0;
@@ -845,7 +1091,7 @@ function createMotorReadings667(wheel, atlas) {
     return keys;
   }
 
-  function arcAlternative(history, number, start, width) {
+  function arcAlternative(history, number, start, width, window=8) {
     if (!Number.isInteger(start) || start < 0 || start > 36 || !Number.isInteger(width) || width < 1 || width > 37) return null;
     const prefix = history.slice(-70).map(number => positions[number]);
     const priorInside = prefix.length ? mod(prefix.at(-1) - start) < width : null;
@@ -853,7 +1099,7 @@ function createMotorReadings667(wheel, atlas) {
     const visited = prefix.some(position => mod(position - start) < width);
     const event = inside ? priorInside === true ? 'PERMANÊNCIA' : visited ? 'REENTRADA' : 'ENTRADA'
                          : priorInside === true ? 'SAÍDA' : 'AFASTAMENTO';
-    const sample = prefix.slice(-8);
+    const sample = prefix.slice(-Math.max(1,Math.min(70,Math.trunc(window)||8)));
     const visits = sample.filter(position => mod(position - start) < width).length;
     return { start, startNumber: wheel[start], width, number, inside, event, visits, sample: sample.length };
   }
@@ -876,27 +1122,20 @@ function createMotorReadings667(wheel, atlas) {
     function mode(id, group, key, anchor = c, orientation = 1) {
       if(captureModes)modes.push({ id, group, key, anchor, orientation });
     }
-    mode('TRINCA NUMÉRICA', 0, prefix.slice(-3).join(','), null);
-    mode('FORMA GIRADA', 0, f.s1 + ',' + f.s2);
-    const original = f.s1 + ',' + f.s2;
-    const reflected = -f.s1 + ',' + -f.s2;
-    mode('FORMA REFLETIDA', 0, original < reflected ? original : reflected, c, original < reflected ? 1 : -1);
-    mode('CLASSE E DIREÇÃO', 0, [f.type, Math.sign(f.s1), Math.sign(f.s2), f.degenerate].join('|'));
-    mode('ÁREA E ÂNGULO', 0, [Math.floor(f.area * 4), f.angles[1] == null ? 'DEGENERADO' : Math.floor(f.angles[1] / 20), Math.sign(f.net)].join('|'));
-    mode('CORDAS E PERÍMETRO', 0, [Math.floor(f.chords.reduce((s, v) => s + v, 0) * 2), Math.floor(Math.max(...f.chords) * 3), f.type].join('|'));
-    mode('CURTO MÉDIO LONGO', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), f.trend, Math.sign(f.s2)].join('|'));
-    mode('PROPORÇÃO E AMPLITUDE', 1, [f.ratio == null ? 'INDEFINIDA' : Math.floor(Math.min(8, f.ratio) * 2), Math.abs(f.s2), f.trend].join('|'));
-    mode('ALTERNÂNCIA DE AMPLITUDE', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), Math.abs(Math.abs(f.s1) - Math.abs(f.s2)) >= 10, f.type].join('|'));
-    mode('FECHAMENTO E CONTORNO', 3, [band(f.closure), f.contour, f.trend, Math.sign(f.net)].join('|'), a);
     const chains = [];
-    for (let length = 4; length <= Math.min(8, prefix.length); length++) {
+    for (let length = 4; length <= Math.min(70, prefix.length); length++) {
       const chain = prefix.slice(-length);
       const steps = chain.slice(1).map((position, i) => jump(chain[i], position));
       const net = steps.reduce((sum, value) => sum + value, 0);
       const absolute = steps.reduce((sum, value) => sum + Math.abs(value), 0);
       const closure = distance(chain[0], c);
       const trends = steps.slice(1).map((value, i) => Math.sign(Math.abs(value) - Math.abs(steps[i])));
+      mode('CADEIA NUMÉRICA '+length,2,chain.join(','),null);
       mode('CADEIA EXATA ' + length, 2, steps.join(','));
+      const reflected=steps.map(value=>-value).join(',');
+      const ordered=steps.join(',');
+      mode('CADEIA REFLETIDA '+length,2,ordered<reflected?ordered:reflected,c,ordered<reflected?1:-1);
+      mode('CADEIA AMPLITUDES '+length,2,steps.map(Math.abs).join(','));
       mode('CADEIA DIREÇÃO/AMPLITUDE ' + length, 2, steps.map(value => Math.sign(value) + ':' + amplitudeBand(Math.abs(value))).join(','));
       mode('PERCURSO/RETORNO ' + length, 3, [Math.sign(net), Math.floor(Math.abs(net) / 6), Math.floor(absolute / 10), band(closure), trends.join(',')].join('|'), chain[0]);
       chains.push({ length, steps, net, absolute, closure, turns: net / 37, residual: mod(net), trends,
@@ -905,7 +1144,7 @@ function createMotorReadings667(wheel, atlas) {
         directionChanges: steps.slice(1).filter((value,index)=>Math.sign(value)!==Math.sign(steps[index])).length
       });
     }
-    for (let tolerance = 0; tolerance <= 8; tolerance++) {
+    for (let tolerance = 0; tolerance <= 18; tolerance++) {
       const state = poles[tolerance];
       const relevant = state.anchors && (state.active || state.outside <= 3 || state.concentration != null);
       const key = relevant ? [state.event, band(state.separation || 0), state.movement || 0, Math.min(3, state.outside), state.drift.map(Math.sign).join(',')].join('|') : null;
@@ -929,7 +1168,7 @@ function createMotorReadings667(wheel, atlas) {
     const key = h.join(',');
     if (cache.has(key)) return cache.get(key);
     const prefix = [];
-    let poles = Array.from({ length: 9 }, () => null);
+    let poles = Array.from({ length: 19 }, () => null);
     let arcs = Array.from({ length: 37 }, () => null);
     const frames = [];
     for (const number of h) {
@@ -978,19 +1217,35 @@ function createMotorReadings667(wheel, atlas) {
       mode.occurrences=indices.size;
     }
     for (const mode of modes) mode.weights = normalize(mode.weights);
+    const exhaustive = exhaustiveRead(prefix);
     const summaries = groups.map((name, group) => {
       const members = modes.filter(mode => mode.group === group && mode.support > 0);
       const support = Math.max(0, ...members.map(mode => mode.support));
       const weights = members.length ? normalize(Array.from({ length: size }, (_, j) => average(members.map(mode => mode.weights[j])))) : Array(size).fill(1);
       return { name, support, modes: members.length, weights };
     });
+    for(const complete of exhaustive.groups){
+      if(complete.group===3){
+        const legacy=summaries[3];
+        summaries[3]={...complete,weights:normalize(complete.weights.map((value,j)=>(value+legacy.weights[j])/2)),support:Math.max(complete.support,legacy.support)};
+      }else summaries[complete.group]=complete;
+    }
+    const completePoles=poleWindowWeights(prefix),completeArcs=arcWindowWeights(prefix);
+    for(const [group,complete] of [[4,completePoles],[5,completeArcs]]){
+      const previous=summaries[group];
+      summaries[group]={name:previous.name,support:Math.max(previous.support,complete.support),modes:previous.modes,
+        weights:normalize(previous.weights.map((value,j)=>(value+complete.weights[j])/2))};
+    }
     const preparedArcs = arcs.map((state, index) => chooseArc(state, prefix, index + 1));
-    const candidates = wheel.map((number, position) => {
+    const candidateCache=new Map();
+    function describeCandidate(number){
+      if(candidateCache.has(number))return candidateCache.get(number);
+      const position=positions[number];if(position==null)return null;
       const futurePoles = poles.map((state, tolerance) => poleStep(state, prefix, position, tolerance));
       const futureArcs = preparedArcs.map(state => consumeArc(state, position));
       const future = makeFrame([...prefix, position], futurePoles, futureArcs, false);
       const last = current.triangle;
-      return { number, position, triangle: future.triangle,
+      const description = { number, position, triangle: future.triangle,
         triangleTransition: last && future.triangle ? { areaChange: Math.sign(future.triangle.area - last.area), closureChange: Math.sign(future.triangle.closure - last.closure), turn: Math.sign(future.triangle.s2), ratio: future.triangle.ratio } : null,
         chains: future.chains,
         poleEvents: futurePoles.map((state, tolerance) => ({ tolerance, event: state.event, movement: state.movement || 0, separation: state.separation == null ? null : state.separation, anchors: state.anchors ? state.anchors.map(p => wheel[p]) : [] })),
@@ -999,10 +1254,11 @@ function createMotorReadings667(wheel, atlas) {
         historicalSupport: new Set(modes.flatMap(mode => mode.outcomeIndices[position])).size,
         supportingChannels: modes.filter(mode => mode.outcomes[position] > 0).length
       };
-    });
-    const result = { version: '6.6.7', prefix: h, candidates, modes, groups: summaries,
-      candidateCount: candidates.length, channelCount: modes.length, arcSectorCases:1369,
-      interpretationCount: candidates.length * modes.length,
+      candidateCache.set(number,description);return description;
+    }
+    const result = { version: '6.6.9', prefix: h, get candidates(){return wheel.map(describeCandidate);},candidate:describeCandidate,modes, groups: summaries, exhaustive, completePoles,completeArcs,
+      candidateCount:37, channelCount: modes.length, arcSectorCases:1369,chainLengths:Array.from({length:Math.max(0,h.length-3)},(_,i)=>i+4),
+      interpretationCount:37 * modes.length,
       status: 'LEITURA ATIVA — HIPÓTESES NÃO SÃO ACERTOS' };
     result.profileCache = new Map();
     cache.set(key, result);
@@ -1040,11 +1296,16 @@ function createMotorReadings667(wheel, atlas) {
     const reading = read(history);
     return { version: reading.version, candidateCount: reading.candidateCount,
       channelCount: reading.channelCount, interpretationCount: reading.interpretationCount,
+      relativeForms:1369, amplitudeForms:361, numericTriples:50653,
+      formsEvaluated:reading.exhaustive.formsEvaluated, amplitudesEvaluated:reading.exhaustive.amplitudesEvaluated,
+      successorSamples:reading.exhaustive.successorSamples,
+      chainLengths:reading.chainLengths,poleTolerances:19,polePairPositions:1369,poleSeparations:19,
+      arcWindows:reading.completeArcs.windows,arcWindowSectorCases:reading.completeArcs.representedWindowSectorCases||0,
       groups: reading.groups.map(({ name, support, modes }) => ({ name, support, modes })) };
   }
 
-  return { read, weights, merge, summary, poleStep, chooseArc, consumeArc, arcAlternative,
-    clear() { cache.clear(); } };
+  return { read, candidate(history,number){return read(history).candidate(number);},weights, merge, summary, catalogue, relativeForms, amplitudeForms, fullKernels, polePairs,polePairReading,poleWindowWeights,arcWindowWeights,poleStep, chooseArc, consumeArc, arcAlternative,
+    clear() { cache.clear(); kernelCache.clear(); } };
 }
 
 const triangleMemory666 = createTriangleMemory666(W);
@@ -1673,7 +1934,7 @@ const triangleMemory666 = createTriangleMemory666(W);
           raw.components.reduce((s, w, k) => s + w[j] * adaptive.shares[k], 0),
         ),
       ),
-      r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.7" };
+      r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.9" };
     spaceCache.set(key, r);
     if (spaceCache.size > 120)
       spaceCache.delete(spaceCache.keys().next().value);
@@ -2139,7 +2400,7 @@ const triangleMemory666 = createTriangleMemory666(W);
           triangleKey: triangleContext(h),
           spatialKeys: [...s.keys],
           spatialVersion: VERSION,
-          readingVersion:"6.6.7",readingCandidates:37,
+          readingVersion:"6.6.9",readingCandidates:37,
           componentShares: [...s.adaptive.shares],
           adaptiveSamples: s.adaptive.samples,
         });
@@ -3245,7 +3506,7 @@ const triangleMemory666 = createTriangleMemory666(W);
 
   function fresh() {
     return {
-      structuralMemoryVersion: "6.6.7",
+      structuralMemoryVersion: "6.6.9",
       structuralMemoryEnabled: false,
       forecastVersion: VERSION,
       history: [],
@@ -3424,8 +3685,8 @@ const triangleMemory666 = createTriangleMemory666(W);
       r.strategy = "TRAINER";
       r.manual = null;
     }
-    if(data.structuralMemoryVersion!=="6.6.7"){
-      r.structuralMemoryVersion="6.6.7";
+    if(data.structuralMemoryVersion!=="6.6.9"){
+      r.structuralMemoryVersion="6.6.9";
       r.block={...r.block,data:null};
     }
 
@@ -3468,7 +3729,7 @@ const triangleMemory666 = createTriangleMemory666(W);
   }
 
   function compactMotor(m) {
-    const result = { readingVersion:"6.6.7", readingCandidates:37,};
+    const result = { readingVersion:"6.6.9", readingCandidates:37,};
     for (const field of [
       "key",
       "rank",
@@ -3956,14 +4217,14 @@ const triangleMemory666 = createTriangleMemory666(W);
       : null;
     state.ledger.push({
       readingAudit: {
-        version: "6.6.7", prefix: [...before].slice(-70), beforeTurn: turn-1,
-        candidateCount: 37, channelCount: motorReadings667.summary(before).channelCount,
+        version: "6.6.9", prefix: [...before].slice(-70), beforeTurn: turn-1,
+        candidateCount: 37, chainMaximum:before.length, poleTolerances:19, polePairPositions:1369, arcWindowCount:before.length, relativeForms:1369, amplitudeForms:361, formsEvaluated:motorReadings667.summary(before).formsEvaluated, channelCount: motorReadings667.summary(before).channelCount,
         supportedGroups: motorReadings667.summary(before).groups.filter(group=>group.support>0).map(group=>group.name),
         coveredByMotors: Object.keys(motorHits).filter(key=>motorHits[key]),
         selectedBank: oldCycle?.original?.bankId||played?.bankId||"GLOBAL",
         bankAlternatives: [{bankId:"GLOBAL",coveredBy:cs.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)},
           ...forecasts.map(forecast=>({bankId:forecast.bankId,coveredBy:forecast.motors.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)}))],
-        readingSupport: motorReadings667.read(before).candidates.find(option=>option.number===n)?.historicalSupport||0,
+        readingSupport: motorReadings667.candidate(before,n)?.historicalSupport||0,
         chosenCovered: played?.play?.numbers.includes(n) ?? null,
         note: "HIPÓTESES ENUMERADAS NÃO SÃO ACERTOS VIRTUAIS"
       },
@@ -5109,7 +5370,7 @@ if(!isCurrentApp())return false;
               componentShares: [...spatial.adaptive.shares],
               adaptiveSamples: spatial.adaptive.samples,
               spatialVersion: VERSION,
-          readingVersion:"6.6.7",readingCandidates:37,
+          readingVersion:"6.6.9",readingCandidates:37,
             });
           }
         const cs = fastIndependentMotors(proposals);
@@ -5342,7 +5603,7 @@ if(!isCurrentApp())return false;
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.6.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.9 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -5376,7 +5637,7 @@ ANÁLISE BETA V6.6.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.6.7",
+    const VERSION = "6.6.9",
       KEY = "ANALISE_BETA_V664",
       WINDOW = 70;
     const OLD_KEYS=[];
@@ -5963,6 +6224,254 @@ function createMotorReadings667(wheel, atlas) {
     [.8, 2.2, 1.4, 1.5, .6, 1.3]
   ];
 
+  /* Atlas completo: nenhum corte por ranking, frequência ou classe.
+     ID = posição relativa de B * 37 + posição relativa de C, com A = 0.
+     Cada registro guarda atributos exatos; somente o passado fornece sucessores. */
+  const relativeForms = Array.from({ length: 1369 }, (_, id) => {
+    const b = Math.floor(id / 37), c = id % 37;
+    const shape = atlas.feature(0, b, c);
+    return Object.freeze({ ...shape, id, positions: Object.freeze([0, b, c]),
+      amplitudes: Object.freeze([Math.abs(shape.s1), Math.abs(shape.s2)]),
+      amplitudeId: Math.abs(shape.s1) * 19 + Math.abs(shape.s2),
+      amplitudeChange: Math.abs(shape.s2) - Math.abs(shape.s1),
+      perimeter: shape.chords.reduce((sum, value) => sum + value, 0),
+      partialReturn: c !== 0 && shape.s1 * shape.s2 < 0 && shape.closure < Math.abs(shape.s1),
+      signedResidual: shape.net - Math.round(shape.net / 37) * 37,
+      algebraicTurns: shape.net / 37,
+      chords: Object.freeze([...shape.chords]), angles: Object.freeze([...shape.angles])
+    });
+  });
+  const amplitudeForms = Array.from({ length: 361 }, (_, id) => {
+    const first = Math.floor(id / 19), second = id % 19;
+    return Object.freeze({ id, first, second, difference: second - first,
+      ratio: first === 0 ? null : second / first,
+      trend: second < first ? 'CONTRAÇÃO' : second > first ? 'EXPANSÃO' : 'MANUTENÇÃO' });
+  });
+  const formId = (a, b, c) => mod(b - a) * 37 + mod(c - a);
+  const kernelCache = new Map();
+
+  function fullKernels(currentId) {
+    if (kernelCache.has(currentId)) return kernelCache.get(currentId);
+    const current = relativeForms[currentId];
+    const geometry = new Float64Array(1369);
+    const closure = new Float64Array(1369);
+    const amplitude = new Float64Array(361);
+    for (const old of relativeForms) {
+      // Todos os 1.369 registros são avaliados, sem faixas arredondadas.
+      const steps = (Math.abs(current.s1 - old.s1) + Math.abs(current.s2 - old.s2)) / 12;
+      const chords = current.chords.reduce((sum, value, i) => sum + Math.abs(value - old.chords[i]), 0) / 3;
+      const angles = current.angles.reduce((sum, value, i) => {
+        const other = old.angles[i];
+        return sum + (value == null || other == null ? Number(value !== other) : Math.abs(value - other) / 180);
+      }, 0) / 3;
+      const area = Math.abs(current.area - old.area);
+      const ratio = current.ratio == null || old.ratio == null
+        ? Number(current.ratio !== old.ratio)
+        : Math.abs(Math.atan(current.ratio) - Math.atan(old.ratio));
+      const attributes = Math.abs(current.closure - old.closure) / 18 +
+        Math.abs(current.amplitudeChange - old.amplitudeChange) / 36 + ratio +
+        Number(current.partialReturn !== old.partialReturn) + Number(current.degenerate !== old.degenerate);
+      geometry[old.id] = Math.exp(-steps - chords - angles - area - attributes) + (old.id === currentId ? 4 : 0);
+      closure[old.id] = Math.exp(-Math.abs(current.closure - old.closure) / 4 -
+        Math.abs(current.net - old.net) / 12 - Math.abs(current.length - old.length) / 12 -
+        Number(current.contour !== old.contour));
+    }
+    for (const old of amplitudeForms) {
+      amplitude[old.id] = Math.exp(-(Math.abs(current.amplitudes[0] - old.first) +
+        Math.abs(current.amplitudes[1] - old.second)) / 5 -
+        Math.abs(current.amplitudeChange - old.difference) / 8) +
+        (old.id === current.amplitudeId ? 3 : 0);
+    }
+    const result = { geometry, closure, amplitude };
+    kernelCache.set(currentId, result);
+    if (kernelCache.size > 32) kernelCache.delete(kernelCache.keys().next().value);
+    return result;
+  }
+
+  function exhaustiveRead(prefix) {
+    const formCounts = new Uint16Array(1369);
+    const amplitudeCounts = new Uint16Array(361);
+    const observed = new Map();
+    // A trinca corrente ainda não tem sucessor e não pode treiná-lo.
+    for (let end = 2; end < prefix.length - 1; end++) {
+      const id = formId(prefix[end - 2], prefix[end - 1], prefix[end]);
+      const shape = relativeForms[id];
+      const nextStep = jump(prefix[end], prefix[end + 1]);
+      const mass = Math.exp(-(prefix.length - 2 - end) / 28);
+      formCounts[id]++;
+      amplitudeCounts[shape.amplitudeId]++;
+      let record = observed.get(id);
+      if (!record) {
+        record = { id, count: 0, mass: 0, successors: new Map() };
+        observed.set(id, record);
+      }
+      record.count++;
+      record.mass += mass;
+      const next = record.successors.get(nextStep) || { step: nextStep, count: 0, mass: 0 };
+      next.count++;
+      next.mass += mass;
+      record.successors.set(nextStep, next);
+    }
+    const currentId = prefix.length >= 3 ? formId(...prefix.slice(-3)) : null;
+    const groups = [0, 1, 3].map(group => ({ name: ['TRIANGULAÇÃO', 'AMPLITUDE', '', 'FECHAMENTO/PERCURSO'][group],
+      group, support: 0, modes: group === 1 ? 361 : 1369, weights: Array(37).fill(8) }));
+    if (currentId != null) {
+      const kernels = fullKernels(currentId);
+      const anchor = prefix.at(-1);
+      // Percorre explicitamente o atlas inteiro. Sem ocorrência, contribuição
+      // observada é zero; o registro continua disponível, sem inventar evidência.
+      for (let id = 0; id < 1369; id++) {
+        const shape = relativeForms[id], record = observed.get(id);
+        if (!record) continue;
+        const coefficients = [kernels.geometry[id], kernels.amplitude[shape.amplitudeId], kernels.closure[id]];
+        groups.forEach((group, index) => {
+          const coefficient = coefficients[index];
+          group.support += coefficient * record.mass;
+          for (const successor of record.successors.values()) {
+            const target = mod(anchor + successor.step);
+            const contribution = coefficient * successor.mass * 37;
+            group.weights[target] += contribution * .7;
+            group.weights[mod(target - 1)] += contribution * .15;
+            group.weights[mod(target + 1)] += contribution * .15;
+          }
+        });
+      }
+    }
+    groups.forEach(group => { group.weights = normalize(group.weights); });
+    return { currentId, formsEvaluated: currentId == null ? 0 : 1369,
+      amplitudesEvaluated: currentId == null ? 0 : 361,
+      representedForms: 1369, representedAmplitudes: 361,
+      numericTriples: 50653, formCounts, amplitudeCounts,
+      observedForms: observed.size, successorSamples: Math.max(0, prefix.length - 3),
+      observed: [...observed.values()].map(record => ({ ...record, successors: [...record.successors.values()] })), groups };
+  }
+
+  function catalogue(history, id = null) {
+    const reading = read(history), data = reading.exhaustive;
+    const describe = form => ({ ...form, occurrences: data.formCounts[form.id],
+      successors: data.observed.find(record => record.id === form.id)?.successors || [],
+      status: data.formCounts[form.id] ? 'OBSERVADA COM SUCESSOR' : 'REPRESENTADA SEM SUCESSOR OBSERVADO' });
+    if (id != null) return Number.isInteger(id) && id >= 0 && id < 1369 ? describe(relativeForms[id]) : null;
+    return relativeForms.map(describe);
+  }
+
+  // Capacidade finita explícita: qualquer sequência de até 70 resultados pode
+  // ser descrita. Apenas sequências anteriores com sucessor treinam os pesos.
+  const polePairs = Object.freeze(Array.from({length:1369},(_,id)=>{
+    const a=Math.floor(id/37),b=id%37;
+    return Object.freeze({id,positionA:a,positionB:b,numberA:wheel[a],numberB:wheel[b],
+      separation:distance(a,b),direction:jump(a,b)});
+  }));
+
+  function polePairReading(prefix,next,a,b,tolerance){
+    if(![a,b,next,tolerance].every(Number.isInteger)||a<0||a>36||b<0||b>36||next<0||next>36||tolerance<0||tolerance>18)return null;
+    const da=distance(a,next),db=distance(b,next),insideA=da<=tolerance,insideB=db<=tolerance;
+    const last=prefix.at(-1),previous=prefix.length>1?prefix.at(-2):null;
+    const side=n=>n==null?-1:distance(a,n)>tolerance&&distance(b,n)>tolerance?-1:distance(a,n)<distance(b,n)?0:distance(a,n)>distance(b,n)?1:2;
+    const currentSide=side(next),lastSide=side(last),priorSide=side(previous);
+    let event=currentSide<0?'FORA DOS POLOS':currentSide===2?'SOBREPOSIÇÃO DOS POLOS':lastSide<0?'RETOMADA':lastSide===currentSide?'PERMANÊNCIA':'ALTERNÂNCIA';
+    if(currentSide<0&&lastSide>=0)event='SAÍDA DOS POLOS';
+    if(currentSide<0&&lastSide<0&&priorSide>=0)event='RUPTURA';
+    if(a===b&&currentSide>=0)event='POLO ÚNICO / CONCENTRAÇÃO';
+    const oldSeparation=distance(a,b);
+    const newSeparation=currentSide===0?distance(next,b):currentSide===1?distance(a,next):oldSeparation;
+    const movement=Math.sign(newSeparation-oldSeparation);
+    if(currentSide>=0&&currentSide<2&&oldSeparation>0&&newSeparation===0)event='FUSÃO';
+    else if(event==='ALTERNÂNCIA'&&movement<0)event='CONVERGÊNCIA';
+    else if(event==='ALTERNÂNCIA'&&movement>0)event='DIVERGÊNCIA';
+    return {tolerance,positionA:a,positionB:b,numberA:wheel[a],numberB:wheel[b],
+      separation:oldSeparation,nextSeparation:newSeparation,movement,distanceA:da,distanceB:db,
+      insideA,insideB,overlap:insideA&&insideB,side:currentSide,event,
+      shiftA:currentSide===0?jump(a,next):0,shiftB:currentSide===1?jump(b,next):0};
+  }
+
+  function poleWindowWeights(prefix){
+    const weights=Array(37).fill(8),tolerances=Array.from({length:19},(_,t)=>({tolerance:t,support:0}));
+    if(prefix.length<4)return {name:'POLOS',weights:normalize(weights),support:0,tolerances,pairPositions:1369,separations:19};
+    const current=prefix.slice(-4),[a,b,c,d]=current;
+    const features=q=>({initial:distance(q[0],q[1]),final:distance(q[2],q[3]),
+      shiftA:jump(q[0],q[2]),shiftB:jump(q[1],q[3]),span:jump(q[0],q[1])});
+    const now=features(current);let support=0,samples=0;
+    for(let end=3;end<prefix.length-1;end++){
+      const q=prefix.slice(end-3,end+1),old=features(q);
+      const geometry=Math.exp(-Math.abs(now.initial-old.initial)/6-Math.abs(now.final-old.final)/6-
+        Math.abs(now.shiftA-old.shiftA)/8-Math.abs(now.shiftB-old.shiftB)/8-Math.abs(now.span-old.span)/10);
+      let coefficient=0;
+      for(let t=0;t<=18;t++){
+        const activeNow=Math.abs(now.shiftA)<=t&&Math.abs(now.shiftB)<=t;
+        const activeOld=Math.abs(old.shiftA)<=t&&Math.abs(old.shiftB)<=t;
+        // 0..18 são examinados; sobreposição é explícita e não são 19 ensaios independentes.
+        const overlapNow=now.final<=2*t,overlapOld=old.final<=2*t;
+        const similarity=geometry*(activeNow===activeOld?1:.25)*(overlapNow===overlapOld?1:.5);
+        tolerances[t].support+=similarity;
+        coefficient+=similarity/19;
+      }
+      const mass=coefficient*Math.exp(-(prefix.length-2-end)/28);
+      const next=mod(c+jump(q[2],prefix[end+1]));
+      weights[next]+=mass*37*.7;weights[mod(next-1)]+=mass*37*.15;weights[mod(next+1)]+=mass*37*.15;
+      support+=mass;samples++;
+    }
+    return {name:'POLOS',weights:normalize(weights),support,tolerances,pairPositions:1369,separations:19,samples,
+      current:{...now,numbers:current.map(p=>wheel[p]),movement:Math.sign(now.final-now.initial)}};
+  }
+
+  // Todas as janelas 1..N, todos os 37 inícios, larguras 1..36.
+  // Largura 37 também é representada, mas é neutra: contém a roda inteira.
+  function arcWindowWeights(prefix){
+    const length=prefix.length,weights=Array(37).fill(8),tables=[];
+    const windows=Array.from({length},(_,i)=>i+1);
+    if(!length)return {name:'ARCOS',weights,support:0,windows,sectorCases:1369,uniqueCovers:1333};
+    const eventTables=[],runTables=[];
+    const previousFlags=new Uint8Array(1369),runs=new Uint8Array(1369),seen=new Uint8Array(1369);
+    for(let end=0;end<length;end++){
+      const table=new Uint8Array((end+1)*1369),frequency=new Uint8Array(37);
+      for(let window=1;window<=end+1;window++){
+        frequency[prefix[end-window+1]]++;
+        const offset=(window-1)*1369;
+        for(let start=0;start<37;start++){
+          let count=0;
+          for(let width=1;width<=37;width++){
+            count+=frequency[mod(start+width-1)];
+            table[offset+(width-1)*37+start]=count;
+          }
+        }
+      }
+      tables.push(table);
+      const events=new Uint8Array(1369),runSnapshot=new Uint8Array(1369);
+      for(let width=1;width<=37;width++)for(let start=0;start<37;start++){
+        const id=(width-1)*37+start,inside=Number(mod(prefix[end]-start)<width);
+        // 0=fora,1=entrada,2=permanência,3=saída,4=reentrada.
+        events[id]=inside?(end&&previousFlags[id]?2:seen[id]?4:1):(end&&previousFlags[id]?3:0);
+        runs[id]=end&&previousFlags[id]===inside?runs[id]+1:1;
+        runSnapshot[id]=runs[id];previousFlags[id]=inside;if(inside)seen[id]=1;
+      }
+      eventTables.push(events);runTables.push(runSnapshot);
+    }
+    const current=tables.at(-1),currentEvents=eventTables.at(-1),currentRuns=runTables.at(-1);
+    let support=0,comparisons=0;
+    for(let end=0;end<length-1;end++){
+      let coefficient=0,windowCount=end+1;
+      for(let window=1;window<=windowCount;window++){
+        let sum=0;const offset=(window-1)*1369;
+        // Cada leitura espacial participa uma vez; sem somar como acertos.
+        for(let id=0;id<1332;id++){
+          const delta=Math.abs(current[offset+id]-tables[end][offset+id]);
+          const density=1/(1+delta/window);
+          const transition=currentEvents[id]===eventTables[end][id]?1:.35;
+          const duration=1/(1+Math.abs(currentRuns[id]-runTables[end][id])/window);
+          sum+=density*transition*duration;
+        }
+        coefficient+=sum/1332;comparisons+=1332;
+      }
+      const mass=coefficient/windowCount*Math.exp(-(length-2-end)/28);
+      const next=prefix[end+1];
+      weights[next]+=mass*37*.7;weights[mod(next-1)]+=mass*37*.15;weights[mod(next+1)]+=mass*37*.15;
+      support+=mass;
+    }
+    return {name:'ARCOS',weights:normalize(weights),support,windows,sectorCases:1369,
+      uniqueCovers:1333,comparisons,representedWindowSectorCases:length*1369};
+  }
+
   function poleStep(previous, prefix, next, tolerance) {
     const state = previous ? {
       ...previous,
@@ -6021,7 +6530,7 @@ function createMotorReadings667(wheel, atlas) {
     }
     if (!state.active && prefix.length >= 3 && state.event !== 'FUSÃO') {
       const [a, b, c] = prefix.slice(-3);
-      if (distance(a, b) >= Math.max(8, 2 * tolerance + 2) &&
+      if (distance(a, b) >= (tolerance<=8?Math.max(8,2*tolerance+2):0) &&
           distance(a, c) <= tolerance && distance(b, next) <= tolerance) {
         const split = state.concentration != null || state.fromFusion;
         state.anchors = [c, next];
@@ -6032,7 +6541,7 @@ function createMotorReadings667(wheel, atlas) {
         state.outside = 0;
         state.active = true;
         state.concentration = null;
-        state.event = split ? 'NOVOS POLOS APÓS FUSÃO' : 'FORMAÇÃO';
+        state.event = tolerance>8&&distance(c,next)<=2*tolerance?'SOBREPOSIÇÃO DOS POLOS':split ? 'NOVOS POLOS APÓS FUSÃO' : 'FORMAÇÃO';
       }
     }
     if(state.active)state.inactiveAge=0;
@@ -6114,7 +6623,7 @@ function createMotorReadings667(wheel, atlas) {
     return keys;
   }
 
-  function arcAlternative(history, number, start, width) {
+  function arcAlternative(history, number, start, width, window=8) {
     if (!Number.isInteger(start) || start < 0 || start > 36 || !Number.isInteger(width) || width < 1 || width > 37) return null;
     const prefix = history.slice(-70).map(number => positions[number]);
     const priorInside = prefix.length ? mod(prefix.at(-1) - start) < width : null;
@@ -6122,7 +6631,7 @@ function createMotorReadings667(wheel, atlas) {
     const visited = prefix.some(position => mod(position - start) < width);
     const event = inside ? priorInside === true ? 'PERMANÊNCIA' : visited ? 'REENTRADA' : 'ENTRADA'
                          : priorInside === true ? 'SAÍDA' : 'AFASTAMENTO';
-    const sample = prefix.slice(-8);
+    const sample = prefix.slice(-Math.max(1,Math.min(70,Math.trunc(window)||8)));
     const visits = sample.filter(position => mod(position - start) < width).length;
     return { start, startNumber: wheel[start], width, number, inside, event, visits, sample: sample.length };
   }
@@ -6145,27 +6654,20 @@ function createMotorReadings667(wheel, atlas) {
     function mode(id, group, key, anchor = c, orientation = 1) {
       if(captureModes)modes.push({ id, group, key, anchor, orientation });
     }
-    mode('TRINCA NUMÉRICA', 0, prefix.slice(-3).join(','), null);
-    mode('FORMA GIRADA', 0, f.s1 + ',' + f.s2);
-    const original = f.s1 + ',' + f.s2;
-    const reflected = -f.s1 + ',' + -f.s2;
-    mode('FORMA REFLETIDA', 0, original < reflected ? original : reflected, c, original < reflected ? 1 : -1);
-    mode('CLASSE E DIREÇÃO', 0, [f.type, Math.sign(f.s1), Math.sign(f.s2), f.degenerate].join('|'));
-    mode('ÁREA E ÂNGULO', 0, [Math.floor(f.area * 4), f.angles[1] == null ? 'DEGENERADO' : Math.floor(f.angles[1] / 20), Math.sign(f.net)].join('|'));
-    mode('CORDAS E PERÍMETRO', 0, [Math.floor(f.chords.reduce((s, v) => s + v, 0) * 2), Math.floor(Math.max(...f.chords) * 3), f.type].join('|'));
-    mode('CURTO MÉDIO LONGO', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), f.trend, Math.sign(f.s2)].join('|'));
-    mode('PROPORÇÃO E AMPLITUDE', 1, [f.ratio == null ? 'INDEFINIDA' : Math.floor(Math.min(8, f.ratio) * 2), Math.abs(f.s2), f.trend].join('|'));
-    mode('ALTERNÂNCIA DE AMPLITUDE', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), Math.abs(Math.abs(f.s1) - Math.abs(f.s2)) >= 10, f.type].join('|'));
-    mode('FECHAMENTO E CONTORNO', 3, [band(f.closure), f.contour, f.trend, Math.sign(f.net)].join('|'), a);
     const chains = [];
-    for (let length = 4; length <= Math.min(8, prefix.length); length++) {
+    for (let length = 4; length <= Math.min(70, prefix.length); length++) {
       const chain = prefix.slice(-length);
       const steps = chain.slice(1).map((position, i) => jump(chain[i], position));
       const net = steps.reduce((sum, value) => sum + value, 0);
       const absolute = steps.reduce((sum, value) => sum + Math.abs(value), 0);
       const closure = distance(chain[0], c);
       const trends = steps.slice(1).map((value, i) => Math.sign(Math.abs(value) - Math.abs(steps[i])));
+      mode('CADEIA NUMÉRICA '+length,2,chain.join(','),null);
       mode('CADEIA EXATA ' + length, 2, steps.join(','));
+      const reflected=steps.map(value=>-value).join(',');
+      const ordered=steps.join(',');
+      mode('CADEIA REFLETIDA '+length,2,ordered<reflected?ordered:reflected,c,ordered<reflected?1:-1);
+      mode('CADEIA AMPLITUDES '+length,2,steps.map(Math.abs).join(','));
       mode('CADEIA DIREÇÃO/AMPLITUDE ' + length, 2, steps.map(value => Math.sign(value) + ':' + amplitudeBand(Math.abs(value))).join(','));
       mode('PERCURSO/RETORNO ' + length, 3, [Math.sign(net), Math.floor(Math.abs(net) / 6), Math.floor(absolute / 10), band(closure), trends.join(',')].join('|'), chain[0]);
       chains.push({ length, steps, net, absolute, closure, turns: net / 37, residual: mod(net), trends,
@@ -6174,7 +6676,7 @@ function createMotorReadings667(wheel, atlas) {
         directionChanges: steps.slice(1).filter((value,index)=>Math.sign(value)!==Math.sign(steps[index])).length
       });
     }
-    for (let tolerance = 0; tolerance <= 8; tolerance++) {
+    for (let tolerance = 0; tolerance <= 18; tolerance++) {
       const state = poles[tolerance];
       const relevant = state.anchors && (state.active || state.outside <= 3 || state.concentration != null);
       const key = relevant ? [state.event, band(state.separation || 0), state.movement || 0, Math.min(3, state.outside), state.drift.map(Math.sign).join(',')].join('|') : null;
@@ -6198,7 +6700,7 @@ function createMotorReadings667(wheel, atlas) {
     const key = h.join(',');
     if (cache.has(key)) return cache.get(key);
     const prefix = [];
-    let poles = Array.from({ length: 9 }, () => null);
+    let poles = Array.from({ length: 19 }, () => null);
     let arcs = Array.from({ length: 37 }, () => null);
     const frames = [];
     for (const number of h) {
@@ -6247,19 +6749,35 @@ function createMotorReadings667(wheel, atlas) {
       mode.occurrences=indices.size;
     }
     for (const mode of modes) mode.weights = normalize(mode.weights);
+    const exhaustive = exhaustiveRead(prefix);
     const summaries = groups.map((name, group) => {
       const members = modes.filter(mode => mode.group === group && mode.support > 0);
       const support = Math.max(0, ...members.map(mode => mode.support));
       const weights = members.length ? normalize(Array.from({ length: size }, (_, j) => average(members.map(mode => mode.weights[j])))) : Array(size).fill(1);
       return { name, support, modes: members.length, weights };
     });
+    for(const complete of exhaustive.groups){
+      if(complete.group===3){
+        const legacy=summaries[3];
+        summaries[3]={...complete,weights:normalize(complete.weights.map((value,j)=>(value+legacy.weights[j])/2)),support:Math.max(complete.support,legacy.support)};
+      }else summaries[complete.group]=complete;
+    }
+    const completePoles=poleWindowWeights(prefix),completeArcs=arcWindowWeights(prefix);
+    for(const [group,complete] of [[4,completePoles],[5,completeArcs]]){
+      const previous=summaries[group];
+      summaries[group]={name:previous.name,support:Math.max(previous.support,complete.support),modes:previous.modes,
+        weights:normalize(previous.weights.map((value,j)=>(value+complete.weights[j])/2))};
+    }
     const preparedArcs = arcs.map((state, index) => chooseArc(state, prefix, index + 1));
-    const candidates = wheel.map((number, position) => {
+    const candidateCache=new Map();
+    function describeCandidate(number){
+      if(candidateCache.has(number))return candidateCache.get(number);
+      const position=positions[number];if(position==null)return null;
       const futurePoles = poles.map((state, tolerance) => poleStep(state, prefix, position, tolerance));
       const futureArcs = preparedArcs.map(state => consumeArc(state, position));
       const future = makeFrame([...prefix, position], futurePoles, futureArcs, false);
       const last = current.triangle;
-      return { number, position, triangle: future.triangle,
+      const description = { number, position, triangle: future.triangle,
         triangleTransition: last && future.triangle ? { areaChange: Math.sign(future.triangle.area - last.area), closureChange: Math.sign(future.triangle.closure - last.closure), turn: Math.sign(future.triangle.s2), ratio: future.triangle.ratio } : null,
         chains: future.chains,
         poleEvents: futurePoles.map((state, tolerance) => ({ tolerance, event: state.event, movement: state.movement || 0, separation: state.separation == null ? null : state.separation, anchors: state.anchors ? state.anchors.map(p => wheel[p]) : [] })),
@@ -6268,10 +6786,11 @@ function createMotorReadings667(wheel, atlas) {
         historicalSupport: new Set(modes.flatMap(mode => mode.outcomeIndices[position])).size,
         supportingChannels: modes.filter(mode => mode.outcomes[position] > 0).length
       };
-    });
-    const result = { version: '6.6.7', prefix: h, candidates, modes, groups: summaries,
-      candidateCount: candidates.length, channelCount: modes.length, arcSectorCases:1369,
-      interpretationCount: candidates.length * modes.length,
+      candidateCache.set(number,description);return description;
+    }
+    const result = { version: '6.6.9', prefix: h, get candidates(){return wheel.map(describeCandidate);},candidate:describeCandidate,modes, groups: summaries, exhaustive, completePoles,completeArcs,
+      candidateCount:37, channelCount: modes.length, arcSectorCases:1369,chainLengths:Array.from({length:Math.max(0,h.length-3)},(_,i)=>i+4),
+      interpretationCount:37 * modes.length,
       status: 'LEITURA ATIVA — HIPÓTESES NÃO SÃO ACERTOS' };
     result.profileCache = new Map();
     cache.set(key, result);
@@ -6309,11 +6828,16 @@ function createMotorReadings667(wheel, atlas) {
     const reading = read(history);
     return { version: reading.version, candidateCount: reading.candidateCount,
       channelCount: reading.channelCount, interpretationCount: reading.interpretationCount,
+      relativeForms:1369, amplitudeForms:361, numericTriples:50653,
+      formsEvaluated:reading.exhaustive.formsEvaluated, amplitudesEvaluated:reading.exhaustive.amplitudesEvaluated,
+      successorSamples:reading.exhaustive.successorSamples,
+      chainLengths:reading.chainLengths,poleTolerances:19,polePairPositions:1369,poleSeparations:19,
+      arcWindows:reading.completeArcs.windows,arcWindowSectorCases:reading.completeArcs.representedWindowSectorCases||0,
       groups: reading.groups.map(({ name, support, modes }) => ({ name, support, modes })) };
   }
 
-  return { read, weights, merge, summary, poleStep, chooseArc, consumeArc, arcAlternative,
-    clear() { cache.clear(); } };
+  return { read, candidate(history,number){return read(history).candidate(number);},weights, merge, summary, catalogue, relativeForms, amplitudeForms, fullKernels, polePairs,polePairReading,poleWindowWeights,arcWindowWeights,poleStep, chooseArc, consumeArc, arcAlternative,
+    clear() { cache.clear(); kernelCache.clear(); } };
 }
 
 const triangleMemory666 = createTriangleMemory666(W);
@@ -6946,7 +7470,7 @@ const triangleMemory666 = createTriangleMemory666(W);
             ),
           ),
         ),
-        r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.7" };
+        r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.9" };
       spaceCache.set(key, r);
       if (spaceCache.size > 120)
         spaceCache.delete(spaceCache.keys().next().value);
@@ -7420,7 +7944,7 @@ const triangleMemory666 = createTriangleMemory666(W);
             triangleKey: triangleContext(h),
             spatialKeys: [...s.keys],
             spatialVersion: VERSION,
-          readingVersion:"6.6.7",readingCandidates:37,
+          readingVersion:"6.6.9",readingCandidates:37,
             componentShares: [...s.adaptive.shares],
             adaptiveSamples: s.adaptive.samples,
           });
@@ -8554,7 +9078,7 @@ const triangleMemory666 = createTriangleMemory666(W);
 
     function fresh() {
       return {
-      structuralMemoryVersion: "6.6.7",
+      structuralMemoryVersion: "6.6.9",
       structuralMemoryEnabled: false,
         forecastVersion: VERSION,
         history: [],
@@ -8733,8 +9257,8 @@ const triangleMemory666 = createTriangleMemory666(W);
         r.strategy = "TRAINER";
         r.manual = null;
       }
-    if(data.structuralMemoryVersion!=="6.6.7"){
-      r.structuralMemoryVersion="6.6.7";
+    if(data.structuralMemoryVersion!=="6.6.9"){
+      r.structuralMemoryVersion="6.6.9";
       r.block={...r.block,data:null};
     }
 
@@ -8777,7 +9301,7 @@ const triangleMemory666 = createTriangleMemory666(W);
     }
 
     function compactMotor(m) {
-      const result = { readingVersion:"6.6.7", readingCandidates:37,};
+      const result = { readingVersion:"6.6.9", readingCandidates:37,};
       for (const field of [
         "key",
         "rank",
@@ -9269,14 +9793,14 @@ const triangleMemory666 = createTriangleMemory666(W);
         : null;
       state.ledger.push({
       readingAudit: {
-        version: "6.6.7", prefix: [...before].slice(-70), beforeTurn: turn-1,
-        candidateCount: 37, channelCount: motorReadings667.summary(before).channelCount,
+        version: "6.6.9", prefix: [...before].slice(-70), beforeTurn: turn-1,
+        candidateCount: 37, chainMaximum:before.length, poleTolerances:19, polePairPositions:1369, arcWindowCount:before.length, relativeForms:1369, amplitudeForms:361, formsEvaluated:motorReadings667.summary(before).formsEvaluated, channelCount: motorReadings667.summary(before).channelCount,
         supportedGroups: motorReadings667.summary(before).groups.filter(group=>group.support>0).map(group=>group.name),
         coveredByMotors: Object.keys(motorHits).filter(key=>motorHits[key]),
         selectedBank: oldCycle?.original?.bankId||played?.bankId||"GLOBAL",
         bankAlternatives: [{bankId:"GLOBAL",coveredBy:cs.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)},
           ...forecasts.map(forecast=>({bankId:forecast.bankId,coveredBy:forecast.motors.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)}))],
-        readingSupport: motorReadings667.read(before).candidates.find(option=>option.number===n)?.historicalSupport||0,
+        readingSupport: motorReadings667.candidate(before,n)?.historicalSupport||0,
         chosenCovered: played?.play?.numbers.includes(n) ?? null,
         note: "HIPÓTESES ENUMERADAS NÃO SÃO ACERTOS VIRTUAIS"
       },
@@ -10443,7 +10967,7 @@ state.importAudit=describeImport(clean,opts);
                 componentShares: [...spatial.adaptive.shares],
                 adaptiveSamples: spatial.adaptive.samples,
                 spatialVersion: VERSION,
-          readingVersion:"6.6.7",readingCandidates:37,
+          readingVersion:"6.6.9",readingCandidates:37,
               });
             }
           const cs = fastIndependentMotors(proposals);
@@ -10733,30 +11257,6 @@ state.importAudit=describeImport(clean,opts);
     finally{if(isCurrentApp()){setBusy(false);render();}}
   }
 
-  function completeReadingsHTML667(){
-    const latest=state.ledger.at(-1)?.readingAudit;
-    const audit=latest?'<p>ANTES DO GIRO '+(latest.beforeTurn+1)+': '+latest.candidateCount+
-      ' resultados possíveis • '+latest.channelCount+' canais. Motores que cobriram o resultado: '+
-      esc(latest.coveredByMotors.join(' • ')||'NENHUM')+'. '+
-      (latest.chosenCovered===null?'SEM APOSTA COMPROMETIDA':latest.chosenCovered?'A COBERTURA ESCOLHIDA CONTINHA O RESULTADO':'A COBERTURA ESCOLHIDA NÃO CONTINHA O RESULTADO')+'</p>':'';
-    return '<details id="motorReadingsDetail"><summary>LEITURAS ATIVAS DOS MOTORES • 37 POSSIBILIDADES</summary><div class="muted">'+
-      'Triangulações, cadeias 4–8, amplitude, fechamento, percurso, polos com tolerâncias 0–8 e arcos de 1–37 posições. '+
-      'Todas as possibilidades são descritas; suporte histórico e escolha são informações diferentes.'+audit+
-      '</div><div id="motorReadingsBody"></div></details>';
-  }
-  function wireCompleteReadings667(){
-    const detail=$('motorReadingsDetail');if(!detail)return;
-    detail.ontoggle=()=>{
-      if(!detail.open||$('motorReadingsBody').dataset.loaded)return;
-      const reading=motorReadings667.read(state.history);
-      $('motorReadingsBody').innerHTML=tableHTML(['NÚMERO POSSÍVEL','TRIANGULAÇÃO','AMPLITUDE','FECHAMENTO','POLOS POSSÍVEIS','ARCOS POSSÍVEIS','OCORRÊNCIAS DE SUPORTE'],
-        reading.candidates.map(option=>[option.number,esc(option.triangle?.type||'SEM TRINCA'),
-          option.triangle?option.triangle.trend>0?'EXPANSÃO':option.triangle.trend<0?'CONTRAÇÃO':'MANUTENÇÃO':'—',
-          option.triangle?.closure??'—',esc([...new Set(option.poleEvents.map(event=>event.event))].join(' / ')),
-          esc([...new Set(option.arcEvents.map(event=>event.event))].join(' / ')),option.historicalSupport]));
-      $('motorReadingsBody').dataset.loaded='true';
-    };
-  }
   function button(label, action, parent, extra = "") {
     const b = document.createElement("button");
     b.className = "btn " + extra;
@@ -11187,7 +11687,7 @@ if(receipt)receipt.textContent=audit?'ÚLTIMA IMPORTAÇÃO '+audit.historyId+' �
         "MASTER ESCOLHEU: " + motor.masterTarget.name + " • " + state.phase;
     }
     if(state.structuralMemoryEnabled)$("selected").textContent+=" • TRIANGULAÇÃO EXPERIMENTAL";
-    if(state.open.general){$('general').innerHTML+=completeReadingsHTML667();wireCompleteReadings667();}
+
     renderFocusGame(motor);
     $("stake").value = state.stake;
     $("multiplier").value = state.multiplier;
@@ -12093,9 +12593,13 @@ return {
  timelineRows(){return timelineDefinitions().map(def=>{const ui=timelineUINodes.get(def.id);if(ui)document.registerScope(ui.item);return {id:def.id,name:def.name,item:ui?.item};});},
  setFinancial(stake,multiplier){state.stake=stake;state.multiplier=multiplier;$('stake').value=stake;$('multiplier').value=multiplier;scheduleSave();},
  structuralDiagnostics(simulate=false){if(!state.structuralMemoryEnabled&&!simulate)return {status:'DESLIGADA — SEM GANHO COMPROVADO',influence:0};const r=triangleMemory666.analyze(state.history,past=>legacyTriangleAnalysis(past).weights);return {status:r.status,influence:r.influence,observedSuccessors:r.observedSuccessors,modes:r.modes.map(({name,support,occurrences,evaluations,meanLogGain,stderr,active,mass})=>({name,support,occurrences,evaluations,meanLogGain,stderr,active,mass}))};},
+ triangleCatalogue(id=null){return motorReadings667.catalogue(state.history,id);},
+ amplitudeCatalogue(){return motorReadings667.amplitudeForms.map(form=>({...form,occurrences:motorReadings667.read(state.history).exhaustive.amplitudeCounts[form.id]}));},
  motorReadings(number=null){const r=motorReadings667.read(state.history);return number==null?{...motorReadings667.summary(state.history),candidates:r.candidates}:r.candidates.find(option=>option.number===number);},
  auditReading(turn){const row=state.ledger.find(row=>row.turn===turn);if(!row?.readingAudit)return null;return {record:copy(row.readingAudit),outcome:row.number,options:motorReadings667.read(row.readingAudit.prefix).candidates};},
- arcReading(number,start,width){return motorReadings667.arcAlternative(state.history,number,start,width);},
+ poleCatalogue(){return motorReadings667.polePairs.map(pair=>({...pair}));},
+ poleReading(number,numberA,numberB,tolerance){return motorReadings667.polePairReading(state.history.map(ix),ix(number),ix(numberA),ix(numberB),tolerance);},
+ arcReading(number,start,width,window=8){return motorReadings667.arcAlternative(state.history,number,start,width,window);},
  getState:()=>state,
  busy:()=>busy||inputRunning||inputQueue.length>0,
  canEnqueue:()=>appAlive&&state.history.length>=8&&(!busy||inputRunning),
@@ -12178,7 +12682,7 @@ body{margin:0;background:#101720;color:#f4f7fb;font:13px Arial,sans-serif}
 </style>
 <main id="beta-dual-app">
 <section class="panel">
-<h1>ANÁLISE BETA 6.6.7</h1>
+<h1>ANÁLISE BETA 6.6.9</h1>
 <label for="dual-paste">IMPORTAR HISTÓRICO</label>
 <textarea id="dual-paste" placeholder="Cole de 8 a 70 resultados."></textarea>
 <div class="dual-controls">
