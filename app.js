@@ -1,4 +1,28 @@
-/* V6.6.6 — MEMÓRIA CAUSAL DO QUARTO RESULTADO.
+/* V6.6.7 — AMPLIAÇÃO ATIVA DENTRO DOS MOTORES.
+Não depende do botão experimental da 6.6.6, que continua separado.
+Em cada prefixo examina os 37 próximos números: trincas exatas, giradas,
+refletidas, direções, áreas, ângulos, cordas, perímetro, amplitudes, proporções,
+fechamento/contorno, cadeias 4–8, polos móveis (tolerâncias 0–8) e arcos 1–37.
+Os eventos incluem formação, continuidade, inversão, interrupção, retomada,
+convergência, divergência, manutenção, fusão, concentração, dispersão e ruptura;
+nos arcos: formação, entrada, permanência, saída, reentrada, enfraquecimento,
+retomada, substituição e encerramento.
+Cada família/raio/variação recebe pesos próprios dessas leituras antes da
+geometria. A ausência de suporte deixa o canal neutro, sem apagar a hipótese.
+Guarda o prefixo anterior e a cobertura dos motores antes de interpretar o erro.
+Enumerar os 37 resultados não equivale a prever os 37 nem a uma aposta vencedora.
+Escopo finito explícito: não é promessa de todas as estruturas matemáticas
+concebíveis, de cobertura individual de 37, ou de acerto garantido.
+Tela única, controles, ciclos e defesas comprometidas são preservados.
+Verificações: 50.653 trincas e 50.653 continuações relativas, causalidade,
+108 canais / 3.996 interpretações por prefixo completo, 65 bancos de 12,
+28 números por jogada, união 37/37, importações idênticas, worker equivalente,
+interface simulada, auditoria anterior ao resultado, persistência e descarte 10.
+Teste de referência de 44 giros: 5 GREEN diretos, 5 GREEN G1, 1 G1 pendente.
+O teste comprova funcionamento; não comprova melhoria de acerto.
+Não foi feita nova inspeção visual em navegador/iPhone nesta entrega.
+*/
+/* V6.6.7 — MEMÓRIA CAUSAL DO QUARTO RESULTADO.
 Acrescenta trinca→quarto, forma girada/refletida, amplitude/proporção,
 encadeamento de 4–8, fechamento/contorno, sucessores de arcos e polos.
 Atlas: 1.369 formas relativas, equivalentes a 50.653 trincas numéricas.
@@ -12,7 +36,7 @@ A tela compacta, os dois sentidos, um teclado, as estratégias e as defesas
 comprometidas permanecem. Sessões da 6.6.5 são retomadas sem reimportação.
 Resultados anteriores não são recalculados como se usassem o novo motor.
 */
-/* ANÁLISE BETA 6.6.6 — DUAS LEITURAS EM UMA TELA COMPACTA.
+/* ANÁLISE BETA 6.6.7 — DUAS LEITURAS EM UMA TELA COMPACTA.
 BASE: 6.6.4, com os cálculos da 6.6.1 preservados.
 NORMAL: histórico na ordem cronológica escolhida na importação.
 INVERTIDO: os mesmos resultados em ordem reversa, com treinamento próprio.
@@ -56,7 +80,7 @@ let appAlive=true;
 function isCurrentApp(){return appAlive;}
 
   /*
-ANÁLISE BETA V6.6.6 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -90,7 +114,7 @@ ANÁLISE BETA V6.6.6 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.6.6",
+  const VERSION = "6.6.7",
     KEY = 'ANALISE_BETA_V664_DUAL_'+side,
     WINDOW = 70;
   const OLD_KEYS=[];
@@ -637,7 +661,394 @@ function createTriangleMemory666(wheel){
 }
 
 
-  const triangleMemory666 = createTriangleMemory666(W);
+  /* Leitura estrutural ativa. Enumera os 37 próximos resultados e seus estados.
+   Uma alternativa possível não é uma previsão confirmada. Somente sucessores
+   já observados atribuem peso. Leitura e escolha permanecem separadas. */
+function createMotorReadings667(wheel, atlas) {
+  const size = 37;
+  const positions = Array(size);
+  wheel.forEach((number, index) => { positions[number] = index; });
+  const mod = value => (value % size + size) % size;
+  const jump = (from, to) => {
+    const forward = mod(to - from);
+    return forward <= 18 ? forward : forward - size;
+  };
+  const distance = (from, to) => Math.abs(jump(from, to));
+  const average = values => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  const band = value => value === 0 ? '0' : value <= 2 ? '1–2' : value <= 6 ? '3–6' : value <= 12 ? '7–12' : '13+';
+  const amplitudeBand = value => value <= 3 ? 'CURTO' : value <= 9 ? 'MÉDIO' : 'LONGO';
+  const normalize = values => {
+    const mean = average(values) || 1;
+    return values.map(value => value / mean);
+  };
+  const cache = new Map();
+  const groups = ['TRIANGULAÇÃO', 'AMPLITUDE', 'ENCADEAMENTO', 'FECHAMENTO/PERCURSO', 'POLOS', 'ARCOS'];
+  const profiles = [
+    [1, 1, 1, 1, 1, 1],
+    [1.2, 1.8, 1.5, 1, .6, .6],
+    [.8, .7, .8, 1.3, 1.1, 1.7],
+    [.8, 1.1, 2, 2, .6, .6],
+    [2.3, 1.2, 1.6, 1.8, .5, .5],
+    [.6, .6, .7, .8, 2.4, 2.1],
+    [1.4, .8, .9, 2, 1.7, .6],
+    [.8, 2.2, 1.4, 1.5, .6, 1.3]
+  ];
+
+  function poleStep(previous, prefix, next, tolerance) {
+    const state = previous ? {
+      ...previous,
+      anchors: previous.anchors ? [...previous.anchors] : null,
+      drift: previous.drift ? [...previous.drift] : [0, 0]
+    } : { active: false, anchors: null, drift: [0, 0], outside: 0, age: 0, event: 'SEM FORMAÇÃO' };
+    state.age++;
+    state.inactiveAge = state.active || state.concentration != null ? 0 : (state.inactiveAge || 0) + 1;
+    if (state.anchors && (state.active || (state.event === 'RUPTURA' && state.outside <= 3))) {
+      const oldDistance = distance(...state.anchors);
+      const expected = 1 - state.lastSide;
+      const de = distance(next, state.anchors[expected]);
+      const ds = distance(next, state.anchors[state.lastSide]);
+      if (de <= tolerance && de <= ds) {
+        const resumed = !state.active || state.outside > 0 || state.event === 'INTERRUPÇÃO';
+        state.drift[expected] += jump(state.anchors[expected], next);
+        state.anchors[expected] = next;
+        state.lastSide = expected;
+        state.outside = 0;
+        state.active = true;
+        state.event = resumed ? 'RETOMADA' : 'ALTERNÂNCIA';
+      } else if (state.active && ds <= tolerance) {
+        state.drift[state.lastSide] += jump(state.anchors[state.lastSide], next);
+        state.anchors[state.lastSide] = next;
+        state.outside = 0;
+        state.event = 'INTERRUPÇÃO';
+      } else {
+        state.outside++;
+        state.event = state.outside >= 2 ? 'RUPTURA' : 'SAÍDA';
+        if (state.outside >= 2) state.active = false;
+      }
+      state.separation = distance(...state.anchors);
+      state.movement = Math.sign(state.separation - oldDistance);
+      if (state.active && state.separation <= Math.max(2, tolerance)) {
+        state.active = false;
+        state.event = 'FUSÃO';
+        state.concentration = next;
+        state.fromFusion = true;
+        state.concentrationOutside = 0;
+      } else if (state.active && state.event === 'ALTERNÂNCIA') {
+        if (state.movement < 0) state.event = 'CONVERGÊNCIA';
+        if (state.movement > 0) state.event = 'DIVERGÊNCIA';
+        if (!state.movement) state.event = 'MANUTENÇÃO';
+      }
+    } else if (state.concentration != null) {
+      if (distance(next, state.concentration) <= Math.max(2, tolerance)) {
+        state.concentration = next;
+        state.fromFusion = true;
+        state.concentrationOutside = 0;
+        state.event = 'CONCENTRAÇÃO APÓS FUSÃO';
+      } else {
+        state.concentrationOutside++;
+        state.event = state.concentrationOutside >= 2 ? 'DISPERSÃO APÓS FUSÃO' : 'SAÍDA APÓS FUSÃO';
+        if (state.concentrationOutside >= 2) state.concentration = null;
+      }
+    }
+    if (!state.active && prefix.length >= 3 && state.event !== 'FUSÃO') {
+      const [a, b, c] = prefix.slice(-3);
+      if (distance(a, b) >= Math.max(8, 2 * tolerance + 2) &&
+          distance(a, c) <= tolerance && distance(b, next) <= tolerance) {
+        const split = state.concentration != null || state.fromFusion;
+        state.anchors = [c, next];
+        state.drift = [jump(a, c), jump(b, next)];
+        state.lastSide = 1;
+        state.separation = distance(c, next);
+        state.movement = Math.sign(state.separation - distance(a, b));
+        state.outside = 0;
+        state.active = true;
+        state.concentration = null;
+        state.event = split ? 'NOVOS POLOS APÓS FUSÃO' : 'FORMAÇÃO';
+      }
+    }
+    if(state.active)state.inactiveAge=0;
+    if(!state.active&&state.concentration==null&&state.inactiveAge>3){state.anchors=null;state.event='ENCERRADO';}
+    return state;
+  }
+
+  function chooseArc(previous, prefix, width) {
+    if (prefix.length < 4 || width === 37) return { width, start: null, event: 'SEM CONCENTRAÇÃO', outside: 0, inside: 0 };
+    const sample = prefix.slice(-8);
+    const counts = Array(size).fill(0);
+    for (const position of sample) counts[position]++;
+    let total = 0;
+    for (let j = 0; j < width; j++) total += counts[j];
+    let best = { start: 0, count: total };
+    for (let start = 1; start < size; start++) {
+      total += counts[mod(start + width - 1)] - counts[start - 1];
+      if (total > best.count) best = { start, count: total };
+    }
+    const minimum = Math.max(2, Math.ceil(sample.length * width / size + 1));
+    const state = previous ? { ...previous } : { width, start: null, outside: 0, inside: 0, weak: 0 };
+    if (state.start != null) {
+      const count = sample.filter(position => mod(position - state.start) < width).length;
+      state.weak = count < minimum ? (state.weak || 0) + 1 : 0;
+      if (best.count >= minimum && best.start !== state.start && best.count >= count + 2) {
+        state.start = best.start;
+        state.event = 'SUBSTITUIÇÃO';
+        state.outside = 0;
+        state.inside = 0;
+        state.lastInside = null;
+      } else if (state.weak >= 2 || (state.outside >= 8 && count < minimum)) {
+        state.start = null;
+        state.event = 'ENCERRAMENTO';
+      } else if (!state.weak && previous?.weak) state.event = 'RETOMADA DO ARCO';
+      else if (state.weak) state.event = 'ENFRAQUECIMENTO';
+    } else if (best.count >= minimum) {
+      state.start = best.start;
+      state.event = 'FORMAÇÃO';
+      state.outside = 0;
+      state.inside = 0;
+      state.lastInside = null;
+      state.weak = 0;
+    } else state.event = state.event === 'ENCERRAMENTO' ? 'ENCERRAMENTO' : 'SEM CONCENTRAÇÃO';
+    state.width = width;
+    state.count = state.start == null ? 0 : sample.filter(position => mod(position - state.start) < width).length;
+    return state;
+  }
+
+  function consumeArc(prepared, next) {
+    const state = { ...prepared };
+    if (state.start == null) return state;
+    const inside = mod(next - state.start) < state.width;
+    const transition = inside ? state.lastInside === true ? 'PERMANÊNCIA' : state.outside > 0 ? 'REENTRADA' : 'ENTRADA'
+                             : state.lastInside === true ? 'SAÍDA' : 'AFASTAMENTO';
+    state.transition = transition;
+    if (!['SUBSTITUIÇÃO', 'FORMAÇÃO', 'ENFRAQUECIMENTO', 'RETOMADA DO ARCO'].includes(state.event)) state.event = transition;
+    state.inside = inside ? state.inside + 1 : 0;
+    state.outside = inside ? 0 : state.outside + 1;
+    state.lastInside = inside;
+    return state;
+  }
+
+
+  // Todos os setores fixos são lidos, inclusive quando não são o arco eleito.
+  // Chaves compactas evitam armazenar 1.369 objetos em cada prefixo histórico.
+  function fixedArcKeys(prefix) {
+    const keys = new Uint16Array(37 * 37);
+    const recent = prefix.slice(-8);
+    for (let width = 1; width <= 37; width++) {
+      for (let start = 0; start < 37; start++) {
+        const flags = recent.map(position => mod(position - start) < width);
+        const count = flags.filter(Boolean).length;
+        let run = 0;
+        const inside = flags.at(-1) || false;
+        for (let k = flags.length - 1; k >= 0 && flags[k] === inside && run < 4; k--) run++;
+        keys[(width - 1) * 37 + start] = count * 10 + Number(inside) * 5 + run;
+      }
+    }
+    return keys;
+  }
+
+  function arcAlternative(history, number, start, width) {
+    if (!Number.isInteger(start) || start < 0 || start > 36 || !Number.isInteger(width) || width < 1 || width > 37) return null;
+    const prefix = history.slice(-70).map(number => positions[number]);
+    const priorInside = prefix.length ? mod(prefix.at(-1) - start) < width : null;
+    const inside = mod(positions[number] - start) < width;
+    const visited = prefix.some(position => mod(position - start) < width);
+    const event = inside ? priorInside === true ? 'PERMANÊNCIA' : visited ? 'REENTRADA' : 'ENTRADA'
+                         : priorInside === true ? 'SAÍDA' : 'AFASTAMENTO';
+    const sample = prefix.slice(-8);
+    const visits = sample.filter(position => mod(position - start) < width).length;
+    return { start, startNumber: wheel[start], width, number, inside, event, visits, sample: sample.length };
+  }
+
+  function makeFrame(prefix, poles, arcs, captureModes = true) {
+    const end = prefix.length - 1;
+    if (end < 2) return { modes: [], poles, arcs, triangle: null, chains: [] };
+    const a = prefix[end - 2], b = prefix[end - 1], c = prefix[end];
+    const shape = atlas.feature(a, b, c);
+    const f = { ...shape,
+      partialReturn: a!==c && shape.s1*shape.s2<0 && shape.closure<Math.abs(shape.s1),
+      perimeter: shape.chords.reduce((sum,value)=>sum+value,0),
+      amplitudeChange: Math.abs(shape.s2)-Math.abs(shape.s1),
+      abruptAmplitude: Math.abs(Math.abs(shape.s2)-Math.abs(shape.s1))>=10,
+      amplitudeAlternation: (Math.abs(shape.s1)<=3&&Math.abs(shape.s2)>=10)||(Math.abs(shape.s2)<=3&&Math.abs(shape.s1)>=10),
+      signedResidual: shape.net-Math.round(shape.net/37)*37,
+      algebraicTurns: shape.net/37
+    };
+    const modes = [];
+    function mode(id, group, key, anchor = c, orientation = 1) {
+      if(captureModes)modes.push({ id, group, key, anchor, orientation });
+    }
+    mode('TRINCA NUMÉRICA', 0, prefix.slice(-3).join(','), null);
+    mode('FORMA GIRADA', 0, f.s1 + ',' + f.s2);
+    const original = f.s1 + ',' + f.s2;
+    const reflected = -f.s1 + ',' + -f.s2;
+    mode('FORMA REFLETIDA', 0, original < reflected ? original : reflected, c, original < reflected ? 1 : -1);
+    mode('CLASSE E DIREÇÃO', 0, [f.type, Math.sign(f.s1), Math.sign(f.s2), f.degenerate].join('|'));
+    mode('ÁREA E ÂNGULO', 0, [Math.floor(f.area * 4), f.angles[1] == null ? 'DEGENERADO' : Math.floor(f.angles[1] / 20), Math.sign(f.net)].join('|'));
+    mode('CORDAS E PERÍMETRO', 0, [Math.floor(f.chords.reduce((s, v) => s + v, 0) * 2), Math.floor(Math.max(...f.chords) * 3), f.type].join('|'));
+    mode('CURTO MÉDIO LONGO', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), f.trend, Math.sign(f.s2)].join('|'));
+    mode('PROPORÇÃO E AMPLITUDE', 1, [f.ratio == null ? 'INDEFINIDA' : Math.floor(Math.min(8, f.ratio) * 2), Math.abs(f.s2), f.trend].join('|'));
+    mode('ALTERNÂNCIA DE AMPLITUDE', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), Math.abs(Math.abs(f.s1) - Math.abs(f.s2)) >= 10, f.type].join('|'));
+    mode('FECHAMENTO E CONTORNO', 3, [band(f.closure), f.contour, f.trend, Math.sign(f.net)].join('|'), a);
+    const chains = [];
+    for (let length = 4; length <= Math.min(8, prefix.length); length++) {
+      const chain = prefix.slice(-length);
+      const steps = chain.slice(1).map((position, i) => jump(chain[i], position));
+      const net = steps.reduce((sum, value) => sum + value, 0);
+      const absolute = steps.reduce((sum, value) => sum + Math.abs(value), 0);
+      const closure = distance(chain[0], c);
+      const trends = steps.slice(1).map((value, i) => Math.sign(Math.abs(value) - Math.abs(steps[i])));
+      mode('CADEIA EXATA ' + length, 2, steps.join(','));
+      mode('CADEIA DIREÇÃO/AMPLITUDE ' + length, 2, steps.map(value => Math.sign(value) + ':' + amplitudeBand(Math.abs(value))).join(','));
+      mode('PERCURSO/RETORNO ' + length, 3, [Math.sign(net), Math.floor(Math.abs(net) / 6), Math.floor(absolute / 10), band(closure), trends.join(',')].join('|'), chain[0]);
+      chains.push({ length, steps, net, absolute, closure, turns: net / 37, residual: mod(net), trends,
+        interruption: steps.length>=3&&Math.sign(steps.at(-2))===Math.sign(steps.at(-3))&&Math.sign(steps.at(-1))!==Math.sign(steps.at(-2)),
+        resumption: steps.length>=3&&steps.at(-1)===steps.at(-3)&&steps.at(-1)!==steps.at(-2),
+        directionChanges: steps.slice(1).filter((value,index)=>Math.sign(value)!==Math.sign(steps[index])).length
+      });
+    }
+    for (let tolerance = 0; tolerance <= 8; tolerance++) {
+      const state = poles[tolerance];
+      const relevant = state.anchors && (state.active || state.outside <= 3 || state.concentration != null);
+      const key = relevant ? [state.event, band(state.separation || 0), state.movement || 0, Math.min(3, state.outside), state.drift.map(Math.sign).join(',')].join('|') : null;
+      const anchor = state.concentration != null ? state.concentration : state.anchors ? state.anchors[1 - state.lastSide] : c;
+      mode('POLOS TOLERÂNCIA ' + tolerance, 4, key, anchor);
+    }
+    for (let width = 1; width <= 37; width++) {
+      const state = arcs[width - 1];
+      const key = state.start == null ? null : [state.event, state.transition, state.count, Math.min(4, state.outside), Math.min(4, state.inside)].join('|');
+      mode('ARCO ' + width, 5, key, state.start == null ? c : state.start);
+    }
+    if(captureModes)for(let width=1;width<=37;width++){
+      mode('ARCO TODOS OS SETORES '+width,5,width===37?null:'TODOS OS SETORES');
+      modes.at(-1).fixedWidth=width;
+    }
+    return { modes, poles, arcs, triangle: f, chains, fixedKeys: captureModes ? fixedArcKeys(prefix) : null };
+  }
+
+  function read(history) {
+    const h = history.slice(-70);
+    const key = h.join(',');
+    if (cache.has(key)) return cache.get(key);
+    const prefix = [];
+    let poles = Array.from({ length: 9 }, () => null);
+    let arcs = Array.from({ length: 37 }, () => null);
+    const frames = [];
+    for (const number of h) {
+      const next = positions[number];
+      const prepared = arcs.map((state, index) => chooseArc(state, prefix, index + 1));
+      poles = poles.map((state, tolerance) => poleStep(state, prefix, next, tolerance));
+      arcs = prepared.map(state => consumeArc(state, next));
+      prefix.push(next);
+      frames.push(makeFrame(prefix, poles, arcs));
+    }
+    const current = frames.at(-1) || { modes: [], poles, arcs, triangle: null, chains: [] };
+    const modes = current.modes.map(mode => ({ ...mode, support: 0, occurrences: 0, weights: Array(size).fill(16), outcomes: Array(size).fill(0), outcomeIndices: Array.from({length:size},()=>[]) }));
+    for (let end = 2; end < h.length - 1; end++) {
+      const previous = frames[end];
+      const next = positions[h[end + 1]];
+      const mass = Math.exp(-(h.length - 2 - end) / 28);
+      const previousModes = new Map(previous.modes.map(mode => [mode.id, mode]));
+      for (const mode of modes) {
+        const old = previousModes.get(mode.id);
+        if (mode.fixedWidth || mode.key == null || !old || old.key !== mode.key) continue;
+        mode.support += mass;
+        mode.occurrences++;
+        const center = mode.anchor == null ? next : mod(mode.anchor + jump(old.anchor, next) * mode.orientation * old.orientation);
+        mode.outcomes[center]++;
+        mode.outcomeIndices[center].push(end);
+        mode.weights[center] += mass * size * .7;
+        mode.weights[mod(center - 1)] += mass * size * .15;
+        mode.weights[mod(center + 1)] += mass * size * .15;
+      }
+    }
+    for(const mode of modes.filter(mode=>mode.fixedWidth&&mode.fixedWidth<37)){
+      const indices=new Set();
+      for(let start=0;start<37;start++){
+        const index=(mode.fixedWidth-1)*37+start;
+        for(let end=2;end<h.length-1;end++){
+          if(frames[end].fixedKeys[index]!==current.fixedKeys[index])continue;
+          const mass=Math.exp(-(h.length-2-end)/28)/37;
+          const center=positions[h[end+1]];
+          mode.support+=mass;indices.add(end);
+          mode.outcomeIndices[center].push(end);mode.outcomes[center]++;
+          mode.weights[center]+=mass*37*.7;
+          mode.weights[mod(center-1)]+=mass*37*.15;
+          mode.weights[mod(center+1)]+=mass*37*.15;
+        }
+      }
+      mode.occurrences=indices.size;
+    }
+    for (const mode of modes) mode.weights = normalize(mode.weights);
+    const summaries = groups.map((name, group) => {
+      const members = modes.filter(mode => mode.group === group && mode.support > 0);
+      const support = Math.max(0, ...members.map(mode => mode.support));
+      const weights = members.length ? normalize(Array.from({ length: size }, (_, j) => average(members.map(mode => mode.weights[j])))) : Array(size).fill(1);
+      return { name, support, modes: members.length, weights };
+    });
+    const preparedArcs = arcs.map((state, index) => chooseArc(state, prefix, index + 1));
+    const candidates = wheel.map((number, position) => {
+      const futurePoles = poles.map((state, tolerance) => poleStep(state, prefix, position, tolerance));
+      const futureArcs = preparedArcs.map(state => consumeArc(state, position));
+      const future = makeFrame([...prefix, position], futurePoles, futureArcs, false);
+      const last = current.triangle;
+      return { number, position, triangle: future.triangle,
+        triangleTransition: last && future.triangle ? { areaChange: Math.sign(future.triangle.area - last.area), closureChange: Math.sign(future.triangle.closure - last.closure), turn: Math.sign(future.triangle.s2), ratio: future.triangle.ratio } : null,
+        chains: future.chains,
+        poleEvents: futurePoles.map((state, tolerance) => ({ tolerance, event: state.event, movement: state.movement || 0, separation: state.separation == null ? null : state.separation, anchors: state.anchors ? state.anchors.map(p => wheel[p]) : [] })),
+        arcEvents: futureArcs.map(state => ({ width: state.width, event: state.event, transition: state.transition || null, start: state.start, outside: state.outside, inside: state.inside })),
+        allArcStartsRead: true, arcSectorCases: 1369,
+        historicalSupport: new Set(modes.flatMap(mode => mode.outcomeIndices[position])).size,
+        supportingChannels: modes.filter(mode => mode.outcomes[position] > 0).length
+      };
+    });
+    const result = { version: '6.6.7', prefix: h, candidates, modes, groups: summaries,
+      candidateCount: candidates.length, channelCount: modes.length, arcSectorCases:1369,
+      interpretationCount: candidates.length * modes.length,
+      status: 'LEITURA ATIVA — HIPÓTESES NÃO SÃO ACERTOS' };
+    result.profileCache = new Map();
+    cache.set(key, result);
+    if (cache.size > 32) cache.delete(cache.keys().next().value);
+    return result;
+  }
+
+  function weights(history, profile = {}) {
+    const reading = read(history);
+    const cacheKey = [profile.family || '', profile.radius || '', profile.variation || ''].join('|');
+    if (reading.profileCache.has(cacheKey)) return reading.profileCache.get(cacheKey);
+    const shares = [...(profiles[profile.variation - 1] || profiles[0])];
+    if ((profile.family || '').startsWith('RX')) { shares[0] *= 1.35; shares[2] *= 1.3; }
+    if ((profile.family || '').includes('DINAMICO')) { shares[1] *= 1.35; shares[3] *= 1.25; }
+    if (profile.radius) { shares[4] *= .8 + (profile.radius - 4) * .2; shares[5] *= .8 + (profile.radius - 4) * .25; }
+    const total = shares.reduce((sum, value) => sum + value, 0);
+    const result = normalize(Array.from({ length: size }, (_, j) => reading.groups.reduce((sum, group, k) => {
+      const confidence = group.support / (group.support + 12);
+      return sum + shares[k] / total * (1 + confidence * (group.weights[j] - 1));
+    }, 0)));
+    reading.profileCache.set(cacheKey, result);
+    return result;
+  }
+
+  function merge(original, history, profile = {}, strength = .18) {
+    if (history.length < 3) return original;
+    const reading = read(history);
+    if (!reading.groups.some(group => group.support > 0)) return original;
+    const contribution = weights(history, profile);
+    const mean = average(original) || 1;
+    return original.map((value, j) => Math.max(.001, value * (1 - strength) + mean * contribution[j] * strength));
+  }
+
+  function summary(history) {
+    const reading = read(history);
+    return { version: reading.version, candidateCount: reading.candidateCount,
+      channelCount: reading.channelCount, interpretationCount: reading.interpretationCount,
+      groups: reading.groups.map(({ name, support, modes }) => ({ name, support, modes })) };
+  }
+
+  return { read, weights, merge, summary, poleStep, chooseArc, consumeArc, arcAlternative,
+    clear() { cache.clear(); } };
+}
+
+const triangleMemory666 = createTriangleMemory666(W);
+  const motorReadings667=createMotorReadings667(W,triangleMemory666);
   function triangleAnalysis(h) {
     const original=legacyTriangleAnalysis(h);
     if(!state.structuralMemoryEnabled)return original;
@@ -1262,7 +1673,7 @@ function createTriangleMemory666(wheel){
           raw.components.reduce((s, w, k) => s + w[j] * adaptive.shares[k], 0),
         ),
       ),
-      r = { ...raw, adaptive, weights };
+      r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.7" };
     spaceCache.set(key, r);
     if (spaceCache.size > 120)
       spaceCache.delete(spaceCache.keys().next().value);
@@ -1459,11 +1870,8 @@ function createTriangleMemory666(wheel){
         weights[ix(n)] += (b * radius) / 5;
       }
     }
-    return applySpatial(
-      weights,
-      h,
-      0.3 + (radius - 4) * 0.035 + (family.startsWith("RX") ? 0.035 : 0),
-    );
+    return motorReadings667.merge(applySpatial(weights,h,
+      0.3+(radius-4)*0.035+(family.startsWith("RX")?0.035:0)),h,{family,radius},.12);
   }
 
   const motorDiversityCache = new Map();
@@ -1731,6 +2139,7 @@ function createTriangleMemory666(wheel){
           triangleKey: triangleContext(h),
           spatialKeys: [...s.keys],
           spatialVersion: VERSION,
+          readingVersion:"6.6.7",readingCandidates:37,
           componentShares: [...s.adaptive.shares],
           adaptiveSamples: s.adaptive.samples,
         });
@@ -2595,6 +3004,7 @@ function createTriangleMemory666(wheel){
       }
     }
     const recency = normalizeSpace(recent);
+    const completeWeights667=motorReadings667.weights(h,{variation,radius});
     const last = h.at(-1),
       prior = h.at(-2);
     const jump = prior == null ? 0 : direction(prior, last);
@@ -2615,6 +3025,7 @@ function createTriangleMemory666(wheel){
         0,
       );
       let value = mixed * 0.65 + recency[j] * profile.recent;
+      value+=.18*(completeWeights667[j]-1);
       value +=
         1.8 * Math.exp(-distance(n, hypothesis) / (1.6 + (radius - 4) * 0.4));
       if (variation === 4) value += 0.5 * Math.exp(-distance(n, projected) / 2);
@@ -2834,7 +3245,7 @@ function createTriangleMemory666(wheel){
 
   function fresh() {
     return {
-      structuralMemoryVersion: "6.6.6",
+      structuralMemoryVersion: "6.6.7",
       structuralMemoryEnabled: false,
       forecastVersion: VERSION,
       history: [],
@@ -3013,8 +3424,8 @@ function createTriangleMemory666(wheel){
       r.strategy = "TRAINER";
       r.manual = null;
     }
-    if(data.structuralMemoryVersion!=="6.6.6"){
-      r.structuralMemoryVersion="6.6.6";
+    if(data.structuralMemoryVersion!=="6.6.7"){
+      r.structuralMemoryVersion="6.6.7";
       r.block={...r.block,data:null};
     }
 
@@ -3045,6 +3456,7 @@ function createTriangleMemory666(wheel){
   }
 
   function clearSpatialCaches() {
+    motorReadings667.clear();
     triangleMemory666.clear();
     triangleCache.clear();
     spaceCache.clear();
@@ -3056,7 +3468,7 @@ function createTriangleMemory666(wheel){
   }
 
   function compactMotor(m) {
-    const result = {};
+    const result = { readingVersion:"6.6.7", readingCandidates:37,};
     for (const field of [
       "key",
       "rank",
@@ -3543,6 +3955,18 @@ function createTriangleMemory666(wheel){
         : "NORMAL"
       : null;
     state.ledger.push({
+      readingAudit: {
+        version: "6.6.7", prefix: [...before].slice(-70), beforeTurn: turn-1,
+        candidateCount: 37, channelCount: motorReadings667.summary(before).channelCount,
+        supportedGroups: motorReadings667.summary(before).groups.filter(group=>group.support>0).map(group=>group.name),
+        coveredByMotors: Object.keys(motorHits).filter(key=>motorHits[key]),
+        selectedBank: oldCycle?.original?.bankId||played?.bankId||"GLOBAL",
+        bankAlternatives: [{bankId:"GLOBAL",coveredBy:cs.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)},
+          ...forecasts.map(forecast=>({bankId:forecast.bankId,coveredBy:forecast.motors.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)}))],
+        readingSupport: motorReadings667.read(before).candidates.find(option=>option.number===n)?.historicalSupport||0,
+        chosenCovered: played?.play?.numbers.includes(n) ?? null,
+        note: "HIPÓTESES ENUMERADAS NÃO SÃO ACERTOS VIRTUAIS"
+      },
       controller,
       masterTarget: copy(
         oldCycle?.original?.masterTarget || played?.masterTarget || null,
@@ -4685,6 +5109,7 @@ if(!isCurrentApp())return false;
               componentShares: [...spatial.adaptive.shares],
               adaptiveSamples: spatial.adaptive.samples,
               spatialVersion: VERSION,
+          readingVersion:"6.6.7",readingCandidates:37,
             });
           }
         const cs = fastIndependentMotors(proposals);
@@ -4917,7 +5342,7 @@ if(!isCurrentApp())return false;
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.6.6 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.7 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -4951,7 +5376,7 @@ ANÁLISE BETA V6.6.6 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.6.6",
+    const VERSION = "6.6.7",
       KEY = "ANALISE_BETA_V664",
       WINDOW = 70;
     const OLD_KEYS=[];
@@ -5505,7 +5930,394 @@ function createTriangleMemory666(wheel){
 }
 
 
-    const triangleMemory666 = createTriangleMemory666(W);
+    /* Leitura estrutural ativa. Enumera os 37 próximos resultados e seus estados.
+   Uma alternativa possível não é uma previsão confirmada. Somente sucessores
+   já observados atribuem peso. Leitura e escolha permanecem separadas. */
+function createMotorReadings667(wheel, atlas) {
+  const size = 37;
+  const positions = Array(size);
+  wheel.forEach((number, index) => { positions[number] = index; });
+  const mod = value => (value % size + size) % size;
+  const jump = (from, to) => {
+    const forward = mod(to - from);
+    return forward <= 18 ? forward : forward - size;
+  };
+  const distance = (from, to) => Math.abs(jump(from, to));
+  const average = values => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  const band = value => value === 0 ? '0' : value <= 2 ? '1–2' : value <= 6 ? '3–6' : value <= 12 ? '7–12' : '13+';
+  const amplitudeBand = value => value <= 3 ? 'CURTO' : value <= 9 ? 'MÉDIO' : 'LONGO';
+  const normalize = values => {
+    const mean = average(values) || 1;
+    return values.map(value => value / mean);
+  };
+  const cache = new Map();
+  const groups = ['TRIANGULAÇÃO', 'AMPLITUDE', 'ENCADEAMENTO', 'FECHAMENTO/PERCURSO', 'POLOS', 'ARCOS'];
+  const profiles = [
+    [1, 1, 1, 1, 1, 1],
+    [1.2, 1.8, 1.5, 1, .6, .6],
+    [.8, .7, .8, 1.3, 1.1, 1.7],
+    [.8, 1.1, 2, 2, .6, .6],
+    [2.3, 1.2, 1.6, 1.8, .5, .5],
+    [.6, .6, .7, .8, 2.4, 2.1],
+    [1.4, .8, .9, 2, 1.7, .6],
+    [.8, 2.2, 1.4, 1.5, .6, 1.3]
+  ];
+
+  function poleStep(previous, prefix, next, tolerance) {
+    const state = previous ? {
+      ...previous,
+      anchors: previous.anchors ? [...previous.anchors] : null,
+      drift: previous.drift ? [...previous.drift] : [0, 0]
+    } : { active: false, anchors: null, drift: [0, 0], outside: 0, age: 0, event: 'SEM FORMAÇÃO' };
+    state.age++;
+    state.inactiveAge = state.active || state.concentration != null ? 0 : (state.inactiveAge || 0) + 1;
+    if (state.anchors && (state.active || (state.event === 'RUPTURA' && state.outside <= 3))) {
+      const oldDistance = distance(...state.anchors);
+      const expected = 1 - state.lastSide;
+      const de = distance(next, state.anchors[expected]);
+      const ds = distance(next, state.anchors[state.lastSide]);
+      if (de <= tolerance && de <= ds) {
+        const resumed = !state.active || state.outside > 0 || state.event === 'INTERRUPÇÃO';
+        state.drift[expected] += jump(state.anchors[expected], next);
+        state.anchors[expected] = next;
+        state.lastSide = expected;
+        state.outside = 0;
+        state.active = true;
+        state.event = resumed ? 'RETOMADA' : 'ALTERNÂNCIA';
+      } else if (state.active && ds <= tolerance) {
+        state.drift[state.lastSide] += jump(state.anchors[state.lastSide], next);
+        state.anchors[state.lastSide] = next;
+        state.outside = 0;
+        state.event = 'INTERRUPÇÃO';
+      } else {
+        state.outside++;
+        state.event = state.outside >= 2 ? 'RUPTURA' : 'SAÍDA';
+        if (state.outside >= 2) state.active = false;
+      }
+      state.separation = distance(...state.anchors);
+      state.movement = Math.sign(state.separation - oldDistance);
+      if (state.active && state.separation <= Math.max(2, tolerance)) {
+        state.active = false;
+        state.event = 'FUSÃO';
+        state.concentration = next;
+        state.fromFusion = true;
+        state.concentrationOutside = 0;
+      } else if (state.active && state.event === 'ALTERNÂNCIA') {
+        if (state.movement < 0) state.event = 'CONVERGÊNCIA';
+        if (state.movement > 0) state.event = 'DIVERGÊNCIA';
+        if (!state.movement) state.event = 'MANUTENÇÃO';
+      }
+    } else if (state.concentration != null) {
+      if (distance(next, state.concentration) <= Math.max(2, tolerance)) {
+        state.concentration = next;
+        state.fromFusion = true;
+        state.concentrationOutside = 0;
+        state.event = 'CONCENTRAÇÃO APÓS FUSÃO';
+      } else {
+        state.concentrationOutside++;
+        state.event = state.concentrationOutside >= 2 ? 'DISPERSÃO APÓS FUSÃO' : 'SAÍDA APÓS FUSÃO';
+        if (state.concentrationOutside >= 2) state.concentration = null;
+      }
+    }
+    if (!state.active && prefix.length >= 3 && state.event !== 'FUSÃO') {
+      const [a, b, c] = prefix.slice(-3);
+      if (distance(a, b) >= Math.max(8, 2 * tolerance + 2) &&
+          distance(a, c) <= tolerance && distance(b, next) <= tolerance) {
+        const split = state.concentration != null || state.fromFusion;
+        state.anchors = [c, next];
+        state.drift = [jump(a, c), jump(b, next)];
+        state.lastSide = 1;
+        state.separation = distance(c, next);
+        state.movement = Math.sign(state.separation - distance(a, b));
+        state.outside = 0;
+        state.active = true;
+        state.concentration = null;
+        state.event = split ? 'NOVOS POLOS APÓS FUSÃO' : 'FORMAÇÃO';
+      }
+    }
+    if(state.active)state.inactiveAge=0;
+    if(!state.active&&state.concentration==null&&state.inactiveAge>3){state.anchors=null;state.event='ENCERRADO';}
+    return state;
+  }
+
+  function chooseArc(previous, prefix, width) {
+    if (prefix.length < 4 || width === 37) return { width, start: null, event: 'SEM CONCENTRAÇÃO', outside: 0, inside: 0 };
+    const sample = prefix.slice(-8);
+    const counts = Array(size).fill(0);
+    for (const position of sample) counts[position]++;
+    let total = 0;
+    for (let j = 0; j < width; j++) total += counts[j];
+    let best = { start: 0, count: total };
+    for (let start = 1; start < size; start++) {
+      total += counts[mod(start + width - 1)] - counts[start - 1];
+      if (total > best.count) best = { start, count: total };
+    }
+    const minimum = Math.max(2, Math.ceil(sample.length * width / size + 1));
+    const state = previous ? { ...previous } : { width, start: null, outside: 0, inside: 0, weak: 0 };
+    if (state.start != null) {
+      const count = sample.filter(position => mod(position - state.start) < width).length;
+      state.weak = count < minimum ? (state.weak || 0) + 1 : 0;
+      if (best.count >= minimum && best.start !== state.start && best.count >= count + 2) {
+        state.start = best.start;
+        state.event = 'SUBSTITUIÇÃO';
+        state.outside = 0;
+        state.inside = 0;
+        state.lastInside = null;
+      } else if (state.weak >= 2 || (state.outside >= 8 && count < minimum)) {
+        state.start = null;
+        state.event = 'ENCERRAMENTO';
+      } else if (!state.weak && previous?.weak) state.event = 'RETOMADA DO ARCO';
+      else if (state.weak) state.event = 'ENFRAQUECIMENTO';
+    } else if (best.count >= minimum) {
+      state.start = best.start;
+      state.event = 'FORMAÇÃO';
+      state.outside = 0;
+      state.inside = 0;
+      state.lastInside = null;
+      state.weak = 0;
+    } else state.event = state.event === 'ENCERRAMENTO' ? 'ENCERRAMENTO' : 'SEM CONCENTRAÇÃO';
+    state.width = width;
+    state.count = state.start == null ? 0 : sample.filter(position => mod(position - state.start) < width).length;
+    return state;
+  }
+
+  function consumeArc(prepared, next) {
+    const state = { ...prepared };
+    if (state.start == null) return state;
+    const inside = mod(next - state.start) < state.width;
+    const transition = inside ? state.lastInside === true ? 'PERMANÊNCIA' : state.outside > 0 ? 'REENTRADA' : 'ENTRADA'
+                             : state.lastInside === true ? 'SAÍDA' : 'AFASTAMENTO';
+    state.transition = transition;
+    if (!['SUBSTITUIÇÃO', 'FORMAÇÃO', 'ENFRAQUECIMENTO', 'RETOMADA DO ARCO'].includes(state.event)) state.event = transition;
+    state.inside = inside ? state.inside + 1 : 0;
+    state.outside = inside ? 0 : state.outside + 1;
+    state.lastInside = inside;
+    return state;
+  }
+
+
+  // Todos os setores fixos são lidos, inclusive quando não são o arco eleito.
+  // Chaves compactas evitam armazenar 1.369 objetos em cada prefixo histórico.
+  function fixedArcKeys(prefix) {
+    const keys = new Uint16Array(37 * 37);
+    const recent = prefix.slice(-8);
+    for (let width = 1; width <= 37; width++) {
+      for (let start = 0; start < 37; start++) {
+        const flags = recent.map(position => mod(position - start) < width);
+        const count = flags.filter(Boolean).length;
+        let run = 0;
+        const inside = flags.at(-1) || false;
+        for (let k = flags.length - 1; k >= 0 && flags[k] === inside && run < 4; k--) run++;
+        keys[(width - 1) * 37 + start] = count * 10 + Number(inside) * 5 + run;
+      }
+    }
+    return keys;
+  }
+
+  function arcAlternative(history, number, start, width) {
+    if (!Number.isInteger(start) || start < 0 || start > 36 || !Number.isInteger(width) || width < 1 || width > 37) return null;
+    const prefix = history.slice(-70).map(number => positions[number]);
+    const priorInside = prefix.length ? mod(prefix.at(-1) - start) < width : null;
+    const inside = mod(positions[number] - start) < width;
+    const visited = prefix.some(position => mod(position - start) < width);
+    const event = inside ? priorInside === true ? 'PERMANÊNCIA' : visited ? 'REENTRADA' : 'ENTRADA'
+                         : priorInside === true ? 'SAÍDA' : 'AFASTAMENTO';
+    const sample = prefix.slice(-8);
+    const visits = sample.filter(position => mod(position - start) < width).length;
+    return { start, startNumber: wheel[start], width, number, inside, event, visits, sample: sample.length };
+  }
+
+  function makeFrame(prefix, poles, arcs, captureModes = true) {
+    const end = prefix.length - 1;
+    if (end < 2) return { modes: [], poles, arcs, triangle: null, chains: [] };
+    const a = prefix[end - 2], b = prefix[end - 1], c = prefix[end];
+    const shape = atlas.feature(a, b, c);
+    const f = { ...shape,
+      partialReturn: a!==c && shape.s1*shape.s2<0 && shape.closure<Math.abs(shape.s1),
+      perimeter: shape.chords.reduce((sum,value)=>sum+value,0),
+      amplitudeChange: Math.abs(shape.s2)-Math.abs(shape.s1),
+      abruptAmplitude: Math.abs(Math.abs(shape.s2)-Math.abs(shape.s1))>=10,
+      amplitudeAlternation: (Math.abs(shape.s1)<=3&&Math.abs(shape.s2)>=10)||(Math.abs(shape.s2)<=3&&Math.abs(shape.s1)>=10),
+      signedResidual: shape.net-Math.round(shape.net/37)*37,
+      algebraicTurns: shape.net/37
+    };
+    const modes = [];
+    function mode(id, group, key, anchor = c, orientation = 1) {
+      if(captureModes)modes.push({ id, group, key, anchor, orientation });
+    }
+    mode('TRINCA NUMÉRICA', 0, prefix.slice(-3).join(','), null);
+    mode('FORMA GIRADA', 0, f.s1 + ',' + f.s2);
+    const original = f.s1 + ',' + f.s2;
+    const reflected = -f.s1 + ',' + -f.s2;
+    mode('FORMA REFLETIDA', 0, original < reflected ? original : reflected, c, original < reflected ? 1 : -1);
+    mode('CLASSE E DIREÇÃO', 0, [f.type, Math.sign(f.s1), Math.sign(f.s2), f.degenerate].join('|'));
+    mode('ÁREA E ÂNGULO', 0, [Math.floor(f.area * 4), f.angles[1] == null ? 'DEGENERADO' : Math.floor(f.angles[1] / 20), Math.sign(f.net)].join('|'));
+    mode('CORDAS E PERÍMETRO', 0, [Math.floor(f.chords.reduce((s, v) => s + v, 0) * 2), Math.floor(Math.max(...f.chords) * 3), f.type].join('|'));
+    mode('CURTO MÉDIO LONGO', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), f.trend, Math.sign(f.s2)].join('|'));
+    mode('PROPORÇÃO E AMPLITUDE', 1, [f.ratio == null ? 'INDEFINIDA' : Math.floor(Math.min(8, f.ratio) * 2), Math.abs(f.s2), f.trend].join('|'));
+    mode('ALTERNÂNCIA DE AMPLITUDE', 1, [amplitudeBand(Math.abs(f.s1)), amplitudeBand(Math.abs(f.s2)), Math.abs(Math.abs(f.s1) - Math.abs(f.s2)) >= 10, f.type].join('|'));
+    mode('FECHAMENTO E CONTORNO', 3, [band(f.closure), f.contour, f.trend, Math.sign(f.net)].join('|'), a);
+    const chains = [];
+    for (let length = 4; length <= Math.min(8, prefix.length); length++) {
+      const chain = prefix.slice(-length);
+      const steps = chain.slice(1).map((position, i) => jump(chain[i], position));
+      const net = steps.reduce((sum, value) => sum + value, 0);
+      const absolute = steps.reduce((sum, value) => sum + Math.abs(value), 0);
+      const closure = distance(chain[0], c);
+      const trends = steps.slice(1).map((value, i) => Math.sign(Math.abs(value) - Math.abs(steps[i])));
+      mode('CADEIA EXATA ' + length, 2, steps.join(','));
+      mode('CADEIA DIREÇÃO/AMPLITUDE ' + length, 2, steps.map(value => Math.sign(value) + ':' + amplitudeBand(Math.abs(value))).join(','));
+      mode('PERCURSO/RETORNO ' + length, 3, [Math.sign(net), Math.floor(Math.abs(net) / 6), Math.floor(absolute / 10), band(closure), trends.join(',')].join('|'), chain[0]);
+      chains.push({ length, steps, net, absolute, closure, turns: net / 37, residual: mod(net), trends,
+        interruption: steps.length>=3&&Math.sign(steps.at(-2))===Math.sign(steps.at(-3))&&Math.sign(steps.at(-1))!==Math.sign(steps.at(-2)),
+        resumption: steps.length>=3&&steps.at(-1)===steps.at(-3)&&steps.at(-1)!==steps.at(-2),
+        directionChanges: steps.slice(1).filter((value,index)=>Math.sign(value)!==Math.sign(steps[index])).length
+      });
+    }
+    for (let tolerance = 0; tolerance <= 8; tolerance++) {
+      const state = poles[tolerance];
+      const relevant = state.anchors && (state.active || state.outside <= 3 || state.concentration != null);
+      const key = relevant ? [state.event, band(state.separation || 0), state.movement || 0, Math.min(3, state.outside), state.drift.map(Math.sign).join(',')].join('|') : null;
+      const anchor = state.concentration != null ? state.concentration : state.anchors ? state.anchors[1 - state.lastSide] : c;
+      mode('POLOS TOLERÂNCIA ' + tolerance, 4, key, anchor);
+    }
+    for (let width = 1; width <= 37; width++) {
+      const state = arcs[width - 1];
+      const key = state.start == null ? null : [state.event, state.transition, state.count, Math.min(4, state.outside), Math.min(4, state.inside)].join('|');
+      mode('ARCO ' + width, 5, key, state.start == null ? c : state.start);
+    }
+    if(captureModes)for(let width=1;width<=37;width++){
+      mode('ARCO TODOS OS SETORES '+width,5,width===37?null:'TODOS OS SETORES');
+      modes.at(-1).fixedWidth=width;
+    }
+    return { modes, poles, arcs, triangle: f, chains, fixedKeys: captureModes ? fixedArcKeys(prefix) : null };
+  }
+
+  function read(history) {
+    const h = history.slice(-70);
+    const key = h.join(',');
+    if (cache.has(key)) return cache.get(key);
+    const prefix = [];
+    let poles = Array.from({ length: 9 }, () => null);
+    let arcs = Array.from({ length: 37 }, () => null);
+    const frames = [];
+    for (const number of h) {
+      const next = positions[number];
+      const prepared = arcs.map((state, index) => chooseArc(state, prefix, index + 1));
+      poles = poles.map((state, tolerance) => poleStep(state, prefix, next, tolerance));
+      arcs = prepared.map(state => consumeArc(state, next));
+      prefix.push(next);
+      frames.push(makeFrame(prefix, poles, arcs));
+    }
+    const current = frames.at(-1) || { modes: [], poles, arcs, triangle: null, chains: [] };
+    const modes = current.modes.map(mode => ({ ...mode, support: 0, occurrences: 0, weights: Array(size).fill(16), outcomes: Array(size).fill(0), outcomeIndices: Array.from({length:size},()=>[]) }));
+    for (let end = 2; end < h.length - 1; end++) {
+      const previous = frames[end];
+      const next = positions[h[end + 1]];
+      const mass = Math.exp(-(h.length - 2 - end) / 28);
+      const previousModes = new Map(previous.modes.map(mode => [mode.id, mode]));
+      for (const mode of modes) {
+        const old = previousModes.get(mode.id);
+        if (mode.fixedWidth || mode.key == null || !old || old.key !== mode.key) continue;
+        mode.support += mass;
+        mode.occurrences++;
+        const center = mode.anchor == null ? next : mod(mode.anchor + jump(old.anchor, next) * mode.orientation * old.orientation);
+        mode.outcomes[center]++;
+        mode.outcomeIndices[center].push(end);
+        mode.weights[center] += mass * size * .7;
+        mode.weights[mod(center - 1)] += mass * size * .15;
+        mode.weights[mod(center + 1)] += mass * size * .15;
+      }
+    }
+    for(const mode of modes.filter(mode=>mode.fixedWidth&&mode.fixedWidth<37)){
+      const indices=new Set();
+      for(let start=0;start<37;start++){
+        const index=(mode.fixedWidth-1)*37+start;
+        for(let end=2;end<h.length-1;end++){
+          if(frames[end].fixedKeys[index]!==current.fixedKeys[index])continue;
+          const mass=Math.exp(-(h.length-2-end)/28)/37;
+          const center=positions[h[end+1]];
+          mode.support+=mass;indices.add(end);
+          mode.outcomeIndices[center].push(end);mode.outcomes[center]++;
+          mode.weights[center]+=mass*37*.7;
+          mode.weights[mod(center-1)]+=mass*37*.15;
+          mode.weights[mod(center+1)]+=mass*37*.15;
+        }
+      }
+      mode.occurrences=indices.size;
+    }
+    for (const mode of modes) mode.weights = normalize(mode.weights);
+    const summaries = groups.map((name, group) => {
+      const members = modes.filter(mode => mode.group === group && mode.support > 0);
+      const support = Math.max(0, ...members.map(mode => mode.support));
+      const weights = members.length ? normalize(Array.from({ length: size }, (_, j) => average(members.map(mode => mode.weights[j])))) : Array(size).fill(1);
+      return { name, support, modes: members.length, weights };
+    });
+    const preparedArcs = arcs.map((state, index) => chooseArc(state, prefix, index + 1));
+    const candidates = wheel.map((number, position) => {
+      const futurePoles = poles.map((state, tolerance) => poleStep(state, prefix, position, tolerance));
+      const futureArcs = preparedArcs.map(state => consumeArc(state, position));
+      const future = makeFrame([...prefix, position], futurePoles, futureArcs, false);
+      const last = current.triangle;
+      return { number, position, triangle: future.triangle,
+        triangleTransition: last && future.triangle ? { areaChange: Math.sign(future.triangle.area - last.area), closureChange: Math.sign(future.triangle.closure - last.closure), turn: Math.sign(future.triangle.s2), ratio: future.triangle.ratio } : null,
+        chains: future.chains,
+        poleEvents: futurePoles.map((state, tolerance) => ({ tolerance, event: state.event, movement: state.movement || 0, separation: state.separation == null ? null : state.separation, anchors: state.anchors ? state.anchors.map(p => wheel[p]) : [] })),
+        arcEvents: futureArcs.map(state => ({ width: state.width, event: state.event, transition: state.transition || null, start: state.start, outside: state.outside, inside: state.inside })),
+        allArcStartsRead: true, arcSectorCases: 1369,
+        historicalSupport: new Set(modes.flatMap(mode => mode.outcomeIndices[position])).size,
+        supportingChannels: modes.filter(mode => mode.outcomes[position] > 0).length
+      };
+    });
+    const result = { version: '6.6.7', prefix: h, candidates, modes, groups: summaries,
+      candidateCount: candidates.length, channelCount: modes.length, arcSectorCases:1369,
+      interpretationCount: candidates.length * modes.length,
+      status: 'LEITURA ATIVA — HIPÓTESES NÃO SÃO ACERTOS' };
+    result.profileCache = new Map();
+    cache.set(key, result);
+    if (cache.size > 32) cache.delete(cache.keys().next().value);
+    return result;
+  }
+
+  function weights(history, profile = {}) {
+    const reading = read(history);
+    const cacheKey = [profile.family || '', profile.radius || '', profile.variation || ''].join('|');
+    if (reading.profileCache.has(cacheKey)) return reading.profileCache.get(cacheKey);
+    const shares = [...(profiles[profile.variation - 1] || profiles[0])];
+    if ((profile.family || '').startsWith('RX')) { shares[0] *= 1.35; shares[2] *= 1.3; }
+    if ((profile.family || '').includes('DINAMICO')) { shares[1] *= 1.35; shares[3] *= 1.25; }
+    if (profile.radius) { shares[4] *= .8 + (profile.radius - 4) * .2; shares[5] *= .8 + (profile.radius - 4) * .25; }
+    const total = shares.reduce((sum, value) => sum + value, 0);
+    const result = normalize(Array.from({ length: size }, (_, j) => reading.groups.reduce((sum, group, k) => {
+      const confidence = group.support / (group.support + 12);
+      return sum + shares[k] / total * (1 + confidence * (group.weights[j] - 1));
+    }, 0)));
+    reading.profileCache.set(cacheKey, result);
+    return result;
+  }
+
+  function merge(original, history, profile = {}, strength = .18) {
+    if (history.length < 3) return original;
+    const reading = read(history);
+    if (!reading.groups.some(group => group.support > 0)) return original;
+    const contribution = weights(history, profile);
+    const mean = average(original) || 1;
+    return original.map((value, j) => Math.max(.001, value * (1 - strength) + mean * contribution[j] * strength));
+  }
+
+  function summary(history) {
+    const reading = read(history);
+    return { version: reading.version, candidateCount: reading.candidateCount,
+      channelCount: reading.channelCount, interpretationCount: reading.interpretationCount,
+      groups: reading.groups.map(({ name, support, modes }) => ({ name, support, modes })) };
+  }
+
+  return { read, weights, merge, summary, poleStep, chooseArc, consumeArc, arcAlternative,
+    clear() { cache.clear(); } };
+}
+
+const triangleMemory666 = createTriangleMemory666(W);
+  const motorReadings667=createMotorReadings667(W,triangleMemory666);
   function triangleAnalysis(h) {
     const original=legacyTriangleAnalysis(h);
     if(!state.structuralMemoryEnabled)return original;
@@ -6134,7 +6946,7 @@ function createTriangleMemory666(wheel){
             ),
           ),
         ),
-        r = { ...raw, adaptive, weights };
+        r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.7" };
       spaceCache.set(key, r);
       if (spaceCache.size > 120)
         spaceCache.delete(spaceCache.keys().next().value);
@@ -6332,11 +7144,8 @@ function createTriangleMemory666(wheel){
           weights[ix(n)] += (b * radius) / 5;
         }
       }
-      return applySpatial(
-        weights,
-        h,
-        0.3 + (radius - 4) * 0.035 + (family.startsWith("RX") ? 0.035 : 0),
-      );
+      return motorReadings667.merge(applySpatial(weights,h,
+      0.3+(radius-4)*0.035+(family.startsWith("RX")?0.035:0)),h,{family,radius},.12);
     }
 
     const motorDiversityCache = new Map();
@@ -6611,6 +7420,7 @@ function createTriangleMemory666(wheel){
             triangleKey: triangleContext(h),
             spatialKeys: [...s.keys],
             spatialVersion: VERSION,
+          readingVersion:"6.6.7",readingCandidates:37,
             componentShares: [...s.adaptive.shares],
             adaptiveSamples: s.adaptive.samples,
           });
@@ -7495,6 +8305,7 @@ function createTriangleMemory666(wheel){
         }
       }
       const recency = normalizeSpace(recent);
+    const completeWeights667=motorReadings667.weights(h,{variation,radius});
       const last = h.at(-1),
         prior = h.at(-2);
       const jump = prior == null ? 0 : direction(prior, last);
@@ -7515,6 +8326,7 @@ function createTriangleMemory666(wheel){
           0,
         );
         let value = mixed * 0.65 + recency[j] * profile.recent;
+      value+=.18*(completeWeights667[j]-1);
         value +=
           1.8 * Math.exp(-distance(n, hypothesis) / (1.6 + (radius - 4) * 0.4));
         if (variation === 4)
@@ -7742,7 +8554,7 @@ function createTriangleMemory666(wheel){
 
     function fresh() {
       return {
-      structuralMemoryVersion: "6.6.6",
+      structuralMemoryVersion: "6.6.7",
       structuralMemoryEnabled: false,
         forecastVersion: VERSION,
         history: [],
@@ -7921,8 +8733,8 @@ function createTriangleMemory666(wheel){
         r.strategy = "TRAINER";
         r.manual = null;
       }
-    if(data.structuralMemoryVersion!=="6.6.6"){
-      r.structuralMemoryVersion="6.6.6";
+    if(data.structuralMemoryVersion!=="6.6.7"){
+      r.structuralMemoryVersion="6.6.7";
       r.block={...r.block,data:null};
     }
 
@@ -7953,6 +8765,7 @@ function createTriangleMemory666(wheel){
     }
 
     function clearSpatialCaches() {
+    motorReadings667.clear();
     triangleMemory666.clear();
       triangleCache.clear();
       spaceCache.clear();
@@ -7964,7 +8777,7 @@ function createTriangleMemory666(wheel){
     }
 
     function compactMotor(m) {
-      const result = {};
+      const result = { readingVersion:"6.6.7", readingCandidates:37,};
       for (const field of [
         "key",
         "rank",
@@ -8455,6 +9268,18 @@ function createTriangleMemory666(wheel){
           : "NORMAL"
         : null;
       state.ledger.push({
+      readingAudit: {
+        version: "6.6.7", prefix: [...before].slice(-70), beforeTurn: turn-1,
+        candidateCount: 37, channelCount: motorReadings667.summary(before).channelCount,
+        supportedGroups: motorReadings667.summary(before).groups.filter(group=>group.support>0).map(group=>group.name),
+        coveredByMotors: Object.keys(motorHits).filter(key=>motorHits[key]),
+        selectedBank: oldCycle?.original?.bankId||played?.bankId||"GLOBAL",
+        bankAlternatives: [{bankId:"GLOBAL",coveredBy:cs.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)},
+          ...forecasts.map(forecast=>({bankId:forecast.bankId,coveredBy:forecast.motors.filter(motor=>motor.play.numbers.includes(n)).map(motor=>motor.key)}))],
+        readingSupport: motorReadings667.read(before).candidates.find(option=>option.number===n)?.historicalSupport||0,
+        chosenCovered: played?.play?.numbers.includes(n) ?? null,
+        note: "HIPÓTESES ENUMERADAS NÃO SÃO ACERTOS VIRTUAIS"
+      },
         controller,
         masterTarget: copy(
           oldCycle?.original?.masterTarget || played?.masterTarget || null,
@@ -9618,6 +10443,7 @@ state.importAudit=describeImport(clean,opts);
                 componentShares: [...spatial.adaptive.shares],
                 adaptiveSamples: spatial.adaptive.samples,
                 spatialVersion: VERSION,
+          readingVersion:"6.6.7",readingCandidates:37,
               });
             }
           const cs = fastIndependentMotors(proposals);
@@ -9905,6 +10731,31 @@ state.importAudit=describeImport(clean,opts);
       save();
     }catch(error){state=previous;clearSpatialCaches();alert(String(error.message||error));}
     finally{if(isCurrentApp()){setBusy(false);render();}}
+  }
+
+  function completeReadingsHTML667(){
+    const latest=state.ledger.at(-1)?.readingAudit;
+    const audit=latest?'<p>ANTES DO GIRO '+(latest.beforeTurn+1)+': '+latest.candidateCount+
+      ' resultados possíveis • '+latest.channelCount+' canais. Motores que cobriram o resultado: '+
+      esc(latest.coveredByMotors.join(' • ')||'NENHUM')+'. '+
+      (latest.chosenCovered===null?'SEM APOSTA COMPROMETIDA':latest.chosenCovered?'A COBERTURA ESCOLHIDA CONTINHA O RESULTADO':'A COBERTURA ESCOLHIDA NÃO CONTINHA O RESULTADO')+'</p>':'';
+    return '<details id="motorReadingsDetail"><summary>LEITURAS ATIVAS DOS MOTORES • 37 POSSIBILIDADES</summary><div class="muted">'+
+      'Triangulações, cadeias 4–8, amplitude, fechamento, percurso, polos com tolerâncias 0–8 e arcos de 1–37 posições. '+
+      'Todas as possibilidades são descritas; suporte histórico e escolha são informações diferentes.'+audit+
+      '</div><div id="motorReadingsBody"></div></details>';
+  }
+  function wireCompleteReadings667(){
+    const detail=$('motorReadingsDetail');if(!detail)return;
+    detail.ontoggle=()=>{
+      if(!detail.open||$('motorReadingsBody').dataset.loaded)return;
+      const reading=motorReadings667.read(state.history);
+      $('motorReadingsBody').innerHTML=tableHTML(['NÚMERO POSSÍVEL','TRIANGULAÇÃO','AMPLITUDE','FECHAMENTO','POLOS POSSÍVEIS','ARCOS POSSÍVEIS','OCORRÊNCIAS DE SUPORTE'],
+        reading.candidates.map(option=>[option.number,esc(option.triangle?.type||'SEM TRINCA'),
+          option.triangle?option.triangle.trend>0?'EXPANSÃO':option.triangle.trend<0?'CONTRAÇÃO':'MANUTENÇÃO':'—',
+          option.triangle?.closure??'—',esc([...new Set(option.poleEvents.map(event=>event.event))].join(' / ')),
+          esc([...new Set(option.arcEvents.map(event=>event.event))].join(' / ')),option.historicalSupport]));
+      $('motorReadingsBody').dataset.loaded='true';
+    };
   }
   function button(label, action, parent, extra = "") {
     const b = document.createElement("button");
@@ -10336,6 +11187,7 @@ if(receipt)receipt.textContent=audit?'ÚLTIMA IMPORTAÇÃO '+audit.historyId+' �
         "MASTER ESCOLHEU: " + motor.masterTarget.name + " • " + state.phase;
     }
     if(state.structuralMemoryEnabled)$("selected").textContent+=" • TRIANGULAÇÃO EXPERIMENTAL";
+    if(state.open.general){$('general').innerHTML+=completeReadingsHTML667();wireCompleteReadings667();}
     renderFocusGame(motor);
     $("stake").value = state.stake;
     $("multiplier").value = state.multiplier;
@@ -11241,6 +12093,9 @@ return {
  timelineRows(){return timelineDefinitions().map(def=>{const ui=timelineUINodes.get(def.id);if(ui)document.registerScope(ui.item);return {id:def.id,name:def.name,item:ui?.item};});},
  setFinancial(stake,multiplier){state.stake=stake;state.multiplier=multiplier;$('stake').value=stake;$('multiplier').value=multiplier;scheduleSave();},
  structuralDiagnostics(simulate=false){if(!state.structuralMemoryEnabled&&!simulate)return {status:'DESLIGADA — SEM GANHO COMPROVADO',influence:0};const r=triangleMemory666.analyze(state.history,past=>legacyTriangleAnalysis(past).weights);return {status:r.status,influence:r.influence,observedSuccessors:r.observedSuccessors,modes:r.modes.map(({name,support,occurrences,evaluations,meanLogGain,stderr,active,mass})=>({name,support,occurrences,evaluations,meanLogGain,stderr,active,mass}))};},
+ motorReadings(number=null){const r=motorReadings667.read(state.history);return number==null?{...motorReadings667.summary(state.history),candidates:r.candidates}:r.candidates.find(option=>option.number===number);},
+ auditReading(turn){const row=state.ledger.find(row=>row.turn===turn);if(!row?.readingAudit)return null;return {record:copy(row.readingAudit),outcome:row.number,options:motorReadings667.read(row.readingAudit.prefix).candidates};},
+ arcReading(number,start,width){return motorReadings667.arcAlternative(state.history,number,start,width);},
  getState:()=>state,
  busy:()=>busy||inputRunning||inputQueue.length>0,
  canEnqueue:()=>appAlive&&state.history.length>=8&&(!busy||inputRunning),
@@ -11323,7 +12178,7 @@ body{margin:0;background:#101720;color:#f4f7fb;font:13px Arial,sans-serif}
 </style>
 <main id="beta-dual-app">
 <section class="panel">
-<h1>ANÁLISE BETA 6.6.6</h1>
+<h1>ANÁLISE BETA 6.6.7</h1>
 <label for="dual-paste">IMPORTAR HISTÓRICO</label>
 <textarea id="dual-paste" placeholder="Cole de 8 a 70 resultados."></textarea>
 <div class="dual-controls">
