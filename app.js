@@ -1,7 +1,24 @@
+/* ANÁLISE BETA 6.6.13 — RETOMADA SEM COMPACTAÇÃO NA TELA.
+Trocar de aba não executa mais save()/LZW completo na thread da interface.
+Serialização do checkpoint também ocorre no worker de salvamento.
+Dois calculadores de bancos adicionais por leitura foram eliminados; os mesmos
+65 bancos e todas as análises são calculados pelo worker de cada leitura.
+Falha do worker não transfere silenciosamente o motor inteiro para o teclado.
+Reinserir o código transfere a sessão em memória sem compactação síncrona.
+Persistência, diário de entradas, linhas do tempo e reanálise preservados.
+*/
+/* ANÁLISE BETA 6.6.13 — REANÁLISE DA IMPORTAÇÃO E APRESENTAÇÃO ÚNICA.
+A revisão restaura o prefixo anterior à entrada: 6 componentes x 4 intensidades.
+Tentativas e jogadas ficam registradas; acerto revisado não apaga o LOSS original.
+Uma hipótese ajustada ao passado começa com ZERO validações; somente os giros
+posteriores a avaliam e autorizam influência limitada nos pesos dos motores.
+Entrada manual publica os centros uma vez por conclusão, sem prévia duplicada
+nem avisos de recebido/concluído no teclado. Persistência 6.6.11 preservada.
+*/
 /* Correção de sessão e resposta ao clique:
 - Número recebido aparece antes das operações de armazenamento.
 - Cópia e diferença para desfazer calculadas no worker de análise.
-- Próxima jogada é publicada assim que calculada, antes do registro de desfazer.
+- Próxima jogada é publicada uma vez, junto do estado final calculado.
 - Busca geométrica usa duas máscaras inteiras exatas de 32+5 bits no laço crítico.
   Mesma busca, pontuação e desempates; sem reduzir as análises.
 - Caches de leituras limitados sem reduzir hipóteses nem mudar os pesos.
@@ -10,7 +27,7 @@
 - Falha de leitura protege a cópia existente de gravação vazia automática.
 - Aviso de salvamento permanece visível na tela compartilhada.
 */
-/* ANÁLISE BETA V6.6.11 — SELEÇÃO MASTER CORRIGIDA.
+/* ANÁLISE BETA V6.6.13 — SELEÇÃO MASTER CORRIGIDA.
 Mesmo ranking para todos os candidatos elegíveis: BASE, V1–V8,
 12 adaptativas, AUTO 1–4, terceiro automático, personalizadas e treinadores.
 O MASTER e o controlador pós-loss não disputam consigo mesmos.
@@ -26,7 +43,7 @@ Ciclo/G1 comprometido não troca; nenhum resultado futuro participa do ranking.
 Atlas, encadeamentos, polos, arcos, controles e persistência preservados.
 Este é um critério comparativo; não garante acerto nem ausência de LOSS.
 */
-/* ANÁLISE BETA V6.6.11 — LEITURAS ATIVAS DA JANELA COMPLETA.
+/* ANÁLISE BETA V6.6.13 — LEITURAS ATIVAS DA JANELA COMPLETA.
 Atlas integral de 1.369 formas de triangulação e 361 pares de amplitudes.
 Encadeamentos de todos os comprimentos 4..70 disponíveis na janela:
 sequência numérica, deslocamentos, reflexão, amplitudes, direção,
@@ -48,7 +65,7 @@ Escopo: leitura dentro da janela de até 70 resultados, com estes critérios
 explícitos. Não significa todas as definições matemáticas imagináveis,
 nem cobertura individual de 37, nem melhoria de acerto comprovada.
 */
-/* V6.6.11 — MEMÓRIA CAUSAL DO QUARTO RESULTADO.
+/* V6.6.13 — MEMÓRIA CAUSAL DO QUARTO RESULTADO.
 Acrescenta trinca→quarto, forma girada/refletida, amplitude/proporção,
 encadeamento de 4–8, fechamento/contorno, sucessores de arcos e polos.
 Atlas: 1.369 formas relativas, equivalentes a 50.653 trincas numéricas.
@@ -62,7 +79,7 @@ A tela compacta, os dois sentidos, um teclado, as estratégias e as defesas
 comprometidas permanecem. Sessões da 6.6.5 são retomadas sem reimportação.
 Resultados anteriores não são recalculados como se usassem o novo motor.
 */
-/* ANÁLISE BETA 6.6.11 — DUAS LEITURAS EM UMA TELA COMPACTA.
+/* ANÁLISE BETA 6.6.13 — DUAS LEITURAS EM UMA TELA COMPACTA.
 BASE: 6.6.4, com os cálculos da 6.6.1 preservados.
 NORMAL: histórico na ordem cronológica escolhida na importação.
 INVERTIDO: os mesmos resultados em ordem reversa, com treinamento próprio.
@@ -106,7 +123,7 @@ let appAlive=true;
 function isCurrentApp(){return appAlive;}
 
   /*
-ANÁLISE BETA V6.6.11 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.13 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -140,7 +157,7 @@ ANÁLISE BETA V6.6.11 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-  const VERSION = "6.6.11",
+  const VERSION = "6.6.13",
     KEY = 'ANALISE_BETA_V664_DUAL_'+side,
     WINDOW = 70;
   const OLD_KEYS=[];
@@ -1284,7 +1301,7 @@ function createMotorReadings667(wheel, atlas) {
       };
       candidateCache.set(number,description);return description;
     }
-    const result = { version: '6.6.11', prefix: h, get candidates(){return wheel.map(describeCandidate);},candidate:describeCandidate,modes, groups: summaries, exhaustive, completePoles,completeArcs,
+    const result = { version: '6.6.13', prefix: h, get candidates(){return wheel.map(describeCandidate);},candidate:describeCandidate,modes, groups: summaries, exhaustive, completePoles,completeArcs,
       candidateCount:37, channelCount: modes.length, arcSectorCases:1369,chainLengths:Array.from({length:Math.max(0,h.length-3)},(_,i)=>i+4),
       interpretationCount:37 * modes.length,
       status: 'LEITURA ATIVA — HIPÓTESES NÃO SÃO ACERTOS' };
@@ -1962,7 +1979,7 @@ const triangleMemory666 = createTriangleMemory666(W);
           raw.components.reduce((s, w, k) => s + w[j] * adaptive.shares[k], 0),
         ),
       ),
-      r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.11" };
+      r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.13" };
     spaceCache.set(key, r);
     if (spaceCache.size > 40)
       spaceCache.delete(spaceCache.keys().next().value);
@@ -2159,8 +2176,8 @@ const triangleMemory666 = createTriangleMemory666(W);
         weights[ix(n)] += (b * radius) / 5;
       }
     }
-    return motorReadings667.merge(applySpatial(weights,h,
-      0.3+(radius-4)*0.035+(family.startsWith("RX")?0.035:0)),h,{family,radius},.12);
+    return applyReanalysisMemory(motorReadings667.merge(applySpatial(weights,h,
+      0.3+(radius-4)*0.035+(family.startsWith("RX")?0.035:0)),h,{family,radius},.12),h);
   }
 
   const motorDiversityCache = new Map();
@@ -2428,7 +2445,7 @@ const triangleMemory666 = createTriangleMemory666(W);
           triangleKey: triangleContext(h),
           spatialKeys: [...s.keys],
           spatialVersion: VERSION,
-          readingVersion:"6.6.11",readingCandidates:37,
+          readingVersion:"6.6.13",readingCandidates:37,
           componentShares: [...s.adaptive.shares],
           adaptiveSamples: s.adaptive.samples,
         });
@@ -3534,7 +3551,7 @@ const triangleMemory666 = createTriangleMemory666(W);
 
   function fresh() {
     return {
-      structuralMemoryVersion: "6.6.11",
+      structuralMemoryVersion: "6.6.13",
       structuralMemoryEnabled: false,
       forecastVersion: VERSION,
       history: [],
@@ -3546,7 +3563,7 @@ const triangleMemory666 = createTriangleMemory666(W);
       undoStack: [],
       strategy: "MASTER",importAudit:null,
       masterChoice: null,
-      masterHistory: [], masterLessons:[],masterReviews:[],
+      masterHistory: [], masterLessons:[],masterReviews:[],importReanalyses:[],reanalysisPolicies:[],
       masterResumeTurn: 0,
       globalStrategyPrevious: null,
       postLossEnabled: false,
@@ -3631,7 +3648,7 @@ const triangleMemory666 = createTriangleMemory666(W);
       "ledger",
       "autoRows",
       "masterHistory",
-    "masterLessons","masterReviews",])
+    "masterLessons","masterReviews","importReanalyses","reanalysisPolicies",])
       if (!Array.isArray(r[field])) r[field] = [];
     r.totalTurns = Math.max(
       Number(r.totalTurns) || 0,
@@ -3713,8 +3730,8 @@ const triangleMemory666 = createTriangleMemory666(W);
       r.strategy = "TRAINER";
       r.manual = null;
     }
-    if(data.structuralMemoryVersion!=="6.6.11"){
-      r.structuralMemoryVersion="6.6.11";
+    if(data.structuralMemoryVersion!=="6.6.13"){
+      r.structuralMemoryVersion="6.6.13";
       r.block={...r.block,data:null};
     }
 
@@ -3757,7 +3774,7 @@ const triangleMemory666 = createTriangleMemory666(W);
   }
 
   function compactMotor(m) {
-    const result = { readingVersion:"6.6.11", readingCandidates:37,};
+    const result = { readingVersion:"6.6.13", readingCandidates:37,};
     for (const field of [
       "key",
       "rank",
@@ -4213,7 +4230,7 @@ const triangleMemory666 = createTriangleMemory666(W);
       : null;
     state.ledger.push({
       readingAudit: {
-        version: "6.6.11", prefix: [...before].slice(-70), beforeTurn: turn-1,
+        version: "6.6.13", prefix: [...before].slice(-70), beforeTurn: turn-1,
         candidateCount: 37, chainMaximum:before.length, poleTolerances:19, polePairPositions:1369, arcWindowCount:before.length, relativeForms:1369, amplitudeForms:361, formsEvaluated:motorReadings667.summary(before).formsEvaluated, channelCount: motorReadings667.summary(before).channelCount,
         supportedGroups: motorReadings667.summary(before).groups.filter(group=>group.support>0).map(group=>group.name),
         coveredByMotors: Object.keys(motorHits).filter(key=>motorHits[key]),
@@ -4244,6 +4261,7 @@ const triangleMemory666 = createTriangleMemory666(W);
       motorHits,
       autoRank: played?.autoRank || null,
     });
+    if(before.length>=8)validateReanalysisPolicies(before,n,turn);
     state.totalTurns = turn;
     state.history.push(n);
     state.historyTurns.push(turn);
@@ -4299,7 +4317,9 @@ function importNumbersCore(numbers, opts, manualLog = []) {
 state.importAudit=describeImport(clean,opts);
     // A importação cresce até o tamanho escolhido; não descarta seu próprio histórico.
     state.block.size = 0;
-    for (const n of clean) spin(n, "HISTÓRICO");
+    state.importTrainingActive=true;
+    try{for (const n of clean) spin(n, "HISTÓRICO");}
+    finally{state.importTrainingActive=false;}
     state.block = {
       size: clean.length,
       pending: 0,
@@ -4702,6 +4722,105 @@ state.importAudit=describeImport(clean,opts);
     return timelineMotor(id,block);
   }
 
+  /* Reanálise supervisionada da importação. Hipóteses são definidas pelo
+     prefixo; o resultado conhecido apenas avalia as tentativas depois.
+     O ajuste retrospectivo nunca conta como validação prospectiva. */
+  const REANALYSIS_COMPONENTS = ['triangle','chain','pole','arc','route','recent'];
+  const REANALYSIS_LEVELS = [.35,.55,.75,.90];
+  function reanalysisWeights(prefix, group, level) {
+    const h=prefix.slice(-70), reading=spatialRead(h);
+    const recent=Array(37).fill(.1);
+    for(let age=0;age<h.length;age++){
+      const mass=Math.exp(-age/12);
+      for(let j=0;j<37;j++)recent[j]+=mass*Math.exp(-distance(W[j],h[h.length-1-age])/2);
+    }
+    const components=[...reading.components,normalizeSpace(recent)];
+    const selected=components[group], strength=REANALYSIS_LEVELS[level];
+    const reference=normalizeSpace(reading.weights);
+    return normalizeSpace(reference.map((v,j)=>Math.max(.001,v*(1-strength)+selected[j]*strength)));
+  }
+  function reanalysisKey(group,level){return 'REVIEW:'+group+':'+level;}
+  function validateReanalysisPolicies(prefix,number,turn){
+    for(const policy of state.reanalysisPolicies){
+      if(policy.createdTurn>=turn)continue;
+      const play=geometry(reanalysisWeights(prefix,policy.group,policy.level));
+      if(!validPlay(play))continue;
+      const hit=play.numbers.includes(number);
+      policy.evaluations++;
+      if(hit)policy.hits++;
+      policy.lastEvaluation={beforeTurn:turn-1,turn,number,hit};
+    }
+  }
+  function applyReanalysisMemory(weights,h){
+    if(!state.reanalysisPolicies?.length)return weights;
+    const base=28/37, mean=avg(weights)||1;
+    for(const policy of state.reanalysisPolicies){
+      // Só resultados POSTERIORES à descoberta autorizam influência.
+      if(policy.evaluations<4)continue;
+      const estimate=(policy.hits+base*8)/(policy.evaluations+8);
+      const strength=Math.min(.12,Math.max(0,estimate-base)*policy.evaluations/(policy.evaluations+8));
+      if(!strength)continue;
+      const proposal=reanalysisWeights(h,policy.group,policy.level);
+      for(let j=0;j<37;j++)weights[j]=Math.max(.001,weights[j]+mean*strength*(proposal[j]-1));
+    }
+    return weights;
+  }
+  function reviseImportedMasterLoss(review,turn){
+    if(!review.imported || review.actualResult!=='LOSS')return null;
+    const results=review.observations||[];
+    const entryIndex=results.findIndex(row=>row.phase==='ENTRY');
+    if(entryIndex<0)return null;
+    const entryOutcome=results[entryIndex];
+    const prefix=results[entryIndex].prefix;
+    const attempts=[];let solution=null;
+    // 6 leituras x 4 intensidades. Sem deslocamento escolhido pelo resultado,
+    // sem adicionar o número revelado aos pesos ou como número obrigatório.
+    for(let level=0;level<4&&!solution;level++){
+      for(let group=0;group<6&&!solution;group++){
+        const weights=reanalysisWeights(prefix,group,level);
+        const play=geometry(weights);
+        if(!validPlay(play))continue;
+        let simulated=play.numbers.includes(entryOutcome.number)?'GREEN':null;
+        let defense=null;
+        if(!simulated){
+          const gale=results.slice(entryIndex+1).find(row=>row.phase==='GALE');
+          if(gale){
+            const failureHistory=[...prefix,entryOutcome.number].slice(-70);
+            const original={key:reanalysisKey(group,level),play};
+            // Reconstrói a defesa somente com informação até a falha da entrada.
+            const savedRows=state.g1Rows;
+            state.g1Rows=savedRows.filter(row=>row.turn<entryOutcome.turn);
+            try{
+              const config=review.config;
+              const decision=config.g1Trainer?chooseG1(original,entryOutcome.number,failureHistory,'MASTER')
+                :{motor:config.g1?fineG1(original,entryOutcome.number,failureHistory):original};
+              defense=decision?.motor?.play||play;
+              simulated=defense.numbers.includes(gale.number)?'GREEN G1':'LOSS';
+            }finally{state.g1Rows=savedRows;}
+          }else simulated='LOSS';
+        }
+        const attempt={id:reanalysisKey(group,level),component:REANALYSIS_COMPONENTS[group],
+          group,level,strength:REANALYSIS_LEVELS[level],result:simulated,
+          entryShape:signaturePlay(play),defenseShape:defense?signaturePlay(defense):null};
+        attempts.push(attempt);
+        if(simulated!=='LOSS')solution=attempt;
+      }
+    }
+    const record={id:'REANALYSIS@'+review.turn,turn:review.turn,closedTurn:turn,
+      beforeTurn:review.beforeTurn,originalResult:'LOSS',selectedId:review.selectedId,
+      prefix:[...prefix],observedAfter:results.map(row=>({turn:row.turn,number:row.number,phase:row.phase})),
+      status:solution?'REVISED':'UNSOLVED',result:solution?.result||'LOSS',attempts,
+      solution:solution?{...solution}:null,retrospective:true,validated:false,
+      meaning:'TREINAMENTO REVISADO DEPOIS DO RESULTADO; NÃO É PREVISÃO COMPROVADA'};
+    state.importReanalyses.push(record);
+    state.importReanalyses=state.importReanalyses.slice(-120);
+    if(solution&&!state.reanalysisPolicies.some(policy=>policy.id===solution.id)){
+      state.reanalysisPolicies.push({id:solution.id,group:solution.group,level:solution.level,
+        createdTurn:turn,evaluations:0,hits:0,lastEvaluation:null});
+    }
+    return record;
+  }
+
   function masterLessonStats(id){
     const keys=spatialRead(state.history.slice(-70)).keys;
     let support=0,reward=0,count=0,direct=0,g1=0,loss=0;
@@ -4726,7 +4845,8 @@ state.importAudit=describeImport(clean,opts);
       return {id:f.id,entry:copy(motor),defenseStrategy:definition?.resolvedId||f.defenseStrategy||f.id,
         phase:state.secondHouse?'SECOND_SKIP':'ENTRY',initialSkip:!!state.secondHouse,result:null};
     });
-    return {version:'6.6.11',turn:state.totalTurns+1,beforeTurn:state.totalTurns,
+    return {version:'6.6.13',turn:state.totalTurns+1,beforeTurn:state.totalTurns,
+      imported:!!state.importTrainingActive,observations:[],
       prefix:[...state.history].slice(-70),spatialKeys:[...spatialRead(state.history.slice(-70)).keys],
       config:{g1:state.g1,g1Trainer:state.g1Trainer,galeSkip:state.galeSkip,secondHouse:state.secondHouse},
       forecastFingerprint:importFingerprint(alternatives.map(a=>[a.id,signaturePlay(a.entry.play)])),
@@ -4768,6 +4888,11 @@ state.importAudit=describeImport(clean,opts);
     }
     const actualStart=oldCycle?.entryTurn||turn;
     for(const review of state.masterReviews){
+      if(review.imported){
+        const first=review.alternatives.find(a=>a.id===review.selectedId)||review.alternatives[0];
+        review.observations.push({turn,number:n,prefix:[...before].slice(-70),
+          phase:first?.phase==='GALE'?'GALE':['ENTRY','SECOND_ENTRY'].includes(first?.phase)?'ENTRY':first?.phase});
+      }
       for(const alternative of review.alternatives)stepMasterAlternative(alternative,review,n,turn,before);
       if(controller==='MASTER'&&review.turn===actualStart&&['GREEN','GREEN G1','LOSS'].includes(result)){
         review.actualResult=result;review.actualClosedTurn=turn;
@@ -4776,6 +4901,7 @@ state.importAudit=describeImport(clean,opts);
     const remaining=[];
     for(const review of state.masterReviews){
       if(!review.actualResult||review.alternatives.some(a=>!a.result)){remaining.push(review);continue;}
+      reviseImportedMasterLoss(review,turn);
       const outcomes={};
       for(const a of review.alternatives)outcomes[a.id]=a.result==='GREEN'?2:a.result==='GREEN G1'?1:0;
       state.masterLessons.push({version:review.version,turn:review.turn,beforeTurn:review.beforeTurn,
@@ -5612,7 +5738,7 @@ if(!isCurrentApp() || recoveryLocked || bootLoading)return false;
               componentShares: [...spatial.adaptive.shares],
               adaptiveSamples: spatial.adaptive.samples,
               spatialVersion: VERSION,
-          readingVersion:"6.6.11",readingCandidates:37,
+          readingVersion:"6.6.13",readingCandidates:37,
             });
           }
         const cs = fastIndependentMotors(proposals);
@@ -5634,96 +5760,13 @@ if(!isCurrentApp() || recoveryLocked || bootLoading)return false;
     return forecasts;
   }
 
-  /* Dois calculadores persistentes repartem as oito famílias de estratégias.
-   Nenhuma combinação é reutilizada de um resultado anterior. */
-  let bankCalculators = null,
-    bankRequestId = 0;
-  function createBankCalculator() {
-    const url = URL.createObjectURL(
-      new Blob(["(" + analysisBackground.toString() + ")();"], {
-        type: "text/javascript",
-      }),
-    );
-    const worker = new Worker(url);
-    URL.revokeObjectURL(url);
-    const requests = new Map();
-    worker.onmessage = (event) => {
-      const data = event.data,
-        request = requests.get(data.id);
-      if (!request) return;
-      requests.delete(data.id);
-      data.error
-        ? request.reject(Error(data.error))
-        : request.resolve(data.variants);
-    };
-    worker.onerror = () => {
-      worker.terminate();
-      for (const request of requests.values())
-        request.reject(Error("Calculador indisponível."));
-      requests.clear();
-      bankCalculators = null;
-    };
-    return { worker, requests };
-  }
-  function requestBankCalculation(calculator, owners) {
-    return new Promise((resolve, reject) => {
-      const id = ++bankRequestId;
-      calculator.requests.set(id, { resolve, reject });
-      calculator.worker.postMessage({
-        id,
-        action: "BANKS",
-        state: { ...state, undoStack: [] },
-        owners,
-      });
-    });
-  }
+
   async function prepareBlockParallel() {
-    if (state.history.length < 8) return null;
-    if (state.block.data && state.block.decisionTurn === state.totalTurns)
-      return currentBlock();
-    if (typeof Worker === "undefined" || typeof Blob === "undefined")
-      return prepareBlock();
-    try {
-      if (!bankCalculators)
-        bankCalculators = [createBankCalculator(), createBankCalculator()];
-      const groups = [
-        VARIANT_OWNERS.filter((_, i) => i % 2 === 0).map((o) => o.id),
-        VARIANT_OWNERS.filter((_, i) => i % 2 === 1).map((o) => o.id),
-      ];
-      const pending = Promise.all(
-        bankCalculators.map((calculator, i) =>
-          requestBankCalculation(calculator, groups[i]),
-        ),
-      );
-      const anchor = [...state.history].slice(-70),
-        global = motors(anchor);
-      const partitions = await pending;
-      const byId = new Map(partitions.flat().map((f) => [f.bankId, f]));
-      const variants = [];
-      for (const owner of VARIANT_OWNERS)
-        for (let variation = 1; variation <= 8; variation++) {
-          const id = variantBookId(owner.id, variation),
-            forecast = byId.get(id);
-          if (!forecast) throw Error("Variação ausente: " + id);
-          variants.push(forecast);
-        }
-      state.block.anchor = anchor;
-      state.block.decisionTurn = state.totalTurns;
-      state.block.data = { global: global.map(compactMotor), variants };
-      state.block.best = rankBestVariation();
-      registerNumberCombination(anchor, state.totalTurns);
-      updateNumberChoice();
-      updateTrainer();
-      blockRuntimeKey = null;
-      updateMaster(currentBlock());
-      return currentBlock();
-    } catch (error) {
-      if (bankCalculators)
-        for (const calculator of bankCalculators) calculator.worker.terminate();
-      bankCalculators = null;
-      return prepareBlock();
-    }
+    // Um único calculador por leitura; todos os 65 bancos continuam ativos.
+    // prepareBlock conserva a mesma busca, pesos, ordenação e regras.
+    return prepareBlock();
   }
+
 
   /* Os contadores de sequência não são apagados pelo descarte da janela. */
   function updateStrategyStreaks(turn = state.totalTurns) {
@@ -5845,7 +5888,7 @@ if(!isCurrentApp() || recoveryLocked || bootLoading)return false;
       setItem() {},
     };
     /*
-ANÁLISE BETA V6.6.11 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
+ANÁLISE BETA V6.6.13 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 - Pós-loss atravessa a pausa MASTER; PÓS-3 LOSS independente, todas as estratégias e prioridade máxima.
 - Sequências de LOSS finais sobrevivem ao descarte da janela; checkpoint sem fila ilimitada.
@@ -5879,7 +5922,7 @@ ANÁLISE BETA V6.6.11 — BASE V6.4.5 + VARIAÇÕES V6.4.9.
 
 Cobertura conjunta não transforma uma jogada de 28 em cobertura individual de 37.
 */
-    const VERSION = "6.6.11",
+    const VERSION = "6.6.13",
       KEY = "ANALISE_BETA_V664",
       WINDOW = 70;
     const OLD_KEYS=[];
@@ -7030,7 +7073,7 @@ function createMotorReadings667(wheel, atlas) {
       };
       candidateCache.set(number,description);return description;
     }
-    const result = { version: '6.6.11', prefix: h, get candidates(){return wheel.map(describeCandidate);},candidate:describeCandidate,modes, groups: summaries, exhaustive, completePoles,completeArcs,
+    const result = { version: '6.6.13', prefix: h, get candidates(){return wheel.map(describeCandidate);},candidate:describeCandidate,modes, groups: summaries, exhaustive, completePoles,completeArcs,
       candidateCount:37, channelCount: modes.length, arcSectorCases:1369,chainLengths:Array.from({length:Math.max(0,h.length-3)},(_,i)=>i+4),
       interpretationCount:37 * modes.length,
       status: 'LEITURA ATIVA — HIPÓTESES NÃO SÃO ACERTOS' };
@@ -7712,7 +7755,7 @@ const triangleMemory666 = createTriangleMemory666(W);
             ),
           ),
         ),
-        r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.11" };
+        r = { ...raw, adaptive, weights: motorReadings667.merge(weights,h), readingVersion:"6.6.13" };
       spaceCache.set(key, r);
       if (spaceCache.size > 40)
         spaceCache.delete(spaceCache.keys().next().value);
@@ -7910,8 +7953,8 @@ const triangleMemory666 = createTriangleMemory666(W);
           weights[ix(n)] += (b * radius) / 5;
         }
       }
-      return motorReadings667.merge(applySpatial(weights,h,
-      0.3+(radius-4)*0.035+(family.startsWith("RX")?0.035:0)),h,{family,radius},.12);
+      return applyReanalysisMemory(motorReadings667.merge(applySpatial(weights,h,
+      0.3+(radius-4)*0.035+(family.startsWith("RX")?0.035:0)),h,{family,radius},.12),h);
     }
 
     const motorDiversityCache = new Map();
@@ -8186,7 +8229,7 @@ const triangleMemory666 = createTriangleMemory666(W);
             triangleKey: triangleContext(h),
             spatialKeys: [...s.keys],
             spatialVersion: VERSION,
-          readingVersion:"6.6.11",readingCandidates:37,
+          readingVersion:"6.6.13",readingCandidates:37,
             componentShares: [...s.adaptive.shares],
             adaptiveSamples: s.adaptive.samples,
           });
@@ -9320,7 +9363,7 @@ const triangleMemory666 = createTriangleMemory666(W);
 
     function fresh() {
       return {
-      structuralMemoryVersion: "6.6.11",
+      structuralMemoryVersion: "6.6.13",
       structuralMemoryEnabled: false,
         forecastVersion: VERSION,
         history: [],
@@ -9332,7 +9375,7 @@ const triangleMemory666 = createTriangleMemory666(W);
         undoStack: [],
         strategy: "MASTER",importAudit:null,
         masterChoice: null,
-        masterHistory: [], masterLessons:[],masterReviews:[],
+        masterHistory: [], masterLessons:[],masterReviews:[],importReanalyses:[],reanalysisPolicies:[],
         masterResumeTurn: 0,
         globalStrategyPrevious: null,
         postLossEnabled: false,
@@ -9417,7 +9460,7 @@ const triangleMemory666 = createTriangleMemory666(W);
         "ledger",
         "autoRows",
         "masterHistory",
-      "masterLessons","masterReviews",])
+      "masterLessons","masterReviews","importReanalyses","reanalysisPolicies",])
         if (!Array.isArray(r[field])) r[field] = [];
       r.totalTurns = Math.max(
         Number(r.totalTurns) || 0,
@@ -9499,8 +9542,8 @@ const triangleMemory666 = createTriangleMemory666(W);
         r.strategy = "TRAINER";
         r.manual = null;
       }
-    if(data.structuralMemoryVersion!=="6.6.11"){
-      r.structuralMemoryVersion="6.6.11";
+    if(data.structuralMemoryVersion!=="6.6.13"){
+      r.structuralMemoryVersion="6.6.13";
       r.block={...r.block,data:null};
     }
 
@@ -9543,7 +9586,7 @@ const triangleMemory666 = createTriangleMemory666(W);
     }
 
     function compactMotor(m) {
-      const result = { readingVersion:"6.6.11", readingCandidates:37,};
+      const result = { readingVersion:"6.6.13", readingCandidates:37,};
       for (const field of [
         "key",
         "rank",
@@ -10003,7 +10046,7 @@ const triangleMemory666 = createTriangleMemory666(W);
         : null;
       state.ledger.push({
       readingAudit: {
-        version: "6.6.11", prefix: [...before].slice(-70), beforeTurn: turn-1,
+        version: "6.6.13", prefix: [...before].slice(-70), beforeTurn: turn-1,
         candidateCount: 37, chainMaximum:before.length, poleTolerances:19, polePairPositions:1369, arcWindowCount:before.length, relativeForms:1369, amplitudeForms:361, formsEvaluated:motorReadings667.summary(before).formsEvaluated, channelCount: motorReadings667.summary(before).channelCount,
         supportedGroups: motorReadings667.summary(before).groups.filter(group=>group.support>0).map(group=>group.name),
         coveredByMotors: Object.keys(motorHits).filter(key=>motorHits[key]),
@@ -10034,7 +10077,8 @@ const triangleMemory666 = createTriangleMemory666(W);
         motorHits,
         autoRank: played?.autoRank || null,
       });
-      state.totalTurns = turn;
+      if(before.length>=8)validateReanalysisPolicies(before,n,turn);
+    state.totalTurns = turn;
       state.history.push(n);
       state.historyTurns.push(turn);
       state.sources.push(source);
@@ -10089,7 +10133,9 @@ function importNumbersCore(numbers, opts, manualLog = []) {
 state.importAudit=describeImport(clean,opts);
       // A importação cresce até o tamanho escolhido; não descarta seu próprio histórico.
       state.block.size = 0;
-      for (const n of clean) spin(n, "HISTÓRICO");
+      state.importTrainingActive=true;
+    try{for (const n of clean) spin(n, "HISTÓRICO");}
+    finally{state.importTrainingActive=false;}
       state.block = {
         size: clean.length,
         pending: 0,
@@ -10496,6 +10542,105 @@ state.importAudit=describeImport(clean,opts);
     return timelineMotor(id,block);
   }
 
+  /* Reanálise supervisionada da importação. Hipóteses são definidas pelo
+     prefixo; o resultado conhecido apenas avalia as tentativas depois.
+     O ajuste retrospectivo nunca conta como validação prospectiva. */
+  const REANALYSIS_COMPONENTS = ['triangle','chain','pole','arc','route','recent'];
+  const REANALYSIS_LEVELS = [.35,.55,.75,.90];
+  function reanalysisWeights(prefix, group, level) {
+    const h=prefix.slice(-70), reading=spatialRead(h);
+    const recent=Array(37).fill(.1);
+    for(let age=0;age<h.length;age++){
+      const mass=Math.exp(-age/12);
+      for(let j=0;j<37;j++)recent[j]+=mass*Math.exp(-distance(W[j],h[h.length-1-age])/2);
+    }
+    const components=[...reading.components,normalizeSpace(recent)];
+    const selected=components[group], strength=REANALYSIS_LEVELS[level];
+    const reference=normalizeSpace(reading.weights);
+    return normalizeSpace(reference.map((v,j)=>Math.max(.001,v*(1-strength)+selected[j]*strength)));
+  }
+  function reanalysisKey(group,level){return 'REVIEW:'+group+':'+level;}
+  function validateReanalysisPolicies(prefix,number,turn){
+    for(const policy of state.reanalysisPolicies){
+      if(policy.createdTurn>=turn)continue;
+      const play=geometry(reanalysisWeights(prefix,policy.group,policy.level));
+      if(!validPlay(play))continue;
+      const hit=play.numbers.includes(number);
+      policy.evaluations++;
+      if(hit)policy.hits++;
+      policy.lastEvaluation={beforeTurn:turn-1,turn,number,hit};
+    }
+  }
+  function applyReanalysisMemory(weights,h){
+    if(!state.reanalysisPolicies?.length)return weights;
+    const base=28/37, mean=avg(weights)||1;
+    for(const policy of state.reanalysisPolicies){
+      // Só resultados POSTERIORES à descoberta autorizam influência.
+      if(policy.evaluations<4)continue;
+      const estimate=(policy.hits+base*8)/(policy.evaluations+8);
+      const strength=Math.min(.12,Math.max(0,estimate-base)*policy.evaluations/(policy.evaluations+8));
+      if(!strength)continue;
+      const proposal=reanalysisWeights(h,policy.group,policy.level);
+      for(let j=0;j<37;j++)weights[j]=Math.max(.001,weights[j]+mean*strength*(proposal[j]-1));
+    }
+    return weights;
+  }
+  function reviseImportedMasterLoss(review,turn){
+    if(!review.imported || review.actualResult!=='LOSS')return null;
+    const results=review.observations||[];
+    const entryIndex=results.findIndex(row=>row.phase==='ENTRY');
+    if(entryIndex<0)return null;
+    const entryOutcome=results[entryIndex];
+    const prefix=results[entryIndex].prefix;
+    const attempts=[];let solution=null;
+    // 6 leituras x 4 intensidades. Sem deslocamento escolhido pelo resultado,
+    // sem adicionar o número revelado aos pesos ou como número obrigatório.
+    for(let level=0;level<4&&!solution;level++){
+      for(let group=0;group<6&&!solution;group++){
+        const weights=reanalysisWeights(prefix,group,level);
+        const play=geometry(weights);
+        if(!validPlay(play))continue;
+        let simulated=play.numbers.includes(entryOutcome.number)?'GREEN':null;
+        let defense=null;
+        if(!simulated){
+          const gale=results.slice(entryIndex+1).find(row=>row.phase==='GALE');
+          if(gale){
+            const failureHistory=[...prefix,entryOutcome.number].slice(-70);
+            const original={key:reanalysisKey(group,level),play};
+            // Reconstrói a defesa somente com informação até a falha da entrada.
+            const savedRows=state.g1Rows;
+            state.g1Rows=savedRows.filter(row=>row.turn<entryOutcome.turn);
+            try{
+              const config=review.config;
+              const decision=config.g1Trainer?chooseG1(original,entryOutcome.number,failureHistory,'MASTER')
+                :{motor:config.g1?fineG1(original,entryOutcome.number,failureHistory):original};
+              defense=decision?.motor?.play||play;
+              simulated=defense.numbers.includes(gale.number)?'GREEN G1':'LOSS';
+            }finally{state.g1Rows=savedRows;}
+          }else simulated='LOSS';
+        }
+        const attempt={id:reanalysisKey(group,level),component:REANALYSIS_COMPONENTS[group],
+          group,level,strength:REANALYSIS_LEVELS[level],result:simulated,
+          entryShape:signaturePlay(play),defenseShape:defense?signaturePlay(defense):null};
+        attempts.push(attempt);
+        if(simulated!=='LOSS')solution=attempt;
+      }
+    }
+    const record={id:'REANALYSIS@'+review.turn,turn:review.turn,closedTurn:turn,
+      beforeTurn:review.beforeTurn,originalResult:'LOSS',selectedId:review.selectedId,
+      prefix:[...prefix],observedAfter:results.map(row=>({turn:row.turn,number:row.number,phase:row.phase})),
+      status:solution?'REVISED':'UNSOLVED',result:solution?.result||'LOSS',attempts,
+      solution:solution?{...solution}:null,retrospective:true,validated:false,
+      meaning:'TREINAMENTO REVISADO DEPOIS DO RESULTADO; NÃO É PREVISÃO COMPROVADA'};
+    state.importReanalyses.push(record);
+    state.importReanalyses=state.importReanalyses.slice(-120);
+    if(solution&&!state.reanalysisPolicies.some(policy=>policy.id===solution.id)){
+      state.reanalysisPolicies.push({id:solution.id,group:solution.group,level:solution.level,
+        createdTurn:turn,evaluations:0,hits:0,lastEvaluation:null});
+    }
+    return record;
+  }
+
   function masterLessonStats(id){
     const keys=spatialRead(state.history.slice(-70)).keys;
     let support=0,reward=0,count=0,direct=0,g1=0,loss=0;
@@ -10520,7 +10665,8 @@ state.importAudit=describeImport(clean,opts);
       return {id:f.id,entry:copy(motor),defenseStrategy:definition?.resolvedId||f.defenseStrategy||f.id,
         phase:state.secondHouse?'SECOND_SKIP':'ENTRY',initialSkip:!!state.secondHouse,result:null};
     });
-    return {version:'6.6.11',turn:state.totalTurns+1,beforeTurn:state.totalTurns,
+    return {version:'6.6.13',turn:state.totalTurns+1,beforeTurn:state.totalTurns,
+      imported:!!state.importTrainingActive,observations:[],
       prefix:[...state.history].slice(-70),spatialKeys:[...spatialRead(state.history.slice(-70)).keys],
       config:{g1:state.g1,g1Trainer:state.g1Trainer,galeSkip:state.galeSkip,secondHouse:state.secondHouse},
       forecastFingerprint:importFingerprint(alternatives.map(a=>[a.id,signaturePlay(a.entry.play)])),
@@ -10562,6 +10708,11 @@ state.importAudit=describeImport(clean,opts);
     }
     const actualStart=oldCycle?.entryTurn||turn;
     for(const review of state.masterReviews){
+      if(review.imported){
+        const first=review.alternatives.find(a=>a.id===review.selectedId)||review.alternatives[0];
+        review.observations.push({turn,number:n,prefix:[...before].slice(-70),
+          phase:first?.phase==='GALE'?'GALE':['ENTRY','SECOND_ENTRY'].includes(first?.phase)?'ENTRY':first?.phase});
+      }
       for(const alternative of review.alternatives)stepMasterAlternative(alternative,review,n,turn,before);
       if(controller==='MASTER'&&review.turn===actualStart&&['GREEN','GREEN G1','LOSS'].includes(result)){
         review.actualResult=result;review.actualClosedTurn=turn;
@@ -10570,6 +10721,7 @@ state.importAudit=describeImport(clean,opts);
     const remaining=[];
     for(const review of state.masterReviews){
       if(!review.actualResult||review.alternatives.some(a=>!a.result)){remaining.push(review);continue;}
+      reviseImportedMasterLoss(review,turn);
       const outcomes={};
       for(const a of review.alternatives)outcomes[a.id]=a.result==='GREEN'?2:a.result==='GREEN G1'?1:0;
       state.masterLessons.push({version:review.version,turn:review.turn,beforeTurn:review.beforeTurn,
@@ -11304,7 +11456,7 @@ state.importAudit=describeImport(clean,opts);
                 componentShares: [...spatial.adaptive.shares],
                 adaptiveSamples: spatial.adaptive.samples,
                 spatialVersion: VERSION,
-          readingVersion:"6.6.11",readingCandidates:37,
+          readingVersion:"6.6.13",readingCandidates:37,
               });
             }
           const cs = fastIndependentMotors(proposals);
@@ -11326,97 +11478,13 @@ state.importAudit=describeImport(clean,opts);
       return forecasts;
     }
 
-    /* Dois calculadores persistentes repartem as oito famílias de estratégias.
-   Nenhuma combinação é reutilizada de um resultado anterior. */
-    let bankCalculators = null,
-      bankRequestId = 0;
-    function createBankCalculator() {
-      const url = URL.createObjectURL(
-        new Blob(["(" + analysisBackground.toString() + ")();"], {
-          type: "text/javascript",
-        }),
-      );
-      const worker = new Worker(url);
-      URL.revokeObjectURL(url);
-      const requests = new Map();
-      worker.onmessage = (event) => {
-        const data = event.data,
-          request = requests.get(data.id);
-        if (!request) return;
-        requests.delete(data.id);
-        data.error
-          ? request.reject(Error(data.error))
-          : request.resolve(data.variants);
-      };
-      worker.onerror = () => {
-        worker.terminate();
-        for (const request of requests.values())
-          request.reject(Error("Calculador indisponível."));
-        requests.clear();
-        bankCalculators = null;
-      };
-      return { worker, requests };
-    }
-    function requestBankCalculation(calculator, owners) {
-      return new Promise((resolve, reject) => {
-        const id = ++bankRequestId;
-        calculator.requests.set(id, { resolve, reject });
-        calculator.worker.postMessage({
-          id,
-          action: "BANKS",
-          state: { ...state, undoStack: [] },
-          owners,
-        });
-      });
-    }
+  
     async function prepareBlockParallel() {
-      if (state.history.length < 8) return null;
-      if (state.block.data && state.block.decisionTurn === state.totalTurns)
-        return currentBlock();
-      if (typeof Worker === "undefined" || typeof Blob === "undefined")
-        return prepareBlock();
-      try {
-        if (!bankCalculators)
-          bankCalculators = [createBankCalculator(), createBankCalculator()];
-        const groups = [
-          VARIANT_OWNERS.filter((_, i) => i % 2 === 0).map((o) => o.id),
-          VARIANT_OWNERS.filter((_, i) => i % 2 === 1).map((o) => o.id),
-        ];
-        const pending = Promise.all(
-          bankCalculators.map((calculator, i) =>
-            requestBankCalculation(calculator, groups[i]),
-          ),
-        );
-        const anchor = [...state.history].slice(-70),
-          global = motors(anchor);
-        const partitions = await pending;
-        const byId = new Map(partitions.flat().map((f) => [f.bankId, f]));
-        const variants = [];
-        for (const owner of VARIANT_OWNERS)
-          for (let variation = 1; variation <= 8; variation++) {
-            const id = variantBookId(owner.id, variation),
-              forecast = byId.get(id);
-            if (!forecast) throw Error("Variação ausente: " + id);
-            variants.push(forecast);
-          }
-        state.block.anchor = anchor;
-        state.block.decisionTurn = state.totalTurns;
-        state.block.data = { global: global.map(compactMotor), variants };
-        state.block.best = rankBestVariation();
-        registerNumberCombination(anchor, state.totalTurns);
-        updateNumberChoice();
-        updateTrainer();
-        blockRuntimeKey = null;
-        updateMaster(currentBlock());
-        return currentBlock();
-      } catch (error) {
-        if (bankCalculators)
-          for (const calculator of bankCalculators)
-            calculator.worker.terminate();
-        bankCalculators = null;
-        return prepareBlock();
-      }
-    }
+    // Um único calculador por leitura; todos os 65 bancos continuam ativos.
+    // prepareBlock conserva a mesma busca, pesos, ordenação e regras.
+    return prepareBlock();
+  }
+
 
     /* Os contadores de sequência não são apagados pelo descarte da janela. */
     function updateStrategyStreaks(turn = state.totalTurns) {
@@ -11565,13 +11633,6 @@ state.importAudit=describeImport(clean,opts);
         const before = undoSnapshot();
         spin(data.number, "TEMPO REAL");
         if (!state.block.data && state.history.length >= 8) await prepareBlockParallel();
-        // A jogada já está calculada: entrega os centros antes de gerar o
-        // registro de desfazer. Não publica centros do giro anterior.
-        const block = currentBlock();
-        const nextMotor = state.defense || state.cycle?.original || (block ? activeMotor(block.global) : null);
-        self.postMessage({id:data.id,kind:'PREVIEW',state:{
-          turn:state.totalTurns,phase:state.phase,name:activeDefinition().name,motor:nextMotor
-        }});
         const row = state.ledger.at(-1);
         state.manualLog.push({
           id: Date.now()+"_"+state.totalTurns,turn:state.totalTurns,number:data.number,
@@ -12005,11 +12066,11 @@ if(receipt)receipt.textContent=audit?'ÚLTIMA IMPORTAÇÃO '+audit.historyId+' �
     renderLastNumbers();
     $("general").hidden = !state.open.general;
     if (state.open.general) {
-      $("general").innerHTML =
+      patchHTML($("general"),
         '<div class="title">RESULTADOS DA JANELA</div>' +
         resultsSeparatedHTML(state.ledger) +
         '<div class="title">MANUAIS ARQUIVADOS</div>' +
-        resultsSeparatedHTML(state.manualLog);
+        resultsSeparatedHTML(state.manualLog)+reanalysisSummaryHTML());
     }
     const target =
       state.cycle?.original?.postLossTarget || motor?.postLossTarget;
@@ -12075,9 +12136,9 @@ if(!isCurrentApp())return;
     render();
   }
 
-  function workerRequest(action, payload, onPreview = null) {
+  function workerRequest(action, payload) {
     if (typeof Worker === "undefined" || workerDisabled)
-      return Promise.resolve(null);
+      return Promise.reject(Error('O cálculo em segundo plano está indisponível. A sessão foi preservada.'));
     return new Promise((resolve, reject) => {
       try {
         if (!workerClient) {
@@ -12095,10 +12156,6 @@ if(!isCurrentApp())return;
             const message = event.data,
               request = clientRequests.get(message.id);
             if (!request) return;
-            if (message.kind === "PREVIEW") {
-              request.onPreview?.(message.state);
-              return;
-            }
             clientRequests.delete(message.id);
             if (message.error) request.reject(Error(message.error));
             else request.resolve(message.kind === 'SPIN' ? {state:message.state,undoOps:message.undoOps} : message.state);
@@ -12108,16 +12165,16 @@ if(!isCurrentApp())return;
             workerClient.terminate();
             workerClient = null;
             for (const request of clientRequests.values())
-              request.resolve(null);
+              request.reject(Error('O calculador foi interrompido pelo navegador. A sessão foi preservada.'));
             clientRequests.clear();
           };
         }
         const id = ++clientSequence;
-        clientRequests.set(id, { resolve, reject, onPreview });
+        clientRequests.set(id, { resolve, reject });
         workerClient.postMessage({ id, action, ...payload });
       } catch (error) {
         workerDisabled = true;
-        resolve(null);
+        reject(Error('Não foi possível iniciar o calculador em segundo plano: '+String(error.message||error)));
       }
     });
   }
@@ -12168,18 +12225,14 @@ if(!isCurrentApp())return;
     pendingReceipts.push(n);
     renderLastNumbers();
     persistPendingInputs();
-    $("receipt").textContent =
-      "NÚMERO " +
-      n +
-      " RECEBIDO" +
-      (inputQueue.length > 1 ? " • FILA " + inputQueue.length : "");
+
     drainInputQueue();
   }
 
   async function drainInputQueue() {
     if (inputRunning || !inputQueue.length) return;
     inputRunning = true;
-    setBusy(true);
+    busy=true;
     clearTimeout(saveTimer);
     const number = inputQueue.shift(),
       oldUndo = state.undoStack;
@@ -12191,17 +12244,6 @@ if(!isCurrentApp())return;
       const result = await workerRequest("SPIN", {
         number,
         state: { ...state, undoStack: [] },
-      }, preview => {
-        if(!isCurrentApp())return;
-        const motor=preview.motor;
-        patchHTML($('centers'),centersHTML(motor?.play));
-        $('coverage').textContent=motor
-          ?'28 COBERTOS • 9 DESCOBERTOS: '+missing(motor.play).join(' • ')
-          :'AGUARDANDO PRÓXIMA ENTRADA';
-        const target=motor?.postLossTarget;
-        $('selected').textContent=target
-          ?(target.kind==='POST3'?'JOGADA PÓS-3 LOSS • ':'JOGADA PÓS-LOSS • ')+target.name+' • '+preview.phase
-          :preview.name+' • '+(motor?.key||'AGUARDANDO PRÓXIMA ENTRADA')+' • '+preview.phase;
       });
       if (result) state = { ...result.state, undoStack: oldUndo };
       else {
@@ -12244,17 +12286,14 @@ if(!isCurrentApp())return;
       state = before ? { ...before, undoStack: oldUndo } : previousState;
       clearSpatialCaches();
       inputQueue = [];
-      pendingReceipts = [];
       persistPendingInputs();
       alert("ERRO AO INSERIR NÚMERO: " + String(error.message || error));
     } finally {
       inputRunning = false;
-      setBusy(false);
+      busy=false;
       render();
       saveAsync();
-      $("receipt").textContent = inputQueue.length
-        ? "FILA: " + inputQueue.join(" • ")
-        : "ÚLTIMO NÚMERO REGISTRADO: " + number;
+
       if (inputQueue.length) drainInputQueue();
     }
   }
@@ -12337,6 +12376,30 @@ if(!isCurrentApp())return;
     }
   }
 
+  function reanalysisSummaryHTML(){
+    const rows=state.importReanalyses||[];
+    if(!rows.length)return '';
+    const solved=rows.filter(row=>row.status==='REVISED').length;
+    return '<div class="title">REANÁLISE DA IMPORTAÇÃO • RETROSPECTIVA</div><div class="muted">'+
+      solved+' revisões com acerto simulado • '+(rows.length-solved)+' sem solução nas 24 hipóteses. '+
+      'Resultados originais preservados; ajustes só influenciam motores após avaliações posteriores.</div>';
+  }
+  function renderReanalysisLane(ui){
+    if(!ui.reviewCells){
+      const label=document.createElement('div');label.className='muted';
+      label.textContent='REVISÃO DA IMPORTAÇÃO • APÓS CONHECER O RESULTADO';
+      ui.reviewCells=document.createElement('div');ui.reviewCells.className='timelineCells';
+      ui.item.appendChild(label);ui.item.appendChild(ui.reviewCells);
+    }
+    patchHTML(ui.reviewCells,(state.importReanalyses||[]).slice(-20).map(row=>{
+      const solved=row.status==='REVISED',direct=row.result==='GREEN';
+      const text=solved?(direct?'W*':'G1*'):'?';
+      const title='GIRO '+row.turn+' • LOSS original • '+row.attempts.length+' tentativas • '+
+        (solved?'AJUSTE RETROSPECTIVO: '+row.solution.component:'SEM SOLUÇÃO ENCONTRADA');
+      return '<span class="wlCell '+(solved?(direct?'wlWin':'wlGale'):'wlLoss')+'" title="'+esc(title)+'">'+text+'</span>';
+    }).join('')||'<span class="muted">SEM LOSS IMPORTADO PARA REVISAR</span>');
+  }
+
   function renderTimelinePanel() {
     const root = $("timelines");
     if (!root) return;
@@ -12372,6 +12435,7 @@ if(!isCurrentApp())return;
     for (const def of definitions) {
       const rows = timelineSamples(def.id).slice(-20),
         ui = timelineUINodes.get(def.id);
+      if(def.id==='MASTER')renderReanalysisLane(ui);
       const signature = rows
         .map((r) => r.turn + ":" + r.result + ":" + r.closed)
         .join(",");
@@ -12514,7 +12578,6 @@ if(!isCurrentApp())return;
         b.style.background =
           n === 0 ? "#087b50" : RED.has(n) ? "#ac293f" : "#12151b";
         b.onclick = () => {
-          $("focusReceipt").textContent = "NÚMERO " + n + " RECEBIDO";
           addManual(n);
         };
         $("focusKeys").appendChild(b);
@@ -12680,9 +12743,13 @@ if(!isCurrentApp() || recoveryLocked)return;
     try {
       if (!checkpointWorker) {
         const source =
-          "const packSession=" +
-          packSession.toString() +
-          ";self.onmessage=e=>{try{self.postMessage({id:e.data.id,epoch:e.data.epoch,turn:e.data.turn,packed:packSession(e.data.raw)});}catch(error){self.postMessage({id:e.data.id,epoch:e.data.epoch,error:String(error.message||error)});}};";
+          'const W='+JSON.stringify(W)+';'+
+          'const mod=n=>(n%37+37)%37;const ix=n=>W.indexOf(n);'+
+          neighbors.toString()+';'+validPlay.toString()+';'+signaturePlay.toString()+';'+
+          'const packSession='+packSession.toString()+';'+
+          'self.onmessage=e=>{try{const raw=JSON.stringify(e.data.state,(k,v)=>validPlay(v)?{__betaPlay:signaturePlay(v),score:v.score}:v);'+
+          'self.postMessage({id:e.data.id,epoch:e.data.epoch,turn:e.data.turn,packed:packSession(raw)});'+
+          '}catch(error){self.postMessage({id:e.data.id,epoch:e.data.epoch,error:String(error.message||error)});}};';
         const url = URL.createObjectURL(
           new Blob([source], { type: "text/javascript" }),
         );
@@ -12704,10 +12771,7 @@ if(!isCurrentApp())return;
           }
           const next = checkpointNext;
           checkpointNext = null;
-          if (next && next.id === checkpointSerial) {
-            checkpointBusy = true;
-            checkpointWorker.postMessage(next);
-          }
+          if (next) saveAsync();
         };
         checkpointWorker.onerror = () => {
           checkpointWorker.terminate();
@@ -12719,11 +12783,8 @@ if(!isCurrentApp())return;
       }
       const id = ++checkpointSerial,
         turn = state.totalTurns;
-      const raw = JSON.stringify(state, (k, v) =>
-        validPlay(v) ? { __betaPlay: signaturePlay(v), score: v.score } : v,
-      );
-      const message = { id, epoch: checkpointEpoch, turn, raw };
-      if (checkpointBusy) checkpointNext = message;
+      const message = { id, epoch: checkpointEpoch, turn, state };
+      if (checkpointBusy) checkpointNext = true;
       else {
         checkpointBusy = true;
         checkpointWorker.postMessage(message);
@@ -12733,15 +12794,11 @@ if(!isCurrentApp())return;
     }
   }
   function scheduleCheckpointFallback() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      if (inputRunning || busy) {
-        scheduleCheckpointFallback();
-        return;
-      }
-      save();
-      persistPendingInputs();
-    }, 250);
+    // Uma falha do compactador não deve provocar uma compactação pesada
+    // síncrona na volta à aba. O diário conserva os números ainda não salvos.
+    persistPendingInputs();
+    saveError='O salvamento em segundo plano foi interrompido. Mantenha a aba aberta e use RECUPERAR HISTÓRICO para retomar.';
+    showSaveHealth();
   }
 
   function togglePostThree() {
@@ -12853,6 +12910,9 @@ if(!isCurrentApp())return;
   $("import").onclick = () => importHistory(parseInput($("paste").value));
   $("restore").onclick = async () => {
     if (busy) return;
+    if(workerDisabled){
+      workerClient?.terminate();workerClient=null;workerDisabled=false;clientRequests.clear();
+    }
     for (const key of [KEY, ...OLD_KEYS]) {
       const data = read(key);
       if (data && Array.isArray(data.history)) {
@@ -12862,11 +12922,15 @@ if(!isCurrentApp())return;
         if (!state.block.data) {
           setBusy(true, "RECUPERANDO");
           await waitFrame();
-          prepareBlock();
-          setBusy(false);
+          try{
+            const stack=state.undoStack;
+            const restored=await workerRequest('RESTORE',{state:{...state,undoStack:[]}});
+            state={...restored,undoStack:stack};
+          }finally{setBusy(false);}
         }
         save();
         render();
+        resumePendingInputs();
         return;
       }
     }
@@ -12896,8 +12960,10 @@ if(!isCurrentApp())return;
   async function restoreBootSession() {
     setBusy(true, 'RECUPERANDO SESSÃO');
     try {
-      let recovered = read(KEY);
-      const databaseRaw = await readDatabaseCheckpoint();
+      let recovered = globalThis['__analiseBetaTransfer_'+side] || read(KEY);
+      const handoff = !!globalThis['__analiseBetaTransfer_'+side];
+      delete globalThis['__analiseBetaTransfer_'+side];
+      const databaseRaw = handoff ? null : await readDatabaseCheckpoint();
       if (!isCurrentApp()) return;
       if (databaseRaw) {
         try {
@@ -12943,24 +13009,21 @@ if(!isCurrentApp())return;
     }
   }
   restoreBootSession();
-  sideWindowAdd("pagehide", () => {
-    clearTimeout(saveTimer);
-    checkpointSerial++;
-    save();
+  // O checkpoint completo já é agendado após cada alteração. Ao trocar de
+  // aba, grava somente o diário curto. Não compacta, recalcula ou redesenha.
+  function recordLifecycleJournal(){
+    if(!isCurrentApp())return;
     persistPendingInputs();
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      clearTimeout(saveTimer);
-      checkpointSerial++;
-      save();
-      persistPendingInputs();
-    }
+  }
+  sideWindowAdd('pagehide',recordLifecycleJournal);
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden')recordLifecycleJournal();
   });
 
 globalThis['__analiseBetaDispose_'+side]=()=>{
  if(!appAlive)return;
- clearTimeout(saveTimer);save();persistPendingInputs();appAlive=false;
+ clearTimeout(saveTimer);persistPendingInputs();
+ globalThis['__analiseBetaTransfer_'+side]=state;appAlive=false;
  if(workerClient)workerClient.terminate();
  if(checkpointWorker)checkpointWorker.terminate();
  clientRequests.clear();
@@ -12988,7 +13051,7 @@ return {
  poleCatalogue(){return motorReadings667.polePairs.map(pair=>({...pair}));},
  poleReading(number,numberA,numberB,tolerance){return motorReadings667.polePairReading(state.history.map(ix),ix(number),ix(numberA),ix(numberB),tolerance);},
  arcReading(number,start,width,window=8){return motorReadings667.arcAlternative(state.history,number,start,width,window);},
- masterDiagnostics(){return {display:copy(displayedMasterChoice()),choice:copy(masterSelection()),ranking:copy(masterRanking()),bestVariations:VARIANT_OWNERS.map(owner=>bestMasterVariation(owner.id)),lessons:copy(state.masterLessons),pendingReviews:state.masterReviews.length};},
+ masterDiagnostics(){return {reanalyses:copy(state.importReanalyses),policies:copy(state.reanalysisPolicies),display:copy(displayedMasterChoice()),choice:copy(masterSelection()),ranking:copy(masterRanking()),bestVariations:VARIANT_OWNERS.map(owner=>bestMasterVariation(owner.id)),lessons:copy(state.masterLessons),pendingReviews:state.masterReviews.length};},
  getState:()=>state,
  busy:()=>busy||inputRunning||inputQueue.length>0,
  canEnqueue:()=>appAlive&&state.history.length>=8&&(!busy||inputRunning),
@@ -13072,7 +13135,7 @@ body{margin:0;background:#101720;color:#f4f7fb;font:13px Arial,sans-serif}
 </style>
 <main id="beta-dual-app">
 <section class="panel">
-<h1>ANÁLISE BETA 6.6.11</h1>
+<h1>ANÁLISE BETA 6.6.13</h1>
 <label for="dual-paste">IMPORTAR HISTÓRICO</label>
 <textarea id="dual-paste" placeholder="Cole de 8 a 70 resultados."></textarea>
 <div class="dual-controls">
@@ -13112,7 +13175,7 @@ ui('dual-order').onchange=()=>{try{localStorage.setItem(stateKey,ui('dual-order'
 function both(){return [sides.NORMAL,sides.INVERTIDO].filter(Boolean);}
 function running(){return operation||both().some(s=>s.busy());}
 function updateButtons(){
- const blocked=running();
+ const blocked=operation;
  for(const id of ['dual-import','dual-undo','dual-restore','dual-clear'])ui(id).disabled=blocked;
  for(const id of ['dual-controls-normal','dual-controls-inverted','dual-plays','dual-keyboard','dual-timelines'])ui(id).inert=operation;
 }
@@ -13187,7 +13250,7 @@ const coordinator={
   if(!alive||operation||!aligned)return false;
   if(!Number.isInteger(n)||n<0||n>36)return false;
   if(both().length!==2||both().some(s=>!s.canEnqueue())){status('AGUARDE A PREPARAÇÃO DOS DOIS CONJUNTOS OU IMPORTE UM HISTÓRICO.');return false;}
-  expectedTurn++;status('NÚMERO '+n+' RECEBIDO NOS DOIS CONJUNTOS');
+  expectedTurn++;
   for(const side of both())side.enqueue(n);
   updateButtons();watchNumbers();return true;
  },
